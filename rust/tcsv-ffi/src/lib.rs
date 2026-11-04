@@ -10,7 +10,7 @@ use std::ffi::c_char;
 use std::ptr;
 
 use tcsv::arrow::{ArrowArray, ArrowSchema};
-use tcsv::{At, Doc};
+use tcsv::{At, ColumnAt, Dialect, Doc, Separator};
 
 /// A file read, with the text its last call returned.
 pub struct TcsvDoc {
@@ -107,14 +107,188 @@ pub unsafe extern "C" fn tcsv_failure_free(f: *mut TcsvFailure) {
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn tcsv_read(bytes: *const u8, len: usize, threads: usize, failure: *mut TcsvFailure) -> *mut TcsvDoc {
     // SAFETY: the caller's promise.
-    let src = if len == 0 { Vec::new() } else { unsafe { std::slice::from_raw_parts(bytes, len) }.to_vec() };
-    match tcsv::read_parallel(src, threads.max(1)) {
+    unsafe { tcsv_read_as(bytes, len, 0, threads, failure) }
+}
+
+/// The dialect a call names: 0 for TCSV, else a plain file's separator (`,` `;` `\t` `|`).
+fn dialect(sep: u8) -> Dialect {
+    if sep == 0 {
+        return Dialect::Tcsv;
+    }
+    Dialect::Plain(Separator::of(sep).unwrap_or_else(|| panic!("{sep} is no separator")))
+}
+
+fn doc_or_fail(read: Result<Doc, tcsv::Error>, failure: *mut TcsvFailure) -> *mut TcsvDoc {
+    match read {
         Ok(doc) => Box::into_raw(Box::new(TcsvDoc { doc, out: String::new() })),
         Err(e) => {
             fail(failure, e);
             ptr::null_mut()
         }
     }
+}
+
+/// `tcsv_read` in a dialect: `sep` 0 for TCSV, else a plain file's separator byte (`,`
+/// `;` `\t` `|`), read leniently: a plain file is refused only for bytes that are not
+/// UTF-8, or past 4 GiB.
+///
+/// # Safety
+/// As `tcsv_read`; `sep` is 0 or a separator.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn tcsv_read_as(bytes: *const u8, len: usize, sep: u8, threads: usize, failure: *mut TcsvFailure) -> *mut TcsvDoc {
+    // SAFETY: the caller's promise.
+    let src = if len == 0 { Vec::new() } else { unsafe { std::slice::from_raw_parts(bytes, len) }.to_vec() };
+    doc_or_fail(tcsv::read_as(src, dialect(sep), threads.max(1)), failure)
+}
+
+/// The separator byte the first lines of `len` bytes agree on (`tcsv::detect`).
+///
+/// # Safety
+/// `bytes` points at `len` readable bytes.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn tcsv_detect(bytes: *const u8, len: usize) -> u8 {
+    // SAFETY: the caller's promise.
+    let src = if len == 0 { &[][..] } else { unsafe { std::slice::from_raw_parts(bytes, len) } };
+    tcsv::detect(src).byte()
+}
+
+/// How the doc was read: 0 for TCSV, else a plain file's separator byte.
+///
+/// # Safety
+/// `d` is a live doc.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn tcsv_dialect(d: *mut TcsvDoc) -> u8 {
+    // SAFETY: the caller's promise.
+    match unsafe { doc(d) }.doc.dialect() {
+        Dialect::Tcsv => 0,
+        Dialect::Plain(s) => s.byte(),
+    }
+}
+
+/// Whether a plain file quotes every field, so an edited cell and a new row are quoted too.
+///
+/// # Safety
+/// `d` is a live doc.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn tcsv_quotes_all(d: *mut TcsvDoc) -> bool {
+    // SAFETY: the caller's promise.
+    unsafe { doc(d) }.doc.quotes_all()
+}
+
+/// A plain file's header cell that names its column badly: blank, or the name of the
+/// column `first` too.
+#[repr(C)]
+pub struct TcsvNaming {
+    pub column: u32,
+    pub blank: bool,
+    pub first: u32,
+}
+
+/// How many header cells name their columns badly.
+///
+/// # Safety
+/// `d` is a live doc.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn tcsv_naming_count(d: *mut TcsvDoc) -> usize {
+    // SAFETY: the caller's promise.
+    unsafe { doc(d) }.doc.naming().len()
+}
+
+/// Header problem `i`.
+///
+/// # Safety
+/// `d` is a live doc; `i < tcsv_naming_count(d)`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn tcsv_naming(d: *mut TcsvDoc, i: usize) -> TcsvNaming {
+    // SAFETY: the caller's promise.
+    match unsafe { doc(d) }.doc.naming()[i] {
+        tcsv::Naming::Blank { column } => TcsvNaming { column, blank: true, first: 0 },
+        tcsv::Naming::Twice { column, first } => TcsvNaming { column, blank: false, first },
+    }
+}
+
+/// Header problem `i` in words without its place: `has no name`, `"a" names column 1 too`.
+///
+/// # Safety
+/// `d` is a live doc; `i < tcsv_naming_count(d)`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn tcsv_naming_why(d: *mut TcsvDoc, i: usize) -> TcsvStr {
+    // SAFETY: the caller's promise.
+    let d = unsafe { doc(d) };
+    d.out = d.doc.naming_why(&d.doc.naming()[i]);
+    TcsvStr::of(&d.out)
+}
+
+/// How many fields a row's record holds now (a plain file's ragged row, a short row).
+///
+/// # Safety
+/// `d` is a live doc; `row < tcsv_rows(d)`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn tcsv_width(d: *mut TcsvDoc, row: usize) -> usize {
+    // SAFETY: the caller's promise.
+    unsafe { doc(d) }.doc.width(row)
+}
+
+/// A column of a file reshaped: `kept`, a stored column it has (renamed to `name` when
+/// `renamed`), or when `kept` is negative a new one, its header cell `name` and `count`
+/// cells, one a row, or none for blanks.
+#[repr(C)]
+pub struct TcsvColumnAt {
+    pub kept: i64,
+    pub renamed: bool,
+    pub name: TcsvStr,
+    pub cells: *const TcsvStr,
+    pub count: usize,
+}
+
+/// The file with exactly `columns`, in their order, read again on up to `threads` threads
+/// (a column inserted, removed, moved, renamed): a new doc, this one untouched. Null when
+/// it does not read, `failure` then set.
+///
+/// # Safety
+/// `d` is a live doc; `columns` points at `count` columns, at least one, each kept one
+/// below `tcsv_stored(d)` and every string UTF-8; `failure` is null or writable.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn tcsv_reshaped(
+    d: *mut TcsvDoc,
+    columns: *const TcsvColumnAt,
+    count: usize,
+    threads: usize,
+    failure: *mut TcsvFailure,
+) -> *mut TcsvDoc {
+    // SAFETY: the caller's promise.
+    let d = unsafe { doc(d) };
+    let given = if count == 0 { &[][..] } else { unsafe { std::slice::from_raw_parts(columns, count) } };
+    // SAFETY: every string is the caller's UTF-8.
+    let parts: Vec<(&str, Vec<&str>)> =
+        given.iter().map(|c| unsafe { (text_of(c.name.ptr, c.name.len), strs(c.cells, c.count)) }).collect();
+    let order: Vec<ColumnAt> = given
+        .iter()
+        .zip(&parts)
+        .map(|(c, (name, cells))| match (c.kept < 0, c.renamed) {
+            (true, _) => ColumnAt::New(name, cells),
+            (false, true) => ColumnAt::Renamed(c.kept as usize, name),
+            (false, false) => ColumnAt::Kept(c.kept as usize),
+        })
+        .collect();
+    doc_or_fail(d.doc.reshaped(&order, threads.max(1)), failure)
+}
+
+/// The file written in a dialect (`sep` as for `tcsv_read_as`): a plain file's header the
+/// columns' names, computed ones with their values; a `.tcsv` file's header the `count`
+/// cells of `header` when `count` is not 0 (one a stored column), its prelude kept.
+///
+/// # Safety
+/// `d` is a live doc; `sep` is 0 or a separator; `header` points at `count` strings of
+/// UTF-8.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn tcsv_written_as(d: *mut TcsvDoc, sep: u8, header: *const TcsvStr, count: usize) -> TcsvStr {
+    // SAFETY: the caller's promise.
+    let d = unsafe { doc(d) };
+    // SAFETY: the caller's promise.
+    let cells = unsafe { strs(header, count) };
+    d.out = d.doc.written_as(dialect(sep), if count == 0 { None } else { Some(&cells) });
+    TcsvStr::of(&d.out)
 }
 
 /// Lets a doc go. The arrays exported from it live on until released.
@@ -189,13 +363,15 @@ pub unsafe extern "C" fn tcsv_column_type(d: *mut TcsvDoc, column: usize) -> Tcs
     TcsvStr::of(&d.out)
 }
 
-/// What a problem is: the suite's three kinds.
+/// What a problem is: the suite's kinds.
 #[repr(C)]
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum TcsvKind {
     TcsvKindType = 0,
     TcsvKindMissing = 1,
     TcsvKindKey = 2,
+    /// A plain file's row of another width than its header.
+    TcsvKindRagged = 3,
 }
 
 /// A cell that breaks its type, by place.
@@ -228,6 +404,7 @@ pub unsafe extern "C" fn tcsv_problem(d: *mut TcsvDoc, i: usize) -> TcsvProblem 
         tcsv::Kind::Type => TcsvKind::TcsvKindType,
         tcsv::Kind::Missing => TcsvKind::TcsvKindMissing,
         tcsv::Kind::Key => TcsvKind::TcsvKindKey,
+        tcsv::Kind::Ragged => TcsvKind::TcsvKindRagged,
     };
     TcsvProblem { row: p.row, column: p.column, kind }
 }
@@ -361,30 +538,34 @@ pub unsafe extern "C" fn tcsv_clone(d: *mut TcsvDoc) -> *mut TcsvDoc {
     Box::into_raw(Box::new(TcsvDoc { doc: d.doc.clone(), out: String::new() }))
 }
 
-/// A new file written from cells: its header's, then each row's (`rows`, every one new),
-/// each quoted only where CSV needs it, lines broken by `\r\n` or `\n`, ending in one when
-/// `trailing`. Null when it does not read, `failure` then set.
+/// A new file in a dialect (`sep` as for `tcsv_read_as`) written from cells: its header's,
+/// then each row's (`rows`, every one new), each quoted only where the dialect needs it,
+/// lines broken by `\r\n` or `\n`, ending in one when `trailing`. Null when it does not
+/// read, `failure` then set.
 ///
 /// # Safety
-/// `header` points at `columns` strings of UTF-8, `rows` at `count` new rows; `failure` is
-/// null or writable.
+/// `header` points at `columns` strings of UTF-8, `rows` at `count` new rows; `sep` is 0
+/// or a separator; `failure` is null or writable.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn tcsv_new(
     header: *const TcsvStr,
     columns: usize,
     rows: *const TcsvRow,
     count: usize,
+    sep: u8,
     crlf: bool,
     trailing: bool,
     failure: *mut TcsvFailure,
 ) -> *mut TcsvDoc {
     let nl = if crlf { "\r\n" } else { "\n" };
+    let dialect = dialect(sep);
+    let between = (dialect.separator().byte() as char).to_string();
     let line = |text: &mut String, cells: &[&str]| {
         for (k, c) in cells.iter().enumerate() {
             if k > 0 {
-                text.push(',');
+                text.push_str(&between);
             }
-            text.push_str(&tcsv::quote(c));
+            text.push_str(&dialect.quote(c));
         }
     };
     let mut text = String::new();
@@ -402,13 +583,7 @@ pub unsafe extern "C" fn tcsv_new(
     } else if !given.is_empty() && text.ends_with(nl) {
         text.push_str("\"\"");
     }
-    match tcsv::read(text) {
-        Ok(doc) => Box::into_raw(Box::new(TcsvDoc { doc, out: String::new() })),
-        Err(e) => {
-            fail(failure, e);
-            ptr::null_mut()
-        }
-    }
+    doc_or_fail(tcsv::read_as(text, dialect, 1), failure)
 }
 
 /// # Safety
@@ -678,13 +853,7 @@ pub unsafe extern "C" fn tcsv_rearranged(
     let cells: Vec<Vec<&str>> = given.iter().map(|r| if r.kept < 0 { unsafe { strs(r.cells, r.count) } } else { Vec::new() }).collect();
     let order: Vec<tcsv::Row> =
         given.iter().zip(&cells).map(|(r, c)| if r.kept < 0 { tcsv::Row::New(c) } else { tcsv::Row::Kept(r.kept as usize) }).collect();
-    match d.doc.rearranged(&order, threads.max(1)) {
-        Ok(doc) => Box::into_raw(Box::new(TcsvDoc { doc, out: String::new() })),
-        Err(e) => {
-            fail(failure, e);
-            ptr::null_mut()
-        }
-    }
+    doc_or_fail(d.doc.rearranged(&order, threads.max(1)), failure)
 }
 
 /// The text before the header: a byte order mark and the prelude, as written.
@@ -867,6 +1036,49 @@ mod tests {
             assert!(tcsv_read(bad.as_ptr(), bad.len(), 1, &mut f).is_null());
             assert_eq!((f.at, f.number), (TcsvAt::TcsvAtColumn, 1));
             tcsv_failure_free(&mut f);
+        }
+    }
+
+    fn text(s: TcsvStr) -> String {
+        // SAFETY: the doc that lent it is alive.
+        String::from_utf8(unsafe { std::slice::from_raw_parts(s.ptr as *const u8, s.len) }.to_vec()).unwrap()
+    }
+
+    fn lent(s: &str) -> TcsvStr {
+        TcsvStr::of(s)
+    }
+
+    #[test]
+    fn a_plain_file_through_the_abi() {
+        let src = b"a;a;c\n1;2\n3;4;5;6\n";
+        let mut f = TcsvFailure { at: TcsvAt::TcsvAtNone, number: 0, why: ptr::null_mut(), why_len: 0 };
+        // SAFETY: valid pointers throughout.
+        unsafe {
+            assert_eq!(tcsv_detect(src.as_ptr(), src.len()), b';');
+            let d = tcsv_read_as(src.as_ptr(), src.len(), b';', 1, &mut f);
+            assert!(!d.is_null());
+            assert_eq!(tcsv_dialect(d), b';');
+            assert_eq!(tcsv_naming_count(d), 1);
+            let n = tcsv_naming(d, 0);
+            assert_eq!((n.column, n.blank, n.first), (1, false, 0));
+            assert_eq!(text(tcsv_naming_why(d, 0)), "\"a\" names column 1 too");
+            assert_eq!(tcsv_problem_count(d), 2);
+            assert_eq!(tcsv_problem(d, 1).kind, TcsvKind::TcsvKindRagged);
+            assert_eq!((tcsv_width(d, 0), tcsv_width(d, 1)), (2, 4));
+            // c moved first, b renamed, a new column last.
+            let cells = [lent("x"), lent("y")];
+            let order = [
+                TcsvColumnAt { kept: 2, renamed: false, name: lent(""), cells: ptr::null(), count: 0 },
+                TcsvColumnAt { kept: 1, renamed: true, name: lent("b"), cells: ptr::null(), count: 0 },
+                TcsvColumnAt { kept: -1, renamed: false, name: lent("new"), cells: cells.as_ptr(), count: 2 },
+            ];
+            let r = tcsv_reshaped(d, order.as_ptr(), order.len(), 1, &mut f);
+            assert!(!r.is_null());
+            assert_eq!(text(tcsv_write(r)), "c;b;new\n;2;x\n5;4;y;6\n");
+            let head = [lent("c:int"), lent("b:int"), lent("new")];
+            assert_eq!(text(tcsv_written_as(r, 0, head.as_ptr(), 3)), "c:int,b:int,new\n,2,x\n5,4,y\n");
+            tcsv_free(r);
+            tcsv_free(d);
         }
     }
 }
