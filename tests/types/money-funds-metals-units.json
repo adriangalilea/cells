@@ -1,0 +1,25 @@
+{
+  "columns": [
+    { "name": "holding", "type": "text!" },
+    { "name": "gold", "type": "XAU" },
+    { "name": "silver", "type": "XAG" },
+    { "name": "palladium", "type": "XPD" },
+    { "name": "platinum", "type": "XPT" },
+    { "name": "units", "type": "XDR" },
+    { "name": "fund", "type": "CLF" },
+    { "name": "bolivian", "type": "BOV" }
+  ],
+  "rows": [
+    {
+      "holding": { "text": "vault one" },
+      "gold": { "money": "2.5", "currency": "XAU" },
+      "silver": { "money": "40", "currency": "XAG" },
+      "palladium": { "money": "0.75", "currency": "XPD" },
+      "platinum": { "money": "1.25", "currency": "XPT" },
+      "units": { "money": "1200.50", "currency": "XDR" },
+      "fund": { "money": "310.2", "currency": "CLF" },
+      "bolivian": { "money": "88", "currency": "BOV" }
+    }
+  ],
+  "problems": []
+}
