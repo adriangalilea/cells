@@ -442,12 +442,17 @@ impl Doc {
 
     /// A problem in words: `row 3, cost: "8x.50" is not a number`.
     pub fn describe(&self, p: &Problem) -> String {
+        format!("row {}, {}: {}", p.row, self.columns[p.column as usize].name, self.why(p))
+    }
+
+    /// What is wrong with the cell, without its place: `"8x.50" is not a number`.
+    pub fn why(&self, p: &Problem) -> String {
         let c = &self.columns[p.column as usize];
         let text = self.text(p.row as usize, p.column as usize);
         let bound = |b: &Option<types::Bound>| b.map(|b| b.value.normal().to_string()).unwrap_or_default();
         let length = matches!(c.ty.base, Base::Text);
         let why = match p.why {
-            Why::Missing => return format!("row {}, {}: is missing", p.row, c.name),
+            Why::Missing => return "is missing".to_owned(),
             Why::NotInt => "is not a whole number".to_owned(),
             Why::NotNumber => "is not a number".to_owned(),
             Why::NotPct => "is not a percentage".to_owned(),
@@ -490,7 +495,7 @@ impl Doc {
             ),
             Why::Duplicate { other } => format!("is the key of row {other} too"),
         };
-        format!("row {}, {}: \"{}\" {}", p.row, c.name, text, why)
+        format!("\"{text}\" {why}")
     }
 
     /// The header's line break, the one new lines take; `\n` when it has none.
