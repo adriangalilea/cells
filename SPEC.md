@@ -51,6 +51,7 @@ cost:EUR>=0
 | `url` | `https://example.com/a` | an absolute URL |
 | `email` | `ada@example.com` | an address |
 | any ISO 4217 code, `EUR`, `USD`, `JPY` | `84.20` | an amount of money in that currency, a number |
+| `id` | `k7m2q9xa` | a row's identity: eight characters of Crockford's base 32 in lower case (`0-9`, `a-z` but `i l o u`), assigned by the engine, never typed by a person |
 
 A word that is none of these, no named type and not a choice is an error naming it: `cost:EURO` is `no type or currency "EURO"`, never silently text.
 
