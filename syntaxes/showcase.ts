@@ -1,6 +1,6 @@
 // showcase.html: every example in tree-sitter/examples, highlighted by the
 // TextMate grammar through Shiki, a dark and a light pane side by side, in
-// four pairs of themes that know nothing of TCSV. One self-contained file.
+// the pairs of themes.ts, which know nothing of TCSV. One self-contained file.
 //
 //   bun run showcase.ts
 
@@ -8,16 +8,9 @@ import { readdirSync, readFileSync, statSync, writeFileSync } from "node:fs"
 import { join, relative } from "node:path"
 import { createHighlighter } from "shiki"
 import grammar from "./tcsv.tmLanguage.json"
+import { PAIRS } from "./themes.ts"
 
 const examples = join(import.meta.dir, "../tree-sitter/examples")
-
-// The pairs, the first shown first.
-const PAIRS = [
-  { id: "rose-pine", label: "Rosé Pine", dark: "rose-pine-moon", light: "rose-pine-dawn" },
-  { id: "github", label: "GitHub", dark: "github-dark", light: "github-light" },
-  { id: "one", label: "One", dark: "one-dark-pro", light: "one-light" },
-  { id: "catppuccin", label: "Catppuccin", dark: "catppuccin-mocha", light: "catppuccin-latte" },
-] as const
 
 // The order a reader meets them: the trip, the books from the chart of
 // accounts down, then everything at once.
@@ -44,12 +37,14 @@ const escape = (s: string) => s.replaceAll("&", "&amp;").replaceAll("<", "&lt;")
 const blocks = ORDER.map((name) => {
   const code = readFileSync(join(examples, name), "utf8").replace(/\n$/, "")
   const html = highlighter.codeToHtml(code, { lang: "tcsv", themes, defaultColor: false })
+  const caption = (mode: "dark" | "light") =>
+    PAIRS.map((p) => `<span class="theme" data-pair="${p.id}">${p[mode]}</span>`).join("")
   return `
   <section>
     <h2>${escape(name)}</h2>
     <div class="panes">
-      <div class="pane" data-mode="dark">${html}</div>
-      <div class="pane" data-mode="light">${html}</div>
+      <figure class="pane" data-mode="dark"><figcaption>${caption("dark")}</figcaption>${html}</figure>
+      <figure class="pane" data-mode="light"><figcaption>${caption("light")}</figcaption>${html}</figure>
     </div>
   </section>`
 }).join("\n")
@@ -61,7 +56,7 @@ const css = PAIRS.flatMap((p) =>
     const key = `${p.id}-${mode}`
     return `body[data-pair="${p.id}"] .pane[data-mode="${mode}"] pre { background: var(--shiki-${key}-bg); color: var(--shiki-${key}); }
 body[data-pair="${p.id}"] .pane[data-mode="${mode}"] pre span { color: var(--shiki-${key}); font-style: var(--shiki-${key}-font-style); font-weight: var(--shiki-${key}-font-weight); text-decoration: var(--shiki-${key}-text-decoration); }`
-  }),
+  }).concat(`body[data-pair="${p.id}"] .theme[data-pair="${p.id}"] { display: inline; }`),
 ).join("\n")
 
 const buttons = PAIRS.map((p, i) => `<button data-pair="${p.id}"${i === 0 ? ' aria-pressed="true"' : ""}>${p.label}</button>`).join("")
@@ -83,8 +78,11 @@ const page = `<!doctype html>
   nav { display: flex; gap: 6px; margin-top: 16px; }
   nav button { font: inherit; font-size: 13px; padding: 5px 12px; border-radius: 999px; border: 1px solid currentColor; background: none; color: inherit; opacity: 0.55; cursor: pointer; }
   nav button[aria-pressed="true"] { opacity: 1; font-weight: 600; }
-  .panes { display: grid; grid-template-columns: 1fr; gap: 10px; }
-  .pane { min-width: 0; }
+  /* In the code's own font, so a pane side by side holds 72 characters of code. */
+  .panes { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 72ch), 1fr)); gap: 10px; font: 12.5px ui-monospace, "SF Mono", Menlo, monospace; }
+  .pane { min-width: 0; margin: 0; }
+  .pane figcaption { font: 11px ui-monospace, "SF Mono", Menlo, monospace; opacity: 0.55; margin: 0 0 4px 2px; }
+  .theme { display: none; }
   .pane pre { margin: 0; padding: 14px 16px; border-radius: 10px; overflow-x: auto; font: 12.5px/1.6 ui-monospace, "SF Mono", Menlo, monospace; counter-reset: line; }
   .pane pre code { display: block; width: max-content; }
   .pane pre .line::before { counter-increment: line; content: counter(line); display: inline-block; width: 2.2ch; margin-right: 1.6ch; text-align: right; opacity: 0.35; }
