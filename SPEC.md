@@ -152,16 +152,19 @@ The use it is designed against is **plain text accounting done properly**: books
   ├── travel/money.tcsv
   └── studio/money.tcsv
   ```
-- **Imports.** A file brings another's names (types, keys) into scope with a statement in its prelude. Undecided between two semantics, or both: resolved live at every read (the graph is always current; a file alone is incomplete), or resolved when written with the imported definitions carried in the file, as a lockfile pins what it uses (a file alone is whole; a stale copy is detectable against its source). The keyword is open (`use`).
+- **`use`.** A prelude statement brings another file into scope: `use ../accounts.tcsv`, named by its file's stem (`accounts`), or `use ../travel/money.tcsv as trip` where two stems would clash. A `use` brings the whole file: its named types, its key as a type for a column (`account_to:accounts.account`), and every column of the row a reference lands on, so a query or a check follows it (`account_to.kind`). `use`, never `import`: nothing is copied in.
   ```
   ---
   use ../accounts.tcsv
   type Rate = pct
   vat = amount * tax_rate / (100 + tax_rate)
   ---
-  date:date,amount:EUR>0,account_from:accounts.account,account_to:accounts.account,description:text,tax_rate:Rate
-  2026-07-01,950.00,assets:bank:main,expenses:home:rent,rent july,0
+  id:id!,date:date,amount:EUR>0,account_from:accounts.account,account_to:accounts.account,description:text,tax_rate:Rate
+  k7m2q9xa,2026-07-01,950.00,assets:bank:main,expenses:home:rent,rent july,0
   ```
+- **A local `use` is live, a remote one pinned.** A path is resolved at every read, so the graph is always current and nothing is duplicated; breaks are caught by the tools that see every file (the engine, `tcsv check`, the language server) before they land. A URL is pinned by its content's hash (`use https://example.com/rates.tcsv @ sha256:…`): fetched once, a change at the source reported, never followed silently. A file read alone, its references unreachable, still reads: its reference cells are text, marked unchecked, never broken.
+- **Every row has an identity.** A file's key (`!`) is its rows' identity. A file with none gets an `id` column the first time the engine writes it: a new base type, `id`, eight characters from a base-32 alphabet, unique within the file, assigned only by the engine and never edited through it. Edits address a row by its identity, never by its position, so a line inserted by hand elsewhere never makes an edit land on the wrong row, and two versions of a file merge row by row. A row without one (added by a tool that bypasses the engine) is found by its text until the engine next writes the file, which gives it one; a copied row's repeated id is replaced on the later copy. Apps built on the engine never show the column.
+- **One fact, one row, one file.** A movement is one row holding both its sides (`account_from`, `account_to`), so recording it is one write. A change that must touch several files (an account renamed in every file that references it) is an intent the engine journals before applying file by file, and replays after a crash; every intent is safe to apply twice.
 - **Tooling, so the format is pleasant everywhere.** A tree-sitter grammar (highlighting in every editor that speaks tree-sitter, and in ui's code views), a language server (types checked as typed, a broken reference underlined, a referenced file's keys completed, a rename followed across the folder), native apps (tally, on the Mac) and web components (ui's table) built for it. Like rainbow CSV, but with the types.
 - **Visualisation for free, because it is typed.** A chart needs to know what each column is: a date is a time axis, money is a measure in its currency, a choice is a category, a reference a link to follow. An untyped CSV makes every chart guess or be configured; a TCSV says it, so a table can be charted as it is (spending by month, by account, by vendor), and the graph of files drawn as a graph. Every place that shows TCSV shows its charts: ui's components, the Apple platforms' (Swift Charts over the typed columns), and the Mac app.
 
@@ -196,3 +199,8 @@ The use it is designed against is **plain text accounting done properly**: books
 - **Strictness.** "A broken cell loads and is reported" is the proposal; whether a reader may also be asked to refuse a file is not decided.
 - **The expression language.** The arithmetic above is the floor. Its grammar beyond it (comparisons, text, conditionals, functions, reaching into a referenced file), and whether it is CEL itself, is undecided. It stays pure and total: an expression always finishes and gives the same answer in every implementation.
 - **Several values in one cell** (`tags:text[]`, split on `;`): useful (tags on a movement), and where a table starts to stretch; undecided.
+- **The accounting model.** TigerBeetle's is the reference to study: accounts and transfers, amounts as integers, pending transfers posted or voided later, linked transfers that succeed or fail together.
+
+### Brainstorm, not planned
+
+- **A replicated mode.** Daemons in a cluster agreeing on the order of the engine's intent log (Viewstamped Replication, as TigerBeetle does), for books where two writers must never both succeed; the files then the cluster's readable view. The engine's write path (deterministic intents, logged) keeps it a protocol on top, never a rewrite.
