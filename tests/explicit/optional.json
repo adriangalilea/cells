@@ -1,0 +1,11 @@
+{
+  "columns": [
+    { "name": "short", "type": "text?" },
+    { "name": "word", "type": "text?" }
+  ],
+  "rows": [
+    { "short": { "text": "sow thinly" }, "word": { "text": "sow thinly" } },
+    { "short": null, "word": null }
+  ],
+  "problems": []
+}

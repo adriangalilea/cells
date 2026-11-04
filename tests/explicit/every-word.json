@@ -1,0 +1,22 @@
+{
+  "columns": [
+    { "name": "short", "type": "int>=1<=5?" },
+    { "name": "words", "type": "int>=1<=5?" },
+    { "name": "between", "type": "int>=1<=5?" }
+  ],
+  "rows": [
+    { "short": { "int": "1" }, "words": { "int": "1" }, "between": { "int": "1" } },
+    { "short": { "int": "5" }, "words": { "int": "5" }, "between": { "int": "5" } },
+    { "short": null, "words": null, "between": null },
+    { "short": null, "words": null, "between": null },
+    { "short": null, "words": null, "between": null }
+  ],
+  "problems": [
+    { "row": 3, "column": "short", "kind": "type" },
+    { "row": 3, "column": "words", "kind": "type" },
+    { "row": 3, "column": "between", "kind": "type" },
+    { "row": 4, "column": "short", "kind": "type" },
+    { "row": 4, "column": "words", "kind": "type" },
+    { "row": 4, "column": "between", "kind": "type" }
+  ]
+}

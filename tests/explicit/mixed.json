@@ -1,0 +1,21 @@
+{
+  "columns": [
+    { "name": "a", "type": "EUR>=0!" },
+    { "name": "b", "type": "EUR>=0!" },
+    { "name": "c", "type": "EUR>=0!" },
+    { "name": "d", "type": "travel|stay?" },
+    { "name": "e", "type": "travel|stay?" }
+  ],
+  "rows": [
+    { "a": { "money": "5", "currency": "EUR" }, "b": { "money": "5", "currency": "EUR" }, "c": { "money": "5", "currency": "EUR" }, "d": { "choice": "travel" }, "e": { "choice": "travel" } },
+    { "a": { "money": "0", "currency": "EUR" }, "b": { "money": "0", "currency": "EUR" }, "c": { "money": "0", "currency": "EUR" }, "d": null, "e": null },
+    { "a": null, "b": null, "c": null, "d": null, "e": null }
+  ],
+  "problems": [
+    { "row": 2, "column": "a", "kind": "type" },
+    { "row": 2, "column": "b", "kind": "type" },
+    { "row": 2, "column": "c", "kind": "type" },
+    { "row": 2, "column": "d", "kind": "type" },
+    { "row": 2, "column": "e", "kind": "type" }
+  ]
+}

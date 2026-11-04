@@ -1,0 +1,4 @@
+short:yes/no,word:bool yes no
+yes,yes
+no,no
+true,true

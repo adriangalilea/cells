@@ -1,0 +1,14 @@
+{
+  "columns": [
+    { "name": "short", "type": "num>=0" },
+    { "name": "word", "type": "num>=0" }
+  ],
+  "rows": [
+    { "short": { "num": "2.5" }, "word": { "num": "2.5" } },
+    { "short": null, "word": null }
+  ],
+  "problems": [
+    { "row": 1, "column": "short", "kind": "type" },
+    { "row": 1, "column": "word", "kind": "type" }
+  ]
+}

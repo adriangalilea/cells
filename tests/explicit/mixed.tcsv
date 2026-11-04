@@ -1,0 +1,4 @@
+a:EUR>=0!,b:EUR min 0 key,c:EUR key>=0,d:travel|stay?,e:one of travel stay optional
+5,5,5,travel,travel
+0,0,0,,
+-1,-1,-1,food,food

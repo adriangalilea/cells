@@ -123,14 +123,16 @@ Both are always valid and mean the same; a cell may mix them.
 | `travel\|stay\|food` | `one of travel stay food` |
 | `yes/no` | `bool yes no` |
 | `EUR>=0` | `EUR min 0` |
+| `int>0` | `int above 0` |
 | `num<=10` | `num max 10` |
+| `num<10` | `num below 10` |
 | `0..100` | `num between 0 and 100` |
 
-Explicit words are separated by spaces, never commas (a comma would force the header cell into CSV quotes). A choice with a space inside is quoted: `one of travel 'sd cards'`.
+Explicit words are separated by spaces, never commas (a comma would force the header cell into CSV quotes). A choice with a space inside is quoted: `one of travel 'sd cards'`. `between` takes two numbers joined by `and`, both bounds inclusive. `one of` takes every word after it up to the next explicit word (`key` `optional` `one` `of` `bool` `min` `max` `above` `below` `between` `and`) or mark, and at least one; a choice that spells an explicit word is quoted there: `one of 'key' lock`. `bool` followed by two words that are not explicit words is a pair, and a pair's word that spells one is quoted (`bool 'key' lock`); `bool` alone is `true`/`false`.
 
 ### Reserved
 
-Inside a type, outside single quotes: `|` `/` `!` `?` `<` `>` `=` `..` `(` `)` `'`. A name reserves only `:`. Values reserve nothing.
+Inside a type, outside single quotes: `|` `/` `!` `?` `<` `>` `=` `..` `(` `)` `'` `:`. Inside single quotes nothing is, but `'` itself, doubled; `,` and `"` are never in a type. A name reserves only `:`. Values reserve nothing.
 
 ## The prelude
 

@@ -1,0 +1,12 @@
+{
+  "columns": [
+    { "name": "short", "type": "key|min|lock" },
+    { "name": "word", "type": "key|min|lock" }
+  ],
+  "rows": [
+    { "short": { "choice": "key" }, "word": { "choice": "key" } },
+    { "short": { "choice": "min" }, "word": { "choice": "min" } },
+    { "short": { "choice": "lock" }, "word": { "choice": "lock" } }
+  ],
+  "problems": []
+}

@@ -1,0 +1,4 @@
+plain:bool,word:bool true false,pair:true/false
+true,true,true
+false,false,false
+yes,yes,yes
