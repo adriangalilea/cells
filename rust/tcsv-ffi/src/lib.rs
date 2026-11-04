@@ -350,6 +350,489 @@ pub unsafe extern "C" fn tcsv_export_column(d: *mut TcsvDoc, column: usize, sche
     }
 }
 
+/// A copy of a doc to change on its own: the columns' buffers shared until one is written.
+///
+/// # Safety
+/// `d` is a live doc.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn tcsv_clone(d: *mut TcsvDoc) -> *mut TcsvDoc {
+    // SAFETY: the caller's promise.
+    let d = unsafe { doc(d) };
+    Box::into_raw(Box::new(TcsvDoc { doc: d.doc.clone(), out: String::new() }))
+}
+
+/// A new file written from cells: its header's, then each row's (`rows`, every one new),
+/// each quoted only where CSV needs it, lines broken by `\r\n` or `\n`, ending in one when
+/// `trailing`. Null when it does not read, `failure` then set.
+///
+/// # Safety
+/// `header` points at `columns` strings of UTF-8, `rows` at `count` new rows; `failure` is
+/// null or writable.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn tcsv_new(
+    header: *const TcsvStr,
+    columns: usize,
+    rows: *const TcsvRow,
+    count: usize,
+    crlf: bool,
+    trailing: bool,
+    failure: *mut TcsvFailure,
+) -> *mut TcsvDoc {
+    let nl = if crlf { "\r\n" } else { "\n" };
+    let line = |text: &mut String, cells: &[&str]| {
+        for (k, c) in cells.iter().enumerate() {
+            if k > 0 {
+                text.push(',');
+            }
+            text.push_str(&tcsv::quote(c));
+        }
+    };
+    let mut text = String::new();
+    // SAFETY: the caller's promise.
+    line(&mut text, &unsafe { strs(header, columns) });
+    let given = if count == 0 { &[][..] } else { unsafe { std::slice::from_raw_parts(rows, count) } };
+    for r in given {
+        assert!(r.kept < 0, "a new file's rows are all new");
+        text.push_str(nl);
+        // SAFETY: the caller's promise.
+        line(&mut text, &unsafe { strs(r.cells, r.count) });
+    }
+    if trailing {
+        text.push_str(nl);
+    } else if !given.is_empty() && text.ends_with(nl) {
+        text.push_str("\"\"");
+    }
+    match tcsv::read(text) {
+        Ok(doc) => Box::into_raw(Box::new(TcsvDoc { doc, out: String::new() })),
+        Err(e) => {
+            fail(failure, e);
+            ptr::null_mut()
+        }
+    }
+}
+
+/// # Safety
+/// `ptr` points at `count` strings of UTF-8.
+unsafe fn strs<'a>(ptr: *const TcsvStr, count: usize) -> Vec<&'a str> {
+    if count == 0 {
+        return Vec::new();
+    }
+    // SAFETY: the caller's promise.
+    unsafe { std::slice::from_raw_parts(ptr, count) }
+        .iter()
+        // SAFETY: each is the caller's UTF-8.
+        .map(|s| unsafe { text_of(s.ptr, s.len) })
+        .collect()
+}
+
+/// What a column holds.
+#[repr(C)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum TcsvBase {
+    TcsvBaseText = 0,
+    TcsvBaseInt = 1,
+    TcsvBaseNum = 2,
+    TcsvBasePct = 3,
+    TcsvBaseBool = 4,
+    TcsvBaseDate = 5,
+    TcsvBaseTime = 6,
+    TcsvBaseDateTime = 7,
+    TcsvBaseUrl = 8,
+    TcsvBaseEmail = 9,
+    TcsvBaseId = 10,
+    TcsvBaseMoney = 11,
+    TcsvBaseChoice = 12,
+}
+
+/// Which type a call reads: a column's, or the prelude's named type at an index.
+#[repr(C)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum TcsvOf {
+    TcsvOfColumn = 0,
+    TcsvOfNamed = 1,
+}
+
+/// A type's shape; its words through `tcsv_type_part`.
+#[repr(C)]
+pub struct TcsvType {
+    pub base: TcsvBase,
+    pub key: bool,
+    pub optional: bool,
+    /// Read from the values: the header said nothing.
+    pub inferred: bool,
+    /// A computed column's.
+    pub computed: bool,
+    /// The type uses a named one (`tcsv_type_part` Named is its name).
+    pub named: bool,
+    pub has_format: bool,
+    pub has_min: bool,
+    pub min_inclusive: bool,
+    pub has_max: bool,
+    pub max_inclusive: bool,
+    /// A choice's words, or a boolean's two (true, then false).
+    pub words: usize,
+}
+
+/// A type's words, read one at a time.
+#[repr(C)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum TcsvPart {
+    /// The column's name, or the named type's.
+    TcsvPartName = 0,
+    /// The canonical shorthand: what a writer writes.
+    TcsvPartShorthand = 1,
+    /// As the header cell spells it after its `:` (empty for a plain column).
+    TcsvPartSpelled = 2,
+    /// A computed column's expression, as the prelude writes it.
+    TcsvPartExpression = 3,
+    TcsvPartCurrency = 4,
+    TcsvPartFormat = 5,
+    /// The bounds, as decimals.
+    TcsvPartMin = 6,
+    TcsvPartMax = 7,
+    /// Word `index`: a choice's, or a boolean's (0 true, 1 false).
+    TcsvPartWord = 8,
+    /// The named type the type uses.
+    TcsvPartNamed = 9,
+}
+
+/// How many named types the prelude declares.
+///
+/// # Safety
+/// `d` is a live doc.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn tcsv_named_count(d: *mut TcsvDoc) -> usize {
+    // SAFETY: the caller's promise.
+    unsafe { doc(d) }.doc.named().len()
+}
+
+fn type_of(d: &TcsvDoc, of: TcsvOf, index: usize) -> (&str, &tcsv::Type, Option<&tcsv::Column>) {
+    match of {
+        TcsvOf::TcsvOfColumn => {
+            let c = &d.doc.columns()[index];
+            (&c.name, &c.ty, Some(c))
+        }
+        TcsvOf::TcsvOfNamed => {
+            let n = &d.doc.named()[index];
+            (&n.name, &n.ty, None)
+        }
+    }
+}
+
+/// A type's shape.
+///
+/// # Safety
+/// `d` is a live doc; `index` is below `tcsv_columns` or `tcsv_named_count`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn tcsv_type(d: *mut TcsvDoc, of: TcsvOf, index: usize) -> TcsvType {
+    // SAFETY: the caller's promise.
+    let d = unsafe { doc(d) };
+    let (_, t, column) = type_of(d, of, index);
+    use tcsv::Base as B;
+    let (base, words) = match &t.base {
+        B::Text => (TcsvBase::TcsvBaseText, 0),
+        B::Int => (TcsvBase::TcsvBaseInt, 0),
+        B::Num => (TcsvBase::TcsvBaseNum, 0),
+        B::Pct => (TcsvBase::TcsvBasePct, 0),
+        B::Bool { .. } => (TcsvBase::TcsvBaseBool, 2),
+        B::Date => (TcsvBase::TcsvBaseDate, 0),
+        B::Time => (TcsvBase::TcsvBaseTime, 0),
+        B::DateTime => (TcsvBase::TcsvBaseDateTime, 0),
+        B::Url => (TcsvBase::TcsvBaseUrl, 0),
+        B::Email => (TcsvBase::TcsvBaseEmail, 0),
+        B::Id => (TcsvBase::TcsvBaseId, 0),
+        B::Money(_) => (TcsvBase::TcsvBaseMoney, 0),
+        B::Choice(w) => (TcsvBase::TcsvBaseChoice, w.len()),
+    };
+    TcsvType {
+        base,
+        key: t.key,
+        optional: t.optional,
+        inferred: t.inferred,
+        computed: column.is_some_and(|c| c.computed.is_some()),
+        named: t.named.is_some(),
+        has_format: t.format.is_some(),
+        has_min: t.min.is_some(),
+        min_inclusive: t.min.is_some_and(|b| b.inclusive),
+        has_max: t.max.is_some(),
+        max_inclusive: t.max.is_some_and(|b| b.inclusive),
+        words,
+    }
+}
+
+/// One of a type's words; empty where the type has none.
+///
+/// # Safety
+/// `d` is a live doc; `index` is below `tcsv_columns` or `tcsv_named_count`; `word` below
+/// the type's `words` for `TcsvPartWord`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn tcsv_type_part(d: *mut TcsvDoc, of: TcsvOf, index: usize, part: TcsvPart, word: usize) -> TcsvStr {
+    // SAFETY: the caller's promise.
+    let d = unsafe { doc(d) };
+    let (name, t, column) = type_of(d, of, index);
+    let text = match part {
+        TcsvPart::TcsvPartName => name.to_owned(),
+        TcsvPart::TcsvPartShorthand => t.shorthand(),
+        TcsvPart::TcsvPartSpelled => column.and_then(|c| c.spelled.clone()).unwrap_or_default(),
+        TcsvPart::TcsvPartExpression => column.and_then(|c| c.computed.clone()).unwrap_or_default(),
+        TcsvPart::TcsvPartCurrency => match &t.base {
+            tcsv::Base::Money(c) => c.as_str().to_owned(),
+            _ => String::new(),
+        },
+        TcsvPart::TcsvPartFormat => t.format.as_ref().map(|f| f.spelled.clone()).unwrap_or_default(),
+        TcsvPart::TcsvPartMin => t.min.map(|b| b.value.normal().to_string()).unwrap_or_default(),
+        TcsvPart::TcsvPartMax => t.max.map(|b| b.value.normal().to_string()).unwrap_or_default(),
+        TcsvPart::TcsvPartWord => match &t.base {
+            tcsv::Base::Choice(w) => w[word].clone(),
+            tcsv::Base::Bool { yes, no } => {
+                if word == 0 {
+                    yes.clone()
+                } else {
+                    no.clone()
+                }
+            }
+            other => panic!("a {} has no words", other.tag()),
+        },
+        TcsvPart::TcsvPartNamed => t.named.as_ref().map(|n| n.name.clone()).unwrap_or_default(),
+    };
+    d.out = text;
+    TcsvStr::of(&d.out)
+}
+
+/// Problem `i` without its place: `"8x.50" is not a number`, `is missing`.
+///
+/// # Safety
+/// `d` is a live doc; `i < tcsv_problem_count(d)`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn tcsv_problem_why(d: *mut TcsvDoc, i: usize) -> TcsvStr {
+    // SAFETY: the caller's promise.
+    let d = unsafe { doc(d) };
+    d.out = d.doc.why(&d.doc.problems()[i]);
+    TcsvStr::of(&d.out)
+}
+
+/// One cell set to a value given in its canonical spelling (a decimal with a point, an
+/// integer, `true`/`false`, `YYYY-MM-DD`, `HH:mm:ss`, an ISO instant, any text), written in
+/// the column's form: its pair's words, its format. `null` blanks the cell.
+///
+/// # Safety
+/// `d` is a live doc; `row < tcsv_rows(d)`, `column < tcsv_stored(d)`; `text` points at
+/// `len` bytes of UTF-8, the canonical spelling of a value of the column's base.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn tcsv_set_value(d: *mut TcsvDoc, row: usize, column: usize, null: bool, text: *const c_char, len: usize) {
+    // SAFETY: the caller's promise.
+    let (d, t) = unsafe { (doc(d), text_of(text, len)) };
+    let b = t.as_bytes();
+    let wrong = || -> ! { panic!("{t:?} is no value of column {column}") };
+    use tcsv::{Base as B, Value as V};
+    let v = if null {
+        V::Null
+    } else {
+        match &d.doc.columns()[column].ty.base {
+            B::Bool { .. } => match t {
+                "true" => V::Bool(true),
+                "false" => V::Bool(false),
+                _ => wrong(),
+            },
+            B::Int => V::Int(tcsv::value::parse_int(b).unwrap_or_else(|| wrong())),
+            B::Num | B::Pct | B::Money(_) => V::Decimal(tcsv::Decimal::parse(b).unwrap_or_else(|_| wrong())),
+            B::Date => V::Date(tcsv::value::parse_date(b).unwrap_or_else(|| wrong())),
+            B::Time => V::Time(tcsv::value::parse_time(b).unwrap_or_else(|| wrong())),
+            B::DateTime => V::DateTime(tcsv::value::parse_datetime(b).unwrap_or_else(|| wrong())),
+            B::Choice(_) => V::Choice(t),
+            B::Text | B::Url | B::Email | B::Id => V::Text(t),
+        }
+    };
+    let text = d.doc.columns()[column].form(v);
+    d.doc.set_cell(row, column, &text);
+}
+
+/// A row of a file rearranged: `kept`, a row it has, or when `kept` is negative a new row
+/// of `count` cells.
+#[repr(C)]
+pub struct TcsvRow {
+    pub kept: i64,
+    pub cells: *const TcsvStr,
+    pub count: usize,
+}
+
+/// The file with exactly `rows`, in their order, read again on up to `threads` threads (a
+/// row moved, added, taken out): a new doc, this one untouched. Null when it does not
+/// read, `failure` then set.
+///
+/// # Safety
+/// `d` is a live doc with a header; `rows` points at `count` rows, each kept one below
+/// `tcsv_rows(d)` and each new one's cells UTF-8; `failure` is null or writable.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn tcsv_rearranged(
+    d: *mut TcsvDoc,
+    rows: *const TcsvRow,
+    count: usize,
+    threads: usize,
+    failure: *mut TcsvFailure,
+) -> *mut TcsvDoc {
+    // SAFETY: the caller's promise.
+    let d = unsafe { doc(d) };
+    let given = if count == 0 { &[][..] } else { unsafe { std::slice::from_raw_parts(rows, count) } };
+    // SAFETY: each new row's cells are the caller's UTF-8.
+    let cells: Vec<Vec<&str>> = given.iter().map(|r| if r.kept < 0 { unsafe { strs(r.cells, r.count) } } else { Vec::new() }).collect();
+    let order: Vec<tcsv::Row> =
+        given.iter().zip(&cells).map(|(r, c)| if r.kept < 0 { tcsv::Row::New(c) } else { tcsv::Row::Kept(r.kept as usize) }).collect();
+    match d.doc.rearranged(&order, threads.max(1)) {
+        Ok(doc) => Box::into_raw(Box::new(TcsvDoc { doc, out: String::new() })),
+        Err(e) => {
+            fail(failure, e);
+            ptr::null_mut()
+        }
+    }
+}
+
+/// The text before the header: a byte order mark and the prelude, as written.
+///
+/// # Safety
+/// `d` is a live doc.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn tcsv_prelude_text(d: *mut TcsvDoc) -> TcsvStr {
+    // SAFETY: the caller's promise.
+    let d = unsafe { doc(d) };
+    d.out = d.doc.prelude_text().to_owned();
+    TcsvStr::of(&d.out)
+}
+
+/// Whether the header's line break is `\r\n`.
+///
+/// # Safety
+/// `d` is a live doc.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn tcsv_crlf(d: *mut TcsvDoc) -> bool {
+    // SAFETY: the caller's promise.
+    unsafe { doc(d) }.doc.newline() == "\r\n"
+}
+
+/// Whether the file ends in a line break.
+///
+/// # Safety
+/// `d` is a live doc.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn tcsv_trailing(d: *mut TcsvDoc) -> bool {
+    // SAFETY: the caller's promise.
+    unsafe { doc(d) }.doc.trailing()
+}
+
+/// What the file's text is now: its length and a hash of its bytes.
+#[repr(C)]
+pub struct TcsvVersion {
+    pub len: u64,
+    pub hash: u64,
+}
+
+/// # Safety
+/// `d` is a live doc.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn tcsv_version(d: *mut TcsvDoc) -> TcsvVersion {
+    // SAFETY: the caller's promise.
+    let v = unsafe { doc(d) }.doc.version();
+    TcsvVersion { len: v.len, hash: v.hash }
+}
+
+/// What a span of a file's text is (`tcsv::tokens::Kind`, in its order).
+#[repr(C)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum TcsvTokenKind {
+    TcsvTokenFence = 0,
+    TcsvTokenComment = 1,
+    TcsvTokenKeyword = 2,
+    TcsvTokenName = 3,
+    TcsvTokenType = 4,
+    TcsvTokenMark = 5,
+    TcsvTokenBound = 6,
+    TcsvTokenFormat = 7,
+    TcsvTokenChoice = 8,
+    TcsvTokenPunct = 9,
+    TcsvTokenNumber = 10,
+    TcsvTokenReference = 11,
+    TcsvTokenOperator = 12,
+    TcsvTokenCellText = 13,
+    TcsvTokenCellNumber = 14,
+    TcsvTokenCellBool = 15,
+    TcsvTokenCellDate = 16,
+    TcsvTokenCellChoice = 17,
+    TcsvTokenCellLink = 18,
+    TcsvTokenCellId = 19,
+    TcsvTokenError = 20,
+}
+
+/// A span of the text in bytes, what it is, and its column (`UINT32_MAX` for none).
+#[repr(C)]
+pub struct TcsvToken {
+    pub start: u32,
+    pub end: u32,
+    pub kind: TcsvTokenKind,
+    pub column: u32,
+}
+
+/// A text's spans, owned by the caller until `tcsv_tokens_free`.
+#[repr(C)]
+pub struct TcsvTokens {
+    pub tokens: *mut TcsvToken,
+    pub count: usize,
+}
+
+/// The spans of `len` bytes of text, in order: what a highlighter paints. Never refused: a
+/// file that does not read has its spans too, what has no meaning marked an error.
+///
+/// # Safety
+/// `bytes` points at `len` bytes of UTF-8.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn tcsv_tokens(bytes: *const c_char, len: usize) -> TcsvTokens {
+    // SAFETY: the caller's promise.
+    let text = unsafe { text_of(bytes, len) };
+    use tcsv::tokens::Kind as K;
+    let spans: Box<[TcsvToken]> = tcsv::tokens::tokens(text)
+        .into_iter()
+        .map(|t| TcsvToken {
+            start: t.start,
+            end: t.end,
+            column: t.column,
+            kind: match t.kind {
+                K::Fence => TcsvTokenKind::TcsvTokenFence,
+                K::Comment => TcsvTokenKind::TcsvTokenComment,
+                K::Keyword => TcsvTokenKind::TcsvTokenKeyword,
+                K::Name => TcsvTokenKind::TcsvTokenName,
+                K::Type => TcsvTokenKind::TcsvTokenType,
+                K::Mark => TcsvTokenKind::TcsvTokenMark,
+                K::Bound => TcsvTokenKind::TcsvTokenBound,
+                K::Format => TcsvTokenKind::TcsvTokenFormat,
+                K::Choice => TcsvTokenKind::TcsvTokenChoice,
+                K::Punct => TcsvTokenKind::TcsvTokenPunct,
+                K::Number => TcsvTokenKind::TcsvTokenNumber,
+                K::Reference => TcsvTokenKind::TcsvTokenReference,
+                K::Operator => TcsvTokenKind::TcsvTokenOperator,
+                K::CellText => TcsvTokenKind::TcsvTokenCellText,
+                K::CellNumber => TcsvTokenKind::TcsvTokenCellNumber,
+                K::CellBool => TcsvTokenKind::TcsvTokenCellBool,
+                K::CellDate => TcsvTokenKind::TcsvTokenCellDate,
+                K::CellChoice => TcsvTokenKind::TcsvTokenCellChoice,
+                K::CellLink => TcsvTokenKind::TcsvTokenCellLink,
+                K::CellId => TcsvTokenKind::TcsvTokenCellId,
+                K::Error => TcsvTokenKind::TcsvTokenError,
+            },
+        })
+        .collect();
+    let count = spans.len();
+    TcsvTokens { tokens: Box::into_raw(spans) as *mut TcsvToken, count }
+}
+
+/// Lets a text's spans go.
+///
+/// # Safety
+/// `t` came from `tcsv_tokens`, freed once.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn tcsv_tokens_free(t: TcsvTokens) {
+    // SAFETY: the caller's promise; the spans are a boxed slice of `count`.
+    drop(unsafe { Box::from_raw(ptr::slice_from_raw_parts_mut(t.tokens, t.count)) });
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
