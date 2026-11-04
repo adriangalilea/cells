@@ -74,18 +74,20 @@ impl Currency {
     }
 }
 
-/// ISO 4217's current alphabetic codes, sorted: any of them is a type, an amount in that
-/// currency.
+/// ISO 4217's current alphabetic codes (list one), sorted: any of them is a type, an amount
+/// in that currency. Fund codes, the metals and the units of account are in; `XTS` (for
+/// testing) and `XXX` (no currency) are not.
 pub const CURRENCIES: &[&str] = &[
-    "AED", "AFN", "ALL", "AMD", "AOA", "ARS", "AUD", "AWG", "AZN", "BAM", "BBD", "BDT", "BGN", "BHD", "BIF", "BMD", "BND", "BOB", "BRL",
-    "BSD", "BTN", "BWP", "BYN", "BZD", "CAD", "CDF", "CHF", "CLP", "CNY", "COP", "CRC", "CUP", "CVE", "CZK", "DJF", "DKK", "DOP", "DZD",
-    "EGP", "ERN", "ETB", "EUR", "FJD", "FKP", "GBP", "GEL", "GHS", "GIP", "GMD", "GNF", "GTQ", "GYD", "HKD", "HNL", "HTG", "HUF", "IDR",
-    "ILS", "INR", "IQD", "IRR", "ISK", "JMD", "JOD", "JPY", "KES", "KGS", "KHR", "KMF", "KPW", "KRW", "KWD", "KYD", "KZT", "LAK", "LBP",
-    "LKR", "LRD", "LSL", "LYD", "MAD", "MDL", "MGA", "MKD", "MMK", "MNT", "MOP", "MRU", "MUR", "MVR", "MWK", "MXN", "MYR", "MZN", "NAD",
-    "NGN", "NIO", "NOK", "NPR", "NZD", "OMR", "PAB", "PEN", "PGK", "PHP", "PKR", "PLN", "PYG", "QAR", "RON", "RSD", "RUB", "RWF", "SAR",
-    "SBD", "SCR", "SDG", "SEK", "SGD", "SHP", "SLE", "SOS", "SRD", "SSP", "STN", "SVC", "SYP", "SZL", "THB", "TJS", "TMT", "TND", "TOP",
-    "TRY", "TTD", "TWD", "TZS", "UAH", "UGX", "USD", "UYU", "UZS", "VES", "VND", "VUV", "WST", "XAF", "XCD", "XCG", "XOF", "XPF", "YER",
-    "ZAR", "ZMW", "ZWG",
+    "AED", "AFN", "ALL", "AMD", "AOA", "ARS", "AUD", "AWG", "AZN", "BAM", "BBD", "BDT", "BGN", "BHD", "BIF", "BMD", "BND", "BOB", "BOV",
+    "BRL", "BSD", "BTN", "BWP", "BYN", "BZD", "CAD", "CDF", "CHE", "CHF", "CHW", "CLF", "CLP", "CNY", "COP", "COU", "CRC", "CUP", "CVE",
+    "CZK", "DJF", "DKK", "DOP", "DZD", "EGP", "ERN", "ETB", "EUR", "FJD", "FKP", "GBP", "GEL", "GHS", "GIP", "GMD", "GNF", "GTQ", "GYD",
+    "HKD", "HNL", "HTG", "HUF", "IDR", "ILS", "INR", "IQD", "IRR", "ISK", "JMD", "JOD", "JPY", "KES", "KGS", "KHR", "KMF", "KPW", "KRW",
+    "KWD", "KYD", "KZT", "LAK", "LBP", "LKR", "LRD", "LSL", "LYD", "MAD", "MDL", "MGA", "MKD", "MMK", "MNT", "MOP", "MRU", "MUR", "MVR",
+    "MWK", "MXN", "MXV", "MYR", "MZN", "NAD", "NGN", "NIO", "NOK", "NPR", "NZD", "OMR", "PAB", "PEN", "PGK", "PHP", "PKR", "PLN", "PYG",
+    "QAR", "RON", "RSD", "RUB", "RWF", "SAR", "SBD", "SCR", "SDG", "SEK", "SGD", "SHP", "SLE", "SOS", "SRD", "SSP", "STN", "SVC", "SYP",
+    "SZL", "THB", "TJS", "TMT", "TND", "TOP", "TRY", "TTD", "TWD", "TZS", "UAH", "UGX", "USD", "USN", "UYI", "UYU", "UYW", "UZS", "VED",
+    "VES", "VND", "VUV", "WST", "XAF", "XAG", "XAU", "XBA", "XBB", "XBC", "XBD", "XCD", "XCG", "XDR", "XOF", "XPD", "XPF", "XPT", "XSU",
+    "XUA", "YER", "ZAR", "ZMW", "ZWG",
 ];
 
 pub fn currency(word: &str) -> Option<Currency> {
@@ -306,7 +308,7 @@ fn quoted(word: &str) -> String {
 
 /// A word bare, or quoted when it holds a space or a reserved character.
 fn quote(word: &str) -> String {
-    let bare = !word.bytes().any(|c| c == b' ' || RESERVED.contains(&c)) && !word.contains("..");
+    let bare = !word.bytes().any(|c| c == b' ' || c == b'\t' || RESERVED.contains(&c)) && !word.contains("..");
     if bare { word.to_owned() } else { quoted(word) }
 }
 
@@ -363,7 +365,7 @@ fn tokens(spelled: &str) -> Result<Vec<Token<'_>>, String> {
     let mut i = 0;
     while i < s.len() {
         let c = s[i];
-        if c == b' ' {
+        if c == b' ' || c == b'\t' {
             i += 1;
             continue;
         }
@@ -405,7 +407,7 @@ fn tokens(spelled: &str) -> Result<Vec<Token<'_>>, String> {
             continue;
         }
         let start = i;
-        while i < s.len() && s[i] != b' ' && !RESERVED.contains(&s[i]) && !s[i..].starts_with(b"..") {
+        while i < s.len() && s[i] != b' ' && s[i] != b'\t' && !RESERVED.contains(&s[i]) && !s[i..].starts_with(b"..") {
             i += 1;
         }
         if i == start {
@@ -707,6 +709,12 @@ mod tests {
 
     fn sh(s: &str) -> String {
         parse_type(s, &[]).unwrap_or_else(|e| panic!("{s}: {e}")).shorthand()
+    }
+
+    #[test]
+    fn currencies_sorted() {
+        assert!(CURRENCIES.windows(2).all(|w| w[0] < w[1]));
+        assert!(currency("XAU").is_some() && currency("XTS").is_none() && currency("HRK").is_none());
     }
 
     #[test]

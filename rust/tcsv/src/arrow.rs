@@ -314,7 +314,7 @@ mod tests {
 
     #[test]
     fn exports_and_releases() {
-        let doc = crate::read("a:text,b:int,c:x|y,d:EUR?\nhi,1,x,1.50\n,2,y,\n".into()).unwrap();
+        let doc = crate::read("a:text,b:int,c:x|y,d:EUR?\nhi,1,x,1.50\n,2,y,\n").unwrap();
         let (mut s, mut a) = export(&doc);
         assert_eq!(a.length, 2);
         assert_eq!(a.n_children, 4);

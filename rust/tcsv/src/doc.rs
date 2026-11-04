@@ -181,8 +181,22 @@ pub struct Doc {
 
 /// Reads a `.tcsv` file. A broken cell is a problem and the file still reads; a broken
 /// grammar (an unknown type, a row with more fields than the header, a malformed prelude)
-/// is an `Error` naming where.
-pub fn read(source: String) -> Result<Doc, Error> {
+/// is an `Error` naming where, and so are bytes that are not UTF-8. The bytes are kept,
+/// never copied. One thread: the core starts none unless asked.
+pub fn read(source: impl Into<Vec<u8>>) -> Result<Doc, Error> {
+    read_on(source.into(), 1)
+}
+
+/// `read` on up to `threads` threads, for a large input: the body is split at record
+/// boundaries and its parts read at once. The result is `read`'s, byte for byte.
+#[cfg(feature = "std")]
+pub fn read_parallel(source: impl Into<Vec<u8>>, threads: usize) -> Result<Doc, Error> {
+    read_on(source.into(), threads)
+}
+
+fn read_on(bytes: Vec<u8>, threads: usize) -> Result<Doc, Error> {
+    let source = String::from_utf8(bytes)
+        .map_err(|e| error(At::File, format!("is not UTF-8: byte {} begins no character", e.utf8_error().valid_up_to())))?;
     if source.len() >= u32::MAX as usize {
         return Err(error(At::File, "is larger than 4 GiB"));
     }
@@ -225,7 +239,7 @@ pub fn read(source: String) -> Result<Doc, Error> {
         heads.push((name.to_owned(), spelled.map(str::to_owned), ty));
     }
     let decoders = decoders(heads.iter().map(|(_, _, t)| t.as_ref()));
-    let parts = read::body(src, first, &decoders).map_err(|(row, s)| error(At::Row(row), stop_why(s, heads.len())))?;
+    let parts = read::body(src, first, &decoders, threads).map_err(|(row, s)| error(At::Row(row), stop_why(s, heads.len())))?;
     let mut part = read::join(parts);
     part.records.push(src.len() as u32);
     let Part { records, columns: readings, mut problems, .. } = part;

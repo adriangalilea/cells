@@ -141,12 +141,15 @@ impl Fields for Part<'_> {
     }
 }
 
-/// The body's records read into parts: `Err` names the row (from 0) and why.
-pub(crate) fn body<'a>(src: &'a [u8], from: usize, decoders: &[(Decoder, bool)]) -> Result<Vec<Part<'a>>, (u32, Stop)> {
+/// The body's records read into parts, on up to `threads` threads: `Err` names the row
+/// (from 0) and why. The parts joined are the sequential reading, whatever the threads.
+pub(crate) fn body<'a>(src: &'a [u8], from: usize, decoders: &[(Decoder, bool)], threads: usize) -> Result<Vec<Part<'a>>, (u32, Stop)> {
     #[cfg(feature = "std")]
-    if let Some(parts) = parallel(src, from, decoders) {
+    if let Some(parts) = parallel(src, from, decoders, threads) {
         return parts;
     }
+    #[cfg(not(feature = "std"))]
+    assert_eq!(threads, 1, "threads need the std feature");
     Ok(Vec::from([sequential(src, from, decoders)?]))
 }
 
@@ -176,10 +179,9 @@ fn rows_hint(bytes: usize) -> usize {
 /// body back to `sequential`, which says where the file breaks. Nothing when the input is
 /// too small to pay for threads.
 #[cfg(feature = "std")]
-fn parallel<'a>(src: &'a [u8], from: usize, decoders: &[(Decoder, bool)]) -> Option<Result<Vec<Part<'a>>, (u32, Stop)>> {
+fn parallel<'a>(src: &'a [u8], from: usize, decoders: &[(Decoder, bool)], threads: usize) -> Option<Result<Vec<Part<'a>>, (u32, Stop)>> {
     const PART: usize = 1 << 21;
     let len = src.len() - from;
-    let threads = std::thread::available_parallelism().map_or(1, |n| n.get());
     if len < 2 * PART || threads < 2 {
         return None;
     }

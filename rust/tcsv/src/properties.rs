@@ -27,12 +27,35 @@ impl Rng {
     }
 }
 
-const TYPES: [&str; 12] = ["text", "text?", "int?", "EUR?", "num>=0", "yes/no?", "a|b|'c d'", "date?", "datetime?", "time(HHhmm)?", "pct?", ""];
+const TYPES: [&str; 12] =
+    ["text", "text?", "int?", "EUR?", "num>=0", "yes/no?", "a|b|'c d'", "date?", "datetime?", "time(HHhmm)?", "pct?", ""];
 
 fn cell(rng: &mut Rng) -> String {
     let pool = [
-        "", "", "a", "b", "c d", "12", "-3", "0042", "84.20", "1e3", "yes", "no", "true", "2026-08-14", "2026-02-30", "14h30", "12%", "x,y", "say \"hi\"",
-        "line\nbreak", "crlf\r\nbreak", "café", "2026-08-14T14:30:00.25+02:00", "k7m2q9xa",
+        "",
+        "",
+        "a",
+        "b",
+        "c d",
+        "12",
+        "-3",
+        "0042",
+        "84.20",
+        "1e3",
+        "yes",
+        "no",
+        "true",
+        "2026-08-14",
+        "2026-02-30",
+        "14h30",
+        "12%",
+        "x,y",
+        "say \"hi\"",
+        "line\nbreak",
+        "crlf\r\nbreak",
+        "café",
+        "2026-08-14T14:30:00.25+02:00",
+        "k7m2q9xa",
     ];
     String::from(*rng.pick(&pool))
 }
@@ -143,7 +166,7 @@ fn parallel_equals_sequential() {
     let doc = crate::read(s.clone()).unwrap();
     assert!(doc.rows() == rows as usize);
     let first = src.iter().position(|&c| c == b'\n').unwrap() + 1;
-    let parts = crate::read::body(src, first, &decoders_of(&doc)).unwrap();
+    let parts = crate::read::body(src, first, &decoders_of(&doc), 4).unwrap();
     assert!(parts.len() > 1, "the body was not split");
     let seq = crate::read::sequential(src, first, &decoders_of(&doc)).unwrap();
     let joined = crate::read::join(parts);

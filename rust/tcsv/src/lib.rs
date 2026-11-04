@@ -34,6 +34,8 @@ pub mod types;
 pub mod value;
 
 pub use column::{Bits, Data, Kind, Problem, Value, Why};
+#[cfg(feature = "std")]
+pub use doc::read_parallel;
 pub use doc::{At, Column, Doc, Error, compose, read};
 pub use scan::quote;
 pub use types::{Base, Bound, Currency, Format, NamedType, Type, parse_type, split_header};

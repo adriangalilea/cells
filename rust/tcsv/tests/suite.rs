@@ -355,11 +355,10 @@ fn conformance() {
     let mut passed = 0;
     for path in &all {
         let bytes = fs::read(path).unwrap();
-        let source = String::from_utf8(bytes.clone()).expect("a case is UTF-8");
         let stem = path.with_extension("");
         let edit = PathBuf::from(format!("{}.edit.json", stem.display()));
         let mut fails = Vec::new();
-        let read = tcsv::read(source);
+        let read = tcsv::read(bytes.clone());
         if edit.exists() {
             let out = fs::read(format!("{}.out.tcsv", stem.display())).unwrap();
             match read {

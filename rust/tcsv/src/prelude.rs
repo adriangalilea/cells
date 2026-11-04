@@ -70,19 +70,20 @@ pub fn parse(lines: &[&str]) -> Result<Prelude, (u32, String)> {
     let mut p = Prelude::default();
     for (n, raw) in lines.iter().enumerate() {
         let line = (n + 1) as u32;
-        let said = uncomment(raw).trim_matches([' ', '\t']);
+        const BLANK: [char; 2] = [' ', '\t'];
+        let said = uncomment(raw).trim_matches(BLANK);
         if said.is_empty() {
             continue;
         }
         let fail = |why: String| (line, why);
         if let Some(rest) = said.strip_prefix("type")
-            && rest.starts_with([' ', '\t'])
-            && !rest.trim_start().starts_with('=')
+            && rest.starts_with(BLANK)
+            && !rest.trim_start_matches(BLANK).starts_with('=')
         {
-            let rest = rest.trim_start();
+            let rest = rest.trim_start_matches(BLANK);
             let end = rest.bytes().position(|c| !is_ident(c)).unwrap_or(rest.len());
             let name = &rest[..end];
-            let Some(spelled) = rest[end..].trim_start().strip_prefix('=') else {
+            let Some(spelled) = rest[end..].trim_start_matches(BLANK).strip_prefix('=') else {
                 return Err(fail("a named type is `type Name = <type>`".to_owned()));
             };
             if !name.as_bytes().first().is_some_and(|c| c.is_ascii_uppercase()) {
@@ -94,13 +95,13 @@ pub fn parse(lines: &[&str]) -> Result<Prelude, (u32, String)> {
             if p.named.iter().any(|t| t.name == name) {
                 return Err(fail(format!("the type {name} is named twice")));
             }
-            let ty = types::parse_type(spelled.trim_matches(' '), &p.named).map_err(fail)?;
+            let ty = types::parse_type(spelled, &p.named).map_err(fail)?;
             p.named.push(NamedType { name: name.to_owned(), ty });
             continue;
         }
         let end = said.bytes().position(|c| !is_ident(c)).unwrap_or(said.len());
         let name = &said[..end];
-        let Some(expression) = said[end..].trim_start().strip_prefix('=') else {
+        let Some(expression) = said[end..].trim_start_matches(BLANK).strip_prefix('=') else {
             return Err(fail("is neither `type Name = <type>` nor `name = expression`".to_owned()));
         };
         if !name.as_bytes().first().is_some_and(|&c| is_ident_start(c)) {
@@ -109,7 +110,7 @@ pub fn parse(lines: &[&str]) -> Result<Prelude, (u32, String)> {
         if p.computed.iter().any(|c| c.name == name) {
             return Err(fail(format!("the column {name} is computed twice")));
         }
-        let expression = expression.trim();
+        let expression = expression.trim_matches(BLANK);
         let (program, depth) = compile(expression).map_err(fail)?;
         p.computed.push(Computed { name: name.to_owned(), expression: expression.to_owned(), line, program, depth });
     }
