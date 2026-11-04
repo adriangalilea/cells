@@ -60,7 +60,39 @@ impl Decimal {
 
     /// `-1.5`, `84.20`, `3e8`, `.5`, `+2`. The scale is the digits after the point
     /// less the exponent, never below 0.
+    #[inline]
     pub fn parse(s: &[u8]) -> Result<Decimal, NumberError> {
+        // Most cells: a sign or none, at most 18 digits with a point or none, no exponent.
+        let (negative, digits) = match s.first() {
+            Some(b'-') => (true, &s[1..]),
+            Some(b'+') => (false, &s[1..]),
+            _ => (false, s),
+        };
+        if digits.len() <= 19 && !digits.is_empty() {
+            let mut m: u64 = 0;
+            let mut point = usize::MAX;
+            let mut ok = true;
+            for (k, &c) in digits.iter().enumerate() {
+                let d = c.wrapping_sub(b'0');
+                if d <= 9 {
+                    m = m * 10 + d as u64;
+                } else if c == b'.' && point == usize::MAX {
+                    point = k;
+                } else {
+                    ok = false;
+                    break;
+                }
+            }
+            if ok && !(point == 0 && digits.len() == 1) {
+                let scale = if point == usize::MAX { 0 } else { (digits.len() - 1 - point) as u8 };
+                let v = m as i128;
+                return Ok(Decimal { mantissa: if negative { -v } else { v }, scale });
+            }
+        }
+        Decimal::parse_slow(s)
+    }
+
+    fn parse_slow(s: &[u8]) -> Result<Decimal, NumberError> {
         let n = s.len();
         let mut i = 0;
         let negative = match s.first() {
@@ -232,9 +264,10 @@ fn trailing_syntax(s: &[u8], from: usize) -> Option<NumberError> {
 }
 
 impl Ord for Decimal {
+    #[inline]
     fn cmp(&self, other: &Self) -> Ordering {
         let (a, b) = (*self, *other);
-        if a.scale == b.scale {
+        if a.scale == b.scale || a.mantissa == 0 || b.mantissa == 0 {
             return a.mantissa.cmp(&b.mantissa);
         }
         let (lo, hi, flip) = if a.scale < b.scale { (a, b, false) } else { (b, a, true) };

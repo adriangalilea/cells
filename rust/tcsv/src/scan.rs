@@ -162,16 +162,15 @@ pub(crate) fn fast<F: Fields>(src: &[u8], from: usize, to: usize, out: &mut F) -
         while st != 0 {
             let p = pos + st.trailing_zeros() as usize;
             st &= st - 1;
-            match src[p] {
-                b',' => {
-                    out.field(field as u32, p as u32)?;
-                    field = p + 1;
-                }
+            let c = src[p];
+            if c == b'\n' && p == skip {
+                continue;
+            }
+            let (a, b) = span(src, field, p, q, pos);
+            out.field(a, b)?;
+            match c {
+                b',' => field = p + 1,
                 b'\n' => {
-                    if p == skip {
-                        continue;
-                    }
-                    out.field(field as u32, p as u32)?;
                     out.record(p as u32 + 1);
                     field = p + 1;
                 }
@@ -179,7 +178,6 @@ pub(crate) fn fast<F: Fields>(src: &[u8], from: usize, to: usize, out: &mut F) -
                     if p + 1 >= to || src[p + 1] != b'\n' {
                         return Err(Stop::Irregular);
                     }
-                    out.field(field as u32, p as u32)?;
                     skip = p + 1;
                     out.record(p as u32 + 2);
                     field = p + 2;
@@ -193,10 +191,31 @@ pub(crate) fn fast<F: Fields>(src: &[u8], from: usize, to: usize, out: &mut F) -
         return Err(Stop::Irregular);
     }
     if field < to || out.open() {
-        out.field(field as u32, to as u32)?;
+        let (a, b) = span(src, field, to, 0, usize::MAX);
+        out.field(a, b)?;
         out.record(to as u32);
     }
     Ok(())
+}
+
+/// A field's span as `fast` hands it on: a quoted field with no `""` inside as its text
+/// alone, quotes cut, so `text` returns it as it is; any other field raw. `q` is the quotes
+/// of the block at `pos`, which says it at once for a field that starts in that block.
+#[inline(always)]
+fn span(src: &[u8], field: usize, end: usize, q: u64, pos: usize) -> (u32, u32) {
+    if field >= end || src[field] != b'"' {
+        return (field as u32, end as u32);
+    }
+    let clean = if field >= pos {
+        // Quotes strictly inside: bits field+1 ..= end-2 of the block.
+        let inner = end - field - 2;
+        let bits = q >> (field - pos + 1);
+        let bits = if inner >= 64 { bits } else { bits & ((1u64 << inner) - 1) };
+        bits == 0 && end - pos <= 64
+    } else {
+        !src[field + 1..end - 1].contains(&b'"')
+    };
+    if clean { (field as u32 + 1, end as u32 - 1) } else { (field as u32, end as u32) }
 }
 
 /// Reads the records of `src[from..to]` byte by byte: a field opening with `"` is quoted
@@ -315,8 +334,9 @@ pub(crate) fn record(src: &[u8], from: usize) -> Result<(alloc::vec::Vec<(u32, u
     }
 }
 
-/// A field's text: its raw span unquoted, `""` read as `"`.
-#[inline]
+/// A field's text: its span unquoted, `""` read as `"`; a span `fast` cut already is its
+/// text as it is.
+#[inline(always)]
 pub(crate) fn text<'a>(src: &'a [u8], start: u32, end: u32, scratch: &'a mut alloc::vec::Vec<u8>) -> &'a [u8] {
     let raw = &src[start as usize..end as usize];
     if raw.first() != Some(&b'"') {
@@ -387,23 +407,41 @@ mod tests {
         (fr, sr)
     }
 
+    /// The records' texts: `fast` hands a clean quoted field on unquoted, `scalar` raw.
+    fn texts(src: &str, c: &Collect) -> Vec<Vec<Vec<u8>>> {
+        let mut scratch = Vec::new();
+        c.records.iter().map(|r| r.iter().map(|&(s, e)| text(src.as_bytes(), s, e, &mut scratch).to_vec()).collect()).collect()
+    }
+
     #[test]
     fn fast_equals_scalar() {
         let long = "x".repeat(70);
-        let cases = ["a,b\n1,2\n", "a,b\r\n1,2", "a,\"b,\"\"c\"\"\nd\"\n1,2\n", "\"\",,\n", "a\r\nb\r\n", "a,b,\n", "\n\n", long.as_str()];
+        let quoted = alloc::format!("a,\"{}\",b\n\"{}\"", "z".repeat(70), "w".repeat(130));
+        let cases = [
+            "a,b\n1,2\n",
+            "a,b\r\n1,2",
+            "a,\"b,\"\"c\"\"\nd\"\n1,2\n",
+            "\"\",,\n",
+            "\"q\"",
+            "a\r\nb\r\n",
+            "a,b,\n",
+            "\n\n",
+            long.as_str(),
+            quoted.as_str(),
+        ];
         for c in cases {
             let (f, s) = both(c);
             let (f, s) = (f.unwrap(), s.unwrap());
-            assert_eq!(f.records, s.records, "{c:?}");
+            assert_eq!(texts(c, &f), texts(c, &s), "{c:?}");
             assert_eq!(f.nexts, s.nexts, "{c:?}");
         }
         // Long input across many blocks, quotes crossing block edges.
         let mut big = alloc::string::String::new();
         for k in 0..500 {
-            big.push_str(&alloc::format!("{k},\"q,{k}\r\n\"\"x\"\"\",{}\n", "y".repeat(k % 70)));
+            big.push_str(&alloc::format!("{k},\"q,{k}\r\n\"\"x\"\"\",\"{}\",{}\n", "v".repeat(k % 90), "y".repeat(k % 70)));
         }
         let (f, s) = both(&big);
-        assert_eq!(f.unwrap().records, s.unwrap().records);
+        assert_eq!(texts(&big, &f.unwrap()), texts(&big, &s.unwrap()));
     }
 
     #[test]

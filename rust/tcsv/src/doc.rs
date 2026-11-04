@@ -245,7 +245,7 @@ fn read_on(bytes: Vec<u8>, threads: usize) -> Result<Doc, Error> {
     let Part { records, columns: readings, mut problems, .. } = part;
     let mut columns = Vec::with_capacity(heads.len() + prelude.computed.len());
     for (j, ((name, spelled, ty), r)) in heads.into_iter().zip(readings).enumerate() {
-        let (ty, data, valid) = settle(ty, r, j as u32, &mut problems);
+        let (ty, data, valid) = settle(ty, r, j as u32, threads, &mut problems);
         columns.push(Column { name, spelled, ty, computed: None, data, valid });
     }
     let stored = columns.len();
@@ -289,7 +289,7 @@ fn read_prelude(source: &str, from: usize) -> Result<(usize, Prelude), Error> {
 
 /// A column's reading made final: an untyped column's type inferred from its values and
 /// its cells decoded by it, and a key's duplicates reported.
-fn settle(ty: Option<Type>, r: Reading, column: u32, problems: &mut Vec<Problem>) -> (Type, Data, Bits) {
+fn settle(ty: Option<Type>, r: Reading, column: u32, threads: usize, problems: &mut Vec<Problem>) -> (Type, Data, Bits) {
     let Reading { building, valid, candidates, .. } = r;
     let (ty, building, valid) = match ty {
         Some(ty) => (ty, building, valid),
@@ -308,7 +308,7 @@ fn settle(ty: Option<Type>, r: Reading, column: u32, problems: &mut Vec<Problem>
     let data = building.finish();
     let valid = valid.finish();
     if ty.key {
-        crate::keys::check(&data, &valid, column, problems);
+        crate::keys::check(&data, &valid, column, threads, problems);
     }
     (ty, data, valid)
 }
@@ -600,7 +600,7 @@ impl Doc {
         let c = &self.columns[column];
         let ty = if c.ty.inferred { None } else { Some(c.ty.clone()) };
         let decoders = decoders(core::iter::once(ty.as_ref()));
-        let mut part = Part::new(raw.as_bytes(), 0, &decoders, rows);
+        let mut part = Part::new(raw.as_bytes(), 0, raw.len(), &decoders);
         for &(s, e) in &spans {
             part.field(s, e).unwrap();
             part.record(e);
@@ -611,7 +611,7 @@ impl Doc {
         for p in &mut problems {
             p.column = column as u32;
         }
-        let (ty, data, valid) = settle(ty, reading, column as u32, &mut problems);
+        let (ty, data, valid) = settle(ty, reading, column as u32, 1, &mut problems);
         let col = &mut self.columns[column];
         col.ty = ty;
         col.data = data;
@@ -626,7 +626,7 @@ impl Doc {
         self.problems.retain(|p| !(p.column == column as u32 && p.kind() == Kind::Key));
         let c = &self.columns[column];
         let mut found = Vec::new();
-        crate::keys::check(&c.data, &c.valid, column as u32, &mut found);
+        crate::keys::check(&c.data, &c.valid, column as u32, 1, &mut found);
         self.problems.extend(found);
         self.problems.sort_by_key(|p| p.order());
     }

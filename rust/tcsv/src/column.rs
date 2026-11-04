@@ -329,6 +329,23 @@ impl Building {
         }
     }
 
+    /// Room for `rows` more values; a text column also for their text, at the length its
+    /// `read` values so far run.
+    pub fn reserve(&mut self, rows: usize, read: usize) {
+        match self {
+            Building::Text { offsets, bytes } => {
+                offsets.reserve(rows);
+                bytes.reserve(rows * bytes.len() / read.max(1));
+            }
+            Building::Int(v) => v.reserve(rows),
+            Building::Decimal { values, .. } => values.reserve(rows),
+            Building::Bool(b) => b.bytes.reserve(rows / 8 + 1),
+            Building::Date(v) | Building::Time(v) => v.reserve(rows),
+            Building::DateTime { values, .. } => values.reserve(rows),
+            Building::Choice(v) => v.reserve(rows),
+        }
+    }
+
     pub fn finish(self) -> Data {
         match self {
             Building::Text { offsets, bytes } => Data::Text { offsets: Arc::new(offsets), bytes: Arc::new(bytes) },
@@ -442,10 +459,48 @@ pub(crate) const DECIMAL_LIMIT: u128 = 100_000_000_000_000_000_000_000_000_000_0
 /// Past this, an instant is past `i64`.
 pub(crate) const INSTANT_LIMIT: u128 = i64::MAX as u128 + 1;
 
+/// Appends a cell's text to a text column. Cells are short, so up to 32 bytes go as two
+/// overlapping word copies rather than a call to `memcpy`.
+#[inline(always)]
+pub(crate) fn push_text(offsets: &mut Vec<i32>, bytes: &mut Vec<u8>, t: &[u8]) {
+    let n = t.len();
+    let at = bytes.len();
+    bytes.reserve(n);
+    // SAFETY: `reserve` made room for `n` bytes after `at`; every read is inside `t`.
+    unsafe {
+        let src = t.as_ptr();
+        let dst = bytes.as_mut_ptr().add(at);
+        if (16..=32).contains(&n) {
+            let a = (src as *const u128).read_unaligned();
+            let b = (src.add(n - 16) as *const u128).read_unaligned();
+            (dst as *mut u128).write_unaligned(a);
+            (dst.add(n - 16) as *mut u128).write_unaligned(b);
+        } else if (8..16).contains(&n) {
+            let a = (src as *const u64).read_unaligned();
+            let b = (src.add(n - 8) as *const u64).read_unaligned();
+            (dst as *mut u64).write_unaligned(a);
+            (dst.add(n - 8) as *mut u64).write_unaligned(b);
+        } else if (4..8).contains(&n) {
+            let a = (src as *const u32).read_unaligned();
+            let b = (src.add(n - 4) as *const u32).read_unaligned();
+            (dst as *mut u32).write_unaligned(a);
+            (dst.add(n - 4) as *mut u32).write_unaligned(b);
+        } else if n < 4 {
+            for k in 0..n {
+                *dst.add(k) = *src.add(k);
+            }
+        } else {
+            core::ptr::copy_nonoverlapping(src, dst, n);
+        }
+        bytes.set_len(at + n);
+    }
+    offsets.push(bytes.len() as i32);
+}
+
 /// Decodes one non-blank cell's text into `b`, or says why it cannot be. A refused cell
 /// pushes nothing; the caller pushes the null in its place. A number with more digits
 /// after the point than its column's scale raises the scale over the run first.
-#[inline]
+#[inline(always)]
 pub(crate) fn decode(d: &Decoder, b: &mut Building, text: &[u8], run: &mut Run) -> Result<(), Why> {
     match (d, b) {
         (Decoder::Text { min, max }, Building::Text { offsets, bytes }) => {
@@ -454,8 +509,7 @@ pub(crate) fn decode(d: &Decoder, b: &mut Building, text: &[u8], run: &mut Run) 
                 let n = text.iter().filter(|&&c| c & 0xC0 != 0x80).count() as i128;
                 bounded(Decimal { mantissa: n, scale: 0 }, min, max)?;
             }
-            bytes.extend_from_slice(text);
-            offsets.push(bytes.len() as i32);
+            push_text(offsets, bytes, text);
         }
         (Decoder::Url | Decoder::Email | Decoder::Id | Decoder::Untyped, Building::Text { offsets, bytes }) => {
             match d {
@@ -464,8 +518,7 @@ pub(crate) fn decode(d: &Decoder, b: &mut Building, text: &[u8], run: &mut Run) 
                 Decoder::Id if !value::is_id(text) => return Err(Why::NotId),
                 _ => {}
             }
-            bytes.extend_from_slice(text);
-            offsets.push(bytes.len() as i32);
+            push_text(offsets, bytes, text);
         }
         (Decoder::Int { min, max }, Building::Int(v)) => match value::parse_int(text) {
             Some(n) => {
@@ -493,16 +546,16 @@ pub(crate) fn decode(d: &Decoder, b: &mut Building, text: &[u8], run: &mut Run) 
             values.push(x.at_scale(*scale).ok_or(Why::OutOfRange)?);
         }
         (Decoder::Bool { yes, no }, Building::Bool(bits)) => {
-            if text == yes.as_slice() {
+            if same(text, yes) {
                 bits.push(true);
-            } else if text == no.as_slice() {
+            } else if same(text, no) {
                 bits.push(false);
             } else {
                 return Err(Why::NotBool);
             }
         }
         (Decoder::Choice(words), Building::Choice(v)) => {
-            let Some(k) = words.iter().position(|w| w.as_slice() == text) else {
+            let Some(k) = words.iter().position(|w| same(text, w)) else {
                 return Err(Why::NotChoice);
             };
             v.push(k as i16);
@@ -535,6 +588,33 @@ pub(crate) fn decode(d: &Decoder, b: &mut Building, text: &[u8], run: &mut Run) 
     Ok(())
 }
 
+/// Two short words equal: their lengths, then their bytes as two overlapping words.
+#[inline(always)]
+pub(crate) fn same(a: &[u8], b: &[u8]) -> bool {
+    let n = a.len();
+    if n != b.len() {
+        return false;
+    }
+    // SAFETY: every read is inside `a` or `b`, both `n` bytes long.
+    unsafe {
+        let (p, q) = (a.as_ptr(), b.as_ptr());
+        if (8..=16).contains(&n) {
+            let x = (p as *const u64).read_unaligned() ^ (q as *const u64).read_unaligned();
+            let y = (p.add(n - 8) as *const u64).read_unaligned() ^ (q.add(n - 8) as *const u64).read_unaligned();
+            x | y == 0
+        } else if (4..8).contains(&n) {
+            let x = (p as *const u32).read_unaligned() ^ (q as *const u32).read_unaligned();
+            let y = (p.add(n - 4) as *const u32).read_unaligned() ^ (q.add(n - 4) as *const u32).read_unaligned();
+            x | y == 0
+        } else if n < 4 {
+            (0..n).all(|k| *p.add(k) == *q.add(k))
+        } else {
+            a == b
+        }
+    }
+}
+
+#[inline]
 pub(crate) fn bounded(x: Decimal, min: &Option<Bound>, max: &Option<Bound>) -> Result<(), Why> {
     if let Some(b) = min {
         let o = x.cmp(&b.value);

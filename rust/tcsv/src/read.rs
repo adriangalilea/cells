@@ -33,10 +33,14 @@ pub(crate) struct Part<'a> {
     pub problems: Vec<Problem>,
     pub rows: u32,
     scratch: Vec<u8>,
+    /// Where the part starts and ends in `src`: the first batch's bytes against the
+    /// part's say how many rows to make room for.
+    from: usize,
+    to: usize,
 }
 
 impl<'a> Part<'a> {
-    pub fn new(src: &'a [u8], from: usize, decoders: &[(Decoder, bool)], rows_hint: usize) -> Part<'a> {
+    pub fn new(src: &'a [u8], from: usize, to: usize, decoders: &[(Decoder, bool)]) -> Part<'a> {
         let ncols = decoders.len();
         Part {
             src,
@@ -45,20 +49,22 @@ impl<'a> Part<'a> {
             batched: 0,
             field: 0,
             start: from as u32,
-            records: Vec::with_capacity(rows_hint + 1),
+            records: Vec::with_capacity(BATCH + 1),
             columns: decoders
                 .iter()
                 .map(|(d, optional)| Reading {
                     decoder: d.clone(),
                     optional: *optional,
-                    building: Building::new(d, rows_hint),
-                    valid: BitsBuilder::with_capacity(rows_hint),
+                    building: Building::new(d, BATCH),
+                    valid: BitsBuilder::with_capacity(BATCH),
                     candidates: infer::ALL,
                 })
                 .collect(),
             problems: Vec::new(),
             rows: 0,
             scratch: Vec::new(),
+            from,
+            to,
         }
     }
 
@@ -70,6 +76,18 @@ impl<'a> Part<'a> {
             let cells = &self.cells[c * BATCH..c * BATCH + n];
             decode_run(self.src, cells, col, c as u32, base, &mut self.problems, &mut self.scratch);
         }
+        if base == 0 && n == BATCH {
+            // The first batch read `start - from` bytes: the rest of the part holds about
+            // as many rows a byte, and each column about as much text a row.
+            let read = (self.start as usize - self.from).max(1);
+            let rest = (self.to - self.start as usize) * n / read;
+            let rest = rest + rest / 16;
+            self.records.reserve(rest);
+            for col in &mut self.columns {
+                col.valid.bytes.reserve(rest / 8 + 1);
+                col.building.reserve(rest, n);
+            }
+        }
         self.batched = 0;
     }
 
@@ -80,33 +98,95 @@ impl<'a> Part<'a> {
     }
 }
 
-/// Decodes a run of one column's cells, rows `base..`.
-fn decode_run(src: &[u8], cells: &[(u32, u32)], col: &mut Reading, c: u32, base: u32, problems: &mut Vec<Problem>, scratch: &mut Vec<u8>) {
-    let untyped = matches!(col.decoder, Decoder::Untyped);
+/// A run of one column's cells, rows `base..`: `put(Some(text), run)` decodes a cell or
+/// says why not, `put(None, run)` pushes the null under a blank or broken one.
+#[allow(clippy::too_many_arguments)]
+#[inline(always)]
+fn each(
+    src: &[u8],
+    cells: &[(u32, u32)],
+    valid: &mut BitsBuilder,
+    problems: &mut Vec<Problem>,
+    c: u32,
+    base: u32,
+    missing: bool,
+    scratch: &mut Vec<u8>,
+    mut put: impl FnMut(Option<&[u8]>, &mut Run) -> Result<(), Why>,
+) {
     for (k, &(s, e)) in cells.iter().enumerate() {
         let row = base + k as u32;
         let text = scan::text(src, s, e, scratch);
+        // A part's rows count from 0, so its values start at row 0.
+        let mut run = Run { valid, problems, column: c, first: 0 };
         if text.is_empty() {
-            column::push_null(&mut col.building);
-            col.valid.push(false);
-            if !col.optional && !untyped {
+            let _ = put(None, &mut run);
+            valid.push(false);
+            if missing {
                 problems.push(Problem { row, column: c, why: Why::Missing });
             }
             continue;
         }
-        if untyped {
-            col.candidates = infer::narrow(col.candidates, text);
-        }
-        // A part's rows count from 0, so its values start at row 0.
-        let mut run = Run { valid: &mut col.valid, problems, column: c, first: 0 };
-        match column::decode(&col.decoder, &mut col.building, text, &mut run) {
-            Ok(()) => col.valid.push(true),
+        match put(Some(text), &mut run) {
+            Ok(()) => valid.push(true),
             Err(why) => {
-                column::push_null(&mut col.building);
-                col.valid.push(false);
+                let mut run = Run { valid, problems, column: c, first: 0 };
+                let _ = put(None, &mut run);
+                valid.push(false);
                 problems.push(Problem { row, column: c, why });
             }
         }
+    }
+}
+
+/// Decodes a run of one column's cells, rows `base..`, in a loop chosen once for the
+/// column's kind; the kinds rarely seen share `column::decode`'s.
+fn decode_run(src: &[u8], cells: &[(u32, u32)], col: &mut Reading, c: u32, base: u32, problems: &mut Vec<Problem>, scratch: &mut Vec<u8>) {
+    let Reading { decoder, optional, building, valid, candidates } = col;
+    let missing = !*optional && !matches!(decoder, Decoder::Untyped);
+    match (&*decoder, &mut *building) {
+        (Decoder::Untyped, Building::Text { offsets, bytes }) => each(src, cells, valid, problems, c, base, missing, scratch, |t, _| {
+            match t {
+                None => offsets.push(bytes.len() as i32),
+                Some(t) => {
+                    *candidates = infer::narrow(*candidates, t);
+                    column::push_text(offsets, bytes, t);
+                }
+            }
+            Ok(())
+        }),
+        (Decoder::Text { min: None, max: None }, Building::Text { offsets, bytes }) => {
+            each(src, cells, valid, problems, c, base, missing, scratch, |t, _| {
+                match t {
+                    None => offsets.push(bytes.len() as i32),
+                    Some(t) => column::push_text(offsets, bytes, t),
+                }
+                Ok(())
+            })
+        }
+        (Decoder::Choice(words), Building::Choice(v)) => each(src, cells, valid, problems, c, base, missing, scratch, |t, _| {
+            let Some(t) = t else {
+                v.push(0);
+                return Ok(());
+            };
+            let k = words.iter().position(|w| column::same(t, w)).ok_or(Why::NotChoice)?;
+            v.push(k as i16);
+            Ok(())
+        }),
+        (Decoder::Date(None), Building::Date(v)) => each(src, cells, valid, problems, c, base, missing, scratch, |t, _| {
+            let Some(t) = t else {
+                v.push(0);
+                return Ok(());
+            };
+            v.push(crate::value::parse_date(t).ok_or(Why::NotDate)?);
+            Ok(())
+        }),
+        (d, b) => each(src, cells, valid, problems, c, base, missing, scratch, |t, run| match t {
+            None => {
+                column::push_null(b);
+                Ok(())
+            }
+            Some(t) => column::decode(d, b, t, run),
+        }),
     }
 }
 
@@ -154,23 +234,17 @@ pub(crate) fn body<'a>(src: &'a [u8], from: usize, decoders: &[(Decoder, bool)],
 }
 
 pub(crate) fn sequential<'a>(src: &'a [u8], from: usize, decoders: &[(Decoder, bool)]) -> Result<Part<'a>, (u32, Stop)> {
-    let hint = rows_hint(src.len() - from);
-    let mut part = Part::new(src, from, decoders, hint);
+    let mut part = Part::new(src, from, src.len(), decoders);
     match scan::fast(src, from, src.len(), &mut part) {
         Ok(()) => {}
         Err(Stop::Irregular) => {
-            part = Part::new(src, from, decoders, hint);
+            part = Part::new(src, from, src.len(), decoders);
             scan::scalar(src, from, src.len(), &mut part).map_err(|e| (part.rows, e))?;
         }
         Err(e) => return Err((part.rows, e)),
     }
     part.finish();
     Ok(part)
-}
-
-fn rows_hint(bytes: usize) -> usize {
-    // Most budgets are tens of bytes a row; the hint only sizes the first allocation.
-    (bytes / 48).min(1 << 24)
 }
 
 /// Splits at record boundaries and reads each part on its own thread. A boundary is the
@@ -180,7 +254,8 @@ fn rows_hint(bytes: usize) -> usize {
 /// too small to pay for threads.
 #[cfg(feature = "std")]
 fn parallel<'a>(src: &'a [u8], from: usize, decoders: &[(Decoder, bool)], threads: usize) -> Option<Result<Vec<Part<'a>>, (u32, Stop)>> {
-    const PART: usize = 1 << 21;
+    // The least a thread reads: below it, starting the thread costs more than it saves.
+    const PART: usize = 1 << 19;
     let len = src.len() - from;
     if len < 2 * PART || threads < 2 {
         return None;
@@ -219,7 +294,7 @@ fn parallel<'a>(src: &'a [u8], from: usize, decoders: &[(Decoder, bool)], thread
             .map(|w| {
                 let (a, b) = (w[0], w[1]);
                 s.spawn(move || {
-                    let mut part = Part::new(src, a, decoders, rows_hint(b - a));
+                    let mut part = Part::new(src, a, b, decoders);
                     scan::fast(src, a, b, &mut part).map_err(|e| (part.rows, e))?;
                     part.finish();
                     Ok(part)
@@ -240,19 +315,69 @@ fn parallel<'a>(src: &'a [u8], from: usize, decoders: &[(Decoder, bool)], thread
     Some(Ok(parts))
 }
 
-/// The parts joined into one, in order: records, columns and problems (rows renumbered).
+/// The parts joined into one, in order: records, columns and problems (rows renumbered),
+/// each column joined on a thread of its own.
 pub(crate) fn join(mut parts: Vec<Part<'_>>) -> Part<'_> {
-    let mut first = parts.remove(0);
-    for p in parts {
-        let base = first.rows;
-        first.records.extend_from_slice(&p.records);
-        first.problems.extend(p.problems.into_iter().map(|q| Problem { row: q.row + base, ..q }));
-        for (c, (a, b)) in first.columns.iter_mut().zip(p.columns).enumerate() {
-            append(a, b, c as u32, base, &mut first.problems);
+    if parts.len() == 1 {
+        return parts.pop().unwrap();
+    }
+    let mut bases = Vec::with_capacity(parts.len());
+    let mut rows = 0u32;
+    for p in &parts {
+        bases.push(rows);
+        rows += p.rows;
+    }
+    let ncols = parts[0].columns.len();
+    let mut by_column: Vec<Vec<Reading>> = (0..ncols).map(|_| Vec::with_capacity(parts.len())).collect();
+    for p in parts.iter_mut() {
+        for (c, r) in p.columns.drain(..).enumerate() {
+            by_column[c].push(r);
         }
-        first.rows += p.rows;
+    }
+    let bases = &bases;
+    #[cfg(feature = "std")]
+    let joined: Vec<(Reading, Vec<Problem>)> = std::thread::scope(|s| {
+        let hs: Vec<_> = by_column.into_iter().enumerate().map(|(c, rs)| s.spawn(move || join_column(rs, bases, c as u32))).collect();
+        hs.into_iter().map(|h| h.join().unwrap()).collect()
+    });
+    #[cfg(not(feature = "std"))]
+    let joined: Vec<(Reading, Vec<Problem>)> = by_column.into_iter().enumerate().map(|(c, rs)| join_column(rs, bases, c as u32)).collect();
+    let mut records = Vec::with_capacity(rows as usize + 1);
+    let mut problems = Vec::new();
+    for (p, &base) in parts.iter().zip(bases) {
+        records.extend_from_slice(&p.records);
+        problems.extend(p.problems.iter().map(|q| Problem { row: q.row + base, ..*q }));
+    }
+    let mut first = parts.swap_remove(0);
+    first.records = records;
+    first.problems = problems;
+    first.rows = rows;
+    for (r, mut found) in joined {
+        first.columns.push(r);
+        first.problems.append(&mut found);
     }
     first
+}
+
+/// One column's readings from every part, joined, with the problems a raised scale finds.
+fn join_column(readings: Vec<Reading>, bases: &[u32], c: u32) -> (Reading, Vec<Problem>) {
+    let mut problems = Vec::new();
+    let mut it = readings.into_iter();
+    let mut a = it.next().unwrap();
+    let rest: Vec<Reading> = it.collect();
+    match &mut a.building {
+        Building::Text { offsets, bytes } => {
+            offsets.reserve(rest.iter().map(|r| r.valid.len).sum());
+            bytes.reserve(rest.iter().map(|r| if let Building::Text { bytes, .. } = &r.building { bytes.len() } else { 0 }).sum());
+        }
+        Building::Int(v) => v.reserve(rest.iter().map(|r| r.valid.len).sum()),
+        Building::Decimal { values, .. } => values.reserve(rest.iter().map(|r| r.valid.len).sum()),
+        _ => {}
+    }
+    for (b, &base) in rest.into_iter().zip(&bases[1..]) {
+        append(&mut a, b, c, base, &mut problems);
+    }
+    (a, problems)
 }
 
 fn append(a: &mut Reading, b: Reading, c: u32, base: u32, problems: &mut Vec<Problem>) {
