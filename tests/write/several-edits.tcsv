@@ -1,0 +1,3 @@
+item:text!,cost:EUR,paid:yes/no,on:date(DD/MM/YYYY)
+fuel,84.20,no,14/08/2026
+maps,12.00,no,15/08/2026

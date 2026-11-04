@@ -1,0 +1,9 @@
+---
+// the trip, kept by hand
+type   Category = travel | stay | food   // spacing as typed
+
+total = cost * qty
+---
+item:text!,category:Category,cost:EUR,qty:int
+fuel,travel,84.20,1
+groceries,food,96.75,3

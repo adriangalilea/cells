@@ -167,7 +167,16 @@ An error inside a statement (a type that does not read, an expression that names
 
 ## Writing
 
-A writer round-trips: a file read and written with nothing changed is the same bytes. A changed cell is written in its column's form (its format, its pair's words, quoted only when CSV needs it); everything else is written as it was read, the header's spelling (shorthand or explicit) and the prelude included. A writer changing a type writes the shorthand.
+A writer round-trips: a file read and written with nothing changed is the same bytes. A changed cell is written in its column's form (its format, its pair's words, quoted only when CSV needs it); everything else is written as it was read, the header's spelling (shorthand or explicit), each line's ending, the byte order mark and the prelude included. A cell set past the end of a short row writes the blank fields before it. A writer changing a type writes the shorthand, and rewrites no cell: a cell the new type breaks is reported, not changed.
+
+The shorthand, as a writer writes it:
+
+- the type: a base, a currency, a named type by its name, a choice's words joined by `|`, a pair's two words joined by `/` (`true/false` is `bool`);
+- then its format, then its lower bound (`>=` or `>`), then its upper bound (`<=` or `<`), then `!` or `?`. A `num` with both bounds inclusive is its range alone: `0..10`, never `num>=0<=10`;
+- a bound's number in plain decimal: `-` if negative, no exponent, no zero that changes nothing (`1e3` is `1000`, `0.50` is `0.5`, `-0` is `0`);
+- a word bare unless it must be quoted: it holds a space or a reserved character, or it is a choice's only word.
+
+So `cost:EUR min 0 key` is written `cost:EUR>=0!`, and `mood:one of 'so so' meh optional` is written `mood:'so so'|meh?`.
 
 ## Open
 
