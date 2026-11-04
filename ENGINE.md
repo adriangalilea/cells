@@ -55,7 +55,14 @@ An editor cannot hide part of a line, so in one the ids are visible, dimmed and 
 
 ## Across devices
 
-The files sync as files (iCloud Drive, git, Syncthing), and each device's engine rebuilds its own cache. Two devices' versions of one file merge by row identity against the last version both had: different rows and different cells merge, and only two edits of the same cell are a conflict, shown, never resolved by guessing.
+Every device is a full replica: the files sync as files (iCloud Drive, git, Syncthing), each device's engine keeps its own cache, and a device reads, queries and writes with every other one off. On iOS the engine asks iCloud Drive to download what it opens, since iOS may evict files to save space.
+
+How devices reconcile writes is open, and the write path serves both answers:
+
+- **Owned.** One device owns a set of books. Another records an edit as an intent, shows it at once as pending, and the owner applies it when it is in reach, refusing one that no longer applies. Money never conflicts.
+- **Merged.** Each device writes its copy, and two versions of a file merge by row identity against the last version both had: different rows and different cells merge, and only two edits of the same cell are a conflict, shown, never resolved by guessing.
+
+Both rest on what is built now: edits as intents by row identity, kept in a log.
 
 ## Proving it
 
