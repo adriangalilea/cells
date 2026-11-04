@@ -1,0 +1,16 @@
+[package]
+name = "tcsv-bench"
+version = "0.0.0"
+description = "Benchmarks of the tcsv core: generated budgets, read typed, against the csv crate's untyped ceiling"
+publish = false
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[[bin]]
+name = "tcsv-bench"
+path = "src/main.rs"
+
+[dependencies]
+tcsv = { path = "../tcsv" }
+csv = "=1.4.0"

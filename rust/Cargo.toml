@@ -1,6 +1,7 @@
 [workspace]
 resolver = "3"
-members = ["tcsv"]
+members = ["tcsv", "tcsv-bench"]
+default-members = ["tcsv"]
 
 [workspace.package]
 edition = "2024"
