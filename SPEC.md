@@ -1,6 +1,6 @@
 # TCSV
 
-> **Not yet final.** This spec is a draft: what follows is what the TypeScript and Swift readers implement today, and [Open](#open) holds what is decided in direction but not written, and what is undecided. Any of it may still change.
+> **Not yet final.** This spec is a draft: what follows is what the conformance suite ([`tests/`](tests)) holds every reader to, and [Open](#open) holds what is decided in direction but not written, and what is undecided. Any of it may still change.
 
 Typed CSV. A `.tcsv` file is a table whose header cells carry their column's type, `name:type`, and which may open with a prelude of named types and computed columns, fenced by `---`. One file, never a sidecar: the types travel with the data. MIME type `text/tcsv`.
 
