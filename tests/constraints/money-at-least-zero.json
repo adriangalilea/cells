@@ -1,0 +1,14 @@
+{
+  "columns": [
+    { "name": "item", "type": "text!" },
+    { "name": "cost", "type": "EUR>=0" }
+  ],
+  "rows": [
+    { "item": { "text": "fuel" }, "cost": { "money": "84.20", "currency": "EUR" } },
+    { "item": { "text": "maps" }, "cost": { "money": "0", "currency": "EUR" } },
+    { "item": { "text": "refund" }, "cost": null }
+  ],
+  "problems": [
+    { "row": 2, "column": "cost", "kind": "type" }
+  ]
+}

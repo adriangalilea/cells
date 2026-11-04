@@ -1,0 +1,14 @@
+{
+  "columns": [
+    { "name": "string", "type": "text" },
+    { "name": "gauge", "type": "5..5" }
+  ],
+  "rows": [
+    { "string": { "text": "low" }, "gauge": { "num": "5" } },
+    { "string": { "text": "mid" }, "gauge": { "num": "5.0" } },
+    { "string": { "text": "high" }, "gauge": null }
+  ],
+  "problems": [
+    { "row": 2, "column": "gauge", "kind": "type" }
+  ]
+}

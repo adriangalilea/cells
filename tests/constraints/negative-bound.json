@@ -1,0 +1,14 @@
+{
+  "columns": [
+    { "name": "night", "type": "text" },
+    { "name": "low", "type": "int>=-10" }
+  ],
+  "rows": [
+    { "night": { "text": "first" }, "low": { "int": "-10" } },
+    { "night": { "text": "second" }, "low": { "int": "4" } },
+    { "night": { "text": "third" }, "low": null }
+  ],
+  "problems": [
+    { "row": 2, "column": "low", "kind": "type" }
+  ]
+}

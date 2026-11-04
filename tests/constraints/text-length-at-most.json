@@ -1,0 +1,13 @@
+{
+  "columns": [
+    { "name": "seed", "type": "text<=5" },
+    { "name": "bed", "type": "text" }
+  ],
+  "rows": [
+    { "seed": { "text": "basil" }, "bed": { "text": "north" } },
+    { "seed": null, "bed": { "text": "south" } }
+  ],
+  "problems": [
+    { "row": 1, "column": "seed", "kind": "type" }
+  ]
+}

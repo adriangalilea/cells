@@ -1,0 +1,14 @@
+{
+  "columns": [
+    { "name": "leg", "type": "text" },
+    { "name": "metres", "type": "num<=1000" }
+  ],
+  "rows": [
+    { "leg": { "text": "first" }, "metres": { "num": "1000" } },
+    { "leg": { "text": "second" }, "metres": { "num": "1000" } },
+    { "leg": { "text": "third" }, "metres": null }
+  ],
+  "problems": [
+    { "row": 2, "column": "metres", "kind": "type" }
+  ]
+}

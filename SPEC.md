@@ -88,7 +88,12 @@ A word beside `|` is always a choice's word, even one that spells a base or an e
 | `>=0` `>0` `<=100` `<100` | the value | its length |
 | `0..100` | at least 0 and at most 100 | a length between |
 
-`cost:EUR>=0`, `pct:0..100`, `name:text<=40`. A type that is only a range is a number: `score:0..10` is `num` from 0 to 10.
+`cost:EUR>=0`, `pct:0..100`, `name:text<=40`, `qty:int>=1<=12`. A type that is only bounds is a number: `score:0..10` is `num` from 0 to 10, `>=0` is `num` at least 0. A range after a base bounds it: `int 1..5`, `text 1..40`.
+
+- Bounds apply to `int`, `num`, `pct`, a currency, and `text`; every other type refuses them. A `pct` is bounded by its percentage: `pct<=100` refuses `150%`.
+- A bound is a `num` (`-1.5`, `3e8`). On text it is a whole number, at least 0.
+- A text's length is its count of Unicode code points: `café` written with `é` is 4, written with `e` and a combining accent is 5.
+- Bounds no value can meet are refused: a lower bound above the upper, or the two equal with either exclusive. `5..5` is 5 alone.
 
 ### Formats
 

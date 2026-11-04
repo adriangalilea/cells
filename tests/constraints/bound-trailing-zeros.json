@@ -1,0 +1,13 @@
+{
+  "columns": [
+    { "name": "seed", "type": "text" },
+    { "name": "depth", "type": "num>=0.5" }
+  ],
+  "rows": [
+    { "seed": { "text": "radish" }, "depth": { "num": "0.5" } },
+    { "seed": { "text": "pea" }, "depth": null }
+  ],
+  "problems": [
+    { "row": 1, "column": "depth", "kind": "type" }
+  ]
+}

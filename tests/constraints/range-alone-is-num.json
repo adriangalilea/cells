@@ -1,0 +1,17 @@
+{
+  "columns": [
+    { "name": "gig", "type": "text" },
+    { "name": "score", "type": "0..10" }
+  ],
+  "rows": [
+    { "gig": { "text": "the barn" }, "score": { "num": "0" } },
+    { "gig": { "text": "the pier" }, "score": { "num": "10" } },
+    { "gig": { "text": "the hall" }, "score": { "num": "7.5" } },
+    { "gig": { "text": "the cellar" }, "score": null },
+    { "gig": { "text": "the roof" }, "score": null }
+  ],
+  "problems": [
+    { "row": 3, "column": "score", "kind": "type" },
+    { "row": 4, "column": "score", "kind": "type" }
+  ]
+}

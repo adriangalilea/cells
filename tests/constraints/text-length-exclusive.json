@@ -1,0 +1,16 @@
+{
+  "columns": [
+    { "name": "band", "type": "text" },
+    { "name": "tag", "type": "text>2<6" }
+  ],
+  "rows": [
+    { "band": { "text": "first" }, "tag": { "text": "abc" } },
+    { "band": { "text": "second" }, "tag": { "text": "abcde" } },
+    { "band": { "text": "third" }, "tag": null },
+    { "band": { "text": "fourth" }, "tag": null }
+  ],
+  "problems": [
+    { "row": 2, "column": "tag", "kind": "type" },
+    { "row": 3, "column": "tag", "kind": "type" }
+  ]
+}

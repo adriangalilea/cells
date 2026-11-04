@@ -1,0 +1,5 @@
+book:text,stars:int>=1<=5
+the quiet orchard,1
+salt and sky,5
+lost maps,0
+the long road,6

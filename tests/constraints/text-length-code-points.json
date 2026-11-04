@@ -1,0 +1,16 @@
+{
+  "columns": [
+    { "name": "stall", "type": "text" },
+    { "name": "sign", "type": "text<=4" }
+  ],
+  "rows": [
+    { "stall": { "text": "first" }, "sign": { "text": "café" } },
+    { "stall": { "text": "second" }, "sign": null },
+    { "stall": { "text": "third" }, "sign": { "text": "🌱🌱🌱🌱" } },
+    { "stall": { "text": "fourth" }, "sign": null }
+  ],
+  "problems": [
+    { "row": 1, "column": "sign", "kind": "type" },
+    { "row": 3, "column": "sign", "kind": "type" }
+  ]
+}
