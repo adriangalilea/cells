@@ -104,13 +104,13 @@ One law and one engine. Every surface binds the same Rust core, so there is one 
 | The language server: types checked as typed, references completed and followed, semantic highlighting | `rust/` | Rust |
 | The web: the engine as wasm, a synchronous `read(text)`, columns read as typed arrays without a copy | `rust/` | Rust, wasm |
 | The Apple platforms: the engine behind a C header, swift-utils' `TCSV` and `TCSVTable` over it | `rust/` + swift-utils | Rust, Swift |
-| Python | the engine, bound | Rust (PyO3) |
+| Python, Go | pending: after the Apple platforms and the web | Rust (PyO3), cgo |
 | Highlighting in Helix, Neovim, Zed | `tree-sitter/` | tree-sitter |
 | Highlighting in VS Code, GitHub, Shiki | `syntaxes/` | TextMate |
 
 Rust because it is as fast as C and reaches everything else: a C ABI, wasm, PyO3, `tower-lsp`, DuckDB's bindings. Arrow because typed columns are what it is: DuckDB, Python, the browser and Swift take them as they lie, and a chart reads a column, never a row. DuckDB ships with the command line, the daemon and the apps, never in a page.
 
-Being built now. Until the engine lands, [`ts/`](ts) is the TypeScript reader in use: `read`, `write`, `setCell`, `setType`, `parseHeader`, `compose`, and `Infer<"header">`, the row type from a header line at compile time.
+Being built now, in this order: the suite and the engine; the web and the Apple platforms (macOS, iOS) on it; `tcsv sql` and the daemon; charts from the types; the language server. Until the engine lands, [`ts/`](ts) is the TypeScript reader in use: `read`, `write`, `setCell`, `setType`, `parseHeader`, `compose`, and `Infer<"header">`, the row type from a header line at compile time.
 
 ## Where it is used
 
