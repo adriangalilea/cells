@@ -12,17 +12,25 @@ import type { Column, Doc, Value } from "./tcsv.ts"
 const args = process.argv.slice(2)
 const libAt = args.indexOf("--lib")
 const lib = libAt < 0 ? "./tcsv.ts" : resolve(args.splice(libAt, 2)[1] as string)
-const { compose, read, setCell, setType, setValue, TcsvError, write } = (await import(lib)) as typeof import("./tcsv.ts")
+const { compose, detect, readAs, reshape, setCell, setType, setValue, TcsvError, write, writtenAs } = (await import(
+  lib
+)) as typeof import("./tcsv.ts")
 type TcsvError = InstanceType<typeof TcsvError>
+type Dialect = import("./tcsv.ts").Dialect
+type ColumnAt = import("./tcsv.ts").ColumnAt
 const root = args[0] ?? join(import.meta.dir, "../../../tests")
 
+/** A case's file: a `.tcsv`, or under `plain/` a `.csv`, `.tsv` or `.txt`; never an
+ *  edit's `.out.` file. */
 function cases(dir: string): string[] {
+  const plain = dir.endsWith("/plain")
   return readdirSync(dir)
     .sort()
     .flatMap((n) => {
       const p = join(dir, n)
       if (statSync(p).isDirectory()) return cases(p)
-      return n.endsWith(".tcsv") && !n.endsWith(".out.tcsv") ? [p] : []
+      if (n.includes(".out.")) return []
+      return (plain ? /\.(csv|tsv|txt)$/ : /\.tcsv$/).test(n) ? [p] : []
     })
 }
 
@@ -58,6 +66,8 @@ function theirs(v: unknown): Tagged {
 interface Want {
   error?: { at: string }
   types?: Record<string, string>
+  separator?: string
+  names?: { column: number; kind: string }[]
   columns: { name: string; type: string; inferred?: boolean; computed?: string }[]
   rows: Record<string, unknown>[]
   problems: { row: number; column: string; kind: string }[]
@@ -86,6 +96,13 @@ function check(doc: Doc, want: Want): string[] {
   if (a !== b) f.push(`problems ${a}, the suite says ${b}`)
   for (const p of doc.problems())
     if (p.why !== `row ${p.row}, ${p.column}: ${p.reason}`) f.push(`problem ${JSON.stringify(p.why)} is not its reason ${JSON.stringify(p.reason)} at its place`)
+  if (doc.dialect !== "tcsv") {
+    if (doc.dialect !== want.separator) f.push(`separator ${JSON.stringify(doc.dialect)}, the suite says ${JSON.stringify(want.separator)}`)
+    const ours = JSON.stringify(doc.names().map((n) => [n.column, n.kind]))
+    const theirs = JSON.stringify((want.names ?? []).map((n) => [n.column, n.kind]))
+    if (ours !== theirs) f.push(`names ${ours}, the suite says ${theirs}`)
+    for (const n of doc.names()) if (n.reason === "") f.push(`header problem ${n.column} has no words`)
+  }
   f.push(...hosted(doc))
   return f
 }
@@ -103,7 +120,7 @@ function hosted(doc: Doc): string[] {
   )
   const header = stored.map((c) => (c.spelled ? `${c.name}:${c.spelled}` : c.name))
   if (header.length === 0) return f
-  const again = read(compose(doc, header, cells)).doc
+  const again = readAs(compose(doc, header, cells), doc.dialect).doc
   if (JSON.stringify(again.cells()) !== JSON.stringify(cells)) f.push("compose of its cells reads back other cells")
   if (JSON.stringify(again.columns.map((c) => c.type)) !== JSON.stringify(doc.columns.map((c) => c.type)))
     f.push("compose of its cells reads back other types")
@@ -123,28 +140,60 @@ const text = (b: Uint8Array) => new TextDecoder("utf-8", { ignoreBOM: true }).de
 let passed = 0
 let failed = 0
 const all = cases(root)
+/** The edits applied in order, and the file's text after them: as written, or after a
+ *  last `as` edit the file written in that dialect. */
+function edited(start: Doc, edits: Record<string, unknown>[]): string {
+  let doc = start
+  const at = (name: unknown) => doc.columns.findIndex((c) => c.name === name)
+  const kept = (): ColumnAt[] => doc.columns.slice(0, doc.stored).map((_, k) => ({ kept: k }))
+  for (const e of edits) {
+    if ("as" in e) return writtenAs(doc, e.as as Dialect, e.header as string[] | undefined)
+    let order: ColumnAt[] | null = null
+    if ("insert" in e) {
+      order = kept()
+      order.splice(e.insert as number, 0, { header: e.header as string, cells: e.cells as string[] | undefined })
+    } else if ("remove" in e) {
+      order = kept()
+      order.splice(at(e.remove), 1)
+    } else if ("move" in e) {
+      order = kept()
+      const [moved] = order.splice(at(e.move), 1)
+      order.splice(e.to as number, 0, moved as ColumnAt)
+    } else if ("rename" in e) {
+      order = kept()
+      order[at(e.rename)] = { kept: at(e.rename), name: e.to as string }
+    }
+    if (order) doc = reshape(doc, order).doc
+    else if ("type" in e) setType(doc, e.column as string, e.type as string)
+    else if ("text" in e) setCell(doc, e.row as number, e.column as string, e.text as string)
+    else setValue(doc, e.row as number, e.column as string, value(e.value))
+  }
+  return write(doc)
+}
+
 for (const path of all) {
   const bytes = new Uint8Array(readFileSync(path))
-  const stem = path.slice(0, -".tcsv".length)
+  const ext = path.slice(path.lastIndexOf("."))
+  const stem = path.slice(0, -ext.length)
+  const dialect: Dialect = ext === ".tcsv" ? "tcsv" : detect(bytes)
   const fails: string[] = []
-  let got: ReturnType<typeof read> | TcsvError
+  let got: ReturnType<typeof readAs> | TcsvError
   try {
-    got = read(bytes)
+    got = readAs(bytes, dialect)
   } catch (e) {
     got = e as TcsvError
   }
   if (existsSync(`${stem}.edit.json`)) {
     if (got instanceof TcsvError) fails.push(`does not read: ${got.message}`)
     else {
-      const doc = got.doc
-      if (write(doc) !== text(bytes)) fails.push("does not round-trip")
-      for (const e of JSON.parse(readFileSync(`${stem}.edit.json`, "utf8")) as Record<string, unknown>[]) {
-        if ("type" in e) setType(doc, e.column as string, e.type as string)
-        else if ("text" in e) setCell(doc, e.row as number, e.column as string, e.text as string)
-        else setValue(doc, e.row as number, e.column as string, value(e.value))
+      if (write(got.doc) !== text(bytes)) fails.push("does not round-trip")
+      try {
+        const wrote = edited(got.doc, JSON.parse(readFileSync(`${stem}.edit.json`, "utf8")) as Record<string, unknown>[])
+        const out = text(new Uint8Array(readFileSync(`${stem}.out${ext}`)))
+        if (wrote !== out) fails.push(`writes ${JSON.stringify(wrote)}, the suite says ${JSON.stringify(out)}`)
+      } catch (e) {
+        fails.push(`an edit fails: ${(e as Error).message}`)
       }
-      const out = text(new Uint8Array(readFileSync(`${stem}.out.tcsv`)))
-      if (write(doc) !== out) fails.push(`writes ${JSON.stringify(write(doc))}, the suite says ${JSON.stringify(out)}`)
     }
   } else {
     const want = JSON.parse(readFileSync(`${stem}.json`, "utf8")) as Want

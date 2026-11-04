@@ -29,6 +29,11 @@ interface Exports {
   tcsv_cell_ends(h: number): number
   tcsv_set_cell(h: number, row: number, column: number, ptr: number, len: number, cap: number): void
   tcsv_set_type(h: number, column: number, ptr: number, len: number, cap: number): number
+  tcsv_read_as(ptr: number, len: number, cap: number, sep: number): number
+  tcsv_detect(ptr: number, len: number): number
+  tcsv_reshaped(h: number, ptr: number, len: number, cap: number): number
+  tcsv_written_as(h: number, sep: number, ptr: number, len: number, cap: number): number
+  tcsv_naming_why(h: number, i: number): number
 }
 
 function decodeBase64(s: string): Uint8Array<ArrayBuffer> {
@@ -97,10 +102,18 @@ interface ColumnMeta {
   unit?: number
 }
 
+/** A plain file's separator. */
+export type Separator = "," | ";" | "\t" | "|"
+/** How a file is read and written: TCSV, or a plain file with its separator. */
+export type Dialect = "tcsv" | Separator
+
 interface Meta {
   rows: number
   stored: number
-  newline: "\n" | "\r\n"
+  newline: "\n" | "\r\n" | "\r"
+  dialect: Dialect
+  quotesAll: boolean
+  names: { column: number; kind: "blank" | "twice" }[]
   prelude: string
   trailing: boolean
   problems: number
@@ -302,7 +315,8 @@ export interface Problem {
   /** The column's name, and its place among the columns. */
   column: string
   at: number
-  kind: "type" | "missing" | "key"
+  /** `ragged`: a plain file's row of another width than its header. */
+  kind: "type" | "missing" | "key" | "ragged"
   /** The cell's text as written. */
   readonly text: string
   /** The problem in words: `row 3, cost: "8x.50" is not a number`. */
@@ -312,7 +326,16 @@ export interface Problem {
   readonly reason: string
 }
 
-const KINDS = ["type", "missing", "key"] as const
+/** A plain file's header cell that names its column badly: blank, or another's name too. */
+export interface Naming {
+  /** The column, from 0. */
+  column: number
+  kind: "blank" | "twice"
+  /** In words without its place: `has no name`, `"a" names column 1 too`. */
+  readonly reason: string
+}
+
+const KINDS = ["type", "missing", "key", "ragged"] as const
 const live = new FinalizationRegistry<number>((h) => x.tcsv_drop(h))
 
 /** A file read, held by the module. */
@@ -345,9 +368,31 @@ export class Doc {
   get prelude(): string {
     return this.meta.prelude
   }
-  /** The header's line break, the one new lines take. */
-  get newline(): "\n" | "\r\n" {
+  /** The header's line break, the one new lines take (a plain file's may be a lone `\r`). */
+  get newline(): "\n" | "\r\n" | "\r" {
     return this.meta.newline
+  }
+  /** How the file was read: `tcsv`, or a plain file's separator. */
+  get dialect(): Dialect {
+    return this.meta.dialect
+  }
+  /** The text between two fields. */
+  get separator(): Separator {
+    return this.meta.dialect === "tcsv" ? "," : this.meta.dialect
+  }
+  /** A plain file that quotes every field: an edited cell and a new row are quoted so too. */
+  get quotesAll(): boolean {
+    return this.meta.quotesAll
+  }
+  /** A plain file's header cells that name their columns badly. */
+  names(): Naming[] {
+    const doc = this
+    return this.meta.names.map((n, i) => ({
+      ...n,
+      get reason() {
+        return returned(x.tcsv_naming_why(doc.handle, i))
+      },
+    }))
   }
   /** Whether the file ends in a line break. */
   get trailing(): boolean {
@@ -425,8 +470,28 @@ export interface Read {
 
 /** A `.tcsv` file's text (or its bytes), read. */
 export function read(input: string | Uint8Array): Read {
+  return readAs(input, "tcsv")
+}
+
+const sepByte = (d: Dialect): number => (d === "tcsv" ? 0 : d.charCodeAt(0))
+
+/** The separator the first lines of a plain file agree on (the one splitting each into as
+ *  many fields as the first, the most fields winning, a tie to `,` then tab, `;`, `|`). */
+export function detect(input: string | Uint8Array): Separator {
   const [p, len, cap] = put(input)
-  const h = x.tcsv_read(p, len, cap)
+  const sep = String.fromCharCode(x.tcsv_detect(p, len)) as Separator
+  x.tcsv_free(p, cap)
+  return sep
+}
+
+/** A file read in a dialect: `tcsv`, or a plain file (a `.csv`, a `.tsv`, plain text) by
+ *  its separator, never refused but for bytes that are not UTF-8 (`detect` finds it). */
+export function readAs(input: string | Uint8Array, dialect: Dialect): Read {
+  const [p, len, cap] = put(input)
+  return opened(x.tcsv_read_as(p, len, cap, sepByte(dialect)))
+}
+
+function opened(h: number): Read {
   if (h === 0) throw thrown()
   const doc = new Doc(h)
   let rows: Record<string, Value>[] | null = null
@@ -485,22 +550,88 @@ export function write(doc: Doc): string {
   return returned(x.tcsv_write(doc.handle))
 }
 
-/** A cell's text in the file's form: quoted only when it holds `,`, `"` or a line
- *  break (the core's `scan::quote`). */
-const quote = (text: string): string => (/[",\r\n]/.test(text) ? `"${text.replaceAll('"', '""')}"` : text)
+/** Strings for the module, one after another, each a little-endian `u32` length and its
+ *  bytes; a list is its count and its strings. */
+class Spec {
+  private parts: Uint8Array[] = []
+  byte(b: number): this {
+    this.parts.push(Uint8Array.of(b))
+    return this
+  }
+  u32(n: number): this {
+    const b = new Uint8Array(4)
+    new DataView(b.buffer).setUint32(0, n, true)
+    this.parts.push(b)
+    return this
+  }
+  str(s: string): this {
+    const b = encoder.encode(s)
+    this.u32(b.length)
+    this.parts.push(b)
+    return this
+  }
+  list(xs: readonly string[]): this {
+    this.u32(xs.length)
+    for (const s of xs) this.str(s)
+    return this
+  }
+  bytes(): Uint8Array {
+    const out = new Uint8Array(this.parts.reduce((n, p) => n + p.length, 0))
+    let at = 0
+    for (const p of this.parts) {
+      out.set(p, at)
+      at += p.length
+    }
+    return out
+  }
+}
+
+/** A column of a file reshaped: a stored one by its place (renamed when `name` is given),
+ *  or a new one, its header cell and a cell a row (none: blanks). */
+export type ColumnAt = { kept: number; name?: string } | { header: string; cells?: readonly string[] }
+
+/** The file with exactly `columns`, in their order, read again as a new doc (`doc` is
+ *  untouched): inserting, removing, moving and renaming columns. Each kept column keeps
+ *  every row's field as written; a `.tcsv` file whose columns no longer read (two of one
+ *  name, a computed column reading one taken out) throws. */
+export function reshape(doc: Doc, columns: readonly ColumnAt[]): Read {
+  const spec = new Spec()
+  for (const c of columns) {
+    if ("header" in c) spec.byte(2).str(c.header).list(c.cells ?? [])
+    else if (c.name !== undefined) spec.byte(1).u32(c.kept).str(c.name)
+    else spec.byte(0).u32(c.kept)
+  }
+  const [p, len, cap] = put(spec.bytes())
+  return opened(x.tcsv_reshaped(doc.handle, p, len, cap))
+}
+
+/** The file written in another dialect: a plain file's header the columns' names, the
+ *  computed ones among them with their values; a `.tcsv` file's header `header` when given
+ *  (each column's cell with its type), its prelude kept. */
+export function writtenAs(doc: Doc, dialect: Dialect, header?: readonly string[]): string {
+  const [p, len, cap] = put(new Spec().list(header ?? []).bytes())
+  return returned(x.tcsv_written_as(doc.handle, sepByte(dialect), p, len, cap))
+}
+
+/** A cell's text in a file's form: quoted when it holds the separator, `"` or a line
+ *  break, or always in a plain file that quotes every field (the core's `scan::quote_in`). */
+function quoter(separator: Separator, all: boolean): (text: string) => string {
+  return (text) => (all || text.includes(separator) || /["\r\n]/.test(text) ? `"${text.replaceAll('"', '""')}"` : text)
+}
 
 /** A file written from cells, for a host that keeps its own rows (a table editing the
  *  file) and hands back the header's cells and the rows' texts: `like`'s byte order
- *  mark and prelude, its line break and its final break, every field quoted only where
- *  CSV needs it (the core's `tcsv::compose`, here so the rows never cross into the
- *  module). Pure: nothing is read or changed. */
+ *  mark and prelude, its separator, its line break and its final break, every field quoted
+ *  only where the file needs it (the core's `tcsv::compose`, here so the rows never cross
+ *  into the module). Pure: nothing is read or changed. */
 export function compose(
-  like: { prelude: string; newline: "\n" | "\r\n"; trailing: boolean },
+  like: { prelude: string; newline: "\n" | "\r\n" | "\r"; trailing: boolean; separator: Separator; quotesAll: boolean },
   header: readonly string[],
   rows: readonly (readonly string[])[],
 ): string {
+  const quote = quoter(like.separator, like.quotesAll)
   const parts: string[] = new Array(rows.length + 1)
-  parts[0] = header.map(quote).join(",")
-  for (let r = 0; r < rows.length; r++) parts[r + 1] = (rows[r] as readonly string[]).map(quote).join(",")
+  parts[0] = header.map(quote).join(like.separator)
+  for (let r = 0; r < rows.length; r++) parts[r + 1] = (rows[r] as readonly string[]).map(quote).join(like.separator)
   return like.prelude + parts.join(like.newline) + (like.trailing ? like.newline : "")
 }

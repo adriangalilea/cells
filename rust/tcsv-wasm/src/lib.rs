@@ -9,7 +9,7 @@
 use std::cell::UnsafeCell;
 use std::fmt::Write;
 
-use tcsv::{Base, Data, Doc};
+use tcsv::{Base, ColumnAt, Data, Dialect, Doc, Naming, Separator};
 
 /// Results that outlive the call that made them, one set per handle.
 pub struct Handle {
@@ -87,19 +87,150 @@ unsafe fn took(ptr: *mut u8, len: usize, cap: usize) -> Vec<u8> {
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn tcsv_read(ptr: *mut u8, len: usize, cap: usize) -> *mut Handle {
     // SAFETY: the caller's promise.
-    let bytes = unsafe { took(ptr, len, cap) };
-    match tcsv::read(bytes) {
+    unsafe { tcsv_read_as(ptr, len, cap, 0) }
+}
+
+/// The dialect a call names: 0 for TCSV, else a plain file's separator byte.
+fn dialect(sep: u32) -> Dialect {
+    if sep == 0 {
+        return Dialect::Tcsv;
+    }
+    Dialect::Plain(Separator::of(sep as u8).unwrap_or_else(|| panic!("{sep} is no separator")))
+}
+
+fn handled(read: Result<Doc, tcsv::Error>) -> *mut Handle {
+    match read {
         Ok(doc) => Box::into_raw(Box::new(Handle { doc, out: Vec::new(), problems: Vec::new(), ends: Vec::new() })),
         Err(e) => {
-            let mut s = String::from("{\"at\":");
-            json_str(&mut s, &e.at.to_string());
-            s.push_str(",\"why\":");
-            json_str(&mut s, &e.why);
-            s.push('}');
-            shared().error = s.into_bytes();
+            failed(e);
             std::ptr::null_mut()
         }
     }
+}
+
+fn failed(e: tcsv::Error) {
+    let mut s = String::from("{\"at\":");
+    json_str(&mut s, &e.at.to_string());
+    s.push_str(",\"why\":");
+    json_str(&mut s, &e.why);
+    s.push('}');
+    shared().error = s.into_bytes();
+}
+
+/// `tcsv_read` in a dialect: `sep` 0 for TCSV, else a plain file's separator byte.
+///
+/// # Safety
+/// As `tcsv_read`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn tcsv_read_as(ptr: *mut u8, len: usize, cap: usize, sep: u32) -> *mut Handle {
+    // SAFETY: the caller's promise.
+    let bytes = unsafe { took(ptr, len, cap) };
+    handled(tcsv::read_as(bytes, dialect(sep), 1))
+}
+
+/// The separator the first lines of the `len` bytes at `ptr` agree on, as its byte; the
+/// bytes stay the caller's.
+///
+/// # Safety
+/// `ptr` points at `len` readable bytes.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn tcsv_detect(ptr: *const u8, len: usize) -> u32 {
+    // SAFETY: the caller's promise.
+    let bytes = if len == 0 { &[][..] } else { unsafe { std::slice::from_raw_parts(ptr, len) } };
+    tcsv::detect(bytes).byte() as u32
+}
+
+/// Strings a page wrote one after another, each a little-endian `u32` length and its bytes.
+struct Strings<'a> {
+    bytes: &'a [u8],
+    at: usize,
+}
+
+impl<'a> Strings<'a> {
+    fn u32(&mut self) -> u32 {
+        let v = u32::from_le_bytes(self.bytes[self.at..self.at + 4].try_into().unwrap());
+        self.at += 4;
+        v
+    }
+
+    fn str(&mut self) -> &'a str {
+        let n = self.u32() as usize;
+        let s = std::str::from_utf8(&self.bytes[self.at..self.at + n]).expect("the page writes UTF-8");
+        self.at += n;
+        s
+    }
+
+    fn list(&mut self) -> Vec<&'a str> {
+        let n = self.u32();
+        (0..n).map(|_| self.str()).collect()
+    }
+}
+
+/// The file with exactly the columns the page wrote (room from `tcsv_alloc(cap)`, `len`
+/// bytes of it, which this call takes), as a new handle; null when it does not read, the
+/// error at `tcsv_error`. Each column is a tag byte and its parts: 0 and a `u32` index
+/// (kept), 1, an index and a name (renamed), 2, a header cell and a list of cells (new).
+///
+/// # Safety
+/// `h` is a live handle; `ptr`, `len`, `cap` as for `tcsv_read`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn tcsv_reshaped(h: *mut Handle, ptr: *mut u8, len: usize, cap: usize) -> *mut Handle {
+    // SAFETY: the caller's promise.
+    let (h, spec) = unsafe { (handle(h), took(ptr, len, cap)) };
+    let mut s = Strings { bytes: &spec, at: 0 };
+    let mut parts: Vec<(u8, usize, &str, Vec<&str>)> = Vec::new();
+    while s.at < spec.len() {
+        let tag = spec[s.at];
+        s.at += 1;
+        parts.push(match tag {
+            0 => (0, s.u32() as usize, "", Vec::new()),
+            1 => {
+                let k = s.u32() as usize;
+                (1, k, s.str(), Vec::new())
+            }
+            2 => {
+                let header = s.str();
+                (2, 0, header, s.list())
+            }
+            t => panic!("{t} is no column's tag"),
+        });
+    }
+    let columns: Vec<ColumnAt> = parts
+        .iter()
+        .map(|(tag, k, text, cells)| match tag {
+            0 => ColumnAt::Kept(*k),
+            1 => ColumnAt::Renamed(*k, text),
+            _ => ColumnAt::New(text, cells),
+        })
+        .collect();
+    handled(h.doc.reshaped(&columns, 1))
+}
+
+/// The file written in a dialect (`sep` as for `tcsv_read_as`), its header cells the list
+/// the page wrote (room from `tcsv_alloc(cap)`, which this call takes), or the file's own
+/// when the list is empty.
+///
+/// # Safety
+/// `h` is a live handle; `ptr`, `len`, `cap` as for `tcsv_read`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn tcsv_written_as(h: *mut Handle, sep: u32, ptr: *mut u8, len: usize, cap: usize) -> *const u8 {
+    // SAFETY: the caller's promise.
+    let (h, spec) = unsafe { (handle(h), took(ptr, len, cap)) };
+    let header = Strings { bytes: &spec, at: 0 }.list();
+    h.out = h.doc.written_as(dialect(sep), if header.is_empty() { None } else { Some(&header) }).into_bytes();
+    give(&h.out)
+}
+
+/// A header problem in words without its place, `has no name`.
+///
+/// # Safety
+/// `h` is a live handle; `i` below the meta's `names`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn tcsv_naming_why(h: *mut Handle, i: usize) -> *const u8 {
+    // SAFETY: the caller's promise.
+    let h = unsafe { handle(h) };
+    h.out = h.doc.naming_why(&h.doc.naming()[i]).into_bytes();
+    give(&h.out)
 }
 
 /// The last failed read's error, `{"at":"row 3","why":"..."}`.
@@ -148,9 +279,10 @@ fn addr<T>(v: &[T]) -> usize {
     v.as_ptr() as usize
 }
 
-/// Where everything is: the rows, the named types, every column's type, kind and buffers,
-/// the problems as `u32` triples (row, column, kind: 0 type, 1 missing, 2 key). Read again
-/// after every edit: an edit may move a column's buffers.
+/// Where everything is: the rows, the dialect (`"tcsv"`, or a plain file's separator), the
+/// named types, every column's type, kind and buffers, the header problems, the problems as
+/// `u32` triples (row, column, kind: 0 type, 1 missing, 2 key, 3 ragged). Read again after
+/// every edit: an edit may move a column's buffers.
 ///
 /// # Safety
 /// `h` is a live handle from `tcsv_read`.
@@ -166,6 +298,23 @@ pub unsafe extern "C" fn tcsv_meta(h: *mut Handle) -> *const u8 {
     let mut s = String::with_capacity(512);
     let _ = write!(s, "{{\"rows\":{},\"stored\":{},\"newline\":", doc.rows(), doc.stored());
     json_str(&mut s, doc.newline());
+    s.push_str(",\"dialect\":");
+    match doc.dialect() {
+        Dialect::Tcsv => json_str(&mut s, "tcsv"),
+        Dialect::Plain(sep) => json_str(&mut s, &(sep.byte() as char).to_string()),
+    }
+    let _ = write!(s, ",\"quotesAll\":{},\"names\":[", doc.quotes_all());
+    for (k, n) in doc.naming().iter().enumerate() {
+        if k > 0 {
+            s.push(',');
+        }
+        let kind = match n {
+            Naming::Blank { .. } => "blank",
+            Naming::Twice { .. } => "twice",
+        };
+        let _ = write!(s, "{{\"column\":{},\"kind\":\"{kind}\"}}", n.column());
+    }
+    s.push(']');
     s.push_str(",\"prelude\":");
     json_str(&mut s, doc.prelude_text());
     let _ = write!(
