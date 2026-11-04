@@ -1,0 +1,32 @@
+{
+  "columns": [
+    { "name": "label", "type": "text!" },
+    { "name": "at", "type": "datetime" }
+  ],
+  "rows": [
+    { "label": { "text": "no offset" }, "at": null },
+    { "label": { "text": "no seconds" }, "at": null },
+    { "label": { "text": "space for T" }, "at": null },
+    { "label": { "text": "lowercase t and z" }, "at": null },
+    { "label": { "text": "offset without colon" }, "at": null },
+    { "label": { "text": "offset hours alone" }, "at": null },
+    { "label": { "text": "hour 25" }, "at": null },
+    { "label": { "text": "february 30" }, "at": null },
+    { "label": { "text": "ten fraction digits" }, "at": null },
+    { "label": { "text": "a bare date" }, "at": null },
+    { "label": { "text": "offset of 24 hours" }, "at": null }
+  ],
+  "problems": [
+    { "row": 0, "column": "at", "kind": "type" },
+    { "row": 1, "column": "at", "kind": "type" },
+    { "row": 2, "column": "at", "kind": "type" },
+    { "row": 3, "column": "at", "kind": "type" },
+    { "row": 4, "column": "at", "kind": "type" },
+    { "row": 5, "column": "at", "kind": "type" },
+    { "row": 6, "column": "at", "kind": "type" },
+    { "row": 7, "column": "at", "kind": "type" },
+    { "row": 8, "column": "at", "kind": "type" },
+    { "row": 9, "column": "at", "kind": "type" },
+    { "row": 10, "column": "at", "kind": "type" }
+  ]
+}

@@ -1,0 +1,15 @@
+{
+  "columns": [
+    { "name": "spelling", "type": "text!" },
+    { "name": "id", "type": "id" }
+  ],
+  "rows": [
+    { "spelling": { "text": "lower" }, "id": { "id": "k7m2q9xa" } },
+    { "spelling": { "text": "upper" }, "id": null },
+    { "spelling": { "text": "one capital" }, "id": null }
+  ],
+  "problems": [
+    { "row": 1, "column": "id", "kind": "type" },
+    { "row": 2, "column": "id", "kind": "type" }
+  ]
+}

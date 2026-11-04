@@ -1,0 +1,5 @@
+item:text!,paid:yes/no
+fuel,yes
+maps,no
+tolls,Yes
+ferry,true

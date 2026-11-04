@@ -1,0 +1,11 @@
+{
+  "columns": [
+    { "name": "book", "type": "text!" },
+    { "name": "returned", "type": "bool" }
+  ],
+  "rows": [
+    { "book": { "text": "the quiet orchard" }, "returned": { "bool": true } },
+    { "book": { "text": "salt and stars" }, "returned": { "bool": false } }
+  ],
+  "problems": []
+}

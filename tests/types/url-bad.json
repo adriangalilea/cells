@@ -1,0 +1,32 @@
+{
+  "columns": [
+    { "name": "label", "type": "text!" },
+    { "name": "link", "type": "url" }
+  ],
+  "rows": [
+    { "label": { "text": "no scheme" }, "link": null },
+    { "label": { "text": "a path" }, "link": null },
+    { "label": { "text": "scheme relative" }, "link": null },
+    { "label": { "text": "a space" }, "link": null },
+    { "label": { "text": "bad percent" }, "link": null },
+    { "label": { "text": "not ascii" }, "link": null },
+    { "label": { "text": "scheme opens with a digit" }, "link": null },
+    { "label": { "text": "no scheme before colon" }, "link": null },
+    { "label": { "text": "nothing after colon" }, "link": null },
+    { "label": { "text": "angle brackets" }, "link": null },
+    { "label": { "text": "backslash" }, "link": null }
+  ],
+  "problems": [
+    { "row": 0, "column": "link", "kind": "type" },
+    { "row": 1, "column": "link", "kind": "type" },
+    { "row": 2, "column": "link", "kind": "type" },
+    { "row": 3, "column": "link", "kind": "type" },
+    { "row": 4, "column": "link", "kind": "type" },
+    { "row": 5, "column": "link", "kind": "type" },
+    { "row": 6, "column": "link", "kind": "type" },
+    { "row": 7, "column": "link", "kind": "type" },
+    { "row": 8, "column": "link", "kind": "type" },
+    { "row": 9, "column": "link", "kind": "type" },
+    { "row": 10, "column": "link", "kind": "type" }
+  ]
+}

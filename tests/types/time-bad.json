@@ -1,0 +1,28 @@
+{
+  "columns": [
+    { "name": "label", "type": "text!" },
+    { "name": "at", "type": "time" }
+  ],
+  "rows": [
+    { "label": { "text": "hour 24" }, "at": null },
+    { "label": { "text": "one digit hour" }, "at": null },
+    { "label": { "text": "minute 60" }, "at": null },
+    { "label": { "text": "second 60" }, "at": null },
+    { "label": { "text": "one digit second" }, "at": null },
+    { "label": { "text": "dot" }, "at": null },
+    { "label": { "text": "fraction" }, "at": null },
+    { "label": { "text": "a word" }, "at": null },
+    { "label": { "text": "an offset" }, "at": null }
+  ],
+  "problems": [
+    { "row": 0, "column": "at", "kind": "type" },
+    { "row": 1, "column": "at", "kind": "type" },
+    { "row": 2, "column": "at", "kind": "type" },
+    { "row": 3, "column": "at", "kind": "type" },
+    { "row": 4, "column": "at", "kind": "type" },
+    { "row": 5, "column": "at", "kind": "type" },
+    { "row": 6, "column": "at", "kind": "type" },
+    { "row": 7, "column": "at", "kind": "type" },
+    { "row": 8, "column": "at", "kind": "type" }
+  ]
+}

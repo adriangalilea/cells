@@ -1,0 +1,11 @@
+{
+  "columns": [
+    { "name": "item", "type": "text!" },
+    { "name": "cost", "type": "JPY" }
+  ],
+  "rows": [
+    { "item": { "text": "rail pass" }, "cost": { "money": "1200", "currency": "JPY" } },
+    { "item": { "text": "noodles per gram" }, "cost": { "money": "1200.5", "currency": "JPY" } }
+  ],
+  "problems": []
+}

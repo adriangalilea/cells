@@ -1,0 +1,18 @@
+{
+  "columns": [
+    { "name": "label", "type": "text!" },
+    { "name": "link", "type": "url" }
+  ],
+  "rows": [
+    { "label": { "text": "plain" }, "link": { "url": "https://example.com/a" } },
+    { "label": { "text": "port query fragment" }, "link": { "url": "http://localhost:8080/p?q=1&r=2#top" } },
+    { "label": { "text": "mail" }, "link": { "url": "mailto:ada@example.com" } },
+    { "label": { "text": "urn" }, "link": { "url": "urn:example:seed-42" } },
+    { "label": { "text": "file" }, "link": { "url": "file:///tmp/notes.txt" } },
+    { "label": { "text": "percent encoded" }, "link": { "url": "https://example.com/a%20b" } },
+    { "label": { "text": "capitals" }, "link": { "url": "HTTPS://EXAMPLE.COM" } },
+    { "label": { "text": "ipv6 host" }, "link": { "url": "http://[::1]:8080/" } },
+    { "label": { "text": "tilde and parentheses" }, "link": { "url": "https://example.com/~ada/(draft)" } }
+  ],
+  "problems": []
+}

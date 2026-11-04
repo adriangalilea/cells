@@ -1,0 +1,20 @@
+{
+  "columns": [
+    { "name": "label", "type": "text!" },
+    { "name": "germination", "type": "pct" }
+  ],
+  "rows": [
+    { "label": { "text": "space before sign" }, "germination": null },
+    { "label": { "text": "sign first" }, "germination": null },
+    { "label": { "text": "two signs" }, "germination": null },
+    { "label": { "text": "a word" }, "germination": null },
+    { "label": { "text": "sign alone" }, "germination": null }
+  ],
+  "problems": [
+    { "row": 0, "column": "germination", "kind": "type" },
+    { "row": 1, "column": "germination", "kind": "type" },
+    { "row": 2, "column": "germination", "kind": "type" },
+    { "row": 3, "column": "germination", "kind": "type" },
+    { "row": 4, "column": "germination", "kind": "type" }
+  ]
+}

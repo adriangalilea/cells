@@ -1,0 +1,13 @@
+{
+  "columns": [
+    { "name": "item", "type": "text!" },
+    { "name": "usd", "type": "USD" },
+    { "name": "gbp", "type": "GBP" },
+    { "name": "chf", "type": "CHF" }
+  ],
+  "rows": [
+    { "item": { "text": "ferry" }, "usd": { "money": "40.00", "currency": "USD" }, "gbp": { "money": "31.50", "currency": "GBP" }, "chf": { "money": "35.10", "currency": "CHF" } },
+    { "item": { "text": "museum" }, "usd": { "money": "12", "currency": "USD" }, "gbp": { "money": "9.5", "currency": "GBP" }, "chf": { "money": "10.80", "currency": "CHF" } }
+  ],
+  "problems": []
+}

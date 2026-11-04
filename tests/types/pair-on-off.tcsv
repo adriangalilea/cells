@@ -1,0 +1,4 @@
+bed:text!,watering:on/off
+north,on
+south,off
+east,ON

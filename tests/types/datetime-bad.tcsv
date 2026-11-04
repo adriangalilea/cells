@@ -1,0 +1,12 @@
+label:text!,at:datetime
+no offset,2026-08-14T14:30:00
+no seconds,2026-08-14T14:30Z
+space for T,2026-08-14 14:30:00Z
+lowercase t and z,2026-08-14t14:30:00z
+offset without colon,2026-08-14T14:30:00+0200
+offset hours alone,2026-08-14T14:30:00+02
+hour 25,2026-08-14T25:00:00Z
+february 30,2026-02-30T10:00:00Z
+ten fraction digits,2026-08-14T14:30:00.1234567890Z
+a bare date,2026-08-14
+offset of 24 hours,2026-08-14T14:30:00+24:00

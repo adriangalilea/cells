@@ -1,0 +1,13 @@
+{
+  "columns": [
+    { "name": "set", "type": "text!" },
+    { "name": "at", "type": "time" }
+  ],
+  "rows": [
+    { "set": { "text": "soundcheck" }, "at": { "time": "14:30:00" } },
+    { "set": { "text": "doors" }, "at": { "time": "14:30:05" } },
+    { "set": { "text": "midnight" }, "at": { "time": "00:00:00" } },
+    { "set": { "text": "last second" }, "at": { "time": "23:59:59" } }
+  ],
+  "problems": []
+}

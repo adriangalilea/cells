@@ -38,22 +38,32 @@ cost:EUR>=0
 
 ## Types
 
+A type opens with what the column holds: a base, a currency, a named type, a choice or a pair. Its format, bounds and marks follow, in any order. A type that opens with a bound has no base written and is a number (below). Spaces between the parts are nothing (`travel | stay` is `travel|stay`, `text !` is `text!`); a space is never part of a word unless quoted. A type says each thing once: one base, at most one lower and one upper bound, one format, each mark once, and what a named type it uses already says counts as said. Anything else, two bases, a mark before the base, a part said twice, is an error naming the column.
+
 ### Bases
 
 | Type | A cell | Its value |
 |---|---|---|
 | `text` | any text | the text |
-| `int` | `-12`, `0`, `4200` | a whole number |
-| `num` | `-1.5`, `84.20`, `3e8` | a number |
-| `pct` | `12`, `12.5`, `12%` | a number, the percentage (`12%` is 12) |
+| `int` | `-12`, `0`, `4200`, `+7`, `0042` | a whole number: a sign or none, then digits |
+| `num` | `-1.5`, `84.20`, `3e8`, `.5` | a number: a sign or none, digits with a fraction or none (`5.` and `.5` too), then an exponent or none |
+| `pct` | `12`, `12.5`, `12%` | a number, the percentage (`12%` is 12): a `num`, then `%` or none |
 | `bool` | `true` or `false` | a boolean |
-| `date` | `2026-08-14` | a calendar date, ISO 8601 |
-| `time` | `14:30`, `14:30:05` | a time of day |
-| `datetime` | `2026-08-14T14:30:00Z` | an instant, ISO 8601 |
-| `url` | `https://example.com/a` | an absolute URL |
-| `email` | `ada@example.com` | an address |
+| `date` | `2026-08-14` | a calendar date, ISO 8601: `YYYY-MM-DD`, a day the Gregorian calendar has |
+| `time` | `14:30`, `14:30:05` | a time of day: `HH:mm` or `HH:mm:ss`, hours `00` to `23`, minutes and seconds `00` to `59` |
+| `datetime` | `2026-08-14T14:30:00Z` | an instant, ISO 8601 as RFC 3339 writes it (below) |
+| `url` | `https://example.com/a` | an absolute URL, as RFC 3986 writes it (below) |
+| `email` | `ada@example.com` | an address (below) |
 | any ISO 4217 code, `EUR`, `USD`, `JPY` | `84.20` | an amount of money in that currency, a number |
 | `id` | `k7m2q9xa` | a row's identity: eight characters of Crockford's base 32 in lower case (`0-9`, `a-z` but `i l o u`), assigned by the engine, never typed by a person |
+
+A cell is read exactly as written: never trimmed, never folded in case. ` 12` is not an `int`, `TRUE` is not a `bool`.
+
+- **`datetime`** is `YYYY-MM-DDTHH:mm:ss`, then a fraction of a second of one to nine digits or none, then `Z` or an offset `+HH:mm` or `-HH:mm` (hours `00` to `23`). `T` and `Z` are capitals, the seconds are always written, the offset never left out: a time with no offset is no instant. Its value is the instant, so `2026-08-14T14:30:00+02:00` and `2026-08-14T12:30:00Z` are one value.
+- **`url`** is a scheme (a letter, then letters, digits, `+`, `-` or `.`), `:`, then at least one character, each a letter, a digit, one of `-._~:/?#[]@!$&'()*+,;=`, or `%` and two hexadecimal digits. No space, nothing outside ASCII: a URL with other characters writes them percent-encoded. `mailto:ada@example.com` is a URL; `example.com` and `//example.com/a` are not.
+- **`email`** is a local part, `@`, then a domain. The local part is at least one ASCII character from `!` to `~` but `@`. The domain is two or more labels joined by `.`, each label ASCII letters, digits and `-`, never starting or ending with `-`. `ada@localhost` is not an address.
+- **`id`** is exactly eight characters, each of `0123456789abcdefghjkmnpqrstvwxyz`: lower case only, never `i`, `l`, `o` or `u`. Its value is the text; two ids are equal when their text is.
+- **A currency** is any alphabetic code of ISO 4217's current list, in capitals: `EUR`, never `eur`; a withdrawn code (`HRK`) is none. An amount is any `num`; the currency's minor unit does not limit its digits (`JPY` takes `1200.5`).
 
 A word that is none of these, no named type and not a choice is an error naming it: `cost:EURO` is `no type or currency "EURO"`, never silently text.
 
@@ -67,7 +77,7 @@ mood:'yay!'|meh|'so-so?'|'it''s fine'
 
 ### A boolean in the file's own words
 
-`paid:yes/no` is a boolean written `yes` for true and `no` for false, true first. `bool` alone reads `true`/`false`.
+`paid:yes/no` is a boolean written `yes` for true and `no` for false, true first. `bool` alone reads `true`/`false`, and `true/false` is `bool`. The two words differ, are quoted as a choice's are, and are read exactly, case included.
 
 ### Constraints
 

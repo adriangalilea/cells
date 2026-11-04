@@ -1,0 +1,11 @@
+label:text!,on:date
+no leap day,2026-02-29
+century not leap,2100-02-29
+month 13,2026-13-01
+month 0,2026-00-10
+april 31,2026-04-31
+one digit month,2026-8-14
+day first,14/08/2026
+an instant,2026-08-14T10:00:00Z
+no dashes,20260814
+slashes,2026/08/14

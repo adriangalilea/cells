@@ -1,0 +1,12 @@
+label:text!,link:url
+no scheme,example.com
+a path,/a/b
+scheme relative,//example.com/a
+a space,https://example.com/a b
+bad percent,https://example.com/%zz
+not ascii,https://例え.jp/
+scheme opens with a digit,1http://x
+no scheme before colon,:foo
+nothing after colon,http:
+angle brackets,https://example.com/<a>
+backslash,C:\notes

@@ -1,0 +1,10 @@
+label:text!,at:time
+hour 24,24:00
+one digit hour,9:30
+minute 60,14:60
+second 60,14:30:60
+one digit second,14:30:5
+dot,14.30
+fraction,14:30:05.5
+a word,2pm
+an offset,14:30Z

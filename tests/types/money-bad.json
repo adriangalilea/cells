@@ -1,0 +1,22 @@
+{
+  "columns": [
+    { "name": "label", "type": "text!" },
+    { "name": "cost", "type": "EUR" }
+  ],
+  "rows": [
+    { "label": { "text": "symbol first" }, "cost": null },
+    { "label": { "text": "code after" }, "cost": null },
+    { "label": { "text": "decimal comma" }, "cost": null },
+    { "label": { "text": "code first" }, "cost": null },
+    { "label": { "text": "dollar sign" }, "cost": null },
+    { "label": { "text": "thousands points" }, "cost": null }
+  ],
+  "problems": [
+    { "row": 0, "column": "cost", "kind": "type" },
+    { "row": 1, "column": "cost", "kind": "type" },
+    { "row": 2, "column": "cost", "kind": "type" },
+    { "row": 3, "column": "cost", "kind": "type" },
+    { "row": 4, "column": "cost", "kind": "type" },
+    { "row": 5, "column": "cost", "kind": "type" }
+  ]
+}

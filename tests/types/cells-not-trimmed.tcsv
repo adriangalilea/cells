@@ -1,0 +1,4 @@
+label:text!,done:bool,note:text,qty:int
+padded int,true,plain, 12
+padded bool,true ,plain,12
+padded text,true, by the gate ,12

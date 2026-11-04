@@ -1,0 +1,13 @@
+label:text!,weight:num
+decimal comma,"1,5"
+not a number,NaN
+infinity,Infinity
+inf,inf
+exponent without digits,1e
+exponent alone,e3
+point alone,.
+two points,1.2.3
+two signs,--1
+underscore,1_000
+hex,0x10
+leading space, 1

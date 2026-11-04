@@ -1,0 +1,9 @@
+label:text!,at:datetime
+utc,2026-08-14T14:30:00Z
+ahead of utc,2026-08-14T14:30:00+02:00
+behind by a half hour,2026-08-14T14:30:00-05:30
+into the year before,2026-01-01T01:00:00+02:00
+half a second,2026-08-14T14:30:00.5Z
+nanoseconds,2026-08-14T14:30:00.123456789Z
+trailing zero,2026-08-14T14:30:00.250Z
+leap day into march,2024-02-29T23:30:00-01:00

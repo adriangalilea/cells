@@ -1,0 +1,18 @@
+{
+  "columns": [
+    { "name": "label", "type": "text!" },
+    { "name": "weight", "type": "num" }
+  ],
+  "rows": [
+    { "label": { "text": "negative" }, "weight": { "num": "-1.5" } },
+    { "label": { "text": "two places" }, "weight": { "num": "84.20" } },
+    { "label": { "text": "exponent" }, "weight": { "num": "300000000" } },
+    { "label": { "text": "negative exponent" }, "weight": { "num": "0.0025" } },
+    { "label": { "text": "no integer part" }, "weight": { "num": "0.5" } },
+    { "label": { "text": "no fraction digits" }, "weight": { "num": "5" } },
+    { "label": { "text": "plus" }, "weight": { "num": "0.25" } },
+    { "label": { "text": "whole" }, "weight": { "num": "42" } },
+    { "label": { "text": "large exponent" }, "weight": { "num": "1000000000000000000000000000000" } }
+  ],
+  "problems": []
+}

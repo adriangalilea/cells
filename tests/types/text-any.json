@@ -1,0 +1,14 @@
+{
+  "columns": [
+    { "name": "label", "type": "text!" },
+    { "name": "note", "type": "text" }
+  ],
+  "rows": [
+    { "label": { "text": "plain" }, "note": { "text": "sow after the frost" } },
+    { "label": { "text": "accents" }, "note": { "text": "café crème" } },
+    { "label": { "text": "emoji" }, "note": { "text": "🌱 sprouted" } },
+    { "label": { "text": "symbols" }, "note": { "text": "a|b:c'd!e?(f)" } },
+    { "label": { "text": "quoted comma" }, "note": { "text": "rows, in pairs" } }
+  ],
+  "problems": []
+}

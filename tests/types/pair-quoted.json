@@ -1,0 +1,14 @@
+{
+  "columns": [
+    { "name": "book", "type": "text!" },
+    { "name": "stock", "type": "'in stock'/'sold out'" }
+  ],
+  "rows": [
+    { "book": { "text": "the quiet orchard" }, "stock": { "bool": true } },
+    { "book": { "text": "salt and stars" }, "stock": { "bool": false } },
+    { "book": { "text": "winter roads" }, "stock": null }
+  ],
+  "problems": [
+    { "row": 2, "column": "stock", "kind": "type" }
+  ]
+}
