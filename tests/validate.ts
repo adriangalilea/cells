@@ -18,7 +18,10 @@ const FOLDERS = [
   "inference",
   "problems",
   "write",
+  "plain",
 ]
+const SEPARATORS = [",", ";", "\t", "|"]
+const NAMINGS = ["blank", "twice"]
 const ROOT_FILES = new Set(["README.md", "validate.ts", ".gitattributes"])
 const TAGS = new Set([
   "text",
@@ -101,8 +104,22 @@ function value(path: string, what: string, v: Json | undefined): string | null {
   return tag === "money" ? `money ${v.currency}` : tag
 }
 
-function readsCase(path: string, j: { [k: string]: Json }) {
-  keysAre(path, "the case", j, ["columns", "rows", "problems"], ["types"])
+function readsCase(path: string, j: { [k: string]: Json }, plain: boolean) {
+  if (plain) {
+    keysAre(path, "the case", j, ["separator", "columns", "rows", "problems"], ["names"])
+    if (typeof j.separator !== "string" || !SEPARATORS.includes(j.separator))
+      fault(path, `"separator" is not one of , ; tab |`)
+    const namings = Array.isArray(j.names) ? j.names : []
+    if ("names" in j && (!Array.isArray(j.names) || j.names.length === 0)) fault(path, `"names" is not a list of header problems`)
+    namings.forEach((n, i) => {
+      const what = `header problem ${i + 1}`
+      if (!isObject(n)) return fault(path, `${what} is not an object`)
+      keysAre(path, what, n, ["column", "kind"])
+      if (typeof n.column !== "number" || !Number.isInteger(n.column) || n.column < 0) fault(path, `${what} names no column`)
+      if (typeof n.kind !== "string" || !NAMINGS.includes(n.kind)) fault(path, `${what} has no known kind`)
+    })
+  } else keysAre(path, "the case", j, ["columns", "rows", "problems"], ["types"])
+  const twice = plain && Array.isArray(j.names) && j.names.some((n) => isObject(n) && n.kind === "twice")
   if ("types" in j) {
     if (!isObject(j.types) || Object.keys(j.types).length === 0) fault(path, `"types" is not a map of names`)
     else
@@ -119,9 +136,10 @@ function readsCase(path: string, j: { [k: string]: Json }) {
   columns.forEach((c, i) => {
     const what = `column ${i + 1}`
     if (!isObject(c)) return fault(path, `${what} is not an object`)
-    keysAre(path, what, c, ["name", "type"], ["inferred", "computed"])
-    if (typeof c.name !== "string" || c.name === "") fault(path, `${what} has no name`)
-    else if (names.includes(c.name)) fault(path, `${what}: the name "${c.name}" is taken`)
+    keysAre(path, what, c, ["name", "type"], plain ? ["inferred"] : ["inferred", "computed"])
+    if (plain && c.inferred !== true) fault(path, `${what}: a plain file's columns are all inferred`)
+    if (typeof c.name !== "string" || (c.name === "" && !plain)) fault(path, `${what} has no name`)
+    else if (names.includes(c.name) && !twice) fault(path, `${what}: the name "${c.name}" is taken`)
     else names.push(c.name)
     if (typeof c.type !== "string" || c.type === "") fault(path, `${what} has no type`)
     if ("inferred" in c && c.inferred !== true) fault(path, `${what}: "inferred" is only ever true`)
@@ -140,6 +158,7 @@ function readsCase(path: string, j: { [k: string]: Json }) {
   })
   const rows = Array.isArray(j.rows) ? j.rows : []
   if (!Array.isArray(j.rows)) fault(path, `"rows" is not a list`)
+  if (twice && rows.length > 0) fault(path, "two columns of one name, so rows keyed by name cannot say it: no rows")
   const kinds = new Map<string, string>()
   rows.forEach((r, n) => {
     if (!isObject(r)) return fault(path, `row ${n} is not an object`)
@@ -170,14 +189,15 @@ function readsCase(path: string, j: { [k: string]: Json }) {
       return fault(path, `${what} names no row`)
     if (typeof p.column !== "string" || !stored.includes(p.column))
       return fault(path, `${what} names no stored column`)
-    if (typeof p.kind !== "string" || !KINDS.includes(p.kind)) return fault(path, `${what} has no known kind`)
+    if (typeof p.kind !== "string" || !(plain ? ["ragged"] : KINDS).includes(p.kind))
+      return fault(path, `${what} has no known kind${plain ? " (a plain file's problems are ragged rows)" : ""}`)
     const at: [number, number] = [p.row, stored.indexOf(p.column)]
     if (at[0] < last[0] || (at[0] === last[0] && at[1] <= last[1]))
       fault(path, `${what} is out of order, or a second problem on one cell`)
     last = at
     const v = (rows[p.row] as { [k: string]: Json })[p.column]
     if (p.kind === "key" && v === null) fault(path, `${what} is a duplicate key on a null value`)
-    if (p.kind !== "key" && v !== null) fault(path, `${what} is ${p.kind}, but the value is not null`)
+    if (!["key", "ragged"].includes(p.kind) && v !== null) fault(path, `${what} is ${p.kind}, but the value is not null`)
   })
 }
 
@@ -191,9 +211,47 @@ function errorCase(path: string, j: { [k: string]: Json }) {
 
 function edits(path: string, j: Json) {
   if (!Array.isArray(j) || j.length === 0) return fault(path, "is not a list of edits")
+  const named = (what: string, v: Json | undefined) => {
+    if (typeof v !== "string") fault(path, `${what} names no column`)
+  }
+  const place = (what: string, v: Json | undefined) => {
+    if (typeof v !== "number" || !Number.isInteger(v) || v < 0) fault(path, `${what} names no place`)
+  }
   j.forEach((e, i) => {
     const what = `edit ${i + 1}`
     if (!isObject(e)) return fault(path, `${what} is not an object`)
+    if ("as" in e) {
+      keysAre(path, what, e, ["as"], ["header"])
+      if (typeof e.as !== "string" || ![...SEPARATORS, "tcsv"].includes(e.as))
+        fault(path, `${what}: "as" is a separator or "tcsv"`)
+      if ("header" in e && (!Array.isArray(e.header) || !e.header.every((h) => typeof h === "string")))
+        fault(path, `${what}: "header" is not a list of header cells`)
+      if (i !== j.length - 1) fault(path, `${what}: "as" writes the file, so it is the last edit`)
+      return
+    }
+    if ("insert" in e) {
+      keysAre(path, what, e, ["insert", "header"], ["cells"])
+      place(what, e.insert)
+      if (typeof e.header !== "string" || e.header === "") fault(path, `${what}: "header" is not a header cell`)
+      if ("cells" in e && (!Array.isArray(e.cells) || !e.cells.every((c) => typeof c === "string")))
+        fault(path, `${what}: "cells" is not a list of texts`)
+      return
+    }
+    if ("remove" in e) {
+      keysAre(path, what, e, ["remove"])
+      return named(what, e.remove)
+    }
+    if ("move" in e) {
+      keysAre(path, what, e, ["move", "to"])
+      named(what, e.move)
+      return place(what, e.to)
+    }
+    if ("rename" in e) {
+      keysAre(path, what, e, ["rename", "to"])
+      named(what, e.rename)
+      if (typeof e.to !== "string" || e.to === "") fault(path, `${what}: "to" is not a name`)
+      return
+    }
     if (typeof e.column !== "string" || e.column === "") fault(path, `${what} names no column`)
     if ("type" in e) {
       keysAre(path, what, e, ["column", "type"])
@@ -204,7 +262,7 @@ function edits(path: string, j: Json) {
     } else if ("value" in e) {
       keysAre(path, what, e, ["row", "column", "value"])
       value(path, what, e.value)
-    } else fault(path, `${what} sets no text, value or type`)
+    } else fault(path, `${what} sets no text, value or type, and moves no column`)
     if (!("type" in e) && (typeof e.row !== "number" || !Number.isInteger(e.row) || e.row < 0))
       fault(path, `${what} names no row`)
   })
@@ -232,6 +290,36 @@ function json(path: string): Json | undefined {
   }
 }
 
+/** A file of `plain/`: a case (`.csv`, `.tsv`, `.txt`) with its `.json`, or with its
+ *  `.edit.json` and its `.out.` file of the same extension. */
+function plainFile(dir: string, file: string, has: Set<string>) {
+  const path = join(dir, file)
+  const m = /^([a-z0-9]+(?:-[a-z0-9]+)*)(\.edit\.json|\.json|\.out\.(?:csv|tsv|txt)|\.(?:csv|tsv|txt))$/.exec(file)
+  if (!m) return fault(path, "is not named as a plain case (lowercase words joined by -, .csv .tsv or .txt)")
+  const [, stem, ext] = m as unknown as [string, string, string]
+  const cases_ = [".csv", ".tsv", ".txt"].map((e) => `${stem}${e}`).filter((f) => has.has(f))
+  if (cases_.length !== 1) return fault(path, `${stem} has ${cases_.length} case files, not one`)
+  const own = (cases_[0] as string).slice(stem.length)
+  if ([".csv", ".tsv", ".txt"].includes(ext)) {
+    cases++
+    bytes(path)
+    const edited = has.has(`${stem}.edit.json`)
+    if (edited === has.has(`${stem}.json`)) fault(path, `has a ${stem}.json or a ${stem}.edit.json, one of them`)
+    if (edited && !has.has(`${stem}.out${own}`)) fault(path, `has no ${stem}.out${own}`)
+    if (stem.startsWith("error-")) fault(path, "a plain file is never refused")
+    return
+  }
+  if (ext.startsWith(".out.")) {
+    if (ext !== `.out${own}`) fault(path, `is not ${stem}.out${own}`)
+    return bytes(path)
+  }
+  const j = json(path)
+  if (j === undefined) return
+  if (ext === ".edit.json") return edits(path, j)
+  if (!isObject(j)) return fault(path, "is not an object")
+  readsCase(path, j, true)
+}
+
 for (const entry of readdirSync(ROOT)) {
   const path = join(ROOT, entry)
   if (statSync(path).isDirectory()) {
@@ -253,6 +341,10 @@ for (const folder of FOLDERS) {
     const path = join(dir, file)
     if (statSync(path).isDirectory()) {
       fault(path, "a folder holds cases, not folders")
+      continue
+    }
+    if (folder === "plain") {
+      plainFile(dir, file, has)
       continue
     }
     if (!/^[a-z0-9]+(-[a-z0-9]+)*(\.edit\.json|\.out\.tcsv|\.tcsv|\.json)$/.test(file)) {
@@ -304,7 +396,7 @@ for (const folder of FOLDERS) {
     if (error !== stem.startsWith("error-"))
       fault(path, error ? "does not read, so its name opens with error-" : "reads, so its name does not open with error-")
     if (error) errorCase(path, j)
-    else readsCase(path, j)
+    else readsCase(path, j, false)
   }
 }
 

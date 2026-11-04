@@ -1,0 +1,11 @@
+{
+  "separator": ",",
+  "columns": [
+    { "name": "cost:EUR", "type": "text?", "inferred": true },
+    { "name": "qty", "type": "int?", "inferred": true }
+  ],
+  "rows": [
+    { "cost:EUR": { "text": "8x.50" }, "qty": { "int": "2" } }
+  ],
+  "problems": []
+}

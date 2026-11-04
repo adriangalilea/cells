@@ -195,14 +195,21 @@ pub enum Why {
     Duplicate {
         other: u32,
     },
+    /// A plain file's record of another width than its header: `fields` fields. On the
+    /// first cell it lacks, or the last cell of one too long.
+    Ragged {
+        fields: u32,
+    },
 }
 
-/// What a problem is, the suite's three kinds.
+/// What a problem is: the suite's kinds.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum Kind {
     Type,
     Missing,
     Key,
+    /// A plain file's record of another width than its header.
+    Ragged,
 }
 
 impl Kind {
@@ -211,6 +218,7 @@ impl Kind {
             Kind::Type => "type",
             Kind::Missing => "missing",
             Kind::Key => "key",
+            Kind::Ragged => "ragged",
         }
     }
 }
@@ -220,6 +228,7 @@ impl Why {
         match self {
             Why::Missing => Kind::Missing,
             Why::Duplicate { .. } => Kind::Key,
+            Why::Ragged { .. } => Kind::Ragged,
             _ => Kind::Type,
         }
     }

@@ -1,0 +1,12 @@
+{
+  "separator": ",",
+  "columns": [
+    { "name": "item", "type": "text?", "inferred": true },
+    { "name": "size", "type": "text?", "inferred": true }
+  ],
+  "rows": [
+    { "item": { "text": "pipe" }, "size": { "text": "5\" long" } },
+    { "item": { "text": "abc" }, "size": { "text": "d" } }
+  ],
+  "problems": []
+}

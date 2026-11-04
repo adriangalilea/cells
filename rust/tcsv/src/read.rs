@@ -5,7 +5,7 @@
 use alloc::vec::Vec;
 
 use crate::column::{self, BitsBuilder, Building, DECIMAL_LIMIT, Decoder, INSTANT_LIMIT, Problem, Run, Why, infer};
-use crate::scan::{self, Fields, Stop};
+use crate::scan::{self, Fields, Records, Stop};
 
 /// Rows decoded together.
 const BATCH: usize = 4096;
@@ -37,14 +37,18 @@ pub(crate) struct Part<'a> {
     /// part's say how many rows to make room for.
     from: usize,
     to: usize,
+    /// A plain file's reading: a record of another width than the header is a problem,
+    /// never a stop.
+    lenient: bool,
 }
 
 impl<'a> Part<'a> {
-    pub fn new(src: &'a [u8], from: usize, to: usize, decoders: &[(Decoder, bool)]) -> Part<'a> {
+    pub fn new(src: &'a [u8], from: usize, to: usize, decoders: &[(Decoder, bool)], lenient: bool) -> Part<'a> {
         let ncols = decoders.len();
         Part {
             src,
             ncols,
+            lenient,
             cells: alloc::vec![(0, 0); ncols.max(1) * BATCH],
             batched: 0,
             field: 0,
@@ -194,7 +198,11 @@ impl Fields for Part<'_> {
     #[inline]
     fn field(&mut self, start: u32, end: u32) -> Result<(), Stop> {
         if self.field >= self.ncols {
-            return Err(Stop::TooMany);
+            if !self.lenient {
+                return Err(Stop::TooMany);
+            }
+            self.field += 1;
+            return Ok(());
         }
         self.cells[self.field * BATCH + self.batched] = (start, end);
         self.field += 1;
@@ -205,6 +213,9 @@ impl Fields for Part<'_> {
     fn record(&mut self, next: u32) {
         for f in self.field..self.ncols {
             self.cells[f * BATCH + self.batched] = (0, 0);
+        }
+        if self.lenient && self.field != self.ncols {
+            self.problems.push(ragged(self.rows, self.field, self.ncols));
         }
         self.records.push(self.start);
         self.start = next;
@@ -221,25 +232,37 @@ impl Fields for Part<'_> {
     }
 }
 
+/// A record of `fields` fields where the header has `ncols`, read leniently: its problem,
+/// on the first cell it lacks, or on the last cell of a record too long.
+pub(crate) fn ragged(row: u32, fields: usize, ncols: usize) -> Problem {
+    Problem { row, column: fields.min(ncols - 1) as u32, why: Why::Ragged { fields: fields as u32 } }
+}
+
 /// The body's records read into parts, on up to `threads` threads: `Err` names the row
 /// (from 0) and why. The parts joined are the sequential reading, whatever the threads.
-pub(crate) fn body<'a>(src: &'a [u8], from: usize, decoders: &[(Decoder, bool)], threads: usize) -> Result<Vec<Part<'a>>, (u32, Stop)> {
+pub(crate) fn body<'a>(
+    src: &'a [u8],
+    from: usize,
+    decoders: &[(Decoder, bool)],
+    how: Records,
+    threads: usize,
+) -> Result<Vec<Part<'a>>, (u32, Stop)> {
     #[cfg(feature = "std")]
-    if let Some(parts) = parallel(src, from, decoders, threads) {
+    if let Some(parts) = parallel(src, from, decoders, how, threads) {
         return parts;
     }
     #[cfg(not(feature = "std"))]
     assert_eq!(threads, 1, "threads need the std feature");
-    Ok(Vec::from([sequential(src, from, decoders)?]))
+    Ok(Vec::from([sequential(src, from, decoders, how)?]))
 }
 
-pub(crate) fn sequential<'a>(src: &'a [u8], from: usize, decoders: &[(Decoder, bool)]) -> Result<Part<'a>, (u32, Stop)> {
-    let mut part = Part::new(src, from, src.len(), decoders);
-    match scan::fast(src, from, src.len(), &mut part) {
+pub(crate) fn sequential<'a>(src: &'a [u8], from: usize, decoders: &[(Decoder, bool)], how: Records) -> Result<Part<'a>, (u32, Stop)> {
+    let mut part = Part::new(src, from, src.len(), decoders, how.lenient);
+    match scan::fast(src, from, src.len(), how.sep, &mut part) {
         Ok(()) => {}
         Err(Stop::Irregular) => {
-            part = Part::new(src, from, src.len(), decoders);
-            scan::scalar(src, from, src.len(), &mut part).map_err(|e| (part.rows, e))?;
+            part = Part::new(src, from, src.len(), decoders, how.lenient);
+            scan::scalar(src, from, src.len(), how, &mut part).map_err(|e| (part.rows, e))?;
         }
         Err(e) => return Err((part.rows, e)),
     }
@@ -253,7 +276,13 @@ pub(crate) fn sequential<'a>(src: &'a [u8], from: usize, decoders: &[(Decoder, b
 /// body back to `sequential`, which says where the file breaks. Nothing when the input is
 /// too small to pay for threads.
 #[cfg(feature = "std")]
-fn parallel<'a>(src: &'a [u8], from: usize, decoders: &[(Decoder, bool)], threads: usize) -> Option<Result<Vec<Part<'a>>, (u32, Stop)>> {
+fn parallel<'a>(
+    src: &'a [u8],
+    from: usize,
+    decoders: &[(Decoder, bool)],
+    how: Records,
+    threads: usize,
+) -> Option<Result<Vec<Part<'a>>, (u32, Stop)>> {
     // The least a thread reads: below it, starting the thread costs more than it saves.
     const PART: usize = 1 << 19;
     let len = src.len() - from;
@@ -294,8 +323,8 @@ fn parallel<'a>(src: &'a [u8], from: usize, decoders: &[(Decoder, bool)], thread
             .map(|w| {
                 let (a, b) = (w[0], w[1]);
                 s.spawn(move || {
-                    let mut part = Part::new(src, a, b, decoders);
-                    scan::fast(src, a, b, &mut part).map_err(|e| (part.rows, e))?;
+                    let mut part = Part::new(src, a, b, decoders, how.lenient);
+                    scan::fast(src, a, b, how.sep, &mut part).map_err(|e| (part.rows, e))?;
                     part.finish();
                     Ok(part)
                 })

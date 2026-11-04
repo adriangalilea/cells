@@ -1,0 +1,1 @@
+[{ "remove": "bed" }, { "move": "qty", "to": 0 }, { "rename": "seed", "to": "plant" }]

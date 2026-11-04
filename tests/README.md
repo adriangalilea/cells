@@ -4,7 +4,7 @@ The spec's rules as data, read by every implementation. An implementation confor
 
 ## A case
 
-A case is a `.tcsv` file and a `.json` beside it, under the folder of what it checks: `records/`, `header/`, `types/`, `choices/`, `constraints/`, `formats/`, `marks/`, `explicit/`, `prelude/`, `inference/`, `problems/`, `write/`. The file's name says the rule: `constraints/money-at-least-zero.tcsv`. A case whose file does not read is named `error-…`.
+A case is a `.tcsv` file and a `.json` beside it, under the folder of what it checks: `records/`, `header/`, `types/`, `choices/`, `constraints/`, `formats/`, `marks/`, `explicit/`, `prelude/`, `inference/`, `problems/`, `write/`, and `plain/` (below), the one folder whose files are not TCSV. The file's name says the rule: `constraints/money-at-least-zero.tcsv`. A case whose file does not read is named `error-…`.
 
 The `.tcsv` is bytes, never text to be normalized: its line endings, its trailing break and its byte order mark are the case. `.gitattributes` here keeps git from touching them.
 
@@ -55,13 +55,30 @@ Every case that reads is also a write case: the file read and written with nothi
 
 - `{ "row": 0, "column": "item", "text": "fuel, diesel" }`: the cell's text, written quoted only when CSV needs it;
 - `{ "row": 0, "column": "paid", "value": { "bool": false } }`: a value tagged as in a read, or `null`, written in the column's form (its pair's words, its format);
-- `{ "column": "cost", "type": "EUR min 1" }`: the column's type, in any spelling, written in shorthand; `""` makes it a plain column.
+- `{ "column": "cost", "type": "EUR min 1" }`: the column's type, in any spelling, written in shorthand; `""` makes it a plain column;
+- `{ "insert": 1, "header": "bed:north|south", "cells": ["north", "south"] }`: a new column at that place among the stored ones, its header cell as given and a cell for each row (none: every cell blank);
+- `{ "remove": "bed" }`: the column taken out, its header cell and every row's field;
+- `{ "move": "qty", "to": 0 }`: the column taken out and put back at that place;
+- `{ "rename": "qty", "to": "count" }`: the column under a new name, its type kept as spelled;
+- `{ "as": ";" }` or `{ "as": "tcsv", "header": ["item:text!", "cost:EUR"] }`, always last: the file written in another dialect (`tcsv`, or a plain file with that separator, `","` `";"` `"\t"` `"|"`), and that text is the output. A plain file's header is the columns' names, computed ones included with their values a column after the stored ones (in the plain form of a decimal, `10`, never `10.00`); `header` gives a `.tcsv` file's header cells, one a stored column. A record is kept as written when the separator is the same and nothing joins it; otherwise it is written from its cells, quoted where the dialect needs it.
 
-Edits name stored columns only.
+Edits name stored columns only. A column's fields move with it whole: a short row's missing fields are written blank, and a plain file's fields past its header stay after the columns.
+
+## Plain files
+
+`plain/` holds what a TCSV reader reads when a file is not TCSV: a `.csv`, a `.tsv`, plain text. Its cases are `.csv`, `.tsv` or `.txt` files, each with a `.json` of the same shape as a case that reads, or with an `.edit.json` and its output, `<name>.out.csv` (the case's own extension). An implementation reads them with the separator it finds in the first lines (the one splitting each into as many fields as the first, the most fields winning, a tie to the comma, then the tab, the semicolon, the pipe) and the plain reading:
+
+- the header's cells are the columns' names, whatever they hold (`cost:EUR` is a name), so every column is inferred; no prelude is read (a first line `---` is the header);
+- nothing is refused but bytes that are not UTF-8: a quote out of RFC 4180's places is text (`5" long`), a quoted field's text runs on after its closing quote to the separator (`"ab"c` is `abc`), a quote never closed runs to the end of the file, and a lone `\r` ends a line;
+- a row of another width than the header reads as blanks with a problem of kind `ragged`, on the first cell it lacks, or on the last cell of a row too long, whose fields past the header are kept and written back;
+- a blank name, or a name another column has already, is a header problem;
+- an edited cell is quoted when it holds the file's separator, `"` or a line break, and in a file whose header and first row quote every field, always.
+
+The `.json` also says `separator` (`","` `";"` `"\t"` `"|"`), and `names`, the header problems, when there are any: `{ "column": 1, "kind": "blank" }` or `"twice"`, columns from 0. A plain file's problems are `ragged` alone. Rows are keyed by name, so a case with two columns of one name has no rows.
 
 ## The checker
 
-`bun tests/validate.ts` checks that every case is well-formed by this contract: every `.tcsv` has its `.json` (or, in `write/`, its `.edit.json` and `.out.tcsv`), every `.json` has one of the two shapes, every tag and kind is known, every value names a column and every row holds every column. No implementation is involved.
+`bun tests/validate.ts` checks that every case is well-formed by this contract: every `.tcsv` has its `.json` (or, in `write/`, its `.edit.json` and `.out.tcsv`; in `plain/`, every file one or the other), every `.json` has one of the two shapes, every tag and kind is known, every value names a column and every row holds every column. No implementation is involved.
 
 ## Running it
 

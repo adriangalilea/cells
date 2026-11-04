@@ -1,0 +1,11 @@
+{
+  "separator": ";",
+  "columns": [
+    { "name": "seed", "type": "text?", "inferred": true },
+    { "name": "qty", "type": "int?", "inferred": true }
+  ],
+  "rows": [
+    { "seed": { "text": "basil" }, "qty": { "int": "3" } }
+  ],
+  "problems": []
+}

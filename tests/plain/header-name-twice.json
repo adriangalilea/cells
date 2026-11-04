@@ -1,0 +1,12 @@
+{
+  "separator": ",",
+  "columns": [
+    { "name": "a", "type": "text?", "inferred": true },
+    { "name": "a", "type": "text?", "inferred": true }
+  ],
+  "rows": [],
+  "problems": [],
+  "names": [
+    { "column": 1, "kind": "twice" }
+  ]
+}

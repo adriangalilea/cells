@@ -194,6 +194,187 @@ fn a_tail_read_alone_is_the_whole_read() {
     }
 }
 
+/// A plain file as people hold them: any separator, a name blank or twice, quotes out of
+/// place, a quote never closed, rows of any width, lone `\r` line ends, every field quoted.
+fn plain(rng: &mut Rng) -> (String, crate::Dialect) {
+    use crate::Separator;
+    let sep = *rng.pick(&Separator::ALL);
+    let s = sep.byte() as char;
+    let cols = 1 + rng.below(5) as usize;
+    let all = rng.below(5) == 0;
+    let cr = rng.below(8) == 0;
+    let field = |rng: &mut Rng, out: &mut String, text: &str| {
+        let needs = text.contains([s, '"', '\n', '\r']);
+        match rng.below(12) {
+            _ if all || needs => {
+                out.push('"');
+                out.push_str(&text.replace('"', "\"\""));
+                out.push('"');
+            }
+            0 => out.push_str("5\" pipe"),
+            1 => out.push_str("\"ab\"c"),
+            _ => out.push_str(text),
+        }
+    };
+    let mut out = String::new();
+    if rng.below(4) == 0 {
+        out.push('\u{feff}');
+    }
+    for c in 0..cols {
+        if c > 0 {
+            out.push(s);
+        }
+        let name = match rng.below(8) {
+            0 => String::new(),
+            1 => String::from("c0"),
+            _ => format!("c{c}"),
+        };
+        field(rng, &mut out, &name);
+    }
+    let rows = rng.below(30);
+    for _ in 0..rows {
+        out.push_str(if cr {
+            "\r"
+        } else if rng.below(3) == 0 {
+            "\r\n"
+        } else {
+            "\n"
+        });
+        let n = match rng.below(6) {
+            0 => 1 + rng.below(cols as u64 + 2) as usize,
+            _ => cols,
+        };
+        for f in 0..n {
+            if f > 0 {
+                out.push(s);
+            }
+            let text = cell(rng);
+            field(rng, &mut out, &text);
+        }
+    }
+    match rng.below(6) {
+        0 => out.push_str(&format!("{s}\"never closed")),
+        1 | 2 => out.push_str(if cr { "\r" } else { "\n" }),
+        _ => {}
+    }
+    (out, crate::Dialect::Plain(sep))
+}
+
+#[test]
+fn a_plain_file_reads_and_is_written_back() {
+    let mut rng = Rng(5);
+    for _ in 0..3000 {
+        let (src, dialect) = plain(&mut rng);
+        let doc = crate::read_as(src.clone(), dialect, 1).unwrap_or_else(|e| panic!("{src:?}: {e}"));
+        assert_eq!(doc.write(), src);
+        for r in 0..doc.rows() {
+            let ragged = doc.problems().iter().any(|p| p.row as usize == r && p.kind() == crate::Kind::Ragged);
+            assert_eq!(ragged, doc.width(r) != doc.stored(), "row {r} of {src:?}");
+        }
+        assert!(doc.problems().iter().all(|p| p.kind() == crate::Kind::Ragged), "{src:?}");
+    }
+}
+
+#[test]
+fn a_plain_edit_reads_back_as_written() {
+    let mut rng = Rng(17);
+    for _ in 0..2000 {
+        let (src, dialect) = plain(&mut rng);
+        let mut doc = crate::read_as(src.clone(), dialect, 1).unwrap();
+        if doc.rows() == 0 {
+            continue;
+        }
+        for _ in 0..1 + rng.below(4) {
+            let r = rng.below(doc.rows() as u64) as usize;
+            let c = rng.below(doc.stored() as u64) as usize;
+            doc.set_cell(r, c, &cell(&mut rng));
+        }
+        let again = crate::read_as(doc.write(), dialect, 1).unwrap();
+        assert_eq!(again.rows(), doc.rows(), "{src:?} became {:?}", doc.write());
+        for r in 0..doc.rows() {
+            assert_eq!(again.texts(r), doc.texts(r), "{:?}", doc.write());
+        }
+        assert_eq!(again.problems(), doc.problems(), "{:?}", doc.write());
+        for c in 0..doc.stored() {
+            assert_eq!(again.columns()[c].ty, doc.columns()[c].ty, "{:?}", doc.write());
+        }
+    }
+}
+
+#[test]
+fn columns_reshaped_keep_their_cells() {
+    use crate::ColumnAt;
+    let mut rng = Rng(29);
+    for k in 0..3000 {
+        let (src, dialect) = if k % 2 == 0 { (file(&mut rng), crate::Dialect::Tcsv) } else { plain(&mut rng) };
+        let doc = crate::read_as(src.clone(), dialect, 1).unwrap();
+        if doc.stored() == 0 {
+            continue;
+        }
+        // Reversed, the first renamed, a new one in the middle, the last taken out.
+        let cells: Vec<String> = (0..doc.rows()).map(|r| format!("n{r}")).collect();
+        let cells: Vec<&str> = cells.iter().map(String::as_str).collect();
+        let mut order: Vec<ColumnAt> = (0..doc.stored()).rev().map(ColumnAt::Kept).collect();
+        order[doc.stored() - 1] = ColumnAt::Renamed(0, "first");
+        if doc.stored() > 1 && doc.computed().is_empty() {
+            order.remove(0);
+        }
+        order.insert(order.len() / 2, ColumnAt::New("fresh", &cells));
+        let after = doc.reshaped(&order, 1).unwrap_or_else(|e| panic!("{src:?}: {e}"));
+        assert_eq!(after.rows(), doc.rows(), "{src:?} became {:?}", after.write());
+        assert_eq!(after.stored(), order.len());
+        for (c, o) in order.iter().enumerate() {
+            let name = match o {
+                ColumnAt::Kept(j) => doc.columns()[*j].name.as_str(),
+                ColumnAt::Renamed(_, n) | ColumnAt::New(n, _) => n,
+            };
+            assert_eq!(after.columns()[c].name, name, "{src:?} became {:?}", after.write());
+            for r in 0..doc.rows() {
+                let want = match o {
+                    ColumnAt::Kept(j) | ColumnAt::Renamed(j, _) => doc.text(r, *j).into_owned(),
+                    ColumnAt::New(..) => format!("n{r}"),
+                };
+                assert_eq!(after.text(r, c), want, "row {r} of {src:?} became {:?}", after.write());
+            }
+        }
+    }
+}
+
+#[test]
+fn a_file_written_as_another_reads_back_its_cells() {
+    use crate::{Dialect, Separator};
+    let mut rng = Rng(31);
+    for k in 0..3000 {
+        let (src, dialect) = if k % 2 == 0 { (file(&mut rng), Dialect::Tcsv) } else { plain(&mut rng) };
+        let doc = crate::read_as(src.clone(), dialect, 1).unwrap();
+        let to = Dialect::Plain(*rng.pick(&Separator::ALL));
+        let text = doc.written_as(to, None);
+        let again = crate::read_as(text.clone(), to, 1).unwrap();
+        assert_eq!(again.rows(), doc.rows(), "{src:?} as {to:?}: {text:?}");
+        let names: Vec<&str> = doc.columns().iter().map(|c| c.name.as_str()).collect();
+        let theirs: Vec<&str> = again.columns().iter().map(|c| c.name.as_str()).collect();
+        assert_eq!(theirs, names, "{src:?} as {to:?}: {text:?}");
+        for r in 0..doc.rows() {
+            let texts = doc.texts(r);
+            assert_eq!(&again.texts(r)[..doc.stored()], &texts[..], "{src:?} as {to:?}: {text:?}");
+        }
+        if dialect == Dialect::Tcsv {
+            continue;
+        }
+        // A plain file as TCSV: its rows and cells, a ragged row's extra fields gone.
+        let text = doc.written_as(Dialect::Tcsv, None);
+        match crate::read(text.clone()) {
+            Err(e) => assert!(!doc.naming().is_empty(), "{src:?} as TCSV: {text:?}: {e}"),
+            Ok(again) => {
+                assert_eq!(again.rows(), doc.rows(), "{src:?} as TCSV: {text:?}");
+                for r in 0..doc.rows() {
+                    assert_eq!(again.texts(r), doc.texts(r), "{src:?} as TCSV: {text:?}");
+                }
+            }
+        }
+    }
+}
+
 /// A body large enough to be split, whose parts disagree on scales and units.
 #[cfg(feature = "std")]
 #[test]
@@ -219,9 +400,9 @@ fn parallel_equals_sequential() {
     let doc = crate::read(s.clone()).unwrap();
     assert!(doc.rows() == rows as usize);
     let first = src.iter().position(|&c| c == b'\n').unwrap() + 1;
-    let parts = crate::read::body(src, first, &decoders_of(&doc), 4).unwrap();
+    let parts = crate::read::body(src, first, &decoders_of(&doc), crate::scan::Records::TCSV, 4).unwrap();
     assert!(parts.len() > 1, "the body was not split");
-    let seq = crate::read::sequential(src, first, &decoders_of(&doc)).unwrap();
+    let seq = crate::read::sequential(src, first, &decoders_of(&doc), crate::scan::Records::TCSV).unwrap();
     let joined = crate::read::join(parts);
     assert_eq!(joined.records, seq.records);
     let mut a = joined.problems.clone();
@@ -235,6 +416,33 @@ fn parallel_equals_sequential() {
     }
     // Spot values the reading kept.
     assert!(matches!(doc.value(0, 1), Value::Decimal(_)));
+}
+
+/// A plain file large enough to be split, its ragged rows' problems renumbered by part.
+#[cfg(feature = "std")]
+#[test]
+fn a_plain_file_in_parallel_is_read_as_in_sequence() {
+    use crate::{Dialect, Separator};
+    let mut rng = Rng(43);
+    let mut s = String::from("item;cost;note\n");
+    for r in 0..120_000 {
+        match rng.below(200) {
+            0 => s.push_str(&format!("{r};1,5\n")),
+            1 => s.push_str(&format!("{r};2;\"x; {r}\";extra\n")),
+            _ => s.push_str(&format!("{r};{},{:02};\"a; {r}\"\n", rng.below(100), rng.below(100))),
+        }
+    }
+    let dialect = Dialect::Plain(Separator::Semicolon);
+    let one = crate::read_as(s.clone(), dialect, 1).unwrap();
+    let many = crate::read_as(s.clone(), dialect, 8).unwrap();
+    assert!(!one.problems().is_empty());
+    assert_eq!(one.problems(), many.problems());
+    assert_eq!(one.records(), many.records());
+    for c in 0..one.stored() {
+        assert_eq!(one.columns()[c].ty, many.columns()[c].ty);
+        assert_eq!(one.columns()[c].valid.bytes, many.columns()[c].valid.bytes);
+    }
+    assert_eq!(crate::detect(s.as_bytes()), Separator::Semicolon);
 }
 
 #[cfg(feature = "std")]

@@ -1,0 +1,14 @@
+{
+  "separator": ";",
+  "columns": [
+    { "name": "item", "type": "text?", "inferred": true },
+    { "name": "note", "type": "text?", "inferred": true }
+  ],
+  "rows": [
+    { "item": { "text": "fuel" }, "note": null },
+    { "item": { "text": "maps" }, "note": null }
+  ],
+  "problems": [
+    { "row": 1, "column": "note", "kind": "ragged" }
+  ]
+}

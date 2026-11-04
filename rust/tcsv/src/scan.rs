@@ -1,10 +1,25 @@
 //! Records: RFC 4180 fields found 64 bytes at a time. Each block's quotes and separators
-//! (`,` `\n` `\r`) become two bitmasks (NEON, SSE2, wasm SIMD, or a portable loop); the
-//! quoted stretches are the prefix XOR of the quotes, and every separator outside them
-//! ends a field. That reading is exact only while every quote stands where RFC 4180 puts
-//! it, opening a field or closing one, and every `\r` ends a line with `\n` after it; a
-//! block that breaks either is irregular, and the input is read again byte by byte
-//! (`scalar`), which says which record breaks and how.
+//! (the field separator, `\n`, `\r`) become two bitmasks (NEON, SSE2, wasm SIMD, or a
+//! portable loop); the quoted stretches are the prefix XOR of the quotes, and every
+//! separator outside them ends a field. That reading is exact only while every quote
+//! stands where RFC 4180 puts it, opening a field or closing one, and every `\r` ends a
+//! line with `\n` after it; a block that breaks either is irregular, and the input is read
+//! again byte by byte (`scalar`), which says which record breaks and how, or, for a file
+//! that is not TCSV (`Records::lenient`), reads it as CSV readers do.
+
+/// How records are separated and how strictly they are read.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) struct Records {
+    /// The byte between fields: `,` `;` `\t` `|`.
+    pub sep: u8,
+    /// A plain file's reading: a quote out of RFC 4180's places is text, a quoted field
+    /// never closed runs to the end, a lone `\r` ends a line, a record may be any width.
+    pub lenient: bool,
+}
+
+impl Records {
+    pub const TCSV: Records = Records { sep: b',', lenient: false };
+}
 
 /// Where a reading stopped short.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -30,6 +45,10 @@ pub(crate) trait Fields {
     fn record(&mut self, next: u32);
     /// Whether the record being read has a field already.
     fn open(&self) -> bool;
+    /// Whether to read no further.
+    fn done(&self) -> bool {
+        false
+    }
 }
 
 #[inline(always)]
@@ -43,16 +62,16 @@ fn prefix_xor(mut x: u64) -> u64 {
     x
 }
 
-/// The quotes and the separators of 64 bytes, bit `k` for byte `k`.
+/// The quotes and the separators of 64 bytes (`sep` between fields), bit `k` for byte `k`.
 #[cfg(target_arch = "aarch64")]
 #[inline(always)]
-fn masks(b: &[u8; 64]) -> (u64, u64) {
+fn masks(b: &[u8; 64], sep: u8) -> (u64, u64) {
     use core::arch::aarch64::*;
     // SAFETY: NEON is part of every aarch64 target; the loads read the 64 bytes of `b`.
     unsafe {
         let p = b.as_ptr();
         let v = [vld1q_u8(p), vld1q_u8(p.add(16)), vld1q_u8(p.add(32)), vld1q_u8(p.add(48))];
-        let (q, c, lf, cr) = (vdupq_n_u8(b'"'), vdupq_n_u8(b','), vdupq_n_u8(b'\n'), vdupq_n_u8(b'\r'));
+        let (q, c, lf, cr) = (vdupq_n_u8(b'"'), vdupq_n_u8(sep), vdupq_n_u8(b'\n'), vdupq_n_u8(b'\r'));
         let qm = v.map(|x| vceqq_u8(x, q));
         let sm = v.map(|x| vorrq_u8(vorrq_u8(vceqq_u8(x, c), vceqq_u8(x, lf)), vceqq_u8(x, cr)));
         (movemask(qm), movemask(sm))
@@ -77,12 +96,12 @@ unsafe fn movemask(m: [core::arch::aarch64::uint8x16_t; 4]) -> u64 {
 
 #[cfg(target_arch = "x86_64")]
 #[inline(always)]
-fn masks(b: &[u8; 64]) -> (u64, u64) {
+fn masks(b: &[u8; 64], sep: u8) -> (u64, u64) {
     use core::arch::x86_64::*;
     // SAFETY: SSE2 is part of every x86_64 target; the loads read the 64 bytes of `b`.
     unsafe {
         let p = b.as_ptr() as *const __m128i;
-        let (q, c, lf, cr) = (_mm_set1_epi8(b'"' as i8), _mm_set1_epi8(b',' as i8), _mm_set1_epi8(b'\n' as i8), _mm_set1_epi8(b'\r' as i8));
+        let (q, c, lf, cr) = (_mm_set1_epi8(b'"' as i8), _mm_set1_epi8(sep as i8), _mm_set1_epi8(b'\n' as i8), _mm_set1_epi8(b'\r' as i8));
         let (mut qm, mut sm) = (0u64, 0u64);
         for k in 0..4 {
             let v = _mm_loadu_si128(p.add(k));
@@ -98,9 +117,9 @@ fn masks(b: &[u8; 64]) -> (u64, u64) {
 
 #[cfg(all(target_arch = "wasm32", target_feature = "simd128"))]
 #[inline(always)]
-fn masks(b: &[u8; 64]) -> (u64, u64) {
+fn masks(b: &[u8; 64], sep: u8) -> (u64, u64) {
     use core::arch::wasm32::*;
-    let (q, c, lf, cr) = (u8x16_splat(b'"'), u8x16_splat(b','), u8x16_splat(b'\n'), u8x16_splat(b'\r'));
+    let (q, c, lf, cr) = (u8x16_splat(b'"'), u8x16_splat(sep), u8x16_splat(b'\n'), u8x16_splat(b'\r'));
     let (mut qm, mut sm) = (0u64, 0u64);
     for k in 0..4 {
         // SAFETY: reads 16 of the 64 bytes of `b`; v128_load takes any alignment.
@@ -115,18 +134,19 @@ fn masks(b: &[u8; 64]) -> (u64, u64) {
 
 #[cfg(not(any(target_arch = "aarch64", target_arch = "x86_64", all(target_arch = "wasm32", target_feature = "simd128"))))]
 #[inline(always)]
-fn masks(b: &[u8; 64]) -> (u64, u64) {
+fn masks(b: &[u8; 64], sep: u8) -> (u64, u64) {
     let (mut qm, mut sm) = (0u64, 0u64);
     for (k, &c) in b.iter().enumerate() {
         qm |= ((c == b'"') as u64) << k;
-        sm |= ((c == b',' || c == b'\n' || c == b'\r') as u64) << k;
+        sm |= ((c == sep || c == b'\n' || c == b'\r') as u64) << k;
     }
     (qm, sm)
 }
 
-/// Reads the records of `src[from..to]`, `from` a record's start. `to` is a record's start
-/// too, or the input's end, where a record without a line break ends.
-pub(crate) fn fast<F: Fields>(src: &[u8], from: usize, to: usize, out: &mut F) -> Result<(), Stop> {
+/// Reads the records of `src[from..to]`, `from` a record's start, fields separated by
+/// `sep`. `to` is a record's start too, or the input's end, where a record without a line
+/// break ends.
+pub(crate) fn fast<F: Fields>(src: &[u8], from: usize, to: usize, sep: u8, out: &mut F) -> Result<(), Stop> {
     debug_assert!(to <= src.len() && to <= u32::MAX as usize);
     let mut inside = 0u64; // all ones while the block before ended inside quotes
     let mut prev = 1u64; // the byte before is a separator, a quote, or the start
@@ -134,17 +154,17 @@ pub(crate) fn fast<F: Fields>(src: &[u8], from: usize, to: usize, out: &mut F) -
     let mut field = from;
     let mut skip = usize::MAX; // the `\n` of a `\r\n` already counted
     let mut pos = from;
-    let mut pad = [b','; 64];
+    let mut pad = [sep; 64];
     while pos < to {
         let n = (to - pos).min(64);
         let block: &[u8; 64] = if n == 64 {
             src[pos..pos + 64].try_into().unwrap()
         } else {
-            pad.fill(b',');
+            pad.fill(sep);
             pad[..n].copy_from_slice(&src[pos..to]);
             &pad
         };
-        let (q, s) = masks(block);
+        let (q, s) = masks(block, sep);
         let x = prefix_xor(q) ^ inside;
         inside = ((x as i64) >> 63) as u64;
         let openers = q & x;
@@ -169,11 +189,11 @@ pub(crate) fn fast<F: Fields>(src: &[u8], from: usize, to: usize, out: &mut F) -
             let (a, b) = span(src, field, p, q, pos);
             out.field(a, b)?;
             match c {
-                b',' => field = p + 1,
                 b'\n' => {
                     out.record(p as u32 + 1);
                     field = p + 1;
                 }
+                c if c == sep => field = p + 1,
                 _ => {
                     if p + 1 >= to || src[p + 1] != b'\n' {
                         return Err(Stop::Irregular);
@@ -220,8 +240,12 @@ fn span(src: &[u8], field: usize, end: usize, q: u64, pos: usize) -> (u32, u32) 
 
 /// Reads the records of `src[from..to]` byte by byte: a field opening with `"` is quoted
 /// to its closing quote, `""` a quote inside; any other quote, text after a closing quote,
-/// a quote never closed and a lone `\r` stop it.
-pub(crate) fn scalar<F: Fields>(src: &[u8], from: usize, to: usize, out: &mut F) -> Result<(), Stop> {
+/// a quote never closed and a lone `\r` stop it. Read leniently, none of them stops it: a
+/// field runs on to its separator, a quote never closed to the end, and a lone `\r` ends
+/// its line.
+pub(crate) fn scalar<F: Fields>(src: &[u8], from: usize, to: usize, how: Records, out: &mut F) -> Result<(), Stop> {
+    let Records { sep, lenient } = how;
+    let ends = |c: u8| c == sep || c == b'\n' || c == b'\r';
     let mut i = from;
     if i >= to {
         return Ok(());
@@ -232,6 +256,9 @@ pub(crate) fn scalar<F: Fields>(src: &[u8], from: usize, to: usize, out: &mut F)
             i += 1;
             loop {
                 if i >= to {
+                    if lenient {
+                        break;
+                    }
                     return Err(Stop::Unclosed);
                 }
                 if src[i] == b'"' {
@@ -244,18 +271,23 @@ pub(crate) fn scalar<F: Fields>(src: &[u8], from: usize, to: usize, out: &mut F)
                 }
                 i += 1;
             }
-            if i < to && !matches!(src[i], b',' | b'\n' | b'\r') {
-                return Err(Stop::AfterQuote);
+            if i < to && !ends(src[i]) {
+                if !lenient {
+                    return Err(Stop::AfterQuote);
+                }
+                while i < to && !ends(src[i]) {
+                    i += 1;
+                }
             }
         } else {
-            while i < to && !matches!(src[i], b',' | b'\n' | b'\r') {
-                if src[i] == b'"' {
+            while i < to && !ends(src[i]) {
+                if src[i] == b'"' && !lenient {
                     return Err(Stop::Quote);
                 }
                 i += 1;
             }
         }
-        if i < to && src[i] == b'\r' && (i + 1 >= to || src[i + 1] != b'\n') {
+        if i < to && src[i] == b'\r' && (i + 1 >= to || src[i + 1] != b'\n') && !lenient {
             return Err(Stop::Return);
         }
         out.field(start as u32, i as u32)?;
@@ -263,7 +295,7 @@ pub(crate) fn scalar<F: Fields>(src: &[u8], from: usize, to: usize, out: &mut F)
             out.record(to as u32);
             return Ok(());
         }
-        if src[i] == b',' {
+        if src[i] == sep {
             i += 1;
             if i >= to {
                 out.field(to as u32, to as u32)?;
@@ -274,7 +306,7 @@ pub(crate) fn scalar<F: Fields>(src: &[u8], from: usize, to: usize, out: &mut F)
         }
         i += if src[i] == b'\r' && i + 1 < to && src[i + 1] == b'\n' { 2 } else { 1 };
         out.record(i as u32);
-        if i >= to {
+        if i >= to || out.done() {
             return Ok(());
         }
     }
@@ -303,61 +335,100 @@ impl Fields for One {
     fn open(&self) -> bool {
         self.next.is_none() && !self.fields.is_empty()
     }
+
+    fn done(&self) -> bool {
+        self.next.is_some()
+    }
 }
 
 /// The record starting at `from`: its fields' raw spans and where the next starts.
-pub(crate) fn record(src: &[u8], from: usize) -> Result<(alloc::vec::Vec<(u32, u32)>, usize), Stop> {
-    // The record ends at the first line break outside quotes; reading to it is enough.
-    let mut quoted = false;
-    let mut end = src.len();
-    let mut i = from;
-    while i < src.len() {
-        let c = src[i];
-        if c == b'"' {
-            quoted = !quoted;
-        } else if !quoted && (c == b'\n' || c == b'\r') {
-            end = if c == b'\r' && src.get(i + 1) == Some(&b'\n') { i + 2 } else { i + 1 };
-            break;
-        }
-        i += 1;
+pub(crate) fn record(src: &[u8], from: usize, how: Records) -> Result<(alloc::vec::Vec<(u32, u32)>, usize), Stop> {
+    if from == src.len() {
+        // An empty record: one blank field.
+        return Ok((alloc::vec![(from as u32, from as u32)], from));
     }
     let mut one = One { fields: alloc::vec::Vec::new(), next: None };
-    match scalar(src, from, end, &mut one) {
-        // A stray quote can make the parity above end too early: read on to the input's end.
-        Err(Stop::Unclosed) if end < src.len() => {
-            let mut one = One { fields: alloc::vec::Vec::new(), next: None };
-            scalar(src, from, src.len(), &mut one)?;
-            Ok((one.fields, one.next.unwrap_or(src.len() as u32) as usize))
-        }
-        Err(e) => Err(e),
-        Ok(()) => Ok((one.fields, one.next.unwrap_or(end as u32) as usize)),
-    }
+    scalar(src, from, src.len(), how, &mut one)?;
+    Ok((one.fields, one.next.unwrap_or(src.len() as u32) as usize))
 }
 
 /// A field's text: its span unquoted, `""` read as `"`; a span `fast` cut already is its
-/// text as it is.
+/// text as it is. A field opening with `"` that a lenient reading took as written keeps
+/// what follows its closing quote, and one never closed is everything after its quote.
 #[inline(always)]
 pub(crate) fn text<'a>(src: &'a [u8], start: u32, end: u32, scratch: &'a mut alloc::vec::Vec<u8>) -> &'a [u8] {
     let raw = &src[start as usize..end as usize];
     if raw.first() != Some(&b'"') {
         return raw;
     }
-    let inner = &raw[1..raw.len() - 1];
-    if !inner.contains(&b'"') {
-        return inner;
+    let inner = &raw[1..];
+    if let Some((&b'"', body)) = inner.split_last()
+        && !body.contains(&b'"')
+    {
+        return body;
     }
     scratch.clear();
     let mut k = 0;
     while k < inner.len() {
+        if inner[k] == b'"' {
+            if inner.get(k + 1) == Some(&b'"') {
+                scratch.push(b'"');
+                k += 2;
+                continue;
+            }
+            scratch.extend_from_slice(&inner[k + 1..]);
+            break;
+        }
         scratch.push(inner[k]);
-        k += if inner[k] == b'"' { 2 } else { 1 };
+        k += 1;
     }
     scratch
 }
 
+/// Whether a field as written ends where it does with anything written after it: false
+/// only for a field a lenient reading took open to the end of its file (a quote never
+/// closed), which would swallow what follows it.
+pub(crate) fn closed(raw: &str) -> bool {
+    let Some(inner) = raw.strip_prefix('"') else { return true };
+    let b = inner.as_bytes();
+    let mut k = 0;
+    while k < b.len() {
+        if b[k] == b'"' {
+            if b.get(k + 1) != Some(&b'"') {
+                return true;
+            }
+            k += 2;
+            continue;
+        }
+        k += 1;
+    }
+    false
+}
+
+/// A field as written, unquoted, as `text` reads it.
+pub(crate) fn unquoted(raw: &str) -> alloc::borrow::Cow<'_, str> {
+    use alloc::borrow::Cow;
+    let Some(inner) = raw.strip_prefix('"') else { return Cow::Borrowed(raw) };
+    if let Some(body) = inner.strip_suffix('"')
+        && !body.contains('"')
+    {
+        return Cow::Borrowed(body);
+    }
+    let mut scratch = alloc::vec::Vec::new();
+    let t = text(raw.as_bytes(), 0, raw.len() as u32, &mut scratch).to_vec();
+    // Cut at ASCII quotes only, so the text of a `str` is one.
+    Cow::Owned(alloc::string::String::from_utf8(t).unwrap())
+}
+
 /// A cell's text in the file's form: quoted only when it holds `,`, `"` or a line break.
 pub fn quote(text: &str) -> alloc::borrow::Cow<'_, str> {
-    if !text.bytes().any(|c| matches!(c, b',' | b'"' | b'\n' | b'\r')) {
+    quote_in(text, b',', false)
+}
+
+/// A cell's text in a file whose fields are separated by `sep`: quoted when it holds
+/// `sep`, `"` or a line break, or always when `all` (a file that quotes every field).
+pub(crate) fn quote_in(text: &str, sep: u8, all: bool) -> alloc::borrow::Cow<'_, str> {
+    if !all && !text.bytes().any(|c| c == sep || matches!(c, b'"' | b'\n' | b'\r')) {
         return alloc::borrow::Cow::Borrowed(text);
     }
     let mut s = alloc::string::String::with_capacity(text.len() + 2);
@@ -399,12 +470,52 @@ mod tests {
     }
 
     fn both(src: &str) -> (Result<Collect, Stop>, Result<Collect, Stop>) {
+        both_in(src, Records::TCSV)
+    }
+
+    fn both_in(src: &str, how: Records) -> (Result<Collect, Stop>, Result<Collect, Stop>) {
         let b = src.as_bytes();
         let mut f = Collect::default();
-        let fr = fast(b, 0, b.len(), &mut f).map(|_| f);
+        let fr = fast(b, 0, b.len(), how.sep, &mut f).map(|_| f);
         let mut s = Collect::default();
-        let sr = scalar(b, 0, b.len(), &mut s).map(|_| s);
+        let sr = scalar(b, 0, b.len(), how, &mut s).map(|_| s);
         (fr, sr)
+    }
+
+    #[test]
+    fn other_separators() {
+        for sep in *b";\t|" {
+            let s = sep as char;
+            let src = alloc::format!("a{s}\"b{s}c\"{s}d,e\n1{s}\"\"\"q\"\"\"{s}{}\n", "z".repeat(80));
+            let how = Records { sep, lenient: false };
+            let (f, sc) = both_in(&src, how);
+            let (f, sc) = (f.unwrap(), sc.unwrap());
+            assert_eq!(texts(&src, &f), texts(&src, &sc));
+            let want = alloc::vec![b"a".to_vec(), alloc::format!("b{s}c").into_bytes(), b"d,e".to_vec()];
+            assert_eq!(texts(&src, &f)[0], want);
+            assert_eq!(texts(&src, &f)[1][1], b"\"q\"");
+        }
+    }
+
+    #[test]
+    fn lenient_reads_what_strict_refuses() {
+        let how = Records { sep: b',', lenient: true };
+        let read = |src: &str| {
+            let mut s = Collect::default();
+            scalar(src.as_bytes(), 0, src.len(), how, &mut s).unwrap();
+            texts(src, &s)
+                .into_iter()
+                .map(|r| r.into_iter().map(|t| alloc::string::String::from_utf8(t).unwrap()).collect::<Vec<_>>())
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(read("a,5\" pipe,c\n"), [["a", "5\" pipe", "c"]]);
+        assert_eq!(read("\"ab\"c,d\n"), [["abc", "d"]]);
+        assert_eq!(read("a,\"open\nx,y"), [["a", "open\nx,y"]]);
+        assert_eq!(read("a,b\rc,d\r"), [["a", "b"], ["c", "d"]]);
+        assert_eq!(read("a,\""), [["a", ""]]);
+        assert_eq!(unquoted("\"ab\"c"), "abc");
+        assert_eq!(unquoted("\"a\"\"b\""), "a\"b");
+        assert_eq!(unquoted("plain"), "plain");
     }
 
     /// The records' texts: `fast` hands a clean quoted field on unquoted, `scalar` raw.

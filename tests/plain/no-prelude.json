@@ -1,0 +1,11 @@
+{
+  "separator": ",",
+  "columns": [
+    { "name": "---", "type": "text?", "inferred": true }
+  ],
+  "rows": [
+    { "---": { "text": "x" } },
+    { "---": { "text": "---" } }
+  ],
+  "problems": []
+}

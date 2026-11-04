@@ -1,0 +1,3 @@
+seed|bed|grams
+basil|north|12.5
+leek|south|40

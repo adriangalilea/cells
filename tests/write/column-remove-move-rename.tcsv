@@ -1,0 +1,3 @@
+seed:text!,bed,qty:int>=1
+basil,north,3
+leek,south

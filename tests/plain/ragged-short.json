@@ -1,0 +1,15 @@
+{
+  "separator": ",",
+  "columns": [
+    { "name": "a", "type": "int?", "inferred": true },
+    { "name": "b", "type": "int?", "inferred": true },
+    { "name": "c", "type": "int?", "inferred": true }
+  ],
+  "rows": [
+    { "a": { "int": "1" }, "b": { "int": "2" }, "c": null },
+    { "a": { "int": "3" }, "b": { "int": "4" }, "c": { "int": "5" } }
+  ],
+  "problems": [
+    { "row": 0, "column": "c", "kind": "ragged" }
+  ]
+}

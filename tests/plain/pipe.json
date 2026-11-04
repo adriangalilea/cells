@@ -1,0 +1,13 @@
+{
+  "separator": "|",
+  "columns": [
+    { "name": "seed", "type": "text?", "inferred": true },
+    { "name": "bed", "type": "text?", "inferred": true },
+    { "name": "grams", "type": "num?", "inferred": true }
+  ],
+  "rows": [
+    { "seed": { "text": "basil" }, "bed": { "text": "north" }, "grams": { "num": "12.5" } },
+    { "seed": { "text": "leek" }, "bed": { "text": "south" }, "grams": { "num": "40" } }
+  ],
+  "problems": []
+}

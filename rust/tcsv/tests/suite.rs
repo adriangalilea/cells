@@ -5,7 +5,7 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use tcsv::{Base, Doc, Value};
+use tcsv::{Base, ColumnAt, Dialect, Doc, Naming, Separator, Value};
 
 /// JSON, as much of it as the suite writes.
 #[derive(Clone, Debug, PartialEq)]
@@ -296,8 +296,52 @@ fn check_read(doc: &Doc, want: &Json) -> Vec<String> {
     fails
 }
 
-fn apply(doc: &mut Doc, edits: &Json) -> Result<(), String> {
+/// The edits applied in order, and the file's text after them: as written, or after a last
+/// `as` edit the file written in that dialect.
+fn apply(doc: &mut Doc, edits: &Json) -> Result<String, String> {
+    let column = |doc: &Doc, e: &Json, key: &str| {
+        let name = e.get(key).unwrap().str().to_string();
+        doc.column(&name).ok_or_else(|| format!("no column {name}"))
+    };
     for e in edits.array() {
+        if let Some(to) = e.get("as") {
+            let dialect = match to.str() {
+                "tcsv" => Dialect::Tcsv,
+                s => Dialect::Plain(Separator::of(s.as_bytes()[0]).ok_or_else(|| format!("no separator {s:?}"))?),
+            };
+            let header: Option<Vec<&str>> = e.get("header").map(|h| h.array().iter().map(Json::str).collect());
+            return Ok(doc.written_as(dialect, header.as_deref()));
+        }
+        let stored: Vec<ColumnAt> = (0..doc.stored()).map(ColumnAt::Kept).collect();
+        let reshaped = if let Some(Json::Number(at)) = e.get("insert") {
+            let cells: Vec<&str> = e.get("cells").map(|c| c.array().iter().map(Json::str).collect()).unwrap_or_default();
+            let mut order = stored;
+            order.insert(at.parse().unwrap(), ColumnAt::New(e.get("header").unwrap().str(), &cells));
+            Some(doc.reshaped(&order, 1))
+        } else if e.get("remove").is_some() {
+            let k = column(doc, e, "remove")?;
+            let mut order = stored;
+            order.remove(k);
+            Some(doc.reshaped(&order, 1))
+        } else if e.get("move").is_some() {
+            let k = column(doc, e, "move")?;
+            let Some(Json::Number(to)) = e.get("to") else { panic!("a place") };
+            let mut order = stored;
+            let moved = order.remove(k);
+            order.insert(to.parse().unwrap(), moved);
+            Some(doc.reshaped(&order, 1))
+        } else if e.get("rename").is_some() {
+            let k = column(doc, e, "rename")?;
+            let mut order = stored;
+            order[k] = ColumnAt::Renamed(k, e.get("to").unwrap().str());
+            Some(doc.reshaped(&order, 1))
+        } else {
+            None
+        };
+        if let Some(r) = reshaped {
+            *doc = r.map_err(|e| e.to_string())?;
+            continue;
+        }
         let name = e.get("column").unwrap().str();
         let col = doc.column(name).ok_or_else(|| format!("no column {name}"))?;
         if let Some(ty) = e.get("type") {
@@ -331,19 +375,50 @@ fn apply(doc: &mut Doc, edits: &Json) -> Result<(), String> {
             doc.set_value(row, col, value);
         }
     }
-    Ok(())
+    Ok(doc.write())
 }
 
+/// A case's file: a `.tcsv`, or under `plain/` a `.csv`, `.tsv` or `.txt`; never an
+/// edit's `.out.` file.
 fn cases(dir: &Path, out: &mut Vec<PathBuf>) {
     let mut entries: Vec<_> = fs::read_dir(dir).unwrap().map(|e| e.unwrap().path()).collect();
     entries.sort();
     for p in entries {
         if p.is_dir() {
             cases(&p, out);
-        } else if p.extension().is_some_and(|e| e == "tcsv") && !p.to_string_lossy().ends_with(".out.tcsv") {
+            continue;
+        }
+        let ext = p.extension().and_then(|e| e.to_str()).unwrap_or("");
+        let plain = p.parent().is_some_and(|d| d.ends_with("plain"));
+        let case = if plain { matches!(ext, "csv" | "tsv" | "txt") } else { ext == "tcsv" };
+        let stem = p.file_stem().unwrap().to_string_lossy();
+        if case && !stem.ends_with(".out") {
             out.push(p);
         }
     }
+}
+
+/// A plain case's header problems, as the suite writes them.
+fn check_names(doc: &Doc, want: &Json) -> Vec<String> {
+    let ours: Vec<(u32, &str)> = doc
+        .naming()
+        .iter()
+        .map(|n| match n {
+            Naming::Blank { column } => (*column, "blank"),
+            Naming::Twice { column, .. } => (*column, "twice"),
+        })
+        .collect();
+    let theirs: Vec<(u32, &str)> = want
+        .get("names")
+        .map(|n| n.array())
+        .unwrap_or_default()
+        .iter()
+        .map(|n| {
+            let Json::Number(c) = n.get("column").unwrap() else { panic!("a column") };
+            (c.parse().unwrap(), n.get("kind").unwrap().str())
+        })
+        .collect();
+    if ours != theirs { Vec::from([format!("names {ours:?}, the suite says {theirs:?}")]) } else { Vec::new() }
 }
 
 #[test]
@@ -356,11 +431,14 @@ fn conformance() {
     for path in &all {
         let bytes = fs::read(path).unwrap();
         let stem = path.with_extension("");
+        let ext = path.extension().unwrap().to_string_lossy();
         let edit = PathBuf::from(format!("{}.edit.json", stem.display()));
         let mut fails = Vec::new();
-        let read = tcsv::read(bytes.clone());
+        let plain = ext != "tcsv";
+        let dialect = if plain { Dialect::Plain(tcsv::detect(&bytes)) } else { Dialect::Tcsv };
+        let read = tcsv::read_as(bytes.clone(), dialect, 1);
         if edit.exists() {
-            let out = fs::read(format!("{}.out.tcsv", stem.display())).unwrap();
+            let out = fs::read(format!("{}.out.{ext}", stem.display())).unwrap();
             match read {
                 Err(e) => fails.push(format!("does not read: {e}")),
                 Ok(mut doc) => {
@@ -369,8 +447,7 @@ fn conformance() {
                     }
                     match apply(&mut doc, &json(&fs::read_to_string(&edit).unwrap())) {
                         Err(e) => fails.push(format!("an edit fails: {e}")),
-                        Ok(()) => {
-                            let got = doc.write();
+                        Ok(got) => {
                             if got.as_bytes() != out {
                                 fails.push(format!("writes {got:?}, the suite says {:?}", String::from_utf8_lossy(&out)));
                             }
@@ -391,6 +468,14 @@ fn conformance() {
                 (Ok(_), Some(err)) => fails.push(format!("reads, the suite says it breaks at {}", err.get("at").unwrap().str())),
                 (Ok(doc), None) => {
                     fails.extend(check_read(&doc, &want));
+                    if plain {
+                        let sep = (dialect.separator().byte() as char).to_string();
+                        let theirs = want.get("separator").map(Json::str).unwrap_or("none");
+                        if sep != theirs {
+                            fails.push(format!("separator {sep:?}, the suite says {theirs:?}"));
+                        }
+                        fails.extend(check_names(&doc, &want));
+                    }
                     if doc.write().as_bytes() != bytes {
                         fails.push("does not round-trip".into());
                     }

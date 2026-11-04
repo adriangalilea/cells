@@ -1,0 +1,13 @@
+{
+  "separator": "\t",
+  "columns": [
+    { "name": "gig", "type": "text?", "inferred": true },
+    { "name": "city", "type": "text?", "inferred": true },
+    { "name": "fee", "type": "int?", "inferred": true }
+  ],
+  "rows": [
+    { "gig": { "text": "first" }, "city": { "text": "Porto" }, "fee": { "int": "300" } },
+    { "gig": { "text": "second" }, "city": { "text": "Braga" }, "fee": { "int": "250" } }
+  ],
+  "problems": []
+}

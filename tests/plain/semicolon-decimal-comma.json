@@ -1,0 +1,13 @@
+{
+  "separator": ";",
+  "columns": [
+    { "name": "item", "type": "text?", "inferred": true },
+    { "name": "cost", "type": "text?", "inferred": true },
+    { "name": "paid", "type": "yes/no?", "inferred": true }
+  ],
+  "rows": [
+    { "item": { "text": "fuel" }, "cost": { "text": "84,20" }, "paid": { "bool": true } },
+    { "item": { "text": "tolls" }, "cost": { "text": "23,50" }, "paid": { "bool": false } }
+  ],
+  "problems": []
+}

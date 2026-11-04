@@ -11,9 +11,10 @@ use core::fmt;
 
 use crate::column::{self, Bits, BitsBuilder, Building, Data, Decoder, Kind, Problem, Run, Value, Why, infer};
 use crate::exact::Exact;
+use crate::format::{Dialect, Separator};
 use crate::prelude::{self, Computed, Op, Prelude};
 use crate::read::{self, Part, Reading};
-use crate::scan::{self, Fields, Stop};
+use crate::scan::{self, Fields, Records, Stop};
 use crate::types::{self, Base, NamedType, Type};
 use crate::value::{self, Decimal, Instant};
 
@@ -167,9 +168,45 @@ pub enum Row<'a> {
     New(&'a [&'a str]),
 }
 
-/// A `.tcsv` file read.
+/// A column of a file being reshaped (`Doc::reshaped`): a stored one it has, as it is or
+/// renamed, or a new one.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ColumnAt<'a> {
+    Kept(usize),
+    /// A stored column under a new name, its type kept.
+    Renamed(usize, &'a str),
+    /// A new column: its header cell (`name`, or in a `.tcsv` file `name:type`) and its
+    /// cells, one a row, or none for a column of blanks.
+    New(&'a str, &'a [&'a str]),
+}
+
+/// A plain file's header cell that names its column badly. TCSV refuses both (SPEC.md, A
+/// header cell); a plain file reads with them, so the tool that can fix them shows them.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum Naming {
+    /// The cell is blank: the column has no name.
+    Blank { column: u32 },
+    /// The column `first` has the name already.
+    Twice { column: u32, first: u32 },
+}
+
+impl Naming {
+    pub fn column(self) -> u32 {
+        match self {
+            Naming::Blank { column } | Naming::Twice { column, .. } => column,
+        }
+    }
+}
+
+/// A file read: a `.tcsv` file, or a plain one (`Dialect`).
 #[derive(Clone, Debug)]
 pub struct Doc {
+    dialect: Dialect,
+    /// A plain file whose header and first row quote every field: an edited cell and a new
+    /// row are quoted so too.
+    quotes_all: bool,
+    /// A plain file's header cells that name their columns badly.
+    naming: Vec<Naming>,
     source: String,
     /// Where the header starts: everything before it (a byte order mark, the prelude) is
     /// kept as written.
@@ -194,28 +231,41 @@ pub struct Doc {
 /// is an `Error` naming where, and so are bytes that are not UTF-8. The bytes are kept,
 /// never copied. One thread: the core starts none unless asked.
 pub fn read(source: impl Into<Vec<u8>>) -> Result<Doc, Error> {
-    read_on(source.into(), 1)
+    read_on(source.into(), Dialect::Tcsv, 1)
 }
 
 /// `read` on up to `threads` threads, for a large input: the body is split at record
 /// boundaries and its parts read at once. The result is `read`'s, byte for byte.
 #[cfg(feature = "std")]
 pub fn read_parallel(source: impl Into<Vec<u8>>, threads: usize) -> Result<Doc, Error> {
-    read_on(source.into(), threads)
+    read_on(source.into(), Dialect::Tcsv, threads)
 }
 
-fn read_on(bytes: Vec<u8>, threads: usize) -> Result<Doc, Error> {
+/// A file read as `dialect` on up to `threads` threads (1 starts none). A plain file is
+/// refused only for bytes that are not UTF-8, or past 4 GiB.
+pub fn read_as(source: impl Into<Vec<u8>>, dialect: Dialect, threads: usize) -> Result<Doc, Error> {
+    #[cfg(not(feature = "std"))]
+    assert_eq!(threads, 1, "threads need the std feature");
+    read_on(source.into(), dialect, threads)
+}
+
+fn read_on(bytes: Vec<u8>, dialect: Dialect, threads: usize) -> Result<Doc, Error> {
     let source = String::from_utf8(bytes)
         .map_err(|e| error(At::File, format!("is not UTF-8: byte {} begins no character", e.utf8_error().valid_up_to())))?;
     if source.len() >= u32::MAX as usize {
         return Err(error(At::File, "is larger than 4 GiB"));
     }
     let bom = if source.starts_with('\u{feff}') { 3 } else { 0 };
-    let (body, prelude) = read_prelude(&source, bom)?;
+    let plain = matches!(dialect, Dialect::Plain(_));
+    let (body, prelude) = if plain { (bom, Prelude::default()) } else { read_prelude(&source, bom)? };
+    let how = dialect.records();
     let src = source.as_bytes();
     if body == src.len() {
         let records = Vec::from([body as u32]);
         return Ok(Doc {
+            dialect,
+            quotes_all: false,
+            naming: Vec::new(),
             source,
             body: body as u32,
             records,
@@ -228,14 +278,26 @@ fn read_on(bytes: Vec<u8>, threads: usize) -> Result<Doc, Error> {
             candidates: Vec::new(),
         });
     }
-    let (fields, first) = scan::record(src, body).map_err(|s| error(At::Header, stop_why(s, 0)))?;
+    let (fields, first) = scan::record(src, body, how).map_err(|s| error(At::Header, stop_why(s, 0)))?;
     let mut scratch = Vec::new();
     let mut heads: Vec<(String, Option<String>, Option<Type>)> = Vec::with_capacity(fields.len());
+    let mut naming = Vec::new();
     for (j, &(s, e)) in fields.iter().enumerate() {
         let at = At::Column(j as u32 + 1);
         let cell = scan::text(src, s, e, &mut scratch);
         // Unquoting cuts at ASCII quotes only, so a field of a `str` is one.
         let cell = core::str::from_utf8(cell).unwrap();
+        if plain {
+            // A plain file's header cell is its column's name, whatever it holds.
+            let column = j as u32;
+            if cell.is_empty() {
+                naming.push(Naming::Blank { column });
+            } else if let Some(first) = heads.iter().position(|(n, _, _)| n == cell) {
+                naming.push(Naming::Twice { column, first: first as u32 });
+            }
+            heads.push((cell.to_owned(), None, None));
+            continue;
+        }
         let (name, spelled) = types::split_header(cell);
         if name.is_empty() {
             return Err(error(at, "a column has a name"));
@@ -249,8 +311,10 @@ fn read_on(bytes: Vec<u8>, threads: usize) -> Result<Doc, Error> {
         };
         heads.push((name.to_owned(), spelled.map(str::to_owned), ty));
     }
+    let quoted = |fields: &[(u32, u32)]| fields.iter().all(|&(s, e)| s < e && src[s as usize] == b'"');
+    let quotes_all = plain && quoted(&fields) && (first == src.len() || quoted(&scan::record(src, first, how).unwrap().0));
     let decoders = decoders(heads.iter().map(|(_, _, t)| t.as_ref()));
-    let parts = read::body(src, first, &decoders, threads).map_err(|(row, s)| error(At::Row(row), stop_why(s, heads.len())))?;
+    let parts = read::body(src, first, &decoders, how, threads).map_err(|(row, s)| error(At::Row(row), stop_why(s, heads.len())))?;
     let mut part = read::join(parts);
     part.records.push(src.len() as u32);
     let Part { records, columns: readings, mut problems, .. } = part;
@@ -261,8 +325,21 @@ fn read_on(bytes: Vec<u8>, threads: usize) -> Result<Doc, Error> {
         columns.push(Column { name, spelled, ty, computed: None, data, valid });
     }
     let stored = columns.len();
-    let mut doc =
-        Doc { source, body: body as u32, records, prelude, columns, stored, problems, header: None, edits: BTreeMap::new(), candidates };
+    let mut doc = Doc {
+        dialect,
+        quotes_all,
+        naming,
+        source,
+        body: body as u32,
+        records,
+        prelude,
+        columns,
+        stored,
+        problems,
+        header: None,
+        edits: BTreeMap::new(),
+        candidates,
+    };
     doc.compute()?;
     doc.problems.sort_by_key(|p| p.order());
     Ok(doc)
@@ -367,9 +444,68 @@ fn redecode(base: &Base, offsets: &[i32], bytes: &[u8], valid: &BitsBuilder) -> 
     problems.is_empty().then_some((b, v))
 }
 
+/// A line's ending: `\r\n`, `\n`, a plain file's lone `\r`, or none at the end of the file.
+fn ending(s: &str) -> &str {
+    if s.ends_with("\r\n") {
+        "\r\n"
+    } else if s.ends_with('\n') {
+        "\n"
+    } else if s.ends_with('\r') {
+        "\r"
+    } else {
+        ""
+    }
+}
+
 impl Doc {
     pub fn source(&self) -> &str {
         &self.source
+    }
+
+    /// How the file was read, and how it is written.
+    pub fn dialect(&self) -> Dialect {
+        self.dialect
+    }
+
+    /// Whether a plain file quotes every field (its header and first row do), so an edited
+    /// cell and a new row are quoted so too.
+    pub fn quotes_all(&self) -> bool {
+        self.quotes_all
+    }
+
+    /// A plain file's header cells that name their columns badly, by column.
+    pub fn naming(&self) -> &[Naming] {
+        &self.naming
+    }
+
+    /// A naming problem in words without its place: `has no name`, `"a" names column 1 too`.
+    pub fn naming_why(&self, n: &Naming) -> String {
+        match *n {
+            Naming::Blank { .. } => "has no name".to_owned(),
+            Naming::Twice { column, first } => {
+                format!("\"{}\" names column {} too", self.columns[column as usize].name, first + 1)
+            }
+        }
+    }
+
+    /// A naming problem in words: `the header, column 2: "a" names column 1 too`.
+    pub fn describe_naming(&self, n: &Naming) -> String {
+        format!("the header, column {}: {}", n.column() + 1, self.naming_why(n))
+    }
+
+    /// The text between two fields.
+    fn sep(&self) -> &'static str {
+        match self.dialect.separator() {
+            Separator::Comma => ",",
+            Separator::Semicolon => ";",
+            Separator::Tab => "\t",
+            Separator::Pipe => "|",
+        }
+    }
+
+    /// A cell's text as this file writes it.
+    fn quote<'a>(&self, text: &'a str) -> Cow<'a, str> {
+        scan::quote_in(text, self.dialect.separator().byte(), self.quotes_all)
     }
 
     /// Every column: the header's, then the prelude's computed ones.
@@ -429,33 +565,49 @@ impl Doc {
             return e;
         }
         let s = &self.source[self.records[row] as usize..self.records[row + 1] as usize];
-        s.strip_suffix('\n').map(|l| l.strip_suffix('\r').unwrap_or(l)).unwrap_or(s)
+        &s[..s.len() - ending(s).len()]
     }
 
     /// A record's fields as written (quotes included), from text that read once already.
-    fn raw_fields(line: &str) -> Vec<&str> {
-        let (spans, _) = scan::record(line.as_bytes(), 0).unwrap();
+    fn raw_fields<'a>(&self, line: &'a str) -> Vec<&'a str> {
+        let (spans, _) = scan::record(line.as_bytes(), 0, self.dialect.records()).unwrap();
         spans.iter().map(|&(s, e)| &line[s as usize..e as usize]).collect()
-    }
-
-    /// A field as written, unquoted.
-    fn unquoted(raw: &str) -> Cow<'_, str> {
-        let Some(inner) = raw.strip_prefix('"').and_then(|r| r.strip_suffix('"')) else { return Cow::Borrowed(raw) };
-        if inner.contains('"') { Cow::Owned(inner.replace("\"\"", "\"")) } else { Cow::Borrowed(inner) }
     }
 
     /// A stored cell's text as written, unquoted; blank for a field the row leaves out.
     pub fn text(&self, row: usize, column: usize) -> Cow<'_, str> {
         assert!(column < self.stored, "column {column} is not stored");
-        let fields = Self::raw_fields(self.line(row));
-        fields.get(column).map_or(Cow::Borrowed(""), |raw| Self::unquoted(raw))
+        let fields = self.raw_fields(self.line(row));
+        fields.get(column).map_or(Cow::Borrowed(""), |raw| scan::unquoted(raw))
     }
 
     /// Every stored cell's text in a row, as `text` gives each, the record scanned once:
     /// what a host that keeps its own rows (a table editing the file) takes.
     pub fn texts(&self, row: usize) -> Vec<Cow<'_, str>> {
-        let fields = Self::raw_fields(self.line(row));
-        (0..self.stored).map(|k| fields.get(k).map_or(Cow::Borrowed(""), |raw| Self::unquoted(raw))).collect()
+        let fields = self.raw_fields(self.line(row));
+        (0..self.stored).map(|k| fields.get(k).map_or(Cow::Borrowed(""), |raw| scan::unquoted(raw))).collect()
+    }
+
+    /// A field as written, to write again with more after it: as it is, but for a quote a
+    /// plain file never closed, which is quoted from its text.
+    fn sound<'a>(&self, raw: &'a str) -> Cow<'a, str> {
+        if scan::closed(raw) { Cow::Borrowed(raw) } else { Cow::Owned(self.quote(&scan::unquoted(raw)).into_owned()) }
+    }
+
+    /// A row's record as `line` gives it, to write again with more after it (`sound`).
+    fn sound_line(&self, row: usize) -> Cow<'_, str> {
+        let line = self.line(row);
+        let fields = self.raw_fields(line);
+        if fields.last().is_none_or(|f| scan::closed(f)) {
+            return Cow::Borrowed(line);
+        }
+        Cow::Owned(fields.iter().map(|f| self.sound(f)).collect::<Vec<_>>().join(self.sep()))
+    }
+
+    /// How many fields a row's record holds now: a short row fewer than the header, a
+    /// plain file's ragged row more.
+    pub fn width(&self, row: usize) -> usize {
+        self.raw_fields(self.line(row)).len()
     }
 
     /// A problem in words: `row 3, cost: "8x.50" is not a number`.
@@ -472,6 +624,13 @@ impl Doc {
         let length = matches!(c.ty.base, Base::Text);
         let why = match p.why {
             Why::Missing => return "is missing".to_owned(),
+            Why::Ragged { fields } => {
+                let n = self.stored;
+                return match (fields as usize) < n {
+                    true => format!("the row has {fields} of the header's {n} fields"),
+                    false => format!("the row has {fields} fields, the header {n}"),
+                };
+            }
             Why::NotInt => "is not a whole number".to_owned(),
             Why::NotNumber => "is not a number".to_owned(),
             Why::NotPct => "is not a percentage".to_owned(),
@@ -519,8 +678,26 @@ impl Doc {
 
     /// The header's line break, the one new lines take; `\n` when it has none.
     pub fn newline(&self) -> &str {
-        let header = &self.source[self.body as usize..self.records[0] as usize];
-        if header.ends_with("\r\n") { "\r\n" } else { "\n" }
+        match ending(self.header_text()) {
+            "" => "\n",
+            nl => nl,
+        }
+    }
+
+    /// The header's record as the file has it, its line break included.
+    fn header_text(&self) -> &str {
+        &self.source[self.body as usize..self.records[0] as usize]
+    }
+
+    /// The header's record as it is now, without its line break.
+    fn header_line(&self) -> &str {
+        match &self.header {
+            Some(h) => h,
+            None => {
+                let h = self.header_text();
+                &h[..h.len() - ending(h).len()]
+            }
+        }
     }
 
     /// The text before the header, the byte order mark and the prelude, as written.
@@ -530,18 +707,14 @@ impl Doc {
 
     /// Whether the file ends in a line break.
     pub fn trailing(&self) -> bool {
-        self.source.ends_with('\n')
+        match self.dialect {
+            Dialect::Tcsv => self.source.ends_with('\n'),
+            Dialect::Plain(_) => self.source.ends_with(['\n', '\r']),
+        }
     }
 
     fn terminator(&self, row: usize) -> &str {
-        let s = &self.source[self.records[row] as usize..self.records[row + 1] as usize];
-        if s.ends_with("\r\n") {
-            "\r\n"
-        } else if s.ends_with('\n') {
-            "\n"
-        } else {
-            ""
-        }
+        ending(&self.source[self.records[row] as usize..self.records[row + 1] as usize])
     }
 
     /// The file's text: what was read, but for what was changed.
@@ -582,31 +755,169 @@ impl Doc {
         let nl = self.newline();
         let mut out = String::with_capacity(self.source.len() + 64);
         out.push_str(&self.source[..self.body as usize]);
-        match &self.header {
-            Some(h) => out.push_str(h),
-            None => out.push_str(self.source[self.body as usize..self.records[0] as usize].trim_end_matches(['\r', '\n'])),
-        }
+        out.push_str(self.header_line());
         for r in rows {
             out.push_str(nl);
             match r {
-                Row::Kept(k) => out.push_str(self.line(*k)),
+                Row::Kept(k) => out.push_str(&self.sound_line(*k)),
                 Row::New(cells) => {
                     for (k, c) in cells.iter().enumerate() {
                         if k > 0 {
-                            out.push(',');
+                            out.push_str(self.sep());
                         }
-                        out.push_str(&scan::quote(c));
+                        out.push_str(&self.quote(c));
                     }
                 }
             }
         }
+        self.close(&mut out, !rows.is_empty(), nl);
+        read_on(out.into_bytes(), self.dialect, threads)
+    }
+
+    /// A file being written, its lines broken by `nl`, ends as this one does: in a line
+    /// break when it did, and otherwise never in an empty last line, which is no record:
+    /// its blank is quoted.
+    fn close(&self, out: &mut String, rows: bool, nl: &str) {
         if self.trailing() {
             out.push_str(nl);
-        } else if !rows.is_empty() && out.ends_with(nl) {
-            // An empty last line with no break after it is no record: its blank is quoted.
+        } else if rows && out.ends_with(nl) {
             out.push_str("\"\"");
         }
-        read_on(out.into_bytes(), threads)
+    }
+
+    /// The file with exactly `columns`, in their order, read again on up to `threads`
+    /// threads: a kept column is its header cell and every row's field as written, a renamed
+    /// one the same under its new name (its type kept), a new one its header cell and its
+    /// cells, quoted only where the file needs it. A short row's missing fields are
+    /// written blank, and a ragged row's fields past the header are kept after the
+    /// columns. What inserting, removing, moving and renaming columns is. A `.tcsv` file
+    /// whose columns no longer read (two of one name, a computed column reading one taken
+    /// out) is refused, this one untouched.
+    pub fn reshaped(&self, columns: &[ColumnAt], threads: usize) -> Result<Doc, Error> {
+        assert!(!columns.is_empty(), "a file keeps one column at least");
+        let rows = self.rows();
+        let blank = self.quote("");
+        let heads = self.raw_fields(self.header_line());
+        let mut out = String::with_capacity(self.source.len() + 64);
+        out.push_str(&self.source[..self.body as usize]);
+        for (k, c) in columns.iter().enumerate() {
+            if k > 0 {
+                out.push_str(self.sep());
+            }
+            match *c {
+                ColumnAt::Kept(j) => {
+                    assert!(j < self.stored, "column {j} is not stored");
+                    out.push_str(heads[j]);
+                }
+                ColumnAt::Renamed(j, name) => {
+                    assert!(j < self.stored, "column {j} is not stored");
+                    let cell = match (&self.dialect, &self.columns[j].spelled) {
+                        (Dialect::Tcsv, spelled) => {
+                            assert!(!name.contains(':'), "a column's name holds no \":\" ({name})");
+                            match spelled {
+                                Some(t) => format!("{name}:{t}"),
+                                None => name.to_owned(),
+                            }
+                        }
+                        (Dialect::Plain(_), _) => name.to_owned(),
+                    };
+                    out.push_str(&self.quote(&cell));
+                }
+                ColumnAt::New(header, cells) => {
+                    assert!(cells.is_empty() || cells.len() == rows, "a new column has a cell for each of the {rows} rows, or none");
+                    out.push_str(&self.quote(header));
+                }
+            }
+        }
+        for r in 0..rows {
+            out.push_str(self.newline());
+            let fields = self.raw_fields(self.line(r));
+            for (k, c) in columns.iter().enumerate() {
+                if k > 0 {
+                    out.push_str(self.sep());
+                }
+                match *c {
+                    ColumnAt::Kept(j) | ColumnAt::Renamed(j, _) => out.push_str(&fields.get(j).map_or(blank.clone(), |f| self.sound(f))),
+                    ColumnAt::New(_, cells) => out.push_str(&cells.get(r).map_or(blank.clone(), |t| self.quote(t))),
+                }
+            }
+            for extra in fields.iter().skip(self.stored) {
+                out.push_str(self.sep());
+                out.push_str(&self.sound(extra));
+            }
+        }
+        self.close(&mut out, rows > 0, self.newline());
+        read_on(out.into_bytes(), self.dialect, threads)
+    }
+
+    /// The file written as `to`, another dialect or this one with other header cells: a
+    /// plain file's header the columns' names, the computed columns' among them with their
+    /// values a column after the stored ones, so the numbers a person saw are in the file;
+    /// a `.tcsv` file's header `header` when given (each column's cell with its type, a
+    /// plain file converted), else the header as it is, and the prelude kept. A record is
+    /// kept as written when the separator is the same and nothing joins it; otherwise it
+    /// is written from its cells, quoted where `to` needs it (a plain file that quotes
+    /// every field still does). A `.tcsv` file holds no fields past its header's, so a
+    /// ragged row loses them there. The byte order mark, the line breaks and the final
+    /// one are this file's.
+    pub fn written_as(&self, to: Dialect, header: Option<&[&str]>) -> String {
+        if to == self.dialect && header.is_none() {
+            return self.write();
+        }
+        if let Some(h) = header {
+            assert_eq!(h.len(), self.stored, "a header cell for each stored column");
+        }
+        let plain = matches!(to, Dialect::Plain(_));
+        // A `.tcsv` file's lines end in `\n` or `\r\n`, never a lone `\r`.
+        let nl = match self.newline() {
+            "\r" if !plain => "\n",
+            nl => nl,
+        };
+        let (sep, all) = (to.separator().byte(), plain && self.quotes_all);
+        let quote = |t: &str| scan::quote_in(t, sep, all).into_owned();
+        let sep_text = [sep];
+        let sep_text = core::str::from_utf8(&sep_text).unwrap();
+        let computed = if plain { &self.columns[self.stored..] } else { &[][..] };
+        let mut out = String::with_capacity(self.source.len() + 64);
+        let bom = if self.source.starts_with('\u{feff}') { "\u{feff}" } else { "" };
+        out.push_str(match (to, self.dialect) {
+            (Dialect::Tcsv, Dialect::Tcsv) => self.prelude_text(),
+            _ => bom,
+        });
+        let names: Vec<String> = match header {
+            Some(h) => h.iter().map(|c| quote(c)).collect(),
+            None if !plain && self.dialect == Dialect::Tcsv => Vec::from([self.header_line().to_owned()]),
+            None => self.columns[..self.stored].iter().chain(computed).map(|c| quote(&c.name)).collect(),
+        };
+        out.push_str(&names.join(sep_text));
+        let same = to.separator() == self.dialect.separator() && computed.is_empty();
+        let strict = Records { sep, lenient: false };
+        for r in 0..self.rows() {
+            out.push_str(nl);
+            let line = self.line(r);
+            let fields = self.raw_fields(line);
+            let regular = scan::record(line.as_bytes(), 0, strict).is_ok();
+            if same && regular && (plain || fields.len() <= self.stored) {
+                out.push_str(line);
+                continue;
+            }
+            let mut cells: Vec<String> = fields.iter().map(|f| quote(&scan::unquoted(f))).collect();
+            if !plain {
+                cells.truncate(self.stored);
+            }
+            if !computed.is_empty() {
+                cells.resize(cells.len().max(self.stored), quote(""));
+                for c in computed {
+                    cells.push(match c.value(r) {
+                        Value::Decimal(d) => d.normal().to_string(),
+                        _ => quote(""),
+                    });
+                }
+            }
+            out.push_str(&cells.join(sep_text));
+        }
+        self.close(&mut out, self.rows() > 0, nl);
+        out
     }
 
     /// One cell's text changed; every other byte stays as read. The cell is written in
@@ -616,18 +927,29 @@ impl Doc {
     pub fn set_cell(&mut self, row: usize, column: usize, text: &str) {
         assert!(column < self.stored, "column {column} is not stored");
         assert!(row < self.rows(), "row {row} does not exist");
-        let mut fields: Vec<Cow<'_, str>> = Self::raw_fields(self.line(row)).into_iter().map(Cow::Borrowed).collect();
+        let blank = self.quote("");
+        let mut fields: Vec<Cow<'_, str>> = self.raw_fields(self.line(row)).into_iter().map(|f| self.sound(f)).collect();
         while fields.len() <= column {
-            fields.push(Cow::Borrowed(""));
+            fields.push(blank.clone());
         }
-        fields[column] = scan::quote(text);
-        let mut joined = fields.join(",");
+        fields[column] = self.quote(text);
+        let width = fields.len();
+        let mut joined = fields.join(self.sep());
         if joined.is_empty() && self.terminator(row).is_empty() {
             // An empty last line with no break after it is no record: the blank is quoted.
             joined.push_str("\"\"");
         }
         self.edits.insert(row as u32, joined);
         self.decode_cell(row, column, text);
+        if matches!(self.dialect, Dialect::Plain(_)) {
+            // The row's width may have changed: a field written past a short row's end.
+            self.problems.retain(|p| !(p.row == row as u32 && p.kind() == Kind::Ragged));
+            if width != self.stored {
+                let p = read::ragged(row as u32, width, self.stored);
+                let at = self.problems.partition_point(|q| q.order() < p.order());
+                self.problems.insert(at, p);
+            }
+        }
     }
 
     /// One cell set to a value, written in its column's form.
@@ -659,7 +981,7 @@ impl Doc {
         let mut raw = String::new();
         let mut spans = Vec::with_capacity(rows);
         for r in 0..rows {
-            let fields = Self::raw_fields(self.line(r));
+            let fields = self.raw_fields(self.line(r));
             let s = raw.len() as u32;
             raw.push_str(fields.get(column).copied().unwrap_or(""));
             spans.push((s, raw.len() as u32));
@@ -667,7 +989,7 @@ impl Doc {
         let c = &self.columns[column];
         let ty = if c.ty.inferred { None } else { Some(c.ty.clone()) };
         let decoders = decoders(core::iter::once(ty.as_ref()));
-        let mut part = Part::new(raw.as_bytes(), 0, raw.len(), &decoders);
+        let mut part = Part::new(raw.as_bytes(), 0, raw.len(), &decoders, false);
         for &(s, e) in &spans {
             part.field(s, e).unwrap();
             part.record(e);
@@ -684,7 +1006,8 @@ impl Doc {
         col.ty = ty;
         col.data = data;
         col.valid = valid;
-        self.problems.retain(|p| p.column != column as u32);
+        // A ragged row's problem is its record's, never its cell's.
+        self.problems.retain(|p| p.column != column as u32 || p.kind() == Kind::Ragged);
         self.problems.extend(problems);
         self.problems.sort_by_key(|p| p.order());
         self.compute_values();
@@ -703,7 +1026,7 @@ impl Doc {
             && self.source.ends_with('\n')
             && bytes.starts_with(self.source.as_bytes());
         if !appended {
-            return read(bytes);
+            return read_on(bytes, self.dialect, 1);
         }
         if let Err(e) = core::str::from_utf8(&bytes[from..]) {
             return Err(error(At::File, format!("is not UTF-8: byte {} begins no character", from + e.valid_up_to())));
@@ -717,7 +1040,7 @@ impl Doc {
         let old_rows = self.rows() as u32;
         let stored = &self.columns[..self.stored];
         let decoders = decoders(stored.iter().map(|c| (!c.ty.inferred).then_some(&c.ty)));
-        let tail = read::sequential(source.as_bytes(), from, &decoders)
+        let tail = read::sequential(source.as_bytes(), from, &decoders, self.dialect.records())
             .map_err(|(row, s)| error(At::Row(old_rows + row), stop_why(s, self.stored)))?;
         let Part { records, columns: readings, problems, .. } = tail;
         let mut joined = Vec::with_capacity(self.stored);
@@ -733,7 +1056,7 @@ impl Doc {
             let candidates = self.candidates[c] & r.candidates;
             let base = if had || has { inferred_base(candidates) } else { Base::Text };
             if base != col.ty.base {
-                return read(source);
+                return read_on(source.into_bytes(), self.dialect, 1);
             }
             self.candidates[c] = candidates;
             if base == Base::Text {
@@ -742,7 +1065,7 @@ impl Doc {
             }
             match redecode(&base, &offsets, &bytes, &r.valid) {
                 Some(b) => joined.push(b),
-                None => return read(source),
+                None => return read_on(source.into_bytes(), self.dialect, 1),
             }
         }
         for (c, (b, v)) in joined.into_iter().enumerate() {
@@ -782,6 +1105,7 @@ impl Doc {
     /// plain column again). No cell is rewritten: a cell the new type breaks is reported.
     pub fn set_type(&mut self, column: usize, spelled: &str) -> Result<(), Error> {
         assert!(column < self.stored, "column {column} is not stored");
+        assert_eq!(self.dialect, Dialect::Tcsv, "a plain file holds no types: written as TCSV (`written_as`), it does");
         let at = At::Column(column as u32 + 1);
         let ty =
             if spelled.is_empty() { None } else { Some(types::parse_type(spelled, &self.prelude.named).map_err(|why| error(at, why))?) };
@@ -797,11 +1121,8 @@ impl Doc {
             Some(s) => format!("{name}:{s}"),
             None => name,
         };
-        let line = match &self.header {
-            Some(h) => h.clone(),
-            None => self.source[self.body as usize..self.records[0] as usize].trim_end_matches(['\r', '\n']).to_owned(),
-        };
-        let mut fields: Vec<Cow<'_, str>> = Self::raw_fields(&line).into_iter().map(Cow::Borrowed).collect();
+        let line = self.header_line().to_owned();
+        let mut fields: Vec<Cow<'_, str>> = self.raw_fields(&line).into_iter().map(Cow::Borrowed).collect();
         fields[column] = scan::quote(&cell);
         let joined = fields.join(",");
         self.header = Some(joined);
@@ -1011,17 +1332,18 @@ fn put(col: &mut Column, row: usize, text: &str) -> Option<Option<Why>> {
 }
 
 /// A file written from cells, for a host that keeps its own rows: `like`'s byte order
-/// mark and prelude, its header's line break and its final line break, every field quoted
-/// only where CSV needs it.
+/// mark and prelude, its separator, its header's line break and its final line break,
+/// every field quoted only where the file needs it (or always, in a plain file that
+/// quotes every field).
 pub fn compose(like: &Doc, header: &[&str], rows: &[Vec<&str>]) -> String {
     let nl = like.newline();
     let mut out = String::from(like.prelude_text());
     let line = |out: &mut String, cells: &[&str]| {
         for (k, c) in cells.iter().enumerate() {
             if k > 0 {
-                out.push(',');
+                out.push_str(like.sep());
             }
-            out.push_str(&scan::quote(c));
+            out.push_str(&like.quote(c));
         }
     };
     line(&mut out, header);

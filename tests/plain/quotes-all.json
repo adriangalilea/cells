@@ -1,0 +1,11 @@
+{
+  "separator": ",",
+  "columns": [
+    { "name": "gig", "type": "text?", "inferred": true },
+    { "name": "fee", "type": "int?", "inferred": true }
+  ],
+  "rows": [
+    { "gig": { "text": "Porto" }, "fee": { "int": "300" } }
+  ],
+  "problems": []
+}

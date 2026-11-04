@@ -1,0 +1,12 @@
+{
+  "separator": ",",
+  "columns": [
+    { "name": "venue", "type": "text?", "inferred": true },
+    { "name": "note", "type": "text?", "inferred": true }
+  ],
+  "rows": [
+    { "venue": { "text": "The Lantern" }, "note": { "text": "a hall, by the sea" } },
+    { "venue": { "text": "Harbour \"Hall\"" }, "note": null }
+  ],
+  "problems": []
+}
