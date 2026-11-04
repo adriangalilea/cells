@@ -99,7 +99,7 @@ pub fn currency(word: &str) -> Option<Currency> {
 }
 
 /// The bases spelled by one word; `bool` is built with its words in `parse_type`.
-const BASES: [(&str, Base); 10] = [
+pub(crate) const BASES: [(&str, Base); 10] = [
     ("text", Base::Text),
     ("int", Base::Int),
     ("num", Base::Num),
@@ -113,10 +113,10 @@ const BASES: [(&str, Base); 10] = [
 ];
 
 /// The explicit form's words: they end a `one of` list and are never a pair's words.
-const EXPLICIT: [&str; 11] = ["key", "optional", "one", "of", "bool", "min", "max", "above", "below", "between", "and"];
+pub(crate) const EXPLICIT: [&str; 11] = ["key", "optional", "one", "of", "bool", "min", "max", "above", "below", "between", "and"];
 
 /// Inside a type, outside single quotes.
-const RESERVED: &[u8] = b"|/!?<>=()':";
+pub(crate) const RESERVED: &[u8] = b"|/!?<>=()':";
 
 /// A bound on a number's value or a text's length.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -357,7 +357,7 @@ impl Token<'_> {
     }
 }
 
-const OPS: [&str; 9] = [">=", "<=", "..", "|", "/", "!", "?", ">", "<"];
+pub(crate) const OPS: [&str; 9] = [">=", "<=", "..", "|", "/", "!", "?", ">", "<"];
 
 fn tokens(spelled: &str) -> Result<Vec<Token<'_>>, String> {
     let s = spelled.as_bytes();
