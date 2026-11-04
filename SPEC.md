@@ -18,7 +18,7 @@ TCSV is its own format, read by TCSV readers. Its records borrow RFC 4180's quot
 
 ## The file
 
-- **Text.** A file is UTF-8. A byte order mark before its first line is no part of that line, and a writer writes it back.
+- **Text.** A file is UTF-8; one that is not (a Latin-1 export, a byte that begins no character) is an error naming the file. A byte order mark before its first line is no part of that line, and a writer writes it back.
 - **Records** are RFC 4180: fields separated by `,`, a field holding `,`, `"` or a line break is quoted, `""` is a quote inside one. A quoted field opens with `"` and closes at a lone `"`, which the end of the file, a `,` or a line ending follows; text after the closing quote, a `"` inside a field that did not open with one, and a quoted field never closed are errors naming the record (the header, or the row). Inside quotes every character is the field's, line breaks included.
 - **Lines** end in `\n` or `\r\n`. Each line's ending is kept as read, so a file may mix them, and so is whether the file ends in a line break: one at the very end closes the last record and opens none. A `\r` that is not followed by `\n`, outside quotes, is an error naming its record.
 - **The prelude** opens when the file's first line is exactly `---` and closes at the next line that is exactly `---`; between them, TCSV's own language (below). It is optional; a file with none starts at its header. A prelude that opens and never closes is an error. A `---` on any other line is no fence: after the prelude it is the header (one column named `---`), below the header it is a row.

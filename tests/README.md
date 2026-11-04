@@ -45,7 +45,7 @@ The `.json` is one of two shapes.
 { "error": { "at": "prelude line 1" } }
 ```
 
-`at` is one of `the header`, `column N` (1-based), `prelude line N` (1-based, inside the fences), `the prelude`, `row N` (0-based). `the header` and `row N` are a record's own errors (its quoting, its line ending, a row too long); `column N` is a header cell's (its name, its type); `prelude line N` a statement's, a computed column's references included; `the prelude` a fence never closed. A case that does not read holds exactly one error, so no order between errors is pinned. An implementation may refuse the file (an exception) or open it with the error on it; either way it reports exactly this place.
+`at` is one of `the file`, `the header`, `column N` (1-based), `prelude line N` (1-based, inside the fences), `the prelude`, `row N` (0-based). `the file` is bytes that are not UTF-8, the one case whose `.tcsv` is not text; `the header` and `row N` are a record's own errors (its quoting, its line ending, a row too long); `column N` is a header cell's (its name, its type); `prelude line N` a statement's, a computed column's references included; `the prelude` a fence never closed. A case that does not read holds exactly one error, so no order between errors is pinned. An implementation may refuse the file (an exception) or open it with the error on it; either way it reports exactly this place.
 
 ## Writing
 
