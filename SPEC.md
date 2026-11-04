@@ -143,12 +143,19 @@ total = cost * qty                        // a computed column
 ---
 ```
 
-One statement a line; a blank line is nothing.
+One statement a line; a blank line is nothing, and spaces at a line's ends are nothing. A line that is no statement is an error naming it.
 
-- **`type Name = <type>`** names a type for any header cell to use: `category:Category`. A name is a word starting with a capital letter; it may name another named type defined above it.
-- **`name = <expression>`** is a computed column: shown and read as a column after the header's, never stored in the rows. Its expression is pure and total (it always finishes, the same answer in every implementation): numbers, the names of numeric columns, `+ - * /`, parentheses. A blank or broken input makes the computed cell blank.
-- **`//`** starts a comment to the line's end, in the prelude only.
-- **No import yet.** Today a file refers to no other; references between files are the next part of the format ([Open](#open)).
+- **`type Name = <type>`** names a type for any header cell to use: `category:Category`. A name is ASCII letters, digits and `_`, starting with a capital letter (`type category = …` is refused), and never a currency code. A name is defined once; it may name another named type defined above it, never one below it or itself. A header cell may add to a named type what it does not already say: `cost:Cost?`, `cost:Money>=0`.
+- **`name = <expression>`** is a computed column: shown and read as a column after the header's, in the prelude's order, never stored in the rows. Its name is ASCII letters, digits and `_`, not starting with a digit, and no other column's. Its expression is pure and total (it always finishes, the same answer in every implementation): numbers, the names of numeric columns, `+ - * /`, parentheses.
+  - A number is digits with a fraction or none (`2`, `0.5`); no sign, no exponent. A `-` before a term negates it (`-cost`, `2 * -qty`).
+  - A name is a stored column whose type is `int`, `num`, `pct` or a currency, read or inferred, or a computed column above it. Any other name (no column, a text column, a computed column below) is an error naming the line.
+  - `*` and `/` bind before `+` and `-`, each from the left.
+  - Arithmetic is exact decimal: `0.1 + 0.2` is `0.3`. A quotient is rounded to 34 significant digits, half to even (`1 / 3` is `0.3333333333333333333333333333333333`).
+  - The column is `num?`. A blank or broken input, or a division by zero, makes the computed cell blank. A computed cell is never reported: what a person fixes is its input.
+- **`//`** starts a comment to the line's end, in the prelude only, unless it is inside single quotes (`type Path = 'a//b'|c`).
+- **No import yet.** Today a file refers to no other; references between files are the next part of the format ([Open](#open)), and `use` is no statement yet.
+
+An error inside a statement (a type that does not read, an expression that names no numeric column) names the statement's line.
 
 ## Reading
 

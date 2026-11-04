@@ -1,0 +1,7 @@
+---
+subtotal = cost * qty
+total = subtotal + fee
+---
+item:text,cost:EUR,qty:int,fee:EUR
+tickets,4.50,3,1.25
+maps,2.75,4,0

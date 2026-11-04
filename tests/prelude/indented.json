@@ -1,0 +1,13 @@
+{
+  "types": { "Stage": "main|side" },
+  "columns": [
+    { "name": "band", "type": "text" },
+    { "name": "stage", "type": "Stage" },
+    { "name": "minutes", "type": "int" },
+    { "name": "length", "type": "num?", "computed": "minutes / 60" }
+  ],
+  "rows": [
+    { "band": { "text": "The Lanterns" }, "stage": { "choice": "main" }, "minutes": { "int": "90" }, "length": { "num": "1.5" } }
+  ],
+  "problems": []
+}

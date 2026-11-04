@@ -1,0 +1,13 @@
+{
+  "columns": [
+    { "name": "seed", "type": "text?", "inferred": true },
+    { "name": "packets", "type": "int?", "inferred": true },
+    { "name": "grams", "type": "num?", "inferred": true },
+    { "name": "weight", "type": "num?", "computed": "packets * grams" }
+  ],
+  "rows": [
+    { "seed": { "text": "basil" }, "packets": { "int": "3" }, "grams": { "num": "1.5" }, "weight": { "num": "4.5" } },
+    { "seed": { "text": "fennel" }, "packets": { "int": "4" }, "grams": { "num": "0.25" }, "weight": { "num": "1" } }
+  ],
+  "problems": []
+}

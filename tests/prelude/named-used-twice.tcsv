@@ -1,0 +1,6 @@
+---
+type City = north|south|coast
+---
+leg:int!,from:City,to:City
+1,north,coast
+2,coast,south

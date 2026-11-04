@@ -1,0 +1,7 @@
+---
+type Sown = yes/no
+---
+seed:text,sown:Sown
+basil,yes
+fennel,no
+leek,true

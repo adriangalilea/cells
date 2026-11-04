@@ -1,0 +1,5 @@
+---
+cost = qty * 2
+---
+item:text,cost:EUR,qty:int
+fuel,84.20,1

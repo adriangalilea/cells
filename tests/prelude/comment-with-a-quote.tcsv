@@ -1,0 +1,7 @@
+---
+// it's here
+type Kind = herb|root // don't
+---
+seed:text,kind:Kind
+basil,herb
+carrot,root

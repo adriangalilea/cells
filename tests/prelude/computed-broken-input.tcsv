@@ -1,0 +1,6 @@
+---
+total = cost * qty
+---
+item:text,cost:EUR,qty:int
+fuel,84.20,two
+tickets,12.50,3

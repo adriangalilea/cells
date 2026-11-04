@@ -1,0 +1,12 @@
+{
+  "types": { "Mark": "done|todo" },
+  "columns": [
+    { "name": "step", "type": "text" },
+    { "name": "mark", "type": "Mark" }
+  ],
+  "rows": [
+    { "step": { "text": "---" }, "mark": { "choice": "todo" } },
+    { "step": { "text": "dig" }, "mark": { "choice": "done" } }
+  ],
+  "problems": []
+}

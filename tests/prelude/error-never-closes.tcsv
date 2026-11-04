@@ -1,0 +1,4 @@
+---
+type Genre = novel|poetry
+title:text,genre:Genre
+Salt and Sky,novel

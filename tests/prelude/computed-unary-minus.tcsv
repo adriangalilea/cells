@@ -1,0 +1,6 @@
+---
+owed = -cost
+twice_back = 2 * -qty
+---
+item:text,cost:EUR,qty:int
+tent,120.00,3

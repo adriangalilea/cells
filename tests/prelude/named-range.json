@@ -1,0 +1,14 @@
+{
+  "types": { "Score": "0..10" },
+  "columns": [
+    { "name": "title", "type": "text" },
+    { "name": "score", "type": "Score" }
+  ],
+  "rows": [
+    { "title": { "text": "Salt and Sky" }, "score": { "num": "7.5" } },
+    { "title": { "text": "Small Hours" }, "score": null }
+  ],
+  "problems": [
+    { "row": 1, "column": "score", "kind": "type" }
+  ]
+}

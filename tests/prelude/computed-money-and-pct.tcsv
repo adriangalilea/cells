@@ -1,0 +1,7 @@
+---
+vat = amount * rate / (100 + rate)
+---
+item:text,amount:EUR,rate:pct
+lamp,64.30,21%
+book,18.40,10
+fee,950.00,0%

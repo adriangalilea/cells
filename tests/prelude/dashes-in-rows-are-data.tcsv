@@ -1,0 +1,6 @@
+---
+type Mark = done|todo
+---
+step:text,mark:Mark
+---,todo
+dig,done

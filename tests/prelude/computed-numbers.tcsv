@@ -1,0 +1,6 @@
+---
+soil = 0.5 * trays + 2
+---
+seed:text,trays:int
+basil,3
+fennel,10

@@ -1,0 +1,6 @@
+---
+type Path = 'a//b'|c // a comment
+---
+route:Path
+a//b
+c

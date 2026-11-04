@@ -1,0 +1,5 @@
+---
+2total = qty * 2
+---
+item:text,qty:int
+fuel,1

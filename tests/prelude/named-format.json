@@ -1,0 +1,14 @@
+{
+  "types": { "Day": "date(DD/MM/YYYY)" },
+  "columns": [
+    { "name": "gig", "type": "text" },
+    { "name": "on", "type": "Day" }
+  ],
+  "rows": [
+    { "gig": { "text": "first" }, "on": { "date": "2026-08-14" } },
+    { "gig": { "text": "second" }, "on": null }
+  ],
+  "problems": [
+    { "row": 1, "column": "on", "kind": "type" }
+  ]
+}

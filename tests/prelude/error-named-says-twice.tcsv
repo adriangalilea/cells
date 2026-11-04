@@ -1,0 +1,5 @@
+---
+type Note = text?
+---
+title:text,note:Note?
+Salt and Sky,

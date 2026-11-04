@@ -1,0 +1,14 @@
+{
+  "types": { "Money": "EUR", "Cost": "Money>=0" },
+  "columns": [
+    { "name": "item", "type": "text" },
+    { "name": "cost", "type": "Cost" }
+  ],
+  "rows": [
+    { "item": { "text": "tent" }, "cost": { "money": "120.00", "currency": "EUR" } },
+    { "item": { "text": "refund" }, "cost": null }
+  ],
+  "problems": [
+    { "row": 1, "column": "cost", "kind": "type" }
+  ]
+}

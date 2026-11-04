@@ -1,0 +1,13 @@
+{
+  "types": { "Shelf": "A|B" },
+  "columns": [
+    { "name": "title", "type": "text" },
+    { "name": "shelf", "type": "Shelf" },
+    { "name": "copies", "type": "int" },
+    { "name": "double", "type": "num?", "computed": "copies * 2" }
+  ],
+  "rows": [
+    { "title": { "text": "Salt and Sky" }, "shelf": { "choice": "A" }, "copies": { "int": "2" }, "double": { "num": "4" } }
+  ],
+  "problems": []
+}

@@ -1,0 +1,10 @@
+---
+
+type Shelf = A|B
+
+
+double = copies * 2
+
+---
+title:text,shelf:Shelf,copies:int
+Salt and Sky,A,2

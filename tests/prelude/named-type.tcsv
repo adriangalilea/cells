@@ -1,0 +1,7 @@
+---
+type Genre = novel|poetry|essay
+---
+title:text!,genre:Genre
+Salt and Sky,novel
+Small Hours,poetry
+The Long Field,memoir

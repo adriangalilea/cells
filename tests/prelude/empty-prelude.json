@@ -1,0 +1,10 @@
+{
+  "columns": [
+    { "name": "title", "type": "text" },
+    { "name": "shelf", "type": "text" }
+  ],
+  "rows": [
+    { "title": { "text": "Salt and Sky" }, "shelf": { "text": "B2" } }
+  ],
+  "problems": []
+}

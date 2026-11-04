@@ -1,0 +1,10 @@
+{
+  "types": { "Spare": "left|right" },
+  "columns": [
+    { "name": "title", "type": "text" }
+  ],
+  "rows": [
+    { "title": { "text": "Salt and Sky" } }
+  ],
+  "problems": []
+}

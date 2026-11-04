@@ -1,0 +1,7 @@
+---
+type Category = travel|stay|food|gear
+total = cost * qty
+---
+item:text!,category:Category,cost:EUR>=0,qty:int>=1
+fuel,travel,84.20,1
+groceries,food,96.75,2

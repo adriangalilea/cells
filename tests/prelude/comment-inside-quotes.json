@@ -1,0 +1,11 @@
+{
+  "types": { "Path": "'a//b'|c" },
+  "columns": [
+    { "name": "route", "type": "Path" }
+  ],
+  "rows": [
+    { "route": { "choice": "a//b" } },
+    { "route": { "choice": "c" } }
+  ],
+  "problems": []
+}

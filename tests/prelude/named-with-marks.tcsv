@@ -1,0 +1,7 @@
+---
+type Category = travel|stay|food
+type Money = EUR
+---
+item:text,category:Category?,cost:Money>=0
+fuel,travel,84.20
+tip,,-2.00

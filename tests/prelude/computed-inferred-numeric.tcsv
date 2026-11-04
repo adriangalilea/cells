@@ -1,0 +1,6 @@
+---
+weight = packets * grams
+---
+seed,packets,grams
+basil,3,1.5
+fennel,4,0.25

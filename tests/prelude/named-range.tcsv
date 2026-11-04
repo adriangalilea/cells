@@ -1,0 +1,6 @@
+---
+type Score = 0..10
+---
+title:text,score:Score
+Salt and Sky,7.5
+Small Hours,11

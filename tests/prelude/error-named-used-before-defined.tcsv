@@ -1,0 +1,6 @@
+---
+type Cost = Money>=0
+type Money = EUR
+---
+item:text,cost:Money
+tent,120.00
