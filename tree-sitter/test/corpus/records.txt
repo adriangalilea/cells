@@ -1,0 +1,244 @@
+==================
+A plain header and rows
+==================
+item,qty
+fuel,1
+groceries,2
+---
+
+(source_file
+  (header
+    (header_cell
+      (column_name))
+    (header_cell
+      (column_name)))
+  (row
+    (field
+      (text))
+    (field
+      (number)))
+  (row
+    (field
+      (text))
+    (field
+      (number))))
+
+==================
+Every kind of data cell
+==================
+a,b,c,d,e,f,g,h,i,j,k,l
+fuel,84.20,-12,3e8,12.5%,2026-08-14,2026-08-14T14:30:00Z,14:30,true,https://example.com/a,ada@example.com,"quoted"
+---
+
+(source_file
+  (header
+    (header_cell
+      (column_name))
+    (header_cell
+      (column_name))
+    (header_cell
+      (column_name))
+    (header_cell
+      (column_name))
+    (header_cell
+      (column_name))
+    (header_cell
+      (column_name))
+    (header_cell
+      (column_name))
+    (header_cell
+      (column_name))
+    (header_cell
+      (column_name))
+    (header_cell
+      (column_name))
+    (header_cell
+      (column_name))
+    (header_cell
+      (column_name)))
+  (row
+    (field
+      (text))
+    (field
+      (number))
+    (field
+      (number))
+    (field
+      (number))
+    (field
+      (number))
+    (field
+      (date))
+    (field
+      (datetime))
+    (field
+      (time))
+    (field
+      (boolean))
+    (field
+      (url))
+    (field
+      (email))
+    (field
+      (quoted_field))))
+
+==================
+Booleans in their words
+==================
+a,b,c,d
+true,false,yes,no
+---
+
+(source_file
+  (header
+    (header_cell
+      (column_name))
+    (header_cell
+      (column_name))
+    (header_cell
+      (column_name))
+    (header_cell
+      (column_name)))
+  (row
+    (field
+      (boolean))
+    (field
+      (boolean))
+    (field
+      (boolean))
+    (field
+      (boolean))))
+
+==================
+Text that starts like a number or a date
+==================
+a,b,c
+12 apples,2026-08-14 at noon,yesterday
+---
+
+(source_file
+  (header
+    (header_cell
+      (column_name))
+    (header_cell
+      (column_name))
+    (header_cell
+      (column_name)))
+  (row
+    (field
+      (text))
+    (field
+      (text))
+    (field
+      (text))))
+
+==================
+Blank cells keep their column
+==================
+a,b,c
+,,
+x,,z
+,y,
+---
+
+(source_file
+  (header
+    (header_cell
+      (column_name))
+    (header_cell
+      (column_name))
+    (header_cell
+      (column_name)))
+  (row
+    (field)
+    (field))
+  (row
+    (field
+      (text))
+    (field)
+    (field
+      (text)))
+  (row
+    (field)
+    (field
+      (text))))
+
+==================
+A quoted field with a quote, a comma and a line break
+==================
+a,b
+"he said ""hi"", twice","two
+lines"
+---
+
+(source_file
+  (header
+    (header_cell
+      (column_name))
+    (header_cell
+      (column_name)))
+  (row
+    (field
+      (quoted_field
+        (escape_sequence)
+        (escape_sequence)))
+    (field
+      (quoted_field))))
+
+==================
+An empty quoted field
+==================
+a,b
+"",x
+---
+
+(source_file
+  (header
+    (header_cell
+      (column_name))
+    (header_cell
+      (column_name)))
+  (row
+    (field
+      (quoted_field))
+    (field
+      (text))))
+
+==================
+A blank line between rows
+==================
+a
+1
+
+2
+---
+
+(source_file
+  (header
+    (header_cell
+      (column_name)))
+  (row
+    (field
+      (number)))
+  (row
+    (field
+      (number))))
+
+==================
+A comment marker in a cell is text
+==================
+a,b
+// not a comment,https://example.com//x
+---
+
+(source_file
+  (header
+    (header_cell
+      (column_name))
+    (header_cell
+      (column_name)))
+  (row
+    (field
+      (text))
+    (field
+      (url))))

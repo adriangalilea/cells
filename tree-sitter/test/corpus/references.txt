@@ -1,0 +1,138 @@
+==================|||
+PROVISIONAL: use and a reference type
+==================|||
+---
+use ../accounts.tcsv
+type Rate = pct
+vat = amount * tax_rate / (100 + tax_rate)
+---
+date:date,amount:EUR>0,account_from:accounts.account,account_to:accounts.account,description:text,tax_rate:Rate
+2026-07-01,950.00,assets:bank:main,expenses:home:rent,rent july,0
+---|||
+
+(source_file
+  (prelude
+    (fence)
+    (use_statement
+      path: (path))
+    (type_definition
+      name: (type_name)
+      type: (type
+        (base_type)))
+    (computed_column
+      name: (column_name)
+      value: (binary_expression
+        left: (binary_expression
+          left: (column_reference)
+          right: (column_reference))
+        right: (parenthesized_expression
+          (binary_expression
+            left: (number)
+            right: (column_reference)))))
+    (fence))
+  (header
+    (header_cell
+      name: (column_name)
+      type: (type
+        (base_type)))
+    (header_cell
+      name: (column_name)
+      type: (type
+        (currency)
+        (bound
+          value: (number))))
+    (header_cell
+      name: (column_name)
+      type: (type
+        (reference_type
+          file: (reference_file)
+          column: (reference_column))))
+    (header_cell
+      name: (column_name)
+      type: (type
+        (reference_type
+          file: (reference_file)
+          column: (reference_column))))
+    (header_cell
+      name: (column_name)
+      type: (type
+        (base_type)))
+    (header_cell
+      name: (column_name)
+      type: (type
+        (named_type))))
+  (row
+    (field
+      (date))
+    (field
+      (number))
+    (field
+      (text))
+    (field
+      (text))
+    (field
+      (text))
+    (field
+      (number))))
+
+==================|||
+PROVISIONAL: a reference with marks, and dotted words that are no reference
+==================|||
+vendor:vendors.vendor?,key:ledger.entry!,v:v1.2|v2.0,b:on.off/off.on
+---|||
+
+(source_file
+  (header
+    (header_cell
+      name: (column_name)
+      type: (type
+        (reference_type
+          file: (reference_file)
+          column: (reference_column))
+        (optional_mark)))
+    (header_cell
+      name: (column_name)
+      type: (type
+        (reference_type
+          file: (reference_file)
+          column: (reference_column))
+        (key_mark)))
+    (header_cell
+      name: (column_name)
+      type: (type
+        (choices
+          (choice)
+          (choice))))
+    (header_cell
+      name: (column_name)
+      type: (type
+        (bool_pair
+          true: (bool_word)
+          false: (bool_word))))))
+
+==================|||
+PROVISIONAL: several uses, with comments
+==================|||
+---
+use ../accounts.tcsv   // the chart of accounts
+use ../../vendors.tcsv
+---
+vendor:vendors.vendor
+---|||
+
+(source_file
+  (prelude
+    (fence)
+    (use_statement
+      path: (path))
+    (comment)
+    (use_statement
+      path: (path))
+    (fence))
+  (header
+    (header_cell
+      name: (column_name)
+      type: (type
+        (reference_type
+          file: (reference_file)
+          column: (reference_column))))))

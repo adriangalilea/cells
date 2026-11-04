@@ -1,0 +1,229 @@
+==================|||
+The SPEC's prelude
+==================|||
+---
+type Category = travel|stay|food|gear
+total = cost * qty                        // computed, never stored
+---
+item:text!,category:Category,cost:EUR>=0,qty:int>=1,paid:yes/no,on:date
+fuel,travel,84.20,1,yes,2026-08-14
+---|||
+
+(source_file
+  (prelude
+    (fence)
+    (type_definition
+      name: (type_name)
+      type: (type
+        (choices
+          (choice)
+          (choice)
+          (choice)
+          (choice))))
+    (computed_column
+      name: (column_name)
+      value: (binary_expression
+        left: (column_reference)
+        right: (column_reference)))
+    (comment)
+    (fence))
+  (header
+    (header_cell
+      name: (column_name)
+      type: (type
+        (base_type)
+        (key_mark)))
+    (header_cell
+      name: (column_name)
+      type: (type
+        (named_type)))
+    (header_cell
+      name: (column_name)
+      type: (type
+        (currency)
+        (bound
+          value: (number))))
+    (header_cell
+      name: (column_name)
+      type: (type
+        (base_type)
+        (bound
+          value: (number))))
+    (header_cell
+      name: (column_name)
+      type: (type
+        (bool_pair
+          true: (bool_word)
+          false: (bool_word))))
+    (header_cell
+      name: (column_name)
+      type: (type
+        (base_type))))
+  (row
+    (field
+      (text))
+    (field
+      (text))
+    (field
+      (number))
+    (field
+      (number))
+    (field
+      (boolean))
+    (field
+      (date))))
+
+==================|||
+Comments and blank lines
+==================|||
+---
+// the categories
+
+type Category = travel|stay   // two
+---
+category:Category
+---|||
+
+(source_file
+  (prelude
+    (fence)
+    (comment)
+    (type_definition
+      name: (type_name)
+      type: (type
+        (choices
+          (choice)
+          (choice))))
+    (comment)
+    (fence))
+  (header
+    (header_cell
+      name: (column_name)
+      type: (type
+        (named_type)))))
+
+==================|||
+A named type naming another
+==================|||
+---
+type Money = EUR>=0
+type Price = Money?
+---
+price:Price
+---|||
+
+(source_file
+  (prelude
+    (fence)
+    (type_definition
+      name: (type_name)
+      type: (type
+        (currency)
+        (bound
+          value: (number))))
+    (type_definition
+      name: (type_name)
+      type: (type
+        (named_type)
+        (optional_mark)))
+    (fence))
+  (header
+    (header_cell
+      name: (column_name)
+      type: (type
+        (named_type)))))
+
+==================|||
+Expressions
+==================|||
+---
+a = 1
+b = cost * qty + fee
+c = (cost - discount) / 2
+d = -cost * 1.5
+---
+cost:num,qty:int,fee:num,discount:num
+---|||
+
+(source_file
+  (prelude
+    (fence)
+    (computed_column
+      name: (column_name)
+      value: (number))
+    (computed_column
+      name: (column_name)
+      value: (binary_expression
+        left: (binary_expression
+          left: (column_reference)
+          right: (column_reference))
+        right: (column_reference)))
+    (computed_column
+      name: (column_name)
+      value: (binary_expression
+        left: (parenthesized_expression
+          (binary_expression
+            left: (column_reference)
+            right: (column_reference)))
+        right: (number)))
+    (computed_column
+      name: (column_name)
+      value: (binary_expression
+        left: (unary_expression
+          operand: (column_reference))
+        right: (number)))
+    (fence))
+  (header
+    (header_cell
+      name: (column_name)
+      type: (type
+        (base_type)))
+    (header_cell
+      name: (column_name)
+      type: (type
+        (base_type)))
+    (header_cell
+      name: (column_name)
+      type: (type
+        (base_type)))
+    (header_cell
+      name: (column_name)
+      type: (type
+        (base_type)))))
+
+==================|||
+A prelude and nothing else
+==================|||
+---
+type Kind = a|b
+---
+---|||
+
+(source_file
+  (prelude
+    (fence)
+    (type_definition
+      name: (type_name)
+      type: (type
+        (choices
+          (choice)
+          (choice))))
+    (fence)))
+
+==================|||
+An empty prelude
+==================|||
+---
+---
+a,b
+---|||
+
+(source_file
+  (prelude
+    (fence)
+    (fence))
+  (header
+    (header_cell
+      name: (column_name))
+    (header_cell
+      name: (column_name))))
