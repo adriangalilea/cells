@@ -26,6 +26,8 @@ mod doc;
 pub mod exact;
 mod keys;
 pub mod prelude;
+#[cfg(test)]
+mod properties;
 mod read;
 mod scan;
 pub mod types;

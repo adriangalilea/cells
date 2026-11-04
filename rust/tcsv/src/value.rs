@@ -22,11 +22,28 @@ pub fn pow10(n: u32) -> i128 {
     POW10[n as usize]
 }
 
-/// An exact decimal: `mantissa / 10^scale`, at most 38 digits.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+/// An exact decimal: `mantissa / 10^scale`, at most 38 digits. Equal by value: `84.20`
+/// is `84.2`.
+#[derive(Clone, Copy, Debug)]
 pub struct Decimal {
     pub mantissa: i128,
     pub scale: u8,
+}
+
+impl PartialEq for Decimal {
+    fn eq(&self, other: &Self) -> bool {
+        self.cmp(other).is_eq()
+    }
+}
+
+impl Eq for Decimal {}
+
+impl core::hash::Hash for Decimal {
+    fn hash<H: core::hash::Hasher>(&self, h: &mut H) {
+        let n = self.normal();
+        n.mantissa.hash(h);
+        n.scale.hash(h);
+    }
 }
 
 /// Why a number's text is no decimal.

@@ -540,7 +540,11 @@ impl Doc {
             fields.push(Cow::Borrowed(""));
         }
         fields[column] = scan::quote(text);
-        let joined = fields.join(",");
+        let mut joined = fields.join(",");
+        if joined.is_empty() && self.terminator(row).is_empty() {
+            // An empty last line with no break after it is no record: the blank is quoted.
+            joined.push_str("\"\"");
+        }
         self.edits.insert(row as u32, joined);
         self.decode_cell(row, column, text);
     }
