@@ -12,6 +12,15 @@ fuel,travel,84.20,1,yes,2026-08-14,
 groceries,food,96.75,2,no,2026-08-15,the market on the square
 ```
 
+## The documents
+
+| | |
+|---|---|
+| [SPEC.md](SPEC.md) | the format, and in its Open section what is decided in direction and what is not |
+| [tests/README.md](tests/README.md) | the conformance suite: what a case is, and how an implementation runs it |
+| [ENGINE.md](ENGINE.md) | the engine every app reads and writes through: v0, one Mac, and what comes later |
+| [ACCOUNTING.md](ACCOUNTING.md) | books kept in TCSV, drafted with the primitives the spec proposes |
+
 ## The syntax
 
 A header cell is `name:type`. A cell with no `:` is a plain column, its type read from its values.
