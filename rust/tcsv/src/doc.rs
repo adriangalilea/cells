@@ -884,6 +884,22 @@ fn evaluate(columns: &[Column], c: &Computed, rows: usize) -> (Data, Bits) {
 /// Writes one cell's value into its column in place and says why it is a problem, if it
 /// is one; nothing when the column has to be read again whole (a value with more digits
 /// after the point than its column's scale or unit).
+/// One text read by a column's type, as a column of one cell: nothing when the text breaks
+/// the type or is blank.
+pub(crate) fn decode_one(col: &Column, text: &str) -> Option<Column> {
+    let d = Decoder::of(Some(&col.ty));
+    let mut one = Building::new(&d, 1);
+    let mut valid = BitsBuilder::default();
+    let mut problems = Vec::new();
+    if text.is_empty() {
+        return None;
+    }
+    let mut run = Run { valid: &mut valid, problems: &mut problems, column: 0, first: 0 };
+    column::decode(&d, &mut one, text.as_bytes(), &mut run).ok()?;
+    valid.push(true);
+    Some(Column { name: String::new(), spelled: None, ty: col.ty.clone(), computed: None, data: one.finish(), valid: valid.finish() })
+}
+
 fn put(col: &mut Column, row: usize, text: &str) -> Option<Option<Why>> {
     let d = Decoder::of(Some(&col.ty));
     let mut one = Building::new(&d, 1);

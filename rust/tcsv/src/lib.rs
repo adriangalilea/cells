@@ -24,6 +24,7 @@ pub mod arrow;
 pub mod column;
 mod doc;
 pub mod exact;
+mod identity;
 mod keys;
 pub mod prelude;
 #[cfg(test)]
@@ -37,6 +38,7 @@ pub use column::{Bits, Data, Kind, Problem, Value, Why};
 #[cfg(feature = "std")]
 pub use doc::read_parallel;
 pub use doc::{At, Column, Doc, Error, compose, read};
+pub use identity::{Change, Refused, RowAt, Version};
 pub use scan::quote;
 pub use types::{Base, Bound, Currency, Format, NamedType, Type, parse_type, split_header};
 pub use value::Decimal;

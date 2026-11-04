@@ -35,7 +35,7 @@ pub(crate) fn check(data: &Data, valid: &Bits, column: u32, threads: usize, out:
 
 /// A 64-bit hash of a key's bytes, eight at a time.
 #[inline]
-fn hash(s: &[u8]) -> u64 {
+pub(crate) fn hash(s: &[u8]) -> u64 {
     const K: u64 = 0x9E37_79B9_7F4A_7C15;
     let mut h = (s.len() as u64).wrapping_mul(K);
     let mut chunks = s.chunks_exact(8);
