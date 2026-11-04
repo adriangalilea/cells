@@ -1,0 +1,16 @@
+---
+type Kind = assets|liabilities|expenses|income|equity
+---
+account:text!,kind:Kind,opened:date,closed:date?,note:text?
+assets:bank:everyday,assets,2024-01-10,,the current account
+assets:bank:savings,assets,2024-01-10,,
+assets:cash,assets,2024-01-10,,
+liabilities:card,liabilities,2024-03-02,,
+expenses:home:rent,expenses,2024-01-10,,
+expenses:home:power,expenses,2024-01-10,,
+expenses:home:internet,expenses,2024-02-01,,
+expenses:food:groceries,expenses,2024-01-10,,
+expenses:travel,expenses,2024-05-20,,
+income:salary,income,2024-01-10,,
+income:interest,income,2024-01-10,,
+equity:opening,equity,2024-01-10,,
