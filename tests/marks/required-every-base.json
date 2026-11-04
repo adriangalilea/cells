@@ -1,0 +1,35 @@
+{
+  "columns": [
+    { "name": "a", "type": "text" },
+    { "name": "b", "type": "int" },
+    { "name": "c", "type": "num" },
+    { "name": "d", "type": "pct" },
+    { "name": "e", "type": "bool" },
+    { "name": "f", "type": "date" },
+    { "name": "g", "type": "time" },
+    { "name": "h", "type": "datetime" },
+    { "name": "i", "type": "url" },
+    { "name": "j", "type": "email" },
+    { "name": "k", "type": "EUR" },
+    { "name": "l", "type": "on|off" },
+    { "name": "m", "type": "yes/no" }
+  ],
+  "rows": [
+    { "a": null, "b": null, "c": null, "d": null, "e": null, "f": null, "g": null, "h": null, "i": null, "j": null, "k": null, "l": null, "m": null }
+  ],
+  "problems": [
+    { "row": 0, "column": "a", "kind": "missing" },
+    { "row": 0, "column": "b", "kind": "missing" },
+    { "row": 0, "column": "c", "kind": "missing" },
+    { "row": 0, "column": "d", "kind": "missing" },
+    { "row": 0, "column": "e", "kind": "missing" },
+    { "row": 0, "column": "f", "kind": "missing" },
+    { "row": 0, "column": "g", "kind": "missing" },
+    { "row": 0, "column": "h", "kind": "missing" },
+    { "row": 0, "column": "i", "kind": "missing" },
+    { "row": 0, "column": "j", "kind": "missing" },
+    { "row": 0, "column": "k", "kind": "missing" },
+    { "row": 0, "column": "l", "kind": "missing" },
+    { "row": 0, "column": "m", "kind": "missing" }
+  ]
+}

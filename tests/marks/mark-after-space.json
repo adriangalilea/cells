@@ -1,0 +1,11 @@
+{
+  "columns": [
+    { "name": "code", "type": "text!" },
+    { "name": "note", "type": "text?" }
+  ],
+  "rows": [
+    { "code": { "text": "A1" }, "note": null },
+    { "code": { "text": "A2" }, "note": { "text": "dog-eared" } }
+  ],
+  "problems": []
+}

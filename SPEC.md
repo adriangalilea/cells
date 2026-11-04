@@ -110,7 +110,7 @@ A format in parentheses says how the file writes the value: `on:date(DD/MM/YYYY)
 | `!` | the key: present in every row and unique |
 | `?` | may be blank |
 
-Without `?`, a blank cell is reported as missing. `note:text?` is an optional note; `item:text!` is the key.
+Without `?`, a blank cell is reported as missing. `note:text?` is an optional note; `item:text!` is the key. The two together are refused: a key is present in every row.
 
 ### Every shorthand has a word
 

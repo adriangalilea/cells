@@ -1,0 +1,2 @@
+a:text?,b:int?,c:num?,d:pct?,e:bool?,f:date?,g:time?,h:datetime?,i:url?,j:email?,k:EUR?,l:on|off?,m:yes/no?
+,,,,,,,,,,,,

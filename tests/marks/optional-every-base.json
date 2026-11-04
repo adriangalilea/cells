@@ -1,0 +1,21 @@
+{
+  "columns": [
+    { "name": "a", "type": "text?" },
+    { "name": "b", "type": "int?" },
+    { "name": "c", "type": "num?" },
+    { "name": "d", "type": "pct?" },
+    { "name": "e", "type": "bool?" },
+    { "name": "f", "type": "date?" },
+    { "name": "g", "type": "time?" },
+    { "name": "h", "type": "datetime?" },
+    { "name": "i", "type": "url?" },
+    { "name": "j", "type": "email?" },
+    { "name": "k", "type": "EUR?" },
+    { "name": "l", "type": "on|off?" },
+    { "name": "m", "type": "yes/no?" }
+  ],
+  "rows": [
+    { "a": null, "b": null, "c": null, "d": null, "e": null, "f": null, "g": null, "h": null, "i": null, "j": null, "k": null, "l": null, "m": null }
+  ],
+  "problems": []
+}
