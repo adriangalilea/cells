@@ -9,7 +9,7 @@
 use std::cell::UnsafeCell;
 use std::fmt::Write;
 
-use tcsv::{Base, ColumnAt, Data, Dialect, Doc, Naming, Separator};
+use tcsv::{Base, ColumnAt, Computing, Data, Dialect, Doc, Naming, Separator};
 
 /// Results that outlive the call that made them, one set per handle.
 pub struct Handle {
@@ -219,6 +219,27 @@ pub unsafe extern "C" fn tcsv_written_as(h: *mut Handle, sep: u32, ptr: *mut u8,
     let header = Strings { bytes: &spec, at: 0 }.list();
     h.out = h.doc.written_as(dialect(sep), if header.is_empty() { None } else { Some(&header) }).into_bytes();
     give(&h.out)
+}
+
+/// The file with one computed column changed (`Doc::recomputed`), as a new handle; null
+/// when the prelude no longer reads, the error at `tcsv_error`. `kind` 0 sets computed
+/// column `index`, 1 adds one, 2 takes `index` out; the page's list (room from
+/// `tcsv_alloc(cap)`, which this call takes) is the name and the expression, empty for 2.
+///
+/// # Safety
+/// `h` is a live handle; `ptr`, `len`, `cap` as for `tcsv_read`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn tcsv_recomputed(h: *mut Handle, kind: u32, index: usize, ptr: *mut u8, len: usize, cap: usize) -> *mut Handle {
+    // SAFETY: the caller's promise.
+    let (h, spec) = unsafe { (handle(h), took(ptr, len, cap)) };
+    let parts = Strings { bytes: &spec, at: 0 }.list();
+    let change = match kind {
+        0 => Computing::Set(index, parts[0], parts[1]),
+        1 => Computing::New(parts[0], parts[1]),
+        2 => Computing::Removed(index),
+        k => panic!("{k} is no change of a computed column"),
+    };
+    handled(h.doc.recomputed(change, 1))
 }
 
 /// A header problem in words without its place, `has no name`.

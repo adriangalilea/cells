@@ -34,6 +34,7 @@ interface Exports {
   tcsv_reshaped(h: number, ptr: number, len: number, cap: number): number
   tcsv_written_as(h: number, sep: number, ptr: number, len: number, cap: number): number
   tcsv_naming_why(h: number, i: number): number
+  tcsv_recomputed(h: number, kind: number, index: number, ptr: number, len: number, cap: number): number
 }
 
 function decodeBase64(s: string): Uint8Array<ArrayBuffer> {
@@ -603,6 +604,19 @@ export function reshape(doc: Doc, columns: readonly ColumnAt[]): Read {
   }
   const [p, len, cap] = put(spec.bytes())
   return opened(x.tcsv_reshaped(doc.handle, p, len, cap))
+}
+
+/** A computed column changed: `at` (its index among the computed columns) given a name
+ *  and an expression, a new one (no `at`), or taken out (no `name`). Only its prelude
+ *  line changes; a prelude that no longer reads throws, `doc` untouched. */
+export type Computing = { at: number; name: string; expression: string } | { name: string; expression: string } | { at: number }
+
+/** The file with one computed column changed, read again as a new doc. */
+export function recompute(doc: Doc, change: Computing): Read {
+  const kind = "name" in change ? ("at" in change ? 0 : 1) : 2
+  const spec = "name" in change ? [change.name, change.expression] : []
+  const [p, len, cap] = put(new Spec().list(spec).bytes())
+  return opened(x.tcsv_recomputed(doc.handle, kind, "at" in change ? change.at : 0, p, len, cap))
 }
 
 /** The file written in another dialect: a plain file's header the columns' names, the

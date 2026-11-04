@@ -12,12 +12,13 @@ import type { Column, Doc, Value } from "./tcsv.ts"
 const args = process.argv.slice(2)
 const libAt = args.indexOf("--lib")
 const lib = libAt < 0 ? "./tcsv.ts" : resolve(args.splice(libAt, 2)[1] as string)
-const { compose, detect, readAs, reshape, setCell, setType, setValue, TcsvError, write, writtenAs } = (await import(
+const { compose, detect, readAs, recompute, reshape, setCell, setType, setValue, TcsvError, write, writtenAs } = (await import(
   lib
 )) as typeof import("./tcsv.ts")
 type TcsvError = InstanceType<typeof TcsvError>
 type Dialect = import("./tcsv.ts").Dialect
 type ColumnAt = import("./tcsv.ts").ColumnAt
+type Computing = import("./tcsv.ts").Computing
 const root = args[0] ?? join(import.meta.dir, "../../../tests")
 
 /** A case's file: a `.tcsv`, or under `plain/` a `.csv`, `.tsv` or `.txt`; never an
@@ -148,6 +149,28 @@ function edited(start: Doc, edits: Record<string, unknown>[]): string {
   const kept = (): ColumnAt[] => doc.columns.slice(0, doc.stored).map((_, k) => ({ kept: k }))
   for (const e of edits) {
     if ("as" in e) return writtenAs(doc, e.as as Dialect, e.header as string[] | undefined)
+    const computed = (name: unknown) => {
+      const k = doc.columns.findIndex((c, i) => i >= doc.stored && c.name === name)
+      if (k < 0) throw new Error(`no computed column ${String(name)}`)
+      return k - doc.stored
+    }
+    let change: Computing | null = null
+    if ("compute" in e) change = { name: e.compute as string, expression: e.expression as string }
+    else if ("recompute" in e) {
+      const at = computed(e.recompute)
+      change = { at, name: (e.name ?? e.recompute) as string, expression: e.expression as string }
+    } else if ("uncompute" in e) change = { at: computed(e.uncompute) }
+    if (change) {
+      try {
+        const next = recompute(doc, change).doc
+        if (e.refused) throw new Error(`taken, the suite says it is refused at ${e.refused}`)
+        doc = next
+      } catch (err) {
+        if (!(err instanceof TcsvError)) throw err
+        if (err.where !== e.refused) throw new Error(`refused at ${err.where} (${err.why}), the suite says ${String(e.refused)}`)
+      }
+      continue
+    }
     let order: ColumnAt[] | null = null
     if ("insert" in e) {
       order = kept()
