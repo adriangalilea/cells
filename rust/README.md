@@ -10,7 +10,7 @@ One reader and writer of TCSV, in Rust, that every surface uses: the command lin
 | `tcsv-ffi` | the C ABI, `tcsv.h` (cbindgen), `TCSVCore.xcframework` | `tcsv` |
 | `tcsv-bench` | budgets generated and read, against the csv crate | `tcsv`, `csv` (bench only) |
 
-`cargo test` runs the conformance suite (`TCSV_SUITE`, else `../tests`), the properties (written back is the same bytes, an edit reads back as written, a tail read alone is the whole read, the parallel reading is the sequential one) and each module's own tests.
+`cargo test` runs the conformance suite (`TCSV_SUITE`, else `../tests`), the properties (written back is the same bytes, an edit reads back as written, a tail read alone is the whole read, the parallel reading is the sequential one, columns reshaped keep their cells, a file written in another dialect reads back its cells, each for `.tcsv` files and for plain ones) and each module's own tests.
 
 ## `tcsv`
 
@@ -24,6 +24,9 @@ doc.set_cell(row, column, "90.00");        // or set_value, set_type (written in
 doc.write();                               // every unchanged byte as read
 let doc = doc.extend(grown_bytes)?;        // only the appended records read
 let doc = doc.rearranged(&[Row::Kept(2), Row::New(&["fuel", "1"])], threads)?; // rows moved, added, out
+let doc = doc.reshaped(&[ColumnAt::Kept(1), ColumnAt::Renamed(0, "item"), ColumnAt::New("note", &[])], threads)?;
+let csv = tcsv::read_as(bytes, Dialect::Plain(tcsv::detect(&bytes)), threads)?; // a .csv, a .tsv
+csv.written_as(Dialect::Tcsv, Some(&["item:text", "cost:EUR"]));            // another dialect
 let spans = tcsv::tokens::tokens(text);    // what each part of any text is, a broken one too
 doc.apply(&Change::Cell { row: RowAt::Key("INV-7".into()), column: "amount".into(), was: Some("950.00".into()), text: "1000".into() })?;
 let doc = doc.assign_ids(|| random_bits())?;
@@ -36,6 +39,9 @@ let (schema, array) = tcsv::arrow::export(&doc);
 - **Computed columns** in exact decimals (`exact::Exact`): `+ - *` exact, `/` to 34 significant digits, half to even, stored at the column's scale within 38 digits.
 - **Identity** (`RowAt`, `Change`, `Refused`, `Version`): a row by its key, its id, or its text; a change applies only to the cell it was made against. Ids come from bits the caller gives.
 - **Rows rearranged** (`Doc::rearranged`): the file with exactly the rows asked, each kept one its record as it is now, each new one written from its cells, read again. Moving, adding and taking out rows; the reader is fast enough that it is the whole file read again (13.8 ms at 1M rows on 18 threads).
+- **Columns reshaped** (`Doc::reshaped`, `ColumnAt`): the file with exactly the columns asked, each kept one its header cell and every row's field as written, a renamed one its type kept, a new one its header cell and cells, read again. Inserting, removing, moving and renaming columns; a `.tcsv` file whose columns would no longer read (two of one name, a computed column reading one taken out) is refused, the doc untouched.
+- **Plain files** (`Dialect::Plain`, `detect`, `read_as`): a `.csv`, a `.tsv` or plain text, its separator (`,` `;` `\t` `|`) the one its first lines agree on, kept on write. The header is names alone, no prelude, and nothing is refused but bytes that are not UTF-8: a row of another width reads as blanks with a `ragged` problem (its fields past the header kept), a stray quote is text, a quote never closed runs to the end, a lone `\r` ends a line, and a blank or repeated name is a header problem (`Doc::naming`). An edited cell is quoted for the file's separator, and always in a file that quotes every field (`Doc::quotes_all`). The scanner takes the separator as a byte, so its speed is the comma's. tests/README.md, "Plain files", is the reading.
+- **Another dialect** (`Doc::written_as`): a plain file written as TCSV (with the header cells a conversion types it by) or with another separator, a `.tcsv` file written plain (its computed columns' values a column each); a record kept as written where nothing changes it.
 - **Spans** (`tokens::tokens`): the text read as what each part is, the fences, comments, the prelude's statements, every header cell's name and its type's parts (base, mark, bound, format, choice), and every cell by its column. Read from the text alone, never refused, a part with no meaning an `Error` span. What swift-utils' Syntax colours a `.tcsv` file by, and what the language server's semantic tokens will carry.
 
 ## Numbers
@@ -53,7 +59,7 @@ Peak memory at 10M rows (`/usr/bin/time -l tcsv-bench once <file> <threads>`): 1
 
 ## WebAssembly
 
-`bun tcsv-wasm/build.ts` builds it (opt-level `z`, LTO, SIMD on, `wasm-opt -Oz` when installed) and embeds it in `js/wasm.ts` as base64, so `read(text)` compiles the module synchronously, no `await init()`. 147.2 KB raw, 63.5 KB gzip, **54.0 KB brotli**, no imports. A host that keeps its own rows (ui's table) takes every cell's text in one call (`doc.cells()`, one decode cut at offsets, never a call per cell), each header cell's type as spelled (`column.spelled`), the text before the header (`doc.prelude`), and writes a file back from its cells with `compose`, which never touches a doc; a problem says itself with its place (`why`) or without it, for the cell it sits on (`reason`). Chrome allows a synchronous `new WebAssembly.Module` and `new WebAssembly.Instance` on the main thread up to 8 MB since Chrome 115 (4 KB before), the limit taken from the largest function the spec allows ([Chrome 115 beta](https://developer.chrome.com/blog/chrome-115-beta/), [the intent to ship](https://groups.google.com/a/chromium.org/g/blink-dev/c/nJw2zwaiJ2s/m/EYPgC5D3LwAJ)). `bun tcsv-wasm/js/conformance.ts [--lib <a vendored copy>]` runs the suite through the wrapper (cells and compose included); `js/bench.ts` races it against `ts/src/tcsv.ts`.
+`bun tcsv-wasm/build.ts` builds it (opt-level `z`, LTO, SIMD on, `wasm-opt -Oz` when installed) and embeds it in `js/wasm.ts` as base64, so `read(text)` compiles the module synchronously, no `await init()`. 160.5 KB raw, 68.7 KB gzip, **58.7 KB brotli**, no imports. `readAs(text, dialect)` reads a plain file (`detect` finds its separator), `reshape` and `writtenAs` are the columns reshaped and another dialect. A host that keeps its own rows (ui's table) takes every cell's text in one call (`doc.cells()`, one decode cut at offsets, never a call per cell), each header cell's type as spelled (`column.spelled`), the text before the header (`doc.prelude`), and writes a file back from its cells with `compose`, which never touches a doc; a problem says itself with its place (`why`) or without it, for the cell it sits on (`reason`). Chrome allows a synchronous `new WebAssembly.Module` and `new WebAssembly.Instance` on the main thread up to 8 MB since Chrome 115 (4 KB before), the limit taken from the largest function the spec allows ([Chrome 115 beta](https://developer.chrome.com/blog/chrome-115-beta/), [the intent to ship](https://groups.google.com/a/chromium.org/g/blink-dev/c/nJw2zwaiJ2s/m/EYPgC5D3LwAJ)). `bun tcsv-wasm/js/conformance.ts [--lib <a vendored copy>]` runs the suite through the wrapper (cells and compose included); `js/bench.ts` races it against `ts/src/tcsv.ts`.
 
 ## Apple
 
