@@ -141,6 +141,31 @@ fn an_edit_reads_back_as_written() {
     }
 }
 
+#[test]
+fn a_tail_read_alone_is_the_whole_read() {
+    let mut rng = Rng(11);
+    for _ in 0..3000 {
+        let src = file(&mut rng);
+        let whole = crate::read(src.clone()).unwrap();
+        if whole.rows() == 0 {
+            continue;
+        }
+        let k = rng.below(whole.rows() as u64) as usize;
+        let cut = whole.records()[k] as usize;
+        let prefix = crate::read(&src.as_bytes()[..cut]).unwrap();
+        let grown = prefix.extend(src.clone().into_bytes()).unwrap();
+        assert_eq!(grown.write(), src);
+        assert_eq!(grown.rows(), whole.rows());
+        assert_eq!(grown.problems(), whole.problems(), "{src:?} cut at {cut}");
+        for c in 0..whole.columns().len() {
+            assert_eq!(grown.columns()[c].ty, whole.columns()[c].ty, "{src:?}");
+            for r in 0..whole.rows() {
+                assert_eq!(grown.value(r, c), whole.value(r, c), "row {r} column {c} of {src:?} cut at {cut}");
+            }
+        }
+    }
+}
+
 /// A body large enough to be split, whose parts disagree on scales and units.
 #[cfg(feature = "std")]
 #[test]

@@ -177,6 +177,9 @@ pub struct Doc {
     header: Option<String>,
     /// Rewritten rows' records, without their line breaks.
     edits: BTreeMap<u32, String>,
+    /// What every stored column's values could be (`infer`), so a tail read later says
+    /// whether an inferred type still holds.
+    candidates: Vec<u8>,
 }
 
 /// Reads a `.tcsv` file. A broken cell is a problem and the file still reads; a broken
@@ -215,6 +218,7 @@ fn read_on(bytes: Vec<u8>, threads: usize) -> Result<Doc, Error> {
             problems: Vec::new(),
             header: None,
             edits: BTreeMap::new(),
+            candidates: Vec::new(),
         });
     }
     let (fields, first) = scan::record(src, body).map_err(|s| error(At::Header, stop_why(s, 0)))?;
@@ -243,13 +247,15 @@ fn read_on(bytes: Vec<u8>, threads: usize) -> Result<Doc, Error> {
     let mut part = read::join(parts);
     part.records.push(src.len() as u32);
     let Part { records, columns: readings, mut problems, .. } = part;
+    let candidates = readings.iter().map(|r| r.candidates).collect();
     let mut columns = Vec::with_capacity(heads.len() + prelude.computed.len());
     for (j, ((name, spelled, ty), r)) in heads.into_iter().zip(readings).enumerate() {
         let (ty, data, valid) = settle(ty, r, j as u32, threads, &mut problems);
         columns.push(Column { name, spelled, ty, computed: None, data, valid });
     }
     let stored = columns.len();
-    let mut doc = Doc { source, body: body as u32, records, prelude, columns, stored, problems, header: None, edits: BTreeMap::new() };
+    let mut doc =
+        Doc { source, body: body as u32, records, prelude, columns, stored, problems, header: None, edits: BTreeMap::new(), candidates };
     doc.compute()?;
     doc.problems.sort_by_key(|p| p.order());
     Ok(doc)
@@ -608,6 +614,7 @@ impl Doc {
         part.finish();
         let mut problems = core::mem::take(&mut part.problems);
         let reading = part.columns.pop().unwrap();
+        self.candidates[column] = reading.candidates;
         for p in &mut problems {
             p.column = column as u32;
         }
@@ -620,6 +627,85 @@ impl Doc {
         self.problems.extend(problems);
         self.problems.sort_by_key(|p| p.order());
         self.compute_values();
+    }
+
+    /// The file grown: when `bytes` is this file's bytes with records after them (a
+    /// ledger appended to), only the new records are read and joined to the columns
+    /// already held; anything else (an edit pending, a change before the end, a type the
+    /// new rows would infer otherwise) is read whole. Either way the result is what `read`
+    /// gives for `bytes`.
+    pub fn extend(mut self, bytes: Vec<u8>) -> Result<Doc, Error> {
+        let from = self.source.len();
+        let appended = !self.changed()
+            && self.stored > 0
+            && bytes.len() > from
+            && self.source.ends_with('\n')
+            && bytes.starts_with(self.source.as_bytes());
+        if !appended {
+            return read(bytes);
+        }
+        if let Err(e) = core::str::from_utf8(&bytes[from..]) {
+            return Err(error(At::File, format!("is not UTF-8: byte {} begins no character", from + e.valid_up_to())));
+        }
+        if bytes.len() >= u32::MAX as usize {
+            return Err(error(At::File, "is larger than 4 GiB"));
+        }
+        // SAFETY: the first `from` bytes are this doc's source, a `str` ending at a line
+        // break, and the rest was checked just above.
+        let source = unsafe { String::from_utf8_unchecked(bytes) };
+        let old_rows = self.rows() as u32;
+        let stored = &self.columns[..self.stored];
+        let decoders = decoders(stored.iter().map(|c| (!c.ty.inferred).then_some(&c.ty)));
+        let tail = read::sequential(source.as_bytes(), from, &decoders)
+            .map_err(|(row, s)| error(At::Row(old_rows + row), stop_why(s, self.stored)))?;
+        let Part { records, columns: readings, problems, .. } = tail;
+        let mut joined = Vec::with_capacity(self.stored);
+        for (c, r) in readings.into_iter().enumerate() {
+            let col = &self.columns[c];
+            if !col.ty.inferred {
+                joined.push((r.building, r.valid));
+                continue;
+            }
+            let Building::Text { offsets, bytes } = r.building else { unreachable!("an untyped column reads as text") };
+            let had = col.nulls() < col.len();
+            let has = (0..r.valid.len).any(|i| r.valid.get(i));
+            let candidates = self.candidates[c] & r.candidates;
+            let base = if had || has { inferred_base(candidates) } else { Base::Text };
+            if base != col.ty.base {
+                return read(source);
+            }
+            self.candidates[c] = candidates;
+            if base == Base::Text {
+                joined.push((Building::Text { offsets, bytes }, r.valid));
+                continue;
+            }
+            match redecode(&base, &offsets, &bytes, &r.valid) {
+                Some(b) => joined.push(b),
+                None => return read(source),
+            }
+        }
+        for (c, (b, v)) in joined.into_iter().enumerate() {
+            let col = &mut self.columns[c];
+            let data = core::mem::replace(&mut col.data, Data::Int(Arc::new(Vec::new())));
+            let (data, valid) = join_data(data, col.valid.clone(), b, v, c as u32, old_rows, &mut self.problems);
+            col.data = data;
+            col.valid = valid;
+        }
+        self.problems.retain(|p| p.kind() != Kind::Key);
+        self.problems.extend(problems.into_iter().map(|p| Problem { row: p.row + old_rows, ..p }));
+        self.records.pop();
+        self.records.extend_from_slice(&records);
+        self.records.push(source.len() as u32);
+        self.source = source;
+        for c in 0..self.stored {
+            if self.columns[c].ty.key {
+                let col = &self.columns[c];
+                crate::keys::check(&col.data, &col.valid, c as u32, 1, &mut self.problems);
+            }
+        }
+        self.compute_values();
+        self.problems.sort_by_key(|p| p.order());
+        Ok(self)
     }
 
     fn rekey(&mut self, column: usize) {
@@ -712,6 +798,67 @@ fn exact(c: &Column, row: usize) -> Option<Exact> {
         Data::Decimal { values, scale } => Exact::from_decimal(Decimal { mantissa: values[row], scale: *scale }),
         _ => unreachable!("a computed column reads numbers"),
     })
+}
+
+/// A column's values with a tail's after them, in place when nothing else holds the
+/// buffers. A scale or unit that differs is raised to the larger, a value that then passes
+/// its range becoming a problem (rows of the tail count from `base`).
+fn join_data(
+    data: Data,
+    valid: Bits,
+    tail: Building,
+    tail_valid: BitsBuilder,
+    c: u32,
+    base: u32,
+    problems: &mut Vec<Problem>,
+) -> (Data, Bits) {
+    use crate::column::{DECIMAL_LIMIT, INSTANT_LIMIT, raise};
+    let mut v = BitsBuilder { bytes: Arc::unwrap_or_clone(valid.bytes), len: valid.len };
+    let mut tv = tail_valid;
+    let data = match (data, tail) {
+        (Data::Text { offsets, bytes }, Building::Text { offsets: to, bytes: tb }) => {
+            let (mut offsets, mut bytes) = (Arc::unwrap_or_clone(offsets), Arc::unwrap_or_clone(bytes));
+            let shift = bytes.len() as i32;
+            offsets.extend(to[1..].iter().map(|o| o + shift));
+            bytes.extend_from_slice(&tb);
+            Data::Text { offsets: Arc::new(offsets), bytes: Arc::new(bytes) }
+        }
+        (Data::Int(a), Building::Int(b)) => Data::Int(Arc::new(joined(a, &b))),
+        (Data::Decimal { values, scale }, Building::Decimal { values: mut b, scale: bs }) => {
+            let mut a = Arc::unwrap_or_clone(values);
+            let s = scale.max(bs);
+            raise(&mut a, (s - scale) as u32, DECIMAL_LIMIT, &mut Run { valid: &mut v, problems, column: c, first: 0 });
+            raise(&mut b, (s - bs) as u32, DECIMAL_LIMIT, &mut Run { valid: &mut tv, problems, column: c, first: base });
+            a.extend_from_slice(&b);
+            Data::Decimal { values: Arc::new(a), scale: s }
+        }
+        (Data::DateTime { values, unit }, Building::DateTime { values: mut b, unit: bu }) => {
+            let mut a = Arc::unwrap_or_clone(values);
+            let u = unit.max(bu);
+            raise(&mut a, (u - unit) as u32, INSTANT_LIMIT, &mut Run { valid: &mut v, problems, column: c, first: 0 });
+            raise(&mut b, (u - bu) as u32, INSTANT_LIMIT, &mut Run { valid: &mut tv, problems, column: c, first: base });
+            a.extend_from_slice(&b);
+            Data::DateTime { values: Arc::new(a), unit: u }
+        }
+        (Data::Bool(a), Building::Bool(b)) => {
+            let mut x = BitsBuilder { bytes: Arc::unwrap_or_clone(a.bytes), len: a.len };
+            x.append(&b);
+            Data::Bool(x.finish())
+        }
+        (Data::Date(a), Building::Date(b)) => Data::Date(Arc::new(joined(a, &b))),
+        (Data::Time(a), Building::Time(b)) => Data::Time(Arc::new(joined(a, &b))),
+        (Data::Choice(a), Building::Choice(b)) => Data::Choice(Arc::new(joined(a, &b))),
+        _ => unreachable!("a tail read by its column's own decoder"),
+    };
+    v.append(&tv);
+    (data, v.finish())
+}
+
+/// `a` then `b`, in `a`'s own buffer when nothing else holds it.
+fn joined<T: Copy>(a: Arc<Vec<T>>, b: &[T]) -> Vec<T> {
+    let mut a = Arc::unwrap_or_clone(a);
+    a.extend_from_slice(b);
+    a
 }
 
 /// A computed column's values from the columns before it, stored as `Decimal128(38, s)`:
