@@ -1,0 +1,14 @@
+{
+  "columns": [
+    { "name": "item", "type": "text!" },
+    { "name": "kind", "type": "travel|stay" },
+    { "name": "cost", "type": "EUR>=0" },
+    { "name": "note", "type": "text?" },
+    { "name": "qty", "type": "text?", "inferred": true }
+  ],
+  "rows": [
+    { "item": { "text": "fuel" }, "kind": { "choice": "travel" }, "cost": { "money": "84.20", "currency": "EUR" }, "note": null, "qty": { "text": "\t12" } },
+    { "item": { "text": "maps" }, "kind": { "choice": "stay" }, "cost": { "money": "9.50", "currency": "EUR" }, "note": { "text": "\tby the door" }, "qty": { "text": "3" } }
+  ],
+  "problems": []
+}

@@ -1,0 +1,9 @@
+==================
+A word that is no type is an error, and the next cell still reads
+:error
+==================
+a:texto,b:int
+1,2
+---
+
+(source_file)

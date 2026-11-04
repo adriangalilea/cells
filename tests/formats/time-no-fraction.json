@@ -1,0 +1,20 @@
+{
+  "columns": [
+    { "name": "set", "type": "text!" },
+    { "name": "at", "type": "time(HH:mm:ss)" },
+    { "name": "door", "type": "time(HHhmm)" }
+  ],
+  "rows": [
+    { "set": { "text": "whole seconds" }, "at": { "time": "21:15:05" }, "door": { "time": "19:30:00" } },
+    { "set": { "text": "a fraction" }, "at": null, "door": { "time": "19:30:00" } },
+    { "set": { "text": "a comma fraction" }, "at": null, "door": { "time": "19:30:00" } },
+    { "set": { "text": "three digits" }, "at": null, "door": { "time": "19:30:00" } },
+    { "set": { "text": "fraction after minutes" }, "at": { "time": "21:15:05" }, "door": null }
+  ],
+  "problems": [
+    { "row": 1, "column": "at", "kind": "type" },
+    { "row": 2, "column": "at", "kind": "type" },
+    { "row": 3, "column": "at", "kind": "type" },
+    { "row": 4, "column": "door", "kind": "type" }
+  ]
+}

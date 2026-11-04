@@ -1,0 +1,15 @@
+---
+use ../accounts.tcsv                       // provisional: imports are in SPEC's Open section
+use ../vendors.tcsv
+type Rate = pct 0..100
+vat = amount * tax_rate / (100 + tax_rate) // derived, never typed by hand
+net = amount - vat
+---
+date:date,amount:EUR>0,account_from:accounts.account,account_to:accounts.account,vendor:vendors.vendor?,invoice:text?,description:text,tax_rate:Rate,reconciled:bool
+2026-07-01,950.00,assets:bank:everyday,expenses:home:rent,harbour-lettings,HL-2026-07,rent july,0,true
+2026-07-03,112.48,assets:bank:everyday,expenses:food:groceries,corner-market,,"weekly shop, two bags",10,true
+2026-07-12,64.30,assets:bank:everyday,expenses:home:power,northgrid,NG-88213,power july,21,true
+2026-07-15,39.90,liabilities:card,expenses:home:internet,fiberlane,FL-0042,internet july,21,false
+2026-07-28,2400.00,income:salary,assets:bank:everyday,,,salary july,0,true
+2026-07-31,3.12,income:interest,assets:bank:savings,,,interest july,0,true
+2026-08-01,950.00,assets:bank:everyday,expenses:home:rent,harbour-lettings,HL-2026-08,rent august,0,false

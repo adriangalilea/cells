@@ -18,7 +18,7 @@ TCSV is its own format, read by TCSV readers. Its records borrow RFC 4180's quot
 
 ## The file
 
-- **Text.** A file is UTF-8. A byte order mark before its first line is no part of that line, and a writer writes it back.
+- **Text.** A file is UTF-8; one that is not (a Latin-1 export, a byte that begins no character) is an error naming the file. A byte order mark before its first line is no part of that line, and a writer writes it back.
 - **Records** are RFC 4180: fields separated by `,`, a field holding `,`, `"` or a line break is quoted, `""` is a quote inside one. A quoted field opens with `"` and closes at a lone `"`, which the end of the file, a `,` or a line ending follows; text after the closing quote, a `"` inside a field that did not open with one, and a quoted field never closed are errors naming the record (the header, or the row). Inside quotes every character is the field's, line breaks included.
 - **Lines** end in `\n` or `\r\n`. Each line's ending is kept as read, so a file may mix them, and so is whether the file ends in a line break: one at the very end closes the last record and opens none. A `\r` that is not followed by `\n`, outside quotes, is an error naming its record.
 - **The prelude** opens when the file's first line is exactly `---` and closes at the next line that is exactly `---`; between them, TCSV's own language (below). It is optional; a file with none starts at its header. A prelude that opens and never closes is an error. A `---` on any other line is no fence: after the prelude it is the header (one column named `---`), below the header it is a row.
@@ -38,7 +38,7 @@ cost:EUR>=0
 
 ## Types
 
-A type opens with what the column holds: a base, a currency, a named type, a choice or a pair. Its format, bounds and marks follow, in any order. A type that opens with a bound has no base written and is a number (below). Spaces between the parts are nothing (`travel | stay` is `travel|stay`, `text !` is `text!`); a space is never part of a word unless quoted. A type says each thing once: one base, at most one lower and one upper bound, one format, each mark once, and what a named type it uses already says counts as said. Anything else, two bases, a mark before the base, a part said twice, is an error naming the column.
+A type opens with what the column holds: a base, a currency, a named type, a choice or a pair. Its format, bounds and marks follow, in any order. A type that opens with a bound has no base written and is a number (below). Spaces and tabs between the parts, and at the type's ends, are nothing (`travel | stay` is `travel|stay`, `text !` is `text!`); a space or a tab is never part of a word unless quoted. A type says each thing once: one base, at most one lower and one upper bound, one format, each mark once, and what a named type it uses already says counts as said. Anything else, two bases, a mark before the base, a part said twice, is an error naming the column.
 
 ### Bases
 
@@ -50,7 +50,7 @@ A type opens with what the column holds: a base, a currency, a named type, a cho
 | `pct` | `12`, `12.5`, `12%` | a number, the percentage (`12%` is 12): a `num`, then `%` or none |
 | `bool` | `true` or `false` | a boolean |
 | `date` | `2026-08-14` | a calendar date, ISO 8601: `YYYY-MM-DD`, a day the Gregorian calendar has |
-| `time` | `14:30`, `14:30:05` | a time of day: `HH:mm` or `HH:mm:ss`, hours `00` to `23`, minutes and seconds `00` to `59` |
+| `time` | `14:30`, `14:30:05` | a time of day: `HH:mm` or `HH:mm:ss`, hours `00` to `23`, minutes and seconds `00` to `59`, never a fraction of a second (`14:30:05.5` is no time) |
 | `datetime` | `2026-08-14T14:30:00Z` | an instant, ISO 8601 as RFC 3339 writes it (below) |
 | `url` | `https://example.com/a` | an absolute URL, as RFC 3986 writes it (below) |
 | `email` | `ada@example.com` | an address (below) |
@@ -63,13 +63,13 @@ A cell is read exactly as written: never trimmed, never folded in case. ` 12` is
 - **`url`** is a scheme (a letter, then letters, digits, `+`, `-` or `.`), `:`, then at least one character, each a letter, a digit, one of `-._~:/?#[]@!$&'()*+,;=`, or `%` and two hexadecimal digits. No space, nothing outside ASCII: a URL with other characters writes them percent-encoded. `mailto:ada@example.com` is a URL; `example.com` and `//example.com/a` are not.
 - **`email`** is a local part, `@`, then a domain. The local part is at least one ASCII character from `!` to `~` but `@`. The domain is two or more labels joined by `.`, each label ASCII letters, digits and `-`, never starting or ending with `-`. `ada@localhost` is not an address.
 - **`id`** is exactly eight characters, each of `0123456789abcdefghjkmnpqrstvwxyz`: lower case only, never `i`, `l`, `o` or `u`. Its value is the text; two ids are equal when their text is.
-- **A currency** is any alphabetic code of ISO 4217's current list, in capitals: `EUR`, never `eur`; a withdrawn code (`HRK`) is none. An amount is any `num`; the currency's minor unit does not limit its digits (`JPY` takes `1200.5`).
+- **A currency** is any alphabetic code of ISO 4217's current list, in capitals: `EUR`, never `eur`; a withdrawn code (`HRK`) is none. Fund codes (`CLF`, `BOV`), the metals (`XAU`, `XAG`, `XPD`, `XPT`) and `XDR` count, since people hold gold and accounts hold units; `XTS` (for testing) and `XXX` (no currency) do not. An amount is any `num`; the currency's minor unit does not limit its digits (`JPY` takes `1200.5`).
 
 A word that is none of these, no named type and not a choice is an error naming it: `cost:EURO` is `no type or currency "EURO"`, never silently text.
 
 ### Choices
 
-`category:travel|stay|food|gear` is one of the words, written bare. A choice holding a reserved character (below) or a space, inside it or at its ends, is quoted with single quotes, a quote inside one doubled:
+`category:travel|stay|food|gear` is one of the words, written bare. A choice holding a reserved character (below) or a space or a tab, inside it or at its ends, is quoted with single quotes, a quote inside one doubled:
 
 ```
 mood:'yay!'|meh|'so-so?'|'it''s fine'
@@ -100,7 +100,7 @@ A word beside `|` is always a choice's word, even one that spells a base or an e
 A format in parentheses says how the file writes the value: `on:date(DD/MM/YYYY)`, `at:time(HH:mm)`. Its letters: `YYYY` `MM` `DD` `HH` `mm` `ss`, everything else literal (`time(HHhmm)` reads `14h30`). Each letter stands for exactly as many digits as it has letters: `MM` is `08`, never `8`. The value read is the same as the ISO form's, and the cell must be a real day or time as the ISO form must; writing keeps the format.
 
 - A format applies to `date` and `time` only, and every other type refuses one: a `datetime` is an instant, and an instant is written as ISO 8601 writes it, its offset included.
-- A date's format holds `YYYY`, `MM` and `DD` once each, and no time letter. A time's holds `HH` and `mm` once each, `ss` once or not at all (its value then has `00` seconds), and no date letter. `date(D/M/YYYY)` is refused: `D` and `M` are literal, so the day and month are never read.
+- A date's format holds `YYYY`, `MM` and `DD` once each, and no time letter. A time's holds `HH` and `mm` once each, `ss` once or not at all (its value then has `00` seconds), and no date letter. No letter reads a fraction of a second: `ss` is exactly two digits, so `time(HH:mm:ss)` refuses `14:30:05.5`. `date(D/M/YYYY)` is refused: `D` and `M` are literal, so the day and month are never read.
 - A format is never empty, and its `(` is closed.
 
 ### Marks
@@ -128,7 +128,7 @@ Both are always valid and mean the same; a cell may mix them.
 | `num<10` | `num below 10` |
 | `0..100` | `num between 0 and 100` |
 
-Explicit words are separated by spaces, never commas (a comma would force the header cell into CSV quotes). A choice with a space inside is quoted: `one of travel 'sd cards'`. `between` takes two numbers joined by `and`, both bounds inclusive. `one of` takes every word after it up to the next explicit word (`key` `optional` `one` `of` `bool` `min` `max` `above` `below` `between` `and`) or mark, and at least one; a choice that spells an explicit word is quoted there: `one of 'key' lock`. `bool` followed by two words that are not explicit words is a pair, and a pair's word that spells one is quoted (`bool 'key' lock`); `bool` alone is `true`/`false`.
+Explicit words are separated by spaces or tabs, never commas (a comma would force the header cell into CSV quotes). A choice with a space inside is quoted: `one of travel 'sd cards'`. `between` takes two numbers joined by `and`, both bounds inclusive. `one of` takes every word after it up to the next explicit word (`key` `optional` `one` `of` `bool` `min` `max` `above` `below` `between` `and`) or mark, and at least one; a choice that spells an explicit word is quoted there: `one of 'key' lock`. `bool` followed by two words that are not explicit words is a pair, and a pair's word that spells one is quoted (`bool 'key' lock`); `bool` alone is `true`/`false`.
 
 ### Reserved
 
@@ -143,7 +143,7 @@ total = cost * qty                        // a computed column
 ---
 ```
 
-One statement a line; a blank line is nothing, and spaces at a line's ends are nothing. A line that is no statement is an error naming it.
+One statement a line; a blank line is nothing, and spaces and tabs at a line's ends and between a statement's parts are nothing (a tab counts as a space everywhere in the prelude, outside single quotes). A line that is no statement is an error naming it.
 
 - **`type Name = <type>`** names a type for any header cell to use: `category:Category`. A name is ASCII letters, digits and `_`, starting with a capital letter (`type category = …` is refused), and never a currency code. A name is defined once; it may name another named type defined above it, never one below it or itself. A header cell may add to a named type what it does not already say: `cost:Cost?`, `cost:Money>=0`.
 - **`name = <expression>`** is a computed column: shown and read as a column after the header's, in the prelude's order, never stored in the rows. Its name is ASCII letters, digits and `_`, not starting with a digit, and no other column's. Its expression is pure and total (it always finishes, the same answer in every implementation): numbers, the names of numeric columns, `+ - * /`, parentheses.
@@ -174,7 +174,7 @@ The shorthand, as a writer writes it:
 - the type: a base, a currency, a named type by its name, a choice's words joined by `|`, a pair's two words joined by `/` (`true/false` is `bool`);
 - then its format, then its lower bound (`>=` or `>`), then its upper bound (`<=` or `<`), then `!` or `?`. A `num` with both bounds inclusive is its range alone: `0..10`, never `num>=0<=10`;
 - a bound's number in plain decimal: `-` if negative, no exponent, no zero that changes nothing (`1e3` is `1000`, `0.50` is `0.5`, `-0` is `0`);
-- a word bare unless it must be quoted: it holds a space or a reserved character, or it is a choice's only word.
+- a word bare unless it must be quoted: it holds a space, a tab or a reserved character, or it is a choice's only word.
 
 So `cost:EUR min 0 key` is written `cost:EUR>=0!`, and `mood:one of 'so so' meh optional` is written `mood:'so so'|meh?`.
 
@@ -209,6 +209,13 @@ The use it is designed against is **plain text accounting done properly**: books
 - **A local `use` is live, a remote one pinned.** A path is resolved at every read, so the graph is always current and nothing is duplicated; breaks are caught by the tools that see every file (the engine, `tcsv check`, the language server) before they land. A URL is pinned by its content's hash (`use https://example.com/rates.tcsv @ sha256:…`): fetched once, a change at the source reported, never followed silently. A file read alone, its references unreachable, still reads: its reference cells are text, marked unchecked, never broken.
 - **Every row has an identity.** A file's key (`!`) is its rows' identity. A file with none gets an `id` column the first time the engine writes it: a new base type, `id`, eight characters from a base-32 alphabet, unique within the file, assigned only by the engine and never edited through it. Edits address a row by its identity, never by its position, so a line inserted by hand elsewhere never makes an edit land on the wrong row, and two versions of a file merge row by row. A row without one (added by a tool that bypasses the engine) is found by its text until the engine next writes the file, which gives it one; a copied row's repeated id is replaced on the later copy. Apps built on the engine never show the column.
 - **One fact, one row, one file.** A movement is one row holding both its sides (`account_from`, `account_to`), so recording it is one write. A change that must touch several files (an account renamed in every file that references it) is an intent the engine journals before applying file by file, and replays after a crash; every intent is safe to apply twice.
+- **What books need**, the accounting primitives (ACCOUNTING.md drafts the books with them):
+  - **Money at its scale.** An amount is exact at its currency's minor unit (EUR 2 digits, JPY 0, KWD 3), more digits a problem naming the cell; a rate or a unit price is a `num`. This replaces today's rule that the minor unit does not limit an amount.
+  - **An amount whose currency is another cell**, `amount:money in commodity`, or reached through a reference, `money in account.commodity`; and commodities beyond ISO 4217 (a share, a fund, points) declared in a file.
+  - **`unique`** on a column that is not the key, among its non-blank cells, and over several columns together.
+  - **`final`**: a column written once, never changed by an edit. A movement whose money columns are final is corrected by a new row, never edited, as TigerBeetle never edits a transfer.
+  - **References to a file's own rows** (`pending:money.id`), for a payment that settles a hold, a row that corrects another, rows that are one transaction.
+  - **`check`**: a rule over many rows or files, a query in the prelude returning the rows that break it, checked before every write and by `tcsv check` (a balance that must hold on a date, an account open on a movement's date). The prelude is where it lives, beside the data it guards; it is where SQL enters a file.
 - **Tooling, so the format is pleasant everywhere.** A tree-sitter grammar (highlighting in every editor that speaks tree-sitter, and in ui's code views), a language server (types checked as typed, a broken reference underlined, a referenced file's keys completed, a rename followed across the folder), native apps (tally, on the Mac) and web components (ui's table) built for it. Like rainbow CSV, but with the types.
 - **Visualisation for free, because it is typed.** A chart needs to know what each column is: a date is a time axis, money is a measure in its currency, a choice is a category, a reference a link to follow. An untyped CSV makes every chart guess or be configured; a TCSV says it, so a table can be charted as it is (spending by month, by account, by vendor), and the graph of files drawn as a graph. Every place that shows TCSV shows its charts: ui's components, the Apple platforms' (Swift Charts over the typed columns), and the Mac app.
 
@@ -243,8 +250,7 @@ The use it is designed against is **plain text accounting done properly**: books
 - **Strictness.** "A broken cell loads and is reported" is the proposal; whether a reader may also be asked to refuse a file is not decided.
 - **The expression language.** The arithmetic above is the floor. Its grammar beyond it (comparisons, text, conditionals, functions, reaching into a referenced file), and whether it is CEL itself, is undecided. It stays pure and total: an expression always finishes and gives the same answer in every implementation.
 - **Several values in one cell** (`tags:text[]`, split on `;`): useful (tags on a movement), and where a table starts to stretch; undecided.
-- **The accounting model.** TigerBeetle's is the reference to study: accounts and transfers, amounts as integers, pending transfers posted or voided later, linked transfers that succeed or fail together.
 
 ### Brainstorm, not planned
 
-- **A replicated mode.** Daemons in a cluster agreeing on the order of the engine's intent log (Viewstamped Replication, as TigerBeetle does), for books where two writers must never both succeed; the files then the cluster's readable view. The engine's write path (deterministic intents, logged) keeps it a protocol on top, never a rewrite.
+- **A replicated mode.** Engines on several devices agreeing on the order of the intent log (Viewstamped Replication, as TigerBeetle does), for books where two writers must never both succeed; the files then the cluster's readable view. The engine's write path (deterministic intents, logged) keeps it a protocol on top, never a rewrite (ENGINE.md, Later).

@@ -36,7 +36,7 @@ const TAGS = new Set([
   "choice",
 ])
 const KINDS = ["type", "missing", "key"]
-const AT = /^(the header|the prelude|column [1-9]\d*|prelude line [1-9]\d*|row (0|[1-9]\d*))$/
+const AT = /^(the file|the header|the prelude|column [1-9]\d*|prelude line [1-9]\d*|row (0|[1-9]\d*))$/
 const DECIMAL = /^-?(0|[1-9]\d*)(\.\d+)?$/
 const INTEGER = /^-?(0|[1-9]\d*)$/
 const DATE = /^\d{4}-\d{2}-\d{2}$/
@@ -211,12 +211,16 @@ function edits(path: string, j: Json) {
 }
 
 const utf8 = new TextDecoder("utf-8", { fatal: true })
-function bytes(path: string) {
+function isUTF8(path: string): boolean {
   try {
     utf8.decode(readFileSync(path))
+    return true
   } catch {
-    fault(path, "is not UTF-8")
+    return false
   }
+}
+function bytes(path: string) {
+  if (!isUTF8(path)) fault(path, "is not UTF-8")
 }
 
 function json(path: string): Json | undefined {
@@ -279,8 +283,14 @@ for (const folder of FOLDERS) {
     }
     if (file.endsWith(".tcsv")) {
       cases++
-      bytes(path)
       if (!has.has(`${stem}.json`)) fault(path, `has no ${stem}.json`)
+      else {
+        const j = json(join(dir, `${stem}.json`))
+        const notText = isObject(j) && isObject(j.error) && j.error.at === "the file"
+        if (notText) {
+          if (isUTF8(path)) fault(path, `is UTF-8, so it is no error at the file`)
+        } else bytes(path)
+      }
       continue
     }
     if (!has.has(`${stem}.tcsv`)) fault(path, `has no ${stem}.tcsv`)

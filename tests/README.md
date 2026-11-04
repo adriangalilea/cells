@@ -45,7 +45,7 @@ The `.json` is one of two shapes.
 { "error": { "at": "prelude line 1" } }
 ```
 
-`at` is one of `the header`, `column N` (1-based), `prelude line N` (1-based, inside the fences), `the prelude`, `row N` (0-based). `the header` and `row N` are a record's own errors (its quoting, its line ending, a row too long); `column N` is a header cell's (its name, its type); `prelude line N` a statement's, a computed column's references included; `the prelude` a fence never closed. A case that does not read holds exactly one error, so no order between errors is pinned. An implementation may refuse the file (an exception) or open it with the error on it; either way it reports exactly this place.
+`at` is one of `the file`, `the header`, `column N` (1-based), `prelude line N` (1-based, inside the fences), `the prelude`, `row N` (0-based). `the file` is bytes that are not UTF-8, the one case whose `.tcsv` is not text; `the header` and `row N` are a record's own errors (its quoting, its line ending, a row too long); `column N` is a header cell's (its name, its type); `prelude line N` a statement's, a computed column's references included; `the prelude` a fence never closed. A case that does not read holds exactly one error, so no order between errors is pinned. An implementation may refuse the file (an exception) or open it with the error on it; either way it reports exactly this place.
 
 ## Writing
 
@@ -65,8 +65,6 @@ Edits name stored columns only.
 
 ## Running it
 
-- TypeScript: `bun run conformance` in `ts/`.
-- Rust: `cargo test` in `rust/`.
-- Swift: swift-utils' `TCSVConformance` tests read this folder from a checkout of this repo (`TCSV_SUITE`, else `../tcsv/tests`).
+The Rust engine runs the suite (`cargo test` in `rust/`), and so does every binding of it: wasm under bun, Swift in swift-utils. Each reads this folder, or a vendored copy of it.
 
 Each runner prints every case it fails with the case's path, and exits non-zero on any.

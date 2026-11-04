@@ -1,0 +1,473 @@
+==================
+The README's header
+==================
+item:text!,category:Category,cost:EUR>=0,qty:int>=1,paid:yes/no,on:date,note:text?
+---
+
+(source_file
+  (header
+    (header_cell
+      (column_name)
+      (type
+        (base_type)
+        (key_mark)))
+    (header_cell
+      (column_name)
+      (type
+        (named_type)))
+    (header_cell
+      (column_name)
+      (type
+        (currency)
+        (bound
+          (number))))
+    (header_cell
+      (column_name)
+      (type
+        (base_type)
+        (bound
+          (number))))
+    (header_cell
+      (column_name)
+      (type
+        (bool_pair
+          (bool_word)
+          (bool_word))))
+    (header_cell
+      (column_name)
+      (type
+        (base_type)))
+    (header_cell
+      (column_name)
+      (type
+        (base_type)
+        (optional_mark)))))
+
+==================
+A name with spaces, a cell with no type, a quoted name
+==================
+item name:text,plain,"a, b"
+---
+
+(source_file
+  (header
+    (header_cell
+      (column_name)
+      (type
+        (base_type)))
+    (header_cell
+      (column_name))
+    (header_cell
+      (column_name))))
+
+==================
+A trailing comma is a blank column
+==================
+a:int,
+---
+
+(source_file
+  (header
+    (header_cell
+      (column_name)
+      (type
+        (base_type)))))
+
+==================
+Every base
+==================
+a:text,b:int,c:num,d:pct,e:bool,f:date,g:time,h:datetime,i:url,j:email
+---
+
+(source_file
+  (header
+    (header_cell
+      (column_name)
+      (type
+        (base_type)))
+    (header_cell
+      (column_name)
+      (type
+        (base_type)))
+    (header_cell
+      (column_name)
+      (type
+        (base_type)))
+    (header_cell
+      (column_name)
+      (type
+        (base_type)))
+    (header_cell
+      (column_name)
+      (type
+        (base_type)))
+    (header_cell
+      (column_name)
+      (type
+        (base_type)))
+    (header_cell
+      (column_name)
+      (type
+        (base_type)))
+    (header_cell
+      (column_name)
+      (type
+        (base_type)))
+    (header_cell
+      (column_name)
+      (type
+        (base_type)))
+    (header_cell
+      (column_name)
+      (type
+        (base_type)))))
+
+==================
+Currencies, and words that only look like one
+==================
+a:EUR,b:USD,c:JPY,d:EURO,e:Eu
+---
+
+(source_file
+  (header
+    (header_cell
+      (column_name)
+      (type
+        (currency)))
+    (header_cell
+      (column_name)
+      (type
+        (currency)))
+    (header_cell
+      (column_name)
+      (type
+        (currency)))
+    (header_cell
+      (column_name)
+      (type
+        (named_type)))
+    (header_cell
+      (column_name)
+      (type
+        (named_type)))))
+
+==================
+Choices, bare and quoted
+==================
+category:travel|stay|food|gear,mood:'yay!'|meh|'so-so?'|'it''s fine',only:'just one'
+---
+
+(source_file
+  (header
+    (header_cell
+      (column_name)
+      (type
+        (choices
+          (choice)
+          (choice)
+          (choice)
+          (choice))))
+    (header_cell
+      (column_name)
+      (type
+        (choices
+          (choice)
+          (choice)
+          (choice)
+          (choice
+            (escape_sequence)))))
+    (header_cell
+      (column_name)
+      (type
+        (choices
+          (choice))))))
+
+==================
+A base type's word, a currency and a number as choices
+==================
+kind:text|code,cur:EUR|USD,rating:1|2|3,v:v1.2|v2.0
+---
+
+(source_file
+  (header
+    (header_cell
+      (column_name)
+      (type
+        (choices
+          (choice)
+          (choice))))
+    (header_cell
+      (column_name)
+      (type
+        (choices
+          (choice)
+          (choice))))
+    (header_cell
+      (column_name)
+      (type
+        (choices
+          (choice)
+          (choice)
+          (choice))))
+    (header_cell
+      (column_name)
+      (type
+        (choices
+          (choice)
+          (choice))))))
+
+==================
+Booleans in the file's own words
+==================
+paid:yes/no,here:'sí'/'no',plain:bool,opt:bool?
+---
+
+(source_file
+  (header
+    (header_cell
+      (column_name)
+      (type
+        (bool_pair
+          (bool_word)
+          (bool_word))))
+    (header_cell
+      (column_name)
+      (type
+        (bool_pair
+          (bool_word)
+          (bool_word))))
+    (header_cell
+      (column_name)
+      (type
+        (base_type)))
+    (header_cell
+      (column_name)
+      (type
+        (base_type)
+        (optional_mark)))))
+
+==================
+Constraints
+==================
+a:EUR>=0,b:int>0,c:num<=100,d:num<100,e:text<=40,f:0..100,g:-5..5,h:num>=0.5
+---
+
+(source_file
+  (header
+    (header_cell
+      (column_name)
+      (type
+        (currency)
+        (bound
+          (number))))
+    (header_cell
+      (column_name)
+      (type
+        (base_type)
+        (bound
+          (number))))
+    (header_cell
+      (column_name)
+      (type
+        (base_type)
+        (bound
+          (number))))
+    (header_cell
+      (column_name)
+      (type
+        (base_type)
+        (bound
+          (number))))
+    (header_cell
+      (column_name)
+      (type
+        (base_type)
+        (bound
+          (number))))
+    (header_cell
+      (column_name)
+      (type
+        (range
+          (number)
+          (number))))
+    (header_cell
+      (column_name)
+      (type
+        (range
+          (number)
+          (number))))
+    (header_cell
+      (column_name)
+      (type
+        (base_type)
+        (bound
+          (number))))))
+
+==================
+Formats
+==================
+on:date(DD/MM/YYYY),at:time(HH:mm),ts:datetime(YYYY-MM-DD HH:mm:ss)
+---
+
+(source_file
+  (header
+    (header_cell
+      (column_name)
+      (type
+        (base_type)
+        (format
+          (format_field)
+          (format_literal)
+          (format_field)
+          (format_literal)
+          (format_field))))
+    (header_cell
+      (column_name)
+      (type
+        (base_type)
+        (format
+          (format_field)
+          (format_literal)
+          (format_field))))
+    (header_cell
+      (column_name)
+      (type
+        (base_type)
+        (format
+          (format_field)
+          (format_literal)
+          (format_field)
+          (format_literal)
+          (format_field)
+          (format_field)
+          (format_literal)
+          (format_field)
+          (format_literal)
+          (format_field))))))
+
+==================
+Marks
+==================
+id:text!,note:text?,both:int!?
+---
+
+(source_file
+  (header
+    (header_cell
+      (column_name)
+      (type
+        (base_type)
+        (key_mark)))
+    (header_cell
+      (column_name)
+      (type
+        (base_type)
+        (optional_mark)))
+    (header_cell
+      (column_name)
+      (type
+        (base_type)
+        (key_mark)
+        (optional_mark)))))
+
+==================
+Every shorthand's word
+==================
+a:text key,b:text optional,c:one of travel stay food,d:bool yes no,e:EUR min 0,f:num max 10,g:num between 0 and 100,h:one of travel 'sd cards' key
+---
+
+(source_file
+  (header
+    (header_cell
+      (column_name)
+      (type
+        (base_type)
+        (key_mark)))
+    (header_cell
+      (column_name)
+      (type
+        (base_type)
+        (optional_mark)))
+    (header_cell
+      (column_name)
+      (type
+        (choices
+          (choice)
+          (choice)
+          (choice))))
+    (header_cell
+      (column_name)
+      (type
+        (bool_pair
+          (bool_word)
+          (bool_word))))
+    (header_cell
+      (column_name)
+      (type
+        (currency)
+        (bound
+          (number))))
+    (header_cell
+      (column_name)
+      (type
+        (base_type)
+        (bound
+          (number))))
+    (header_cell
+      (column_name)
+      (type
+        (base_type)
+        (range
+          (number)
+          (number))))
+    (header_cell
+      (column_name)
+      (type
+        (choices
+          (choice)
+          (choice))
+        (key_mark)))))
+
+==================
+A cell mixing shorthand and words
+==================
+cost:EUR min 0?,item:text key<=40
+---
+
+(source_file
+  (header
+    (header_cell
+      (column_name)
+      (type
+        (currency)
+        (bound
+          (number))
+        (optional_mark)))
+    (header_cell
+      (column_name)
+      (type
+        (base_type)
+        (key_mark)
+        (bound
+          (number))))))
+
+==================
+Spaces around the parts of a type
+==================
+cost: EUR >= 0 ,mood: a | b
+---
+
+(source_file
+  (header
+    (header_cell
+      (column_name)
+      (type
+        (currency)
+        (bound
+          (number))))
+    (header_cell
+      (column_name)
+      (type
+        (choices
+          (choice)
+          (choice))))))
