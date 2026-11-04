@@ -19,9 +19,12 @@ let mut doc = tcsv::read(bytes)?;          // or read_parallel(bytes, threads)
 doc.rows(); doc.columns(); doc.problems(); // problems by row, then column
 doc.value(row, column);                    // Value::Decimal, ::Date, ::Choice, ...
 doc.describe(&doc.problems()[0]);          // row 3, cost: "8x.50" is not a number
+doc.why(&doc.problems()[0]);               // "8x.50" is not a number
 doc.set_cell(row, column, "90.00");        // or set_value, set_type (written in shorthand)
 doc.write();                               // every unchanged byte as read
 let doc = doc.extend(grown_bytes)?;        // only the appended records read
+let doc = doc.rearranged(&[Row::Kept(2), Row::New(&["fuel", "1"])], threads)?; // rows moved, added, out
+let spans = tcsv::tokens::tokens(text);    // what each part of any text is, a broken one too
 doc.apply(&Change::Cell { row: RowAt::Key("INV-7".into()), column: "amount".into(), was: Some("950.00".into()), text: "1000".into() })?;
 let doc = doc.assign_ids(|| random_bits())?;
 let (schema, array) = tcsv::arrow::export(&doc);
@@ -32,6 +35,8 @@ let (schema, array) = tcsv::arrow::export(&doc);
 - **Problems** by place and kind (`type`, `missing`, `key`), keys compared by value. **Errors** by place: `At::Header`, `Column(n)`, `PreludeLine(n)`, `Prelude`, `Row(n)`, `File`.
 - **Computed columns** in exact decimals (`exact::Exact`): `+ - *` exact, `/` to 34 significant digits, half to even, stored at the column's scale within 38 digits.
 - **Identity** (`RowAt`, `Change`, `Refused`, `Version`): a row by its key, its id, or its text; a change applies only to the cell it was made against. Ids come from bits the caller gives.
+- **Rows rearranged** (`Doc::rearranged`): the file with exactly the rows asked, each kept one its record as it is now, each new one written from its cells, read again. Moving, adding and taking out rows; the reader is fast enough that it is the whole file read again (13.8 ms at 1M rows on 18 threads).
+- **Spans** (`tokens::tokens`): the text read as what each part is, the fences, comments, the prelude's statements, every header cell's name and its type's parts (base, mark, bound, format, choice), and every cell by its column. Read from the text alone, never refused, a part with no meaning an `Error` span. What swift-utils' Syntax colours a `.tcsv` file by, and what the language server's semantic tokens will carry.
 
 ## Numbers
 
@@ -52,6 +57,6 @@ Peak memory at 10M rows (`/usr/bin/time -l tcsv-bench once <file> <threads>`): 1
 
 ## Apple
 
-`bash tcsv-ffi/build-apple.sh` builds aarch64-apple-darwin and x86_64-apple-darwin (one universal slice), aarch64-apple-ios and aarch64-apple-ios-sim, strips debug info and local symbols, and writes `target/apple/TCSVCore.xcframework` for a SwiftPM `binaryTarget`. Each static library is about 19 MB built and 2.3 MB stripped (std included); the framework 9.1 MB (78 MB unstripped); what a link keeps is about 0.5 MB (the check below, Swift and all, is 633 KB). `tcsv-ffi/swift` is that package and a check that walks a file's columns through the Arrow C Data Interface.
+`bash tcsv-ffi/build-apple.sh` builds aarch64-apple-darwin and x86_64-apple-darwin (one universal slice), aarch64-apple-ios, aarch64-apple-tvos and their simulators, strips debug info and local symbols, and writes `target/apple/TCSVCore.xcframework` for a SwiftPM `binaryTarget`, zipped beside it with its checksum. Each static library is about 19 MB built and 2.3 MB stripped (std included); the framework 14 MB, its zip 4.4 MB; what a link keeps is about 0.5 MB (the check below, Swift and all, is 633 KB). No watchOS slice: watchOS 26 runs on arm64_32 (Series 6 to 8), which Rust builds only on nightly. The `apple` workflow (`gh workflow run apple -f version=X`) builds it on macos-26 and releases `apple-X` with the zip; swift-utils pins that asset by URL and checksum, and its `TCSV` is the binding over it, held to the suite. `tcsv-ffi/swift` is that package and a check that walks a file's columns through the Arrow C Data Interface.
 
 A C header over uniffi, by measurement: the same surface through uniffi 0.32.2 links 591 KB stripped against 518 KB, pulls 59 crates where this pulls none, and moves strings and buffers by copy, while the columns must cross as the doc's own pointers.

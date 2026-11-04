@@ -160,6 +160,13 @@ impl Column {
     }
 }
 
+/// A row of a file being rearranged (`Doc::rearranged`): one it has, or a new one.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Row<'a> {
+    Kept(usize),
+    New(&'a [&'a str]),
+}
+
 /// A `.tcsv` file read.
 #[derive(Clone, Debug)]
 pub struct Doc {
@@ -563,6 +570,43 @@ impl Doc {
         }
         out.push_str(&self.source[cursor..]);
         out
+    }
+
+    /// The file with exactly `rows`, in their order, read again on up to `threads`
+    /// threads: a kept row is its record as the file has it now, edits included; a new
+    /// one is written from its cells, each quoted only where CSV needs it. The prelude and
+    /// the header stay as they are, records are joined by the header's line break, and the
+    /// file ends in one when it did. What moving, adding and taking out rows is.
+    pub fn rearranged(&self, rows: &[Row], threads: usize) -> Result<Doc, Error> {
+        assert!(self.stored > 0, "a file with no header has no rows to arrange");
+        let nl = self.newline();
+        let mut out = String::with_capacity(self.source.len() + 64);
+        out.push_str(&self.source[..self.body as usize]);
+        match &self.header {
+            Some(h) => out.push_str(h),
+            None => out.push_str(self.source[self.body as usize..self.records[0] as usize].trim_end_matches(['\r', '\n'])),
+        }
+        for r in rows {
+            out.push_str(nl);
+            match r {
+                Row::Kept(k) => out.push_str(self.line(*k)),
+                Row::New(cells) => {
+                    for (k, c) in cells.iter().enumerate() {
+                        if k > 0 {
+                            out.push(',');
+                        }
+                        out.push_str(&scan::quote(c));
+                    }
+                }
+            }
+        }
+        if self.trailing() {
+            out.push_str(nl);
+        } else if !rows.is_empty() && out.ends_with(nl) {
+            // An empty last line with no break after it is no record: its blank is quoted.
+            out.push_str("\"\"");
+        }
+        read_on(out.into_bytes(), threads)
     }
 
     /// One cell's text changed; every other byte stays as read. The cell is written in

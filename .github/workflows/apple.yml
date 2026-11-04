@@ -1,0 +1,45 @@
+# The core for the Apple platforms, released: rust/tcsv-ffi/build-apple.sh builds
+# TCSVCore.xcframework (macOS, iOS, tvOS and their simulators), and its zip becomes the
+# asset of a release `apple-<version>`, its SwiftPM checksum in the release's body. Run by
+# hand when a consumer needs a new core:
+#
+#   gh workflow run apple -R adriangalilea/tcsv -f version=0.1.0
+#
+# swift-utils then pins the asset by its URL and that checksum (its Package.swift, `core`),
+# and `mise run tcsv-core <version>` there checks the pin against the release.
+name: apple
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "the core's version, e.g. 0.1.0 (the release is apple-<version>)"
+        required: true
+
+permissions: {}
+
+jobs:
+  release:
+    runs-on: macos-26
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      - name: build
+        run: |
+          brew install cbindgen
+          bash rust/tcsv-ffi/build-apple.sh
+      - name: release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+          out=rust/target/apple
+          sum=$(swift package compute-checksum "$out/TCSVCore.xcframework.zip")
+          [ "$sum" = "$(cat "$out/TCSVCore.xcframework.zip.sha256")" ]
+          gh release create "apple-$VERSION" "$out/TCSVCore.xcframework.zip" \
+            --target "$GITHUB_SHA" --title "TCSVCore $VERSION" \
+            --notes "TCSVCore.xcframework for macOS, iOS, tvOS and their simulators, built from $GITHUB_SHA.
+
+          SwiftPM checksum: \`$sum\`"
