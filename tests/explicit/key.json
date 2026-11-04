@@ -1,0 +1,20 @@
+{
+  "columns": [
+    { "name": "short", "type": "text!" },
+    { "name": "word", "type": "text!" }
+  ],
+  "rows": [
+    { "short": { "text": "A1" }, "word": { "text": "A1" } },
+    { "short": { "text": "A2" }, "word": { "text": "A2" } },
+    { "short": null, "word": null },
+    { "short": { "text": "A1" }, "word": { "text": "A1" } }
+  ],
+  "problems": [
+    { "row": 0, "column": "short", "kind": "key" },
+    { "row": 0, "column": "word", "kind": "key" },
+    { "row": 2, "column": "short", "kind": "missing" },
+    { "row": 2, "column": "word", "kind": "missing" },
+    { "row": 3, "column": "short", "kind": "key" },
+    { "row": 3, "column": "word", "kind": "key" }
+  ]
+}

@@ -1,0 +1,10 @@
+label:text!,weight:num
+negative,-1.5
+two places,84.20
+exponent,3e8
+negative exponent,2.5E-3
+no integer part,.5
+no fraction digits,5.
+plus,+0.25
+whole,42
+large exponent,1e30

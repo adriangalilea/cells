@@ -1,0 +1,4 @@
+---
+total = cost * qty
+---
+item:text,cost:EUR,qty:int

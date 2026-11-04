@@ -1,0 +1,4 @@
+note:text
+---
+type Kind = a|b
+---

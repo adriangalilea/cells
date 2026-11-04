@@ -1,0 +1,18 @@
+{
+  "columns": [
+    { "name": "gig", "type": "text" },
+    { "name": "on", "type": "date(DD/MM/YYYY)" }
+  ],
+  "rows": [
+    { "gig": { "text": "the barn" }, "on": { "date": "2026-08-14" } },
+    { "gig": { "text": "the pier" }, "on": { "date": "2024-02-29" } },
+    { "gig": { "text": "the hall" }, "on": null },
+    { "gig": { "text": "the cellar" }, "on": null },
+    { "gig": { "text": "the roof" }, "on": null }
+  ],
+  "problems": [
+    { "row": 2, "column": "on", "kind": "type" },
+    { "row": 3, "column": "on", "kind": "type" },
+    { "row": 4, "column": "on", "kind": "type" }
+  ]
+}

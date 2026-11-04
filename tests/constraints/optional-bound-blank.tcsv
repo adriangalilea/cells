@@ -1,0 +1,4 @@
+seed:text,packets:int>=1?
+basil,2
+fennel,
+dill,0

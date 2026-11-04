@@ -1,0 +1,14 @@
+{
+  "columns": [
+    { "name": "seed", "type": "text" },
+    { "name": "slot", "type": "' early'|late" }
+  ],
+  "rows": [
+    { "seed": { "text": "radish" }, "slot": { "choice": " early" } },
+    { "seed": { "text": "kale" }, "slot": { "choice": "late" } },
+    { "seed": { "text": "leek" }, "slot": null }
+  ],
+  "problems": [
+    { "row": 2, "column": "slot", "kind": "type" }
+  ]
+}

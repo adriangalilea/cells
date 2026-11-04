@@ -1,0 +1,30 @@
+{
+  "columns": [
+    { "name": "label", "type": "text!" },
+    { "name": "on", "type": "date" }
+  ],
+  "rows": [
+    { "label": { "text": "no leap day" }, "on": null },
+    { "label": { "text": "century not leap" }, "on": null },
+    { "label": { "text": "month 13" }, "on": null },
+    { "label": { "text": "month 0" }, "on": null },
+    { "label": { "text": "april 31" }, "on": null },
+    { "label": { "text": "one digit month" }, "on": null },
+    { "label": { "text": "day first" }, "on": null },
+    { "label": { "text": "an instant" }, "on": null },
+    { "label": { "text": "no dashes" }, "on": null },
+    { "label": { "text": "slashes" }, "on": null }
+  ],
+  "problems": [
+    { "row": 0, "column": "on", "kind": "type" },
+    { "row": 1, "column": "on", "kind": "type" },
+    { "row": 2, "column": "on", "kind": "type" },
+    { "row": 3, "column": "on", "kind": "type" },
+    { "row": 4, "column": "on", "kind": "type" },
+    { "row": 5, "column": "on", "kind": "type" },
+    { "row": 6, "column": "on", "kind": "type" },
+    { "row": 7, "column": "on", "kind": "type" },
+    { "row": 8, "column": "on", "kind": "type" },
+    { "row": 9, "column": "on", "kind": "type" }
+  ]
+}

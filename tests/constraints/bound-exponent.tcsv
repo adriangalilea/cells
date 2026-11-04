@@ -1,0 +1,4 @@
+leg:text,metres:num<=1e3
+first,1000
+second,1e3
+third,1001

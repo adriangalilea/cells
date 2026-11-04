@@ -1,0 +1,12 @@
+{
+  "columns": [
+    { "name": "poster", "type": "text!" },
+    { "name": "printed", "type": "text/image" },
+    { "name": "door", "type": "key/lock" }
+  ],
+  "rows": [
+    { "poster": { "text": "spring tour" }, "printed": { "bool": true }, "door": { "bool": true } },
+    { "poster": { "text": "autumn tour" }, "printed": { "bool": false }, "door": { "bool": false } }
+  ],
+  "problems": []
+}

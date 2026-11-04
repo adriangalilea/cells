@@ -1,6 +1,6 @@
 # TCSV
 
-> **Not yet final.** This spec is a draft: what follows is what the TypeScript and Swift readers implement today, and [Open](#open) holds what is decided in direction but not written, and what is undecided. Any of it may still change.
+> **Not yet final.** This spec is a draft: what follows is what the conformance suite ([`tests/`](tests)) holds every reader to, and [Open](#open) holds what is decided in direction but not written, and what is undecided. Any of it may still change.
 
 Typed CSV. A `.tcsv` file is a table whose header cells carry their column's type, `name:type`, and which may open with a prelude of named types and computed columns, fenced by `---`. One file, never a sidecar: the types travel with the data. MIME type `text/tcsv`.
 
@@ -18,10 +18,12 @@ TCSV is its own format, read by TCSV readers. Its records borrow RFC 4180's quot
 
 ## The file
 
-- **Records** are RFC 4180: fields separated by `,`, a field holding `,`, `"` or a line break is quoted, `""` is a quote inside one. Lines end in `\n` or `\r\n`; whichever the file uses is kept, and so is whether it ends in a line break.
-- **The prelude** opens when the file's first line is `---` and closes at the next line that is `---`; between them, TCSV's own language (below). It is optional; a file with none starts at its header. A prelude that opens and never closes is an error.
-- **The header** is the first line after the prelude. Every other line is a row.
-- **A row** has as many fields as the header, or fewer, the missing ones blank. More is an error naming the row.
+- **Text.** A file is UTF-8. A byte order mark before its first line is no part of that line, and a writer writes it back.
+- **Records** are RFC 4180: fields separated by `,`, a field holding `,`, `"` or a line break is quoted, `""` is a quote inside one. A quoted field opens with `"` and closes at a lone `"`, which the end of the file, a `,` or a line ending follows; text after the closing quote, a `"` inside a field that did not open with one, and a quoted field never closed are errors naming the record (the header, or the row). Inside quotes every character is the field's, line breaks included.
+- **Lines** end in `\n` or `\r\n`. Each line's ending is kept as read, so a file may mix them, and so is whether the file ends in a line break: one at the very end closes the last record and opens none. A `\r` that is not followed by `\n`, outside quotes, is an error naming its record.
+- **The prelude** opens when the file's first line is exactly `---` and closes at the next line that is exactly `---`; between them, TCSV's own language (below). It is optional; a file with none starts at its header. A prelude that opens and never closes is an error. A `---` on any other line is no fence: after the prelude it is the header (one column named `---`), below the header it is a row.
+- **The header** is the first line after the prelude. Every other line is a row. A file with no line after its prelude (an empty file, or a prelude alone) has no columns and no rows.
+- **A row** has as many fields as the header, or fewer, the missing ones blank. More is an error naming the row. A blank line among the rows is a row whose every field is blank.
 
 ## A header cell
 
@@ -30,42 +32,54 @@ cost:EUR>=0
  ①  ②  ③
 ```
 
-1. **The name** is everything before the first `:`. A name may hold any character but `:`.
+1. **The name** is everything before the first `:`, spaces included (` item` and `item` are two names). A name may hold any character but `:`, and is at least one character. No two columns share a name, computed columns included.
 2. **`:`** says a type follows. A cell with no `:` is a plain column, its type inferred from its values (below). So every CSV is a TCSV with no types written.
-3. **The type** is everything after it. It never holds a `,` or a `"`, so a header cell never needs CSV's quoting.
+3. **The type** is everything after it, and never empty. It never holds a `,` or a `"`, so a header cell never needs CSV's quoting; a name that holds one quotes the whole cell (`"price, net:EUR"`).
 
 ## Types
+
+A type opens with what the column holds: a base, a currency, a named type, a choice or a pair. Its format, bounds and marks follow, in any order. A type that opens with a bound has no base written and is a number (below). Spaces between the parts are nothing (`travel | stay` is `travel|stay`, `text !` is `text!`); a space is never part of a word unless quoted. A type says each thing once: one base, at most one lower and one upper bound, one format, each mark once, and what a named type it uses already says counts as said. Anything else, two bases, a mark before the base, a part said twice, is an error naming the column.
 
 ### Bases
 
 | Type | A cell | Its value |
 |---|---|---|
 | `text` | any text | the text |
-| `int` | `-12`, `0`, `4200` | a whole number |
-| `num` | `-1.5`, `84.20`, `3e8` | a number |
-| `pct` | `12`, `12.5`, `12%` | a number, the percentage (`12%` is 12) |
+| `int` | `-12`, `0`, `4200`, `+7`, `0042` | a whole number: a sign or none, then digits |
+| `num` | `-1.5`, `84.20`, `3e8`, `.5` | a number: a sign or none, digits with a fraction or none (`5.` and `.5` too), then an exponent or none |
+| `pct` | `12`, `12.5`, `12%` | a number, the percentage (`12%` is 12): a `num`, then `%` or none |
 | `bool` | `true` or `false` | a boolean |
-| `date` | `2026-08-14` | a calendar date, ISO 8601 |
-| `time` | `14:30`, `14:30:05` | a time of day |
-| `datetime` | `2026-08-14T14:30:00Z` | an instant, ISO 8601 |
-| `url` | `https://example.com/a` | an absolute URL |
-| `email` | `ada@example.com` | an address |
+| `date` | `2026-08-14` | a calendar date, ISO 8601: `YYYY-MM-DD`, a day the Gregorian calendar has |
+| `time` | `14:30`, `14:30:05` | a time of day: `HH:mm` or `HH:mm:ss`, hours `00` to `23`, minutes and seconds `00` to `59` |
+| `datetime` | `2026-08-14T14:30:00Z` | an instant, ISO 8601 as RFC 3339 writes it (below) |
+| `url` | `https://example.com/a` | an absolute URL, as RFC 3986 writes it (below) |
+| `email` | `ada@example.com` | an address (below) |
 | any ISO 4217 code, `EUR`, `USD`, `JPY` | `84.20` | an amount of money in that currency, a number |
 | `id` | `k7m2q9xa` | a row's identity: eight characters of Crockford's base 32 in lower case (`0-9`, `a-z` but `i l o u`), assigned by the engine, never typed by a person |
+
+A cell is read exactly as written: never trimmed, never folded in case. ` 12` is not an `int`, `TRUE` is not a `bool`.
+
+- **`datetime`** is `YYYY-MM-DDTHH:mm:ss`, then a fraction of a second of one to nine digits or none, then `Z` or an offset `+HH:mm` or `-HH:mm` (hours `00` to `23`). `T` and `Z` are capitals, the seconds are always written, the offset never left out: a time with no offset is no instant. Its value is the instant, so `2026-08-14T14:30:00+02:00` and `2026-08-14T12:30:00Z` are one value.
+- **`url`** is a scheme (a letter, then letters, digits, `+`, `-` or `.`), `:`, then at least one character, each a letter, a digit, one of `-._~:/?#[]@!$&'()*+,;=`, or `%` and two hexadecimal digits. No space, nothing outside ASCII: a URL with other characters writes them percent-encoded. `mailto:ada@example.com` is a URL; `example.com` and `//example.com/a` are not.
+- **`email`** is a local part, `@`, then a domain. The local part is at least one ASCII character from `!` to `~` but `@`. The domain is two or more labels joined by `.`, each label ASCII letters, digits and `-`, never starting or ending with `-`. `ada@localhost` is not an address.
+- **`id`** is exactly eight characters, each of `0123456789abcdefghjkmnpqrstvwxyz`: lower case only, never `i`, `l`, `o` or `u`. Its value is the text; two ids are equal when their text is.
+- **A currency** is any alphabetic code of ISO 4217's current list, in capitals: `EUR`, never `eur`; a withdrawn code (`HRK`) is none. An amount is any `num`; the currency's minor unit does not limit its digits (`JPY` takes `1200.5`).
 
 A word that is none of these, no named type and not a choice is an error naming it: `cost:EURO` is `no type or currency "EURO"`, never silently text.
 
 ### Choices
 
-`category:travel|stay|food|gear` is one of the words, written bare. A choice holding a reserved character (below) or a space at its ends is quoted with single quotes, a quote inside one doubled:
+`category:travel|stay|food|gear` is one of the words, written bare. A choice holding a reserved character (below) or a space, inside it or at its ends, is quoted with single quotes, a quote inside one doubled:
 
 ```
 mood:'yay!'|meh|'so-so?'|'it''s fine'
 ```
 
+A word beside `|` is always a choice's word, even one that spells a base or an explicit word (`text|image`, `key|lock`). A choice of one word is quoted (`'paperback'`), since a bare word alone is a type. A cell is one of the words exactly, case and spaces included. A choice's words differ from each other, and none is empty: `''` is refused, a blank cell being missing, never a word.
+
 ### A boolean in the file's own words
 
-`paid:yes/no` is a boolean written `yes` for true and `no` for false, true first. `bool` alone reads `true`/`false`.
+`paid:yes/no` is a boolean written `yes` for true and `no` for false, true first. `bool` alone reads `true`/`false`, and `true/false` is `bool`. The two words differ, are quoted as a choice's are, and are read exactly, case included.
 
 ### Constraints
 
@@ -74,11 +88,20 @@ mood:'yay!'|meh|'so-so?'|'it''s fine'
 | `>=0` `>0` `<=100` `<100` | the value | its length |
 | `0..100` | at least 0 and at most 100 | a length between |
 
-`cost:EUR>=0`, `pct:0..100`, `name:text<=40`. A type that is only a range is a number: `score:0..10` is `num` from 0 to 10.
+`cost:EUR>=0`, `pct:0..100`, `name:text<=40`, `qty:int>=1<=12`. A type that is only bounds is a number: `score:0..10` is `num` from 0 to 10, `>=0` is `num` at least 0. A range after a base bounds it: `int 1..5`, `text 1..40`.
+
+- Bounds apply to `int`, `num`, `pct`, a currency, and `text`; every other type refuses them. A `pct` is bounded by its percentage: `pct<=100` refuses `150%`.
+- A bound is a `num` (`-1.5`, `3e8`). On text it is a whole number, at least 0.
+- A text's length is its count of Unicode code points: `café` written with `é` is 4, written with `e` and a combining accent is 5.
+- Bounds no value can meet are refused: a lower bound above the upper, or the two equal with either exclusive. `5..5` is 5 alone.
 
 ### Formats
 
-A format in parentheses says how the file writes the value: `on:date(DD/MM/YYYY)`, `at:time(HH:mm)`. Its letters: `YYYY` `MM` `DD` `HH` `mm` `ss`, everything else literal. The value read is the same as the ISO form's; writing keeps the format.
+A format in parentheses says how the file writes the value: `on:date(DD/MM/YYYY)`, `at:time(HH:mm)`. Its letters: `YYYY` `MM` `DD` `HH` `mm` `ss`, everything else literal (`time(HHhmm)` reads `14h30`). Each letter stands for exactly as many digits as it has letters: `MM` is `08`, never `8`. The value read is the same as the ISO form's, and the cell must be a real day or time as the ISO form must; writing keeps the format.
+
+- A format applies to `date` and `time` only, and every other type refuses one: a `datetime` is an instant, and an instant is written as ISO 8601 writes it, its offset included.
+- A date's format holds `YYYY`, `MM` and `DD` once each, and no time letter. A time's holds `HH` and `mm` once each, `ss` once or not at all (its value then has `00` seconds), and no date letter. `date(D/M/YYYY)` is refused: `D` and `M` are literal, so the day and month are never read.
+- A format is never empty, and its `(` is closed.
 
 ### Marks
 
@@ -87,7 +110,7 @@ A format in parentheses says how the file writes the value: `on:date(DD/MM/YYYY)
 | `!` | the key: present in every row and unique |
 | `?` | may be blank |
 
-Without `?`, a blank cell is reported as missing. `note:text?` is an optional note; `item:text!` is the key.
+Without `?`, a blank cell is reported as missing. `note:text?` is an optional note; `item:text!` is the key. The two together are refused: a key is present in every row.
 
 ### Every shorthand has a word
 
@@ -100,14 +123,16 @@ Both are always valid and mean the same; a cell may mix them.
 | `travel\|stay\|food` | `one of travel stay food` |
 | `yes/no` | `bool yes no` |
 | `EUR>=0` | `EUR min 0` |
+| `int>0` | `int above 0` |
 | `num<=10` | `num max 10` |
+| `num<10` | `num below 10` |
 | `0..100` | `num between 0 and 100` |
 
-Explicit words are separated by spaces, never commas (a comma would force the header cell into CSV quotes). A choice with a space inside is quoted: `one of travel 'sd cards'`.
+Explicit words are separated by spaces, never commas (a comma would force the header cell into CSV quotes). A choice with a space inside is quoted: `one of travel 'sd cards'`. `between` takes two numbers joined by `and`, both bounds inclusive. `one of` takes every word after it up to the next explicit word (`key` `optional` `one` `of` `bool` `min` `max` `above` `below` `between` `and`) or mark, and at least one; a choice that spells an explicit word is quoted there: `one of 'key' lock`. `bool` followed by two words that are not explicit words is a pair, and a pair's word that spells one is quoted (`bool 'key' lock`); `bool` alone is `true`/`false`.
 
 ### Reserved
 
-Inside a type, outside single quotes: `|` `/` `!` `?` `<` `>` `=` `..` `(` `)` `'`. A name reserves only `:`. Values reserve nothing.
+Inside a type, outside single quotes: `|` `/` `!` `?` `<` `>` `=` `..` `(` `)` `'` `:`. Inside single quotes nothing is, but `'` itself, doubled; `,` and `"` are never in a type. A name reserves only `:`. Values reserve nothing.
 
 ## The prelude
 
@@ -118,22 +143,40 @@ total = cost * qty                        // a computed column
 ---
 ```
 
-One statement a line; a blank line is nothing.
+One statement a line; a blank line is nothing, and spaces at a line's ends are nothing. A line that is no statement is an error naming it.
 
-- **`type Name = <type>`** names a type for any header cell to use: `category:Category`. A name is a word starting with a capital letter; it may name another named type defined above it.
-- **`name = <expression>`** is a computed column: shown and read as a column after the header's, never stored in the rows. Its expression is pure and total (it always finishes, the same answer in every implementation): numbers, the names of numeric columns, `+ - * /`, parentheses. A blank or broken input makes the computed cell blank.
-- **`//`** starts a comment to the line's end, in the prelude only.
-- **No import yet.** Today a file refers to no other; references between files are the next part of the format ([Open](#open)).
+- **`type Name = <type>`** names a type for any header cell to use: `category:Category`. A name is ASCII letters, digits and `_`, starting with a capital letter (`type category = …` is refused), and never a currency code. A name is defined once; it may name another named type defined above it, never one below it or itself. A header cell may add to a named type what it does not already say: `cost:Cost?`, `cost:Money>=0`.
+- **`name = <expression>`** is a computed column: shown and read as a column after the header's, in the prelude's order, never stored in the rows. Its name is ASCII letters, digits and `_`, not starting with a digit, and no other column's. Its expression is pure and total (it always finishes, the same answer in every implementation): numbers, the names of numeric columns, `+ - * /`, parentheses.
+  - A number is digits with a fraction or none (`2`, `0.5`); no sign, no exponent. A `-` before a term negates it (`-cost`, `2 * -qty`).
+  - A name is a stored column whose type is `int`, `num`, `pct` or a currency, read or inferred, or a computed column above it. Any other name (no column, a text column, a computed column below) is an error naming the line.
+  - `*` and `/` bind before `+` and `-`, each from the left.
+  - Arithmetic is exact decimal: `0.1 + 0.2` is `0.3`. A quotient is rounded to 34 significant digits, half to even (`1 / 3` is `0.3333333333333333333333333333333333`).
+  - The column is `num?`. A blank or broken input, or a division by zero, makes the computed cell blank. A computed cell is never reported: what a person fixes is its input.
+- **`//`** starts a comment to the line's end, in the prelude only, unless it is inside single quotes (`type Path = 'a//b'|c`).
+- **No import yet.** Today a file refers to no other; references between files are the next part of the format ([Open](#open)), and `use` is no statement yet.
+
+An error inside a statement (a type that does not read, an expression that names no numeric column) names the statement's line.
 
 ## Reading
 
-- **Inference.** A column with no type is read from its values: every non-blank value an integer is `int`, a number `num`, `true`/`false` or `yes`/`no` a boolean in those words, an ISO date `date`, an ISO instant `datetime`, otherwise `text`. An inferred column is always optional. An ambiguous value infers the plainer kind: `0042` is an integer, but `0042` beside `A12` is text.
-- **A blank cell** is missing: a problem unless the type is `?`, its value null either way.
-- **A cell that breaks its type loads and is reported, never coerced.** The cell's text is kept as written, its value null, and a problem names the row, the column and why: `row 3, cost: "8x.50" is not a number`. A duplicate key reports both rows. The file always opens, so the tool that can fix it can show it.
+- **Inference.** A column with no type is read from its values: every non-blank value an `int` is `int`, a `num` `num` (so integers beside one decimal are `num`), every one `true` or `false` `bool`, every one `yes` or `no` a boolean in those words (`yes/no`, a column of `yes` alone too), a `date` `date`, a `datetime` `datetime`, otherwise `text`. Nothing else is inferred: a time, a percentage, a URL, an address, an amount or an `id` is `text`, and so is a column mixing kinds (`true` beside `no`, a date beside an instant). A column with no value at all is `text`. An inferred column is always optional, so it is never reported. An ambiguous value infers the plainer kind: `0042` is an integer, but `0042` beside `A12` is text.
+- **A blank cell** is missing: a problem unless the type is `?`, its value null either way. A quoted empty field (`""`) is blank too.
+- **A cell that breaks its type loads and is reported, never coerced.** The cell's text is kept as written, its value null, and a problem names the row, the column and why: `row 3, cost: "8x.50" is not a number`. A bound broken is the type broken. The file always opens, so the tool that can fix it can show it.
+- **Keys.** Two rows hold the same key when their values are equal: `7` and `007` in an `int` key, `1.5` and `1.50` in a currency, two spellings of one instant. A duplicate key is reported on every row that holds it. A blank or broken key is missing or broken, and in no comparison.
+- A cell has at most one problem: missing, broken, or a duplicate key.
 
 ## Writing
 
-A writer round-trips: a file read and written with nothing changed is the same bytes. A changed cell is written in its column's form (its format, its pair's words, quoted only when CSV needs it); everything else is written as it was read, the header's spelling (shorthand or explicit) and the prelude included. A writer changing a type writes the shorthand.
+A writer round-trips: a file read and written with nothing changed is the same bytes. A changed cell is written in its column's form (its format, its pair's words, quoted only when CSV needs it); everything else is written as it was read, the header's spelling (shorthand or explicit), each line's ending, the byte order mark and the prelude included. A cell set past the end of a short row writes the blank fields before it. A writer changing a type writes the shorthand, and rewrites no cell: a cell the new type breaks is reported, not changed.
+
+The shorthand, as a writer writes it:
+
+- the type: a base, a currency, a named type by its name, a choice's words joined by `|`, a pair's two words joined by `/` (`true/false` is `bool`);
+- then its format, then its lower bound (`>=` or `>`), then its upper bound (`<=` or `<`), then `!` or `?`. A `num` with both bounds inclusive is its range alone: `0..10`, never `num>=0<=10`;
+- a bound's number in plain decimal: `-` if negative, no exponent, no zero that changes nothing (`1e3` is `1000`, `0.50` is `0.5`, `-0` is `0`);
+- a word bare unless it must be quoted: it holds a space or a reserved character, or it is a choice's only word.
+
+So `cost:EUR min 0 key` is written `cost:EUR>=0!`, and `mood:one of 'so so' meh optional` is written `mood:'so so'|meh?`.
 
 ## Open
 

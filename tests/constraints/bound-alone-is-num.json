@@ -1,0 +1,14 @@
+{
+  "columns": [
+    { "name": "leg", "type": "text" },
+    { "name": "km", "type": "num>=0" }
+  ],
+  "rows": [
+    { "leg": { "text": "first" }, "km": { "num": "0" } },
+    { "leg": { "text": "second" }, "km": { "num": "12.5" } },
+    { "leg": { "text": "third" }, "km": null }
+  ],
+  "problems": [
+    { "row": 2, "column": "km", "kind": "type" }
+  ]
+}

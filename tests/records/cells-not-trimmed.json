@@ -1,0 +1,12 @@
+{
+  "columns": [
+    { "name": "item", "type": "text!" },
+    { "name": "note", "type": "text" }
+  ],
+  "rows": [
+    { "item": { "text": " fuel " }, "note": { "text": "  two spaces before" } },
+    { "item": { "text": "fuel" }, "note": { "text": "a different key" } },
+    { "item": { "text": "fuel  " }, "note": { "text": "two spaces after" } }
+  ],
+  "problems": []
+}

@@ -1,0 +1,11 @@
+mark:text!,note:text
+|,a bar
+:,a colon
+',a quote
+!,a bang
+?,a question
+// not a comment,slashes
+---,dashes
+(x),parentheses
+a..b,dots
+>=0,a bound

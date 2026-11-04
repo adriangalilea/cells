@@ -1,0 +1,16 @@
+{
+  "columns": [
+    { "name": "id", "type": "id!" },
+    { "name": "book", "type": "text" }
+  ],
+  "rows": [
+    { "id": { "id": "k7m2q9xa" }, "book": { "text": "The Salt Road" } },
+    { "id": { "id": "p3v8n0bc" }, "book": { "text": "A Year of Moss" } },
+    { "id": { "id": "k7m2q9xa" }, "book": { "text": "The Salt Road" } },
+    { "id": { "id": "h4t6w2zd" }, "book": { "text": "Lanterns" } }
+  ],
+  "problems": [
+    { "row": 0, "column": "id", "kind": "key" },
+    { "row": 2, "column": "id", "kind": "key" }
+  ]
+}

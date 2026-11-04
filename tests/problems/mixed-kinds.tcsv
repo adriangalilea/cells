@@ -1,0 +1,5 @@
+item:text!,qty:int>=1,cost:EUR
+fuel,1,84.20
+maps,0,
+fuel,,12.00
+tent,2,9.5x

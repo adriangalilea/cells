@@ -1,0 +1,17 @@
+{
+  "columns": [
+    { "name": "plain", "type": "bool" },
+    { "name": "word", "type": "bool" },
+    { "name": "pair", "type": "bool" }
+  ],
+  "rows": [
+    { "plain": { "bool": true }, "word": { "bool": true }, "pair": { "bool": true } },
+    { "plain": { "bool": false }, "word": { "bool": false }, "pair": { "bool": false } },
+    { "plain": null, "word": null, "pair": null }
+  ],
+  "problems": [
+    { "row": 2, "column": "plain", "kind": "type" },
+    { "row": 2, "column": "word", "kind": "type" },
+    { "row": 2, "column": "pair", "kind": "type" }
+  ]
+}

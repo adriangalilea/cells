@@ -1,0 +1,4 @@
+item:text!,note:text
+ fuel ,  two spaces before
+fuel,a different key
+fuel  ,two spaces after

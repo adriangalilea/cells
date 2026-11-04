@@ -1,0 +1,15 @@
+{
+  "columns": [
+    { "name": "label", "type": "text!" },
+    { "name": "qty", "type": "int" }
+  ],
+  "rows": [
+    { "label": { "text": "negative" }, "qty": { "int": "-12" } },
+    { "label": { "text": "zero" }, "qty": { "int": "0" } },
+    { "label": { "text": "thousands" }, "qty": { "int": "4200" } },
+    { "label": { "text": "plus" }, "qty": { "int": "7" } },
+    { "label": { "text": "leading zeros" }, "qty": { "int": "42" } },
+    { "label": { "text": "negative zero" }, "qty": { "int": "0" } }
+  ],
+  "problems": []
+}

@@ -1,0 +1,15 @@
+{
+  "columns": [
+    { "name": "entry", "type": "text" },
+    { "name": "kind", "type": "text|image|date" }
+  ],
+  "rows": [
+    { "entry": { "text": "poster" }, "kind": { "choice": "image" } },
+    { "entry": { "text": "setlist" }, "kind": { "choice": "text" } },
+    { "entry": { "text": "tour" }, "kind": { "choice": "date" } },
+    { "entry": { "text": "demo" }, "kind": null }
+  ],
+  "problems": [
+    { "row": 3, "column": "kind", "kind": "type" }
+  ]
+}

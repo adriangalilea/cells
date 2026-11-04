@@ -1,0 +1,11 @@
+{
+  "columns": [
+    { "name": "ref", "type": "text?", "inferred": true },
+    { "name": "book", "type": "text" }
+  ],
+  "rows": [
+    { "ref": { "text": "k7m2q9xa" }, "book": { "text": "The Salt Road" } },
+    { "ref": { "text": "p3v8n0bc" }, "book": { "text": "A Year of Moss" } }
+  ],
+  "problems": []
+}

@@ -1,0 +1,14 @@
+{
+  "columns": [
+    { "name": "item", "type": "text!" },
+    { "name": "cost", "type": "EUR" }
+  ],
+  "rows": [
+    { "item": { "text": "fuel" }, "cost": { "money": "84.20", "currency": "EUR" } },
+    { "item": { "text": "refund" }, "cost": { "money": "-12.50", "currency": "EUR" } },
+    { "item": { "text": "free map" }, "cost": { "money": "0", "currency": "EUR" } },
+    { "item": { "text": "van hire" }, "cost": { "money": "1000", "currency": "EUR" } },
+    { "item": { "text": "stamp" }, "cost": { "money": "0.5", "currency": "EUR" } }
+  ],
+  "problems": []
+}

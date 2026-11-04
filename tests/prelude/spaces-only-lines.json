@@ -1,0 +1,11 @@
+{
+  "types": { "Shelf": "A|B" },
+  "columns": [
+    { "name": "title", "type": "text" },
+    { "name": "shelf", "type": "Shelf" }
+  ],
+  "rows": [
+    { "title": { "text": "Salt and Sky" }, "shelf": { "choice": "A" } }
+  ],
+  "problems": []
+}

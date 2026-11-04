@@ -1,0 +1,9 @@
+{
+  "columns": [
+    { "name": "seed", "type": "text?", "inferred": true },
+    { "name": "count", "type": "text?", "inferred": true },
+    { "name": "sown", "type": "text?", "inferred": true }
+  ],
+  "rows": [],
+  "problems": []
+}

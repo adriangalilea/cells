@@ -1,0 +1,15 @@
+{
+  "columns": [
+    { "name": "label", "type": "text!" },
+    { "name": "contact", "type": "email" }
+  ],
+  "rows": [
+    { "label": { "text": "plain" }, "contact": { "email": "ada@example.com" } },
+    { "label": { "text": "dots plus subdomain" }, "contact": { "email": "ada.lovelace+books@mail.example.org" } },
+    { "label": { "text": "capitals" }, "contact": { "email": "ADA@EXAMPLE.COM" } },
+    { "label": { "text": "shortest" }, "contact": { "email": "a@b.co" } },
+    { "label": { "text": "hyphens" }, "contact": { "email": "seed-club@x-y.example" } },
+    { "label": { "text": "apostrophe" }, "contact": { "email": "o'neil@example.com" } }
+  ],
+  "problems": []
+}

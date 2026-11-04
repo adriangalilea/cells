@@ -1,0 +1,5 @@
+---
+type Loop = Loop?
+---
+step:text
+dig

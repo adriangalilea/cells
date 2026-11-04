@@ -1,0 +1,14 @@
+{
+  "columns": [
+    { "name": "shelf", "type": "text>=1<=3" },
+    { "name": "books", "type": "int" }
+  ],
+  "rows": [
+    { "shelf": { "text": "A" }, "books": { "int": "4" } },
+    { "shelf": { "text": "B12" }, "books": { "int": "9" } },
+    { "shelf": null, "books": { "int": "2" } }
+  ],
+  "problems": [
+    { "row": 2, "column": "shelf", "kind": "type" }
+  ]
+}

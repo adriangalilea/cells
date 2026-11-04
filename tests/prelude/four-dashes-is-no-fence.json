@@ -1,0 +1,10 @@
+{
+  "columns": [
+    { "name": "----", "type": "text?", "inferred": true }
+  ],
+  "rows": [
+    { "----": { "text": "type Kind = a|b" } },
+    { "----": { "text": "----" } }
+  ],
+  "problems": []
+}

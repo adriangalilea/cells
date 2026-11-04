@@ -1,0 +1,15 @@
+{
+  "columns": [
+    { "name": "doors", "type": "datetime!" },
+    { "name": "venue", "type": "text" }
+  ],
+  "rows": [
+    { "doors": { "datetime": "2026-08-14T20:00:00Z" }, "venue": { "text": "The Lantern" } },
+    { "doors": { "datetime": "2026-08-15T20:00:00Z" }, "venue": { "text": "Harbour Hall" } },
+    { "doors": { "datetime": "2026-08-14T20:00:00Z" }, "venue": { "text": "Old Mill" } }
+  ],
+  "problems": [
+    { "row": 0, "column": "doors", "kind": "key" },
+    { "row": 2, "column": "doors", "kind": "key" }
+  ]
+}

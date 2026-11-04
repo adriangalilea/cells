@@ -1,0 +1,5 @@
+---
+grams = 1e3 * kilos
+---
+seed:text,kilos:num
+basil,0.5

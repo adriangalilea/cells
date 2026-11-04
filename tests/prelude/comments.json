@@ -1,0 +1,15 @@
+{
+  "types": { "Venue": "hall|club|park" },
+  "columns": [
+    { "name": "night", "type": "text!" },
+    { "name": "venue", "type": "Venue" },
+    { "name": "price", "type": "EUR" },
+    { "name": "tickets", "type": "int" },
+    { "name": "fee", "type": "num?", "computed": "price * tickets" }
+  ],
+  "rows": [
+    { "night": { "text": "first" }, "venue": { "choice": "club" }, "price": { "money": "12.50", "currency": "EUR" }, "tickets": { "int": "3" }, "fee": { "num": "37.5" } },
+    { "night": { "text": "second" }, "venue": { "choice": "park" }, "price": { "money": "4.50", "currency": "EUR" }, "tickets": { "int": "10" }, "fee": { "num": "45" } }
+  ],
+  "problems": []
+}

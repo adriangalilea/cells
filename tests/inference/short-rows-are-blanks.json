@@ -1,0 +1,13 @@
+{
+  "columns": [
+    { "name": "seed", "type": "text?", "inferred": true },
+    { "name": "count", "type": "int?", "inferred": true },
+    { "name": "sown", "type": "date?", "inferred": true }
+  ],
+  "rows": [
+    { "seed": { "text": "basil" }, "count": { "int": "12" }, "sown": { "date": "2026-04-01" } },
+    { "seed": { "text": "fennel" }, "count": null, "sown": null },
+    { "seed": { "text": "dill" }, "count": { "int": "3" }, "sown": null }
+  ],
+  "problems": []
+}

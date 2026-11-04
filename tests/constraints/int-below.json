@@ -1,0 +1,13 @@
+{
+  "columns": [
+    { "name": "gig", "type": "text" },
+    { "name": "encores", "type": "int<10" }
+  ],
+  "rows": [
+    { "gig": { "text": "the barn" }, "encores": { "int": "9" } },
+    { "gig": { "text": "the cellar" }, "encores": null }
+  ],
+  "problems": [
+    { "row": 1, "column": "encores", "kind": "type" }
+  ]
+}

@@ -1,0 +1,8 @@
+{
+  "columns": [
+    { "name": "title", "type": "text?", "inferred": true },
+    { "name": "pages", "type": "text?", "inferred": true }
+  ],
+  "rows": [],
+  "problems": []
+}

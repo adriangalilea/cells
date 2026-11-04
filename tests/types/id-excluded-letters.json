@@ -1,0 +1,22 @@
+{
+  "columns": [
+    { "name": "letter", "type": "text!" },
+    { "name": "id", "type": "id" }
+  ],
+  "rows": [
+    { "letter": { "text": "i" }, "id": null },
+    { "letter": { "text": "l" }, "id": null },
+    { "letter": { "text": "o" }, "id": null },
+    { "letter": { "text": "u" }, "id": null },
+    { "letter": { "text": "hyphen" }, "id": null },
+    { "letter": { "text": "accent" }, "id": null }
+  ],
+  "problems": [
+    { "row": 0, "column": "id", "kind": "type" },
+    { "row": 1, "column": "id", "kind": "type" },
+    { "row": 2, "column": "id", "kind": "type" },
+    { "row": 3, "column": "id", "kind": "type" },
+    { "row": 4, "column": "id", "kind": "type" },
+    { "row": 5, "column": "id", "kind": "type" }
+  ]
+}

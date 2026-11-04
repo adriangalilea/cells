@@ -1,0 +1,11 @@
+{
+  "columns": [
+    { "name": "item", "type": "text!" },
+    { "name": "qty", "type": "int>=1" },
+    { "name": "cost", "type": "EUR?" }
+  ],
+  "rows": [
+    { "item": { "text": "fuel" }, "qty": { "int": "2" }, "cost": null }
+  ],
+  "problems": []
+}

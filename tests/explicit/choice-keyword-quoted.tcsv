@@ -1,0 +1,4 @@
+short:key|min|lock,word:one of 'key' 'min' lock
+key,key
+min,min
+lock,lock

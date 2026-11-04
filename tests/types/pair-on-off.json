@@ -1,0 +1,14 @@
+{
+  "columns": [
+    { "name": "bed", "type": "text!" },
+    { "name": "watering", "type": "on/off" }
+  ],
+  "rows": [
+    { "bed": { "text": "north" }, "watering": { "bool": true } },
+    { "bed": { "text": "south" }, "watering": { "bool": false } },
+    { "bed": { "text": "east" }, "watering": null }
+  ],
+  "problems": [
+    { "row": 2, "column": "watering", "kind": "type" }
+  ]
+}

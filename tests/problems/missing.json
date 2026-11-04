@@ -1,0 +1,13 @@
+{
+  "columns": [
+    { "name": "title", "type": "text" },
+    { "name": "shelf", "type": "text" }
+  ],
+  "rows": [
+    { "title": { "text": "Moss and Stone" }, "shelf": { "text": "B2" } },
+    { "title": { "text": "The Long Road" }, "shelf": null }
+  ],
+  "problems": [
+    { "row": 1, "column": "shelf", "kind": "missing" }
+  ]
+}

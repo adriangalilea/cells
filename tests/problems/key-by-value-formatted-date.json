@@ -1,0 +1,15 @@
+{
+  "columns": [
+    { "name": "on", "type": "date(DD/MM/YYYY)!" },
+    { "name": "venue", "type": "text" }
+  ],
+  "rows": [
+    { "on": { "date": "2026-08-14" }, "venue": { "text": "The Lantern" } },
+    { "on": { "date": "2026-08-15" }, "venue": { "text": "Harbour Hall" } },
+    { "on": { "date": "2026-08-14" }, "venue": { "text": "Old Mill" } }
+  ],
+  "problems": [
+    { "row": 0, "column": "on", "kind": "key" },
+    { "row": 2, "column": "on", "kind": "key" }
+  ]
+}

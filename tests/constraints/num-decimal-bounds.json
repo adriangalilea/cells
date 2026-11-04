@@ -1,0 +1,15 @@
+{
+  "columns": [
+    { "name": "bed", "type": "text" },
+    { "name": "depth", "type": "num>=0.5" },
+    { "name": "spacing", "type": "num<2.5" }
+  ],
+  "rows": [
+    { "bed": { "text": "north" }, "depth": { "num": "0.5" }, "spacing": { "num": "2.49" } },
+    { "bed": { "text": "south" }, "depth": null, "spacing": null }
+  ],
+  "problems": [
+    { "row": 1, "column": "depth", "kind": "type" },
+    { "row": 1, "column": "spacing", "kind": "type" }
+  ]
+}

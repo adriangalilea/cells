@@ -1,0 +1,22 @@
+{
+  "columns": [
+    { "name": "label", "type": "text!" },
+    { "name": "returned", "type": "bool" }
+  ],
+  "rows": [
+    { "label": { "text": "capitals" }, "returned": null },
+    { "label": { "text": "capital first" }, "returned": null },
+    { "label": { "text": "yes" }, "returned": null },
+    { "label": { "text": "one" }, "returned": null },
+    { "label": { "text": "zero" }, "returned": null },
+    { "label": { "text": "letter" }, "returned": null }
+  ],
+  "problems": [
+    { "row": 0, "column": "returned", "kind": "type" },
+    { "row": 1, "column": "returned", "kind": "type" },
+    { "row": 2, "column": "returned", "kind": "type" },
+    { "row": 3, "column": "returned", "kind": "type" },
+    { "row": 4, "column": "returned", "kind": "type" },
+    { "row": 5, "column": "returned", "kind": "type" }
+  ]
+}

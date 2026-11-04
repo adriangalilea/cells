@@ -1,0 +1,13 @@
+{
+  "columns": [
+    { "name": "track", "type": "text" },
+    { "name": "length", "type": "time(HH:mm:ss)" }
+  ],
+  "rows": [
+    { "track": { "text": "opener" }, "length": { "time": "00:04:12" } },
+    { "track": { "text": "closer" }, "length": null }
+  ],
+  "problems": [
+    { "row": 1, "column": "length", "kind": "type" }
+  ]
+}

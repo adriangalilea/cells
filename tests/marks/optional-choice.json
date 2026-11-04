@@ -1,0 +1,14 @@
+{
+  "columns": [
+    { "name": "item", "type": "text" },
+    { "name": "category", "type": "travel|stay?" }
+  ],
+  "rows": [
+    { "item": { "text": "fuel" }, "category": { "choice": "travel" } },
+    { "item": { "text": "souvenir" }, "category": null },
+    { "item": { "text": "gift" }, "category": null }
+  ],
+  "problems": [
+    { "row": 2, "column": "category", "kind": "type" }
+  ]
+}

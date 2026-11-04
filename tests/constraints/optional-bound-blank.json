@@ -1,0 +1,14 @@
+{
+  "columns": [
+    { "name": "seed", "type": "text" },
+    { "name": "packets", "type": "int>=1?" }
+  ],
+  "rows": [
+    { "seed": { "text": "basil" }, "packets": { "int": "2" } },
+    { "seed": { "text": "fennel" }, "packets": null },
+    { "seed": { "text": "dill" }, "packets": null }
+  ],
+  "problems": [
+    { "row": 2, "column": "packets", "kind": "type" }
+  ]
+}

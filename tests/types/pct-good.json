@@ -1,0 +1,16 @@
+{
+  "columns": [
+    { "name": "label", "type": "text!" },
+    { "name": "germination", "type": "pct" }
+  ],
+  "rows": [
+    { "label": { "text": "bare" }, "germination": { "pct": "12" } },
+    { "label": { "text": "fraction" }, "germination": { "pct": "12.5" } },
+    { "label": { "text": "percent sign" }, "germination": { "pct": "12" } },
+    { "label": { "text": "negative" }, "germination": { "pct": "-3" } },
+    { "label": { "text": "zero" }, "germination": { "pct": "0" } },
+    { "label": { "text": "above a hundred" }, "germination": { "pct": "150" } },
+    { "label": { "text": "exponent" }, "germination": { "pct": "10" } }
+  ],
+  "problems": []
+}

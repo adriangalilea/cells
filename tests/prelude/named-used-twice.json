@@ -1,0 +1,13 @@
+{
+  "types": { "City": "north|south|coast" },
+  "columns": [
+    { "name": "leg", "type": "int!" },
+    { "name": "from", "type": "City" },
+    { "name": "to", "type": "City" }
+  ],
+  "rows": [
+    { "leg": { "int": "1" }, "from": { "choice": "north" }, "to": { "choice": "coast" } },
+    { "leg": { "int": "2" }, "from": { "choice": "coast" }, "to": { "choice": "south" } }
+  ],
+  "problems": []
+}

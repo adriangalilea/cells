@@ -1,0 +1,6 @@
+---
+type Day = date(DD/MM/YYYY)
+---
+gig:text,on:Day
+first,14/08/2026
+second,2026-08-15

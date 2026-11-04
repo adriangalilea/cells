@@ -1,0 +1,15 @@
+{
+  "columns": [
+    { "name": "short", "type": "EUR>=0" },
+    { "name": "word", "type": "EUR>=0" }
+  ],
+  "rows": [
+    { "short": { "money": "0", "currency": "EUR" }, "word": { "money": "0", "currency": "EUR" } },
+    { "short": { "money": "12.50", "currency": "EUR" }, "word": { "money": "12.50", "currency": "EUR" } },
+    { "short": null, "word": null }
+  ],
+  "problems": [
+    { "row": 2, "column": "short", "kind": "type" },
+    { "row": 2, "column": "word", "kind": "type" }
+  ]
+}

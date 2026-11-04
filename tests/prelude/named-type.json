@@ -1,0 +1,15 @@
+{
+  "types": { "Genre": "novel|poetry|essay" },
+  "columns": [
+    { "name": "title", "type": "text!" },
+    { "name": "genre", "type": "Genre" }
+  ],
+  "rows": [
+    { "title": { "text": "Salt and Sky" }, "genre": { "choice": "novel" } },
+    { "title": { "text": "Small Hours" }, "genre": { "choice": "poetry" } },
+    { "title": { "text": "The Long Field" }, "genre": null }
+  ],
+  "problems": [
+    { "row": 2, "column": "genre", "kind": "type" }
+  ]
+}

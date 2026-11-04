@@ -1,0 +1,16 @@
+{
+  "columns": [
+    { "name": "venue", "type": "text" },
+    { "name": "on", "type": "date" },
+    { "name": "fee", "type": "EUR" },
+    { "name": "note", "type": "text?" }
+  ],
+  "rows": [
+    { "venue": { "text": "The Lantern" }, "on": { "date": "2026-08-14" }, "fee": { "money": "300", "currency": "EUR" }, "note": null },
+    { "venue": { "text": "Harbour Hall" }, "on": null, "fee": null, "note": null }
+  ],
+  "problems": [
+    { "row": 1, "column": "on", "kind": "missing" },
+    { "row": 1, "column": "fee", "kind": "missing" }
+  ]
+}

@@ -1,0 +1,3 @@
+a:key/lock,b:bool 'key' lock,door:text
+key,key,front
+lock,lock,shed

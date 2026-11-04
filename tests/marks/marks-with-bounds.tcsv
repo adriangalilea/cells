@@ -1,0 +1,4 @@
+slot:int>=1!,encores:int>=1?
+1,
+2,0
+0,3

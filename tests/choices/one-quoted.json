@@ -1,0 +1,13 @@
+{
+  "columns": [
+    { "name": "title", "type": "text" },
+    { "name": "kind", "type": "'paperback'" }
+  ],
+  "rows": [
+    { "title": { "text": "the quiet orchard" }, "kind": { "choice": "paperback" } },
+    { "title": { "text": "salt and stone" }, "kind": null }
+  ],
+  "problems": [
+    { "row": 1, "column": "kind", "kind": "type" }
+  ]
+}

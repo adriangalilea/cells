@@ -1,0 +1,24 @@
+{
+  "columns": [
+    { "name": "name", "type": "text?", "inferred": true },
+    { "name": "count", "type": "int?", "inferred": true },
+    { "name": "depth", "type": "num?", "inferred": true },
+    { "name": "lent", "type": "bool?", "inferred": true },
+    { "name": "paid", "type": "yes/no?", "inferred": true },
+    { "name": "on", "type": "date?", "inferred": true },
+    { "name": "doors", "type": "datetime?", "inferred": true }
+  ],
+  "rows": [
+    {
+      "name": { "text": "basil" },
+      "count": { "int": "12" },
+      "depth": { "num": "1.5" },
+      "lent": { "bool": true },
+      "paid": { "bool": true },
+      "on": { "date": "2026-08-14" },
+      "doors": { "datetime": "2026-08-14T20:00:00Z" }
+    },
+    { "name": null, "count": null, "depth": null, "lent": null, "paid": null, "on": null, "doors": null }
+  ],
+  "problems": []
+}

@@ -1,0 +1,13 @@
+{
+  "columns": [
+    { "name": "book", "type": "text" },
+    { "name": "code", "type": "text>=2" }
+  ],
+  "rows": [
+    { "book": { "text": "salt and sky" }, "code": { "text": "B2" } },
+    { "book": { "text": "lost maps" }, "code": null }
+  ],
+  "problems": [
+    { "row": 1, "column": "code", "kind": "type" }
+  ]
+}

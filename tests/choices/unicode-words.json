@@ -1,0 +1,14 @@
+{
+  "columns": [
+    { "name": "stop", "type": "text" },
+    { "name": "drink", "type": "café|thé" }
+  ],
+  "rows": [
+    { "stop": { "text": "morning" }, "drink": { "choice": "café" } },
+    { "stop": { "text": "afternoon" }, "drink": { "choice": "thé" } },
+    { "stop": { "text": "evening" }, "drink": null }
+  ],
+  "problems": [
+    { "row": 2, "column": "drink", "kind": "type" }
+  ]
+}

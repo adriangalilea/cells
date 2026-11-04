@@ -1,0 +1,12 @@
+{
+  "types": { "Kind": "herb|root" },
+  "columns": [
+    { "name": "seed", "type": "text" },
+    { "name": "kind", "type": "Kind" }
+  ],
+  "rows": [
+    { "seed": { "text": "basil" }, "kind": { "choice": "herb" } },
+    { "seed": { "text": "carrot" }, "kind": { "choice": "root" } }
+  ],
+  "problems": []
+}

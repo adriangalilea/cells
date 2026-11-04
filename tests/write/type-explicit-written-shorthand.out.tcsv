@@ -1,0 +1,3 @@
+item:text key,cost:EUR>=1!,qty:int min 1
+fuel,84.20,1
+maps,12.00,2

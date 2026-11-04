@@ -1,0 +1,5 @@
+---
+type Seed_Kind2 = herb|root
+---
+seed:text,kind:Seed_Kind2
+basil,herb

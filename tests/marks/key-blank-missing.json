@@ -1,0 +1,13 @@
+{
+  "columns": [
+    { "name": "isbn", "type": "text!" },
+    { "name": "title", "type": "text" }
+  ],
+  "rows": [
+    { "isbn": { "text": "0-0000-0001-1" }, "title": { "text": "the quiet orchard" } },
+    { "isbn": null, "title": { "text": "salt and stone" } }
+  ],
+  "problems": [
+    { "row": 1, "column": "isbn", "kind": "missing" }
+  ]
+}

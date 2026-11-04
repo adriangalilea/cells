@@ -1,0 +1,15 @@
+{
+  "types": { "Sown": "yes/no" },
+  "columns": [
+    { "name": "seed", "type": "text" },
+    { "name": "sown", "type": "Sown" }
+  ],
+  "rows": [
+    { "seed": { "text": "basil" }, "sown": { "bool": true } },
+    { "seed": { "text": "fennel" }, "sown": { "bool": false } },
+    { "seed": { "text": "leek" }, "sown": null }
+  ],
+  "problems": [
+    { "row": 2, "column": "sown", "kind": "type" }
+  ]
+}

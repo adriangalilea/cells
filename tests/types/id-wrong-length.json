@@ -1,0 +1,20 @@
+{
+  "columns": [
+    { "name": "gig", "type": "text!" },
+    { "name": "id", "type": "id" }
+  ],
+  "rows": [
+    { "gig": { "text": "seven" }, "id": null },
+    { "gig": { "text": "nine" }, "id": null },
+    { "gig": { "text": "none" }, "id": null },
+    { "gig": { "text": "one" }, "id": null },
+    { "gig": { "text": "sixteen" }, "id": null }
+  ],
+  "problems": [
+    { "row": 0, "column": "id", "kind": "type" },
+    { "row": 1, "column": "id", "kind": "type" },
+    { "row": 2, "column": "id", "kind": "type" },
+    { "row": 3, "column": "id", "kind": "type" },
+    { "row": 4, "column": "id", "kind": "type" }
+  ]
+}

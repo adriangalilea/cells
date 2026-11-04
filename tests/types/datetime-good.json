@@ -1,0 +1,17 @@
+{
+  "columns": [
+    { "name": "label", "type": "text!" },
+    { "name": "at", "type": "datetime" }
+  ],
+  "rows": [
+    { "label": { "text": "utc" }, "at": { "datetime": "2026-08-14T14:30:00Z" } },
+    { "label": { "text": "ahead of utc" }, "at": { "datetime": "2026-08-14T12:30:00Z" } },
+    { "label": { "text": "behind by a half hour" }, "at": { "datetime": "2026-08-14T20:00:00Z" } },
+    { "label": { "text": "into the year before" }, "at": { "datetime": "2025-12-31T23:00:00Z" } },
+    { "label": { "text": "half a second" }, "at": { "datetime": "2026-08-14T14:30:00.5Z" } },
+    { "label": { "text": "nanoseconds" }, "at": { "datetime": "2026-08-14T14:30:00.123456789Z" } },
+    { "label": { "text": "trailing zero" }, "at": { "datetime": "2026-08-14T14:30:00.25Z" } },
+    { "label": { "text": "leap day into march" }, "at": { "datetime": "2024-03-01T00:30:00Z" } }
+  ],
+  "problems": []
+}

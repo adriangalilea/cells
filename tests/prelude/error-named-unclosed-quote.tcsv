@@ -1,0 +1,5 @@
+---
+type Kind = 'herb|root // a comment
+---
+seed:text
+basil

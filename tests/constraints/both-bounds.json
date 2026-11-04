@@ -1,0 +1,16 @@
+{
+  "columns": [
+    { "name": "book", "type": "text" },
+    { "name": "stars", "type": "int>=1<=5" }
+  ],
+  "rows": [
+    { "book": { "text": "the quiet orchard" }, "stars": { "int": "1" } },
+    { "book": { "text": "salt and sky" }, "stars": { "int": "5" } },
+    { "book": { "text": "lost maps" }, "stars": null },
+    { "book": { "text": "the long road" }, "stars": null }
+  ],
+  "problems": [
+    { "row": 2, "column": "stars", "kind": "type" },
+    { "row": 3, "column": "stars", "kind": "type" }
+  ]
+}

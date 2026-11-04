@@ -1,0 +1,12 @@
+{
+  "columns": [
+    { "name": "seed", "type": "text!" },
+    { "name": "note", "type": "text" }
+  ],
+  "rows": [
+    { "seed": { "text": "café basil" }, "note": { "text": "señal ñ" } },
+    { "seed": { "text": "ひまわり" }, "note": { "text": "大きい" } },
+    { "seed": { "text": "🌱 sprout" }, "note": { "text": "🌻🌻" } }
+  ],
+  "problems": []
+}

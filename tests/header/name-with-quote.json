@@ -1,0 +1,10 @@
+{
+  "columns": [
+    { "name": "the \"best\" seed", "type": "text" },
+    { "name": "bed", "type": "text" }
+  ],
+  "rows": [
+    { "the \"best\" seed": { "text": "basil" }, "bed": { "text": "north" } }
+  ],
+  "problems": []
+}

@@ -1,0 +1,11 @@
+label:text!,qty:int
+fraction,1.0
+exponent,1e3
+letters,12a
+comma,"4,200"
+unicode minus,−3
+leading space, 7
+hex,0x1F
+sign alone,+
+minus alone,-
+space inside,1 000

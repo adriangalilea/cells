@@ -1,0 +1,11 @@
+{
+  "columns": [
+    { "name": "depth", "type": "num?", "inferred": true }
+  ],
+  "rows": [
+    { "depth": { "num": "0.5" } },
+    { "depth": { "num": "5" } },
+    { "depth": { "num": "1000" } }
+  ],
+  "problems": []
+}

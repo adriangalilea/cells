@@ -1,0 +1,9 @@
+{
+  "columns": [
+    { "name": "title", "type": "text!" },
+    { "name": "pages", "type": "int>=1" },
+    { "name": "read", "type": "yes/no" }
+  ],
+  "rows": [],
+  "problems": []
+}

@@ -1,0 +1,8 @@
+---
+sum_first = a + b * c
+grouped = (a + b) * c
+from_left = d - a - b
+divided = d / c * a
+---
+a:int,b:int,c:int,d:int
+2,3,4,12

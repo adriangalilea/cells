@@ -1,0 +1,6 @@
+---
+type Bed = north|south
+---
+seed:text!,bed:Bed
+basil,north
+fennel,south

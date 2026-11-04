@@ -1,0 +1,16 @@
+{
+  "columns": [
+    { "name": "bed", "type": "text" },
+    { "name": "germinated", "type": "pct<=100" }
+  ],
+  "rows": [
+    { "bed": { "text": "north" }, "germinated": { "pct": "100" } },
+    { "bed": { "text": "south" }, "germinated": { "pct": "100" } },
+    { "bed": { "text": "east" }, "germinated": null },
+    { "bed": { "text": "west" }, "germinated": null }
+  ],
+  "problems": [
+    { "row": 2, "column": "germinated", "kind": "type" },
+    { "row": 3, "column": "germinated", "kind": "type" }
+  ]
+}

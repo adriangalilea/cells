@@ -1,0 +1,3 @@
+short:int<100,word:int below 100
+99,99
+100,100

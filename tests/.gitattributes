@@ -1,0 +1,2 @@
+# A case is its bytes: line endings, trailing breaks and byte order marks are what it checks.
+* -text

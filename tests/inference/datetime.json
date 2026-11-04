@@ -1,0 +1,11 @@
+{
+  "columns": [
+    { "name": "doors", "type": "datetime?", "inferred": true }
+  ],
+  "rows": [
+    { "doors": { "datetime": "2026-08-14T20:00:00Z" } },
+    { "doors": { "datetime": "2026-08-15T19:30:00Z" } },
+    { "doors": { "datetime": "2025-12-31T23:00:00Z" } }
+  ],
+  "problems": []
+}

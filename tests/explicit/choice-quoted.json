@@ -1,0 +1,15 @@
+{
+  "columns": [
+    { "name": "short", "type": "travel|'sd cards'" },
+    { "name": "word", "type": "travel|'sd cards'" }
+  ],
+  "rows": [
+    { "short": { "choice": "sd cards" }, "word": { "choice": "sd cards" } },
+    { "short": { "choice": "travel" }, "word": { "choice": "travel" } },
+    { "short": null, "word": null }
+  ],
+  "problems": [
+    { "row": 2, "column": "short", "kind": "type" },
+    { "row": 2, "column": "word", "kind": "type" }
+  ]
+}

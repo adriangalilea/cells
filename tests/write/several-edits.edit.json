@@ -1,0 +1,7 @@
+[
+  { "row": 1, "column": "item", "text": "maps, coast" },
+  { "row": 0, "column": "paid", "value": { "bool": true } },
+  { "row": 1, "column": "on", "value": { "date": "2026-08-16" } },
+  { "column": "cost", "type": "EUR min 0" },
+  { "row": 0, "column": "cost", "text": "80.00" }
+]

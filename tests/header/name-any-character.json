@@ -1,0 +1,27 @@
+{
+  "columns": [
+    { "name": "£/kg", "type": "num" },
+    { "name": "a|b", "type": "text" },
+    { "name": "x?", "type": "text" },
+    { "name": "n!", "type": "text" },
+    { "name": "#", "type": "int" },
+    { "name": "naïve", "type": "text" },
+    { "name": "'q'", "type": "text" },
+    { "name": "(1)", "type": "text" },
+    { "name": "a=b", "type": "text" }
+  ],
+  "rows": [
+    {
+      "£/kg": { "num": "2.5" },
+      "a|b": { "text": "bar" },
+      "x?": { "text": "maybe" },
+      "n!": { "text": "bang" },
+      "#": { "int": "7" },
+      "naïve": { "text": "yes" },
+      "'q'": { "text": "quoted" },
+      "(1)": { "text": "one" },
+      "a=b": { "text": "equal" }
+    }
+  ],
+  "problems": []
+}

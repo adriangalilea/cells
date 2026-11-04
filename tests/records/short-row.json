@@ -1,0 +1,17 @@
+{
+  "columns": [
+    { "name": "item", "type": "text" },
+    { "name": "qty", "type": "int?" },
+    { "name": "cost", "type": "EUR" },
+    { "name": "note", "type": "text?" }
+  ],
+  "rows": [
+    { "item": { "text": "fuel" }, "qty": { "int": "1" }, "cost": { "money": "84.20", "currency": "EUR" }, "note": { "text": "full tank" } },
+    { "item": { "text": "maps" }, "qty": { "int": "2" }, "cost": null, "note": null },
+    { "item": { "text": "snacks" }, "qty": null, "cost": null, "note": null }
+  ],
+  "problems": [
+    { "row": 1, "column": "cost", "kind": "missing" },
+    { "row": 2, "column": "cost", "kind": "missing" }
+  ]
+}

@@ -1,0 +1,11 @@
+{
+  "columns": [
+    { "name": "seeds", "type": "int?", "inferred": true }
+  ],
+  "rows": [
+    { "seeds": { "int": "1" } },
+    { "seeds": { "int": "-2" } },
+    { "seeds": { "int": "42" } }
+  ],
+  "problems": []
+}

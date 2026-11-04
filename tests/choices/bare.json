@@ -1,0 +1,13 @@
+{
+  "columns": [
+    { "name": "item", "type": "text" },
+    { "name": "category", "type": "travel|stay|food|gear" }
+  ],
+  "rows": [
+    { "item": { "text": "fuel" }, "category": { "choice": "travel" } },
+    { "item": { "text": "hostel" }, "category": { "choice": "stay" } },
+    { "item": { "text": "groceries" }, "category": { "choice": "food" } },
+    { "item": { "text": "tent" }, "category": { "choice": "gear" } }
+  ],
+  "problems": []
+}

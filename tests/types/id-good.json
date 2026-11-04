@@ -1,0 +1,15 @@
+{
+  "columns": [
+    { "name": "id", "type": "id" },
+    { "name": "gig", "type": "text" }
+  ],
+  "rows": [
+    { "id": { "id": "k7m2q9xa" }, "gig": { "text": "the barn" } },
+    { "id": { "id": "00000000" }, "gig": { "text": "the pier" } },
+    { "id": { "id": "zzzzzzzz" }, "gig": { "text": "the old mill" } },
+    { "id": { "id": "abcdefgh" }, "gig": { "text": "the town hall" } },
+    { "id": { "id": "jkmnpqrs" }, "gig": { "text": "the boathouse" } },
+    { "id": { "id": "tvwxyz19" }, "gig": { "text": "the orchard" } }
+  ],
+  "problems": []
+}

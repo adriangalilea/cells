@@ -1,0 +1,7 @@
+label:text!,cost:EUR
+symbol first,€84
+code after,84.20 EUR
+decimal comma,"84,20"
+code first,EUR84
+dollar sign,$5
+thousands points,"1.234,50"

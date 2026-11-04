@@ -1,0 +1,16 @@
+{
+  "columns": [
+    { "name": "day", "type": "text" },
+    { "name": "drift", "type": "-5..5" }
+  ],
+  "rows": [
+    { "day": { "text": "one" }, "drift": { "num": "-5" } },
+    { "day": { "text": "two" }, "drift": { "num": "5" } },
+    { "day": { "text": "three" }, "drift": null },
+    { "day": { "text": "four" }, "drift": null }
+  ],
+  "problems": [
+    { "row": 2, "column": "drift", "kind": "type" },
+    { "row": 3, "column": "drift", "kind": "type" }
+  ]
+}

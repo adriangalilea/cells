@@ -1,0 +1,11 @@
+{
+  "columns": [
+    { "name": "seed", "type": "text" },
+    { "name": "note", "type": "text" }
+  ],
+  "rows": [
+    { "seed": { "text": "basil" }, "note": { "text": "sow indoors\nthen move out" } },
+    { "seed": { "text": "dill" }, "note": { "text": "one line" } }
+  ],
+  "problems": []
+}

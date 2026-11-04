@@ -1,0 +1,14 @@
+{
+  "columns": [
+    { "name": "short", "type": "text<=12" },
+    { "name": "word", "type": "text<=12" }
+  ],
+  "rows": [
+    { "short": null, "word": null },
+    { "short": { "text": "salt and sea" }, "word": { "text": "salt and sea" } }
+  ],
+  "problems": [
+    { "row": 0, "column": "short", "kind": "type" },
+    { "row": 0, "column": "word", "kind": "type" }
+  ]
+}

@@ -1,0 +1,4 @@
+[
+  { "column": "paid", "type": "yes/no" },
+  { "row": 0, "column": "paid", "value": { "bool": true } }
+]

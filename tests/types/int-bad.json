@@ -1,0 +1,30 @@
+{
+  "columns": [
+    { "name": "label", "type": "text!" },
+    { "name": "qty", "type": "int" }
+  ],
+  "rows": [
+    { "label": { "text": "fraction" }, "qty": null },
+    { "label": { "text": "exponent" }, "qty": null },
+    { "label": { "text": "letters" }, "qty": null },
+    { "label": { "text": "comma" }, "qty": null },
+    { "label": { "text": "unicode minus" }, "qty": null },
+    { "label": { "text": "leading space" }, "qty": null },
+    { "label": { "text": "hex" }, "qty": null },
+    { "label": { "text": "sign alone" }, "qty": null },
+    { "label": { "text": "minus alone" }, "qty": null },
+    { "label": { "text": "space inside" }, "qty": null }
+  ],
+  "problems": [
+    { "row": 0, "column": "qty", "kind": "type" },
+    { "row": 1, "column": "qty", "kind": "type" },
+    { "row": 2, "column": "qty", "kind": "type" },
+    { "row": 3, "column": "qty", "kind": "type" },
+    { "row": 4, "column": "qty", "kind": "type" },
+    { "row": 5, "column": "qty", "kind": "type" },
+    { "row": 6, "column": "qty", "kind": "type" },
+    { "row": 7, "column": "qty", "kind": "type" },
+    { "row": 8, "column": "qty", "kind": "type" },
+    { "row": 9, "column": "qty", "kind": "type" }
+  ]
+}

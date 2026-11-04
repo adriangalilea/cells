@@ -1,0 +1,34 @@
+{
+  "columns": [
+    { "name": "label", "type": "text!" },
+    { "name": "weight", "type": "num" }
+  ],
+  "rows": [
+    { "label": { "text": "decimal comma" }, "weight": null },
+    { "label": { "text": "not a number" }, "weight": null },
+    { "label": { "text": "infinity" }, "weight": null },
+    { "label": { "text": "inf" }, "weight": null },
+    { "label": { "text": "exponent without digits" }, "weight": null },
+    { "label": { "text": "exponent alone" }, "weight": null },
+    { "label": { "text": "point alone" }, "weight": null },
+    { "label": { "text": "two points" }, "weight": null },
+    { "label": { "text": "two signs" }, "weight": null },
+    { "label": { "text": "underscore" }, "weight": null },
+    { "label": { "text": "hex" }, "weight": null },
+    { "label": { "text": "leading space" }, "weight": null }
+  ],
+  "problems": [
+    { "row": 0, "column": "weight", "kind": "type" },
+    { "row": 1, "column": "weight", "kind": "type" },
+    { "row": 2, "column": "weight", "kind": "type" },
+    { "row": 3, "column": "weight", "kind": "type" },
+    { "row": 4, "column": "weight", "kind": "type" },
+    { "row": 5, "column": "weight", "kind": "type" },
+    { "row": 6, "column": "weight", "kind": "type" },
+    { "row": 7, "column": "weight", "kind": "type" },
+    { "row": 8, "column": "weight", "kind": "type" },
+    { "row": 9, "column": "weight", "kind": "type" },
+    { "row": 10, "column": "weight", "kind": "type" },
+    { "row": 11, "column": "weight", "kind": "type" }
+  ]
+}

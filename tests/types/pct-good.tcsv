@@ -1,0 +1,8 @@
+label:text!,germination:pct
+bare,12
+fraction,12.5
+percent sign,12%
+negative,-3%
+zero,0%
+above a hundred,150
+exponent,1e1%

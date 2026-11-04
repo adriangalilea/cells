@@ -1,0 +1,15 @@
+{
+  "columns": [
+    { "name": "short", "type": "travel|stay|food" },
+    { "name": "word", "type": "travel|stay|food" }
+  ],
+  "rows": [
+    { "short": { "choice": "travel" }, "word": { "choice": "travel" } },
+    { "short": { "choice": "food" }, "word": { "choice": "food" } },
+    { "short": null, "word": null }
+  ],
+  "problems": [
+    { "row": 2, "column": "short", "kind": "type" },
+    { "row": 2, "column": "word", "kind": "type" }
+  ]
+}

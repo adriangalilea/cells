@@ -1,0 +1,15 @@
+{
+  "columns": [
+    { "name": "short", "type": "yes/no" },
+    { "name": "word", "type": "yes/no" }
+  ],
+  "rows": [
+    { "short": { "bool": true }, "word": { "bool": true } },
+    { "short": { "bool": false }, "word": { "bool": false } },
+    { "short": null, "word": null }
+  ],
+  "problems": [
+    { "row": 2, "column": "short", "kind": "type" },
+    { "row": 2, "column": "word", "kind": "type" }
+  ]
+}

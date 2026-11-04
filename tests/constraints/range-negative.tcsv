@@ -1,0 +1,5 @@
+day:text,drift:-5..5
+one,-5
+two,5
+three,-5.5
+four,5.1

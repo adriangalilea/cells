@@ -1,0 +1,12 @@
+{
+  "columns": [
+    { "name": "a", "type": "key/lock" },
+    { "name": "b", "type": "key/lock" },
+    { "name": "door", "type": "text" }
+  ],
+  "rows": [
+    { "a": { "bool": true }, "b": { "bool": true }, "door": { "text": "front" } },
+    { "a": { "bool": false }, "b": { "bool": false }, "door": { "text": "shed" } }
+  ],
+  "problems": []
+}

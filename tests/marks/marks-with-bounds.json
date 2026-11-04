@@ -1,0 +1,15 @@
+{
+  "columns": [
+    { "name": "slot", "type": "int>=1!" },
+    { "name": "encores", "type": "int>=1?" }
+  ],
+  "rows": [
+    { "slot": { "int": "1" }, "encores": null },
+    { "slot": { "int": "2" }, "encores": null },
+    { "slot": null, "encores": { "int": "3" } }
+  ],
+  "problems": [
+    { "row": 1, "column": "encores", "kind": "type" },
+    { "row": 2, "column": "slot", "kind": "type" }
+  ]
+}

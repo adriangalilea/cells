@@ -1,0 +1,5 @@
+---
+type Cost = EURO
+---
+item:text,cost:EUR
+tent,120.00

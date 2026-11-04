@@ -1,0 +1,7 @@
+---
+    
+type Shelf = A|B   
+  
+---
+title:text,shelf:Shelf
+Salt and Sky,A

@@ -1,0 +1,19 @@
+{
+  "columns": [
+    { "name": "mark", "type": "text!" },
+    { "name": "note", "type": "text" }
+  ],
+  "rows": [
+    { "mark": { "text": "|" }, "note": { "text": "a bar" } },
+    { "mark": { "text": ":" }, "note": { "text": "a colon" } },
+    { "mark": { "text": "'" }, "note": { "text": "a quote" } },
+    { "mark": { "text": "!" }, "note": { "text": "a bang" } },
+    { "mark": { "text": "?" }, "note": { "text": "a question" } },
+    { "mark": { "text": "// not a comment" }, "note": { "text": "slashes" } },
+    { "mark": { "text": "---" }, "note": { "text": "dashes" } },
+    { "mark": { "text": "(x)" }, "note": { "text": "parentheses" } },
+    { "mark": { "text": "a..b" }, "note": { "text": "dots" } },
+    { "mark": { "text": ">=0" }, "note": { "text": "a bound" } }
+  ],
+  "problems": []
+}

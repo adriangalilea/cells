@@ -1,0 +1,11 @@
+{
+  "columns": [
+    { "name": "km", "type": "num?", "inferred": true }
+  ],
+  "rows": [
+    { "km": { "num": "4" } },
+    { "km": { "num": "12" } },
+    { "km": { "num": "4.5" } }
+  ],
+  "problems": []
+}

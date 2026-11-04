@@ -1,0 +1,15 @@
+{
+  "columns": [
+    { "name": "shelf", "type": "int!" },
+    { "name": "title", "type": "text" }
+  ],
+  "rows": [
+    { "shelf": { "int": "7" }, "title": { "text": "Moss and Stone" } },
+    { "shelf": { "int": "12" }, "title": { "text": "The Long Road" } },
+    { "shelf": { "int": "7" }, "title": { "text": "Salt and Sky" } }
+  ],
+  "problems": [
+    { "row": 0, "column": "shelf", "kind": "key" },
+    { "row": 2, "column": "shelf", "kind": "key" }
+  ]
+}

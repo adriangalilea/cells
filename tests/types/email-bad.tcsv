@@ -1,0 +1,16 @@
+label:text!,contact:email
+one label,ada@localhost
+two at signs,ada@@example.com
+no local part,@example.com
+no domain,ada@
+no dot,ada@example
+label opens with hyphen,ada@-x.com
+label ends with hyphen,ada@x-.com
+empty label,ada@example..com
+space in local part,ada @example.com
+space in domain,ada@exa mple.com
+not ascii,ñandu@example.com
+trailing dot,ada@example.com.
+leading dot,ada@.example.com
+underscore in domain,ada@ex_ample.com
+no at sign,ada

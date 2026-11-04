@@ -1,0 +1,7 @@
+label:text!,qty:int
+negative,-12
+zero,0
+thousands,4200
+plus,+7
+leading zeros,0042
+negative zero,-0

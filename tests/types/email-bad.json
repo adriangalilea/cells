@@ -1,0 +1,40 @@
+{
+  "columns": [
+    { "name": "label", "type": "text!" },
+    { "name": "contact", "type": "email" }
+  ],
+  "rows": [
+    { "label": { "text": "one label" }, "contact": null },
+    { "label": { "text": "two at signs" }, "contact": null },
+    { "label": { "text": "no local part" }, "contact": null },
+    { "label": { "text": "no domain" }, "contact": null },
+    { "label": { "text": "no dot" }, "contact": null },
+    { "label": { "text": "label opens with hyphen" }, "contact": null },
+    { "label": { "text": "label ends with hyphen" }, "contact": null },
+    { "label": { "text": "empty label" }, "contact": null },
+    { "label": { "text": "space in local part" }, "contact": null },
+    { "label": { "text": "space in domain" }, "contact": null },
+    { "label": { "text": "not ascii" }, "contact": null },
+    { "label": { "text": "trailing dot" }, "contact": null },
+    { "label": { "text": "leading dot" }, "contact": null },
+    { "label": { "text": "underscore in domain" }, "contact": null },
+    { "label": { "text": "no at sign" }, "contact": null }
+  ],
+  "problems": [
+    { "row": 0, "column": "contact", "kind": "type" },
+    { "row": 1, "column": "contact", "kind": "type" },
+    { "row": 2, "column": "contact", "kind": "type" },
+    { "row": 3, "column": "contact", "kind": "type" },
+    { "row": 4, "column": "contact", "kind": "type" },
+    { "row": 5, "column": "contact", "kind": "type" },
+    { "row": 6, "column": "contact", "kind": "type" },
+    { "row": 7, "column": "contact", "kind": "type" },
+    { "row": 8, "column": "contact", "kind": "type" },
+    { "row": 9, "column": "contact", "kind": "type" },
+    { "row": 10, "column": "contact", "kind": "type" },
+    { "row": 11, "column": "contact", "kind": "type" },
+    { "row": 12, "column": "contact", "kind": "type" },
+    { "row": 13, "column": "contact", "kind": "type" },
+    { "row": 14, "column": "contact", "kind": "type" }
+  ]
+}

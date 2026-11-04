@@ -1,0 +1,14 @@
+{
+  "columns": [
+    { "name": "seed", "type": "text" },
+    { "name": "bed", "type": "'north bed'|'south bed'" }
+  ],
+  "rows": [
+    { "seed": { "text": "carrot" }, "bed": { "choice": "north bed" } },
+    { "seed": { "text": "bean" }, "bed": { "choice": "south bed" } },
+    { "seed": { "text": "pea" }, "bed": null }
+  ],
+  "problems": [
+    { "row": 2, "column": "bed", "kind": "type" }
+  ]
+}

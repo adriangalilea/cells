@@ -1,0 +1,11 @@
+{
+  "columns": [
+    { "name": "title", "type": "text?", "inferred": true },
+    { "name": "shelf", "type": "text?", "inferred": true }
+  ],
+  "rows": [
+    { "title": { "text": "Salt and Sky" }, "shelf": { "text": "B2" } },
+    { "title": { "text": "Moss" }, "shelf": { "text": "12a" } }
+  ],
+  "problems": []
+}

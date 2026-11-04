@@ -1,0 +1,10 @@
+{
+  "columns": [
+    { "name": "bed", "type": "text" },
+    { "name": "soil", "type": "text" }
+  ],
+  "rows": [
+    { "bed": { "text": "north" }, "soil": { "text": "soil // loam" } }
+  ],
+  "problems": []
+}

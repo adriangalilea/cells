@@ -1,0 +1,11 @@
+{
+  "columns": [
+    { "name": "note", "type": "text" }
+  ],
+  "rows": [
+    { "note": { "text": "---" } },
+    { "note": { "text": "type Kind = a|b" } },
+    { "note": { "text": "---" } }
+  ],
+  "problems": []
+}

@@ -1,0 +1,3 @@
+seed:text!,count:int>=1
+basil,12
+fennel,3

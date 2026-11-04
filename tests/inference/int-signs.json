@@ -1,0 +1,11 @@
+{
+  "columns": [
+    { "name": "change", "type": "int?", "inferred": true }
+  ],
+  "rows": [
+    { "change": { "int": "5" } },
+    { "change": { "int": "0" } },
+    { "change": { "int": "-3" } }
+  ],
+  "problems": []
+}

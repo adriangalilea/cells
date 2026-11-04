@@ -1,0 +1,15 @@
+{
+  "columns": [
+    { "name": "gig", "type": "text" },
+    { "name": "paid", "type": "yes/no?" }
+  ],
+  "rows": [
+    { "gig": { "text": "harbour hall" }, "paid": { "bool": true } },
+    { "gig": { "text": "the cellar" }, "paid": null },
+    { "gig": { "text": "open air" }, "paid": { "bool": false } },
+    { "gig": { "text": "rooftop" }, "paid": null }
+  ],
+  "problems": [
+    { "row": 3, "column": "paid", "kind": "type" }
+  ]
+}

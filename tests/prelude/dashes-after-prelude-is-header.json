@@ -1,0 +1,9 @@
+{
+  "columns": [
+    { "name": "---", "type": "text?", "inferred": true }
+  ],
+  "rows": [
+    { "---": { "text": "fuel" } }
+  ],
+  "problems": []
+}

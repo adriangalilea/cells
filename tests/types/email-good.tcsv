@@ -1,0 +1,7 @@
+label:text!,contact:email
+plain,ada@example.com
+dots plus subdomain,ada.lovelace+books@mail.example.org
+capitals,ADA@EXAMPLE.COM
+shortest,a@b.co
+hyphens,seed-club@x-y.example
+apostrophe,o'neil@example.com

@@ -1,0 +1,4 @@
+night:text,low:int>=-10
+first,-10
+second,4
+third,-11

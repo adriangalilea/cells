@@ -1,0 +1,5 @@
+bed:text,germinated:pct<=100
+north,100%
+south,100
+east,150%
+west,100.5

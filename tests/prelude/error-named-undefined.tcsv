@@ -1,0 +1,5 @@
+---
+type Genre = novel|poetry
+---
+title:text,shelf:text,genre:Kind
+Salt and Sky,B2,novel
