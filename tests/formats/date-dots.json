@@ -1,0 +1,13 @@
+{
+  "columns": [
+    { "name": "book", "type": "text" },
+    { "name": "due", "type": "date(DD.MM.YYYY)" }
+  ],
+  "rows": [
+    { "book": { "text": "salt and sky" }, "due": { "date": "2026-11-03" } },
+    { "book": { "text": "lost maps" }, "due": null }
+  ],
+  "problems": [
+    { "row": 1, "column": "due", "kind": "type" }
+  ]
+}

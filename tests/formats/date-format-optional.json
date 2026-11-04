@@ -1,0 +1,11 @@
+{
+  "columns": [
+    { "name": "book", "type": "text" },
+    { "name": "returned", "type": "date(DD/MM/YYYY)?" }
+  ],
+  "rows": [
+    { "book": { "text": "salt and sky" }, "returned": { "date": "2026-11-02" } },
+    { "book": { "text": "lost maps" }, "returned": null }
+  ],
+  "problems": []
+}

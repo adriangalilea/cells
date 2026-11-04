@@ -1,0 +1,15 @@
+{
+  "columns": [
+    { "name": "seed", "type": "text" },
+    { "name": "sown", "type": "date(YYYYMMDD)" }
+  ],
+  "rows": [
+    { "seed": { "text": "basil" }, "sown": { "date": "2026-04-15" } },
+    { "seed": { "text": "fennel" }, "sown": null },
+    { "seed": { "text": "dill" }, "sown": null }
+  ],
+  "problems": [
+    { "row": 1, "column": "sown", "kind": "type" },
+    { "row": 2, "column": "sown", "kind": "type" }
+  ]
+}

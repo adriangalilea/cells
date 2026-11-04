@@ -1,0 +1,13 @@
+{
+  "columns": [
+    { "name": "gig", "type": "text" },
+    { "name": "doors", "type": "time(HHhmm)" }
+  ],
+  "rows": [
+    { "gig": { "text": "the barn" }, "doors": { "time": "14:30:00" } },
+    { "gig": { "text": "the pier" }, "doors": null }
+  ],
+  "problems": [
+    { "row": 1, "column": "doors", "kind": "type" }
+  ]
+}

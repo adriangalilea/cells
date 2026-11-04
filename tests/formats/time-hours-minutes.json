@@ -1,0 +1,18 @@
+{
+  "columns": [
+    { "name": "gig", "type": "text" },
+    { "name": "doors", "type": "time(HH:mm)" }
+  ],
+  "rows": [
+    { "gig": { "text": "the barn" }, "doors": { "time": "19:30:00" } },
+    { "gig": { "text": "the pier" }, "doors": { "time": "00:00:00" } },
+    { "gig": { "text": "the hall" }, "doors": null },
+    { "gig": { "text": "the cellar" }, "doors": null },
+    { "gig": { "text": "the roof" }, "doors": null }
+  ],
+  "problems": [
+    { "row": 2, "column": "doors", "kind": "type" },
+    { "row": 3, "column": "doors", "kind": "type" },
+    { "row": 4, "column": "doors", "kind": "type" }
+  ]
+}
