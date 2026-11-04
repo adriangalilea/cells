@@ -431,23 +431,40 @@ impl Doc {
         spans.iter().map(|&(s, e)| &line[s as usize..e as usize]).collect()
     }
 
-    /// A stored cell's text as written, unquoted; blank for a field the row leaves out.
-    pub fn text(&self, row: usize, column: usize) -> Cow<'_, str> {
-        assert!(column < self.stored, "column {column} is not stored");
-        let fields = Self::raw_fields(self.line(row));
-        let Some(raw) = fields.get(column) else { return Cow::Borrowed("") };
+    /// A field as written, unquoted.
+    fn unquoted(raw: &str) -> Cow<'_, str> {
         let Some(inner) = raw.strip_prefix('"').and_then(|r| r.strip_suffix('"')) else { return Cow::Borrowed(raw) };
         if inner.contains('"') { Cow::Owned(inner.replace("\"\"", "\"")) } else { Cow::Borrowed(inner) }
     }
 
+    /// A stored cell's text as written, unquoted; blank for a field the row leaves out.
+    pub fn text(&self, row: usize, column: usize) -> Cow<'_, str> {
+        assert!(column < self.stored, "column {column} is not stored");
+        let fields = Self::raw_fields(self.line(row));
+        fields.get(column).map_or(Cow::Borrowed(""), |raw| Self::unquoted(raw))
+    }
+
+    /// Every stored cell's text in a row, as `text` gives each, the record scanned once:
+    /// what a host that keeps its own rows (a table editing the file) takes.
+    pub fn texts(&self, row: usize) -> Vec<Cow<'_, str>> {
+        let fields = Self::raw_fields(self.line(row));
+        (0..self.stored).map(|k| fields.get(k).map_or(Cow::Borrowed(""), |raw| Self::unquoted(raw))).collect()
+    }
+
     /// A problem in words: `row 3, cost: "8x.50" is not a number`.
     pub fn describe(&self, p: &Problem) -> String {
+        format!("row {}, {}: {}", p.row, self.columns[p.column as usize].name, self.why(p))
+    }
+
+    /// A problem in words without its place, for a host that shows it on the cell:
+    /// `"8x.50" is not a number`, `is missing`.
+    pub fn why(&self, p: &Problem) -> String {
         let c = &self.columns[p.column as usize];
         let text = self.text(p.row as usize, p.column as usize);
         let bound = |b: &Option<types::Bound>| b.map(|b| b.value.normal().to_string()).unwrap_or_default();
         let length = matches!(c.ty.base, Base::Text);
         let why = match p.why {
-            Why::Missing => return format!("row {}, {}: is missing", p.row, c.name),
+            Why::Missing => return "is missing".to_owned(),
             Why::NotInt => "is not a whole number".to_owned(),
             Why::NotNumber => "is not a number".to_owned(),
             Why::NotPct => "is not a percentage".to_owned(),
@@ -490,7 +507,7 @@ impl Doc {
             ),
             Why::Duplicate { other } => format!("is the key of row {other} too"),
         };
-        format!("row {}, {}: \"{}\" {}", p.row, c.name, text, why)
+        format!("\"{text}\" {why}")
     }
 
     /// The header's line break, the one new lines take; `\n` when it has none.
