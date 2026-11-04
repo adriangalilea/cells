@@ -18,7 +18,10 @@ Ours, and one: intents and queries in, results and changes out. Results are Arro
 | an iOS app | none: in-process calls |
 | a Mac app, the language server, the command line | XPC or a Unix socket, reachable only by the user's processes, the client's signature checked |
 | a page | a WebSocket |
+| another of the person's devices (the phone querying the Mac's books, an act sent to their owner) | tether |
 | shared books on a server (later) | the same, over the network |
+
+Between devices the engine builds no transport of its own: it rides tether, the studio's device mesh (private for now). Devices there dial keys, not addresses, directly or through a relay that forwards only end-to-end encrypted packets; they are paired once; a service is followed across sleep and network changes; and an act aimed at a device out of reach waits in an outbox until it is back. Its Rust core and generated Swift bindings are the same shape as the engine's.
 
 A WebSocket to `localhost` is open to every page the browser visits (no CORS protects it), so a client is paired once, as a device is, and every connection proves the pairing; the daemon also checks the connection's origin. Arrow Flight was the alternative and is not taken: it needs gRPC, which no browser speaks without a proxy.
 
