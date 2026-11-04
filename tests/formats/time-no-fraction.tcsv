@@ -1,0 +1,6 @@
+set:text!,at:time(HH:mm:ss),door:time(HHhmm)
+whole seconds,21:15:05,19h30
+a fraction,21:15:05.5,19h30
+a comma fraction,"21:15:05,5",19h30
+three digits,21:15:050,19h30
+fraction after minutes,21:15:05,19h30.5
