@@ -1,0 +1,11 @@
+{
+  "types": { "Bed": "north|south" },
+  "columns": [
+    { "name": "seed", "type": "text!" },
+    { "name": "bed", "type": "Bed" }
+  ],
+  "rows": [
+    { "seed": { "text": "basil" }, "bed": { "choice": "north" } }
+  ],
+  "problems": []
+}

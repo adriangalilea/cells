@@ -1,0 +1,12 @@
+{
+  "columns": [
+    { "name": "title", "type": "text!" },
+    { "name": "shelf", "type": "text" }
+  ],
+  "rows": [
+    { "title": { "text": "Salt, Sea and Sky" }, "shelf": { "text": "B2" } },
+    { "title": { "text": "Roots, Stems, Leaves" }, "shelf": { "text": "C4" } },
+    { "title": { "text": "Plain Title" }, "shelf": { "text": "A1" } }
+  ],
+  "problems": []
+}

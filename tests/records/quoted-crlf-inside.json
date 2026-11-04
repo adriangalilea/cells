@@ -1,0 +1,11 @@
+{
+  "columns": [
+    { "name": "venue", "type": "text" },
+    { "name": "setlist", "type": "text" }
+  ],
+  "rows": [
+    { "venue": { "text": "the old mill" }, "setlist": { "text": "opener\r\nencore" } },
+    { "venue": { "text": "the harbour shed" }, "setlist": { "text": "one song" } }
+  ],
+  "problems": []
+}

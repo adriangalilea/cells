@@ -1,0 +1,4 @@
+item:text,qty:int?,cost:EUR,note:text?
+fuel,1,84.20,full tank
+maps,2
+snacks

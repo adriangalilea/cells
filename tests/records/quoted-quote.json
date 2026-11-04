@@ -1,0 +1,12 @@
+{
+  "columns": [
+    { "name": "title", "type": "text" },
+    { "name": "shelf", "type": "text" }
+  ],
+  "rows": [
+    { "title": { "text": "The \"Quiet\" Garden" }, "shelf": { "text": "C1" } },
+    { "title": { "text": "\"Leading\" quote" }, "shelf": { "text": "C2" } },
+    { "title": { "text": "Trailing \"quote\"" }, "shelf": { "text": "C3" } }
+  ],
+  "problems": []
+}

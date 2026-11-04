@@ -1,0 +1,11 @@
+{
+  "columns": [
+    { "name": "mark", "type": "text" },
+    { "name": "shelf", "type": "text" }
+  ],
+  "rows": [
+    { "mark": { "text": "\"" }, "shelf": { "text": "A1" } },
+    { "mark": { "text": "\"\"" }, "shelf": { "text": "A2" } }
+  ],
+  "problems": []
+}

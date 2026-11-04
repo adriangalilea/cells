@@ -18,10 +18,12 @@ TCSV is its own format, read by TCSV readers. Its records borrow RFC 4180's quot
 
 ## The file
 
-- **Records** are RFC 4180: fields separated by `,`, a field holding `,`, `"` or a line break is quoted, `""` is a quote inside one. Lines end in `\n` or `\r\n`; whichever the file uses is kept, and so is whether it ends in a line break.
-- **The prelude** opens when the file's first line is `---` and closes at the next line that is `---`; between them, TCSV's own language (below). It is optional; a file with none starts at its header. A prelude that opens and never closes is an error.
-- **The header** is the first line after the prelude. Every other line is a row.
-- **A row** has as many fields as the header, or fewer, the missing ones blank. More is an error naming the row.
+- **Text.** A file is UTF-8. A byte order mark before its first line is no part of that line, and a writer writes it back.
+- **Records** are RFC 4180: fields separated by `,`, a field holding `,`, `"` or a line break is quoted, `""` is a quote inside one. A quoted field opens with `"` and closes at a lone `"`, which the end of the file, a `,` or a line ending follows; text after the closing quote, a `"` inside a field that did not open with one, and a quoted field never closed are errors naming the record (the header, or the row). Inside quotes every character is the field's, line breaks included.
+- **Lines** end in `\n` or `\r\n`. Each line's ending is kept as read, so a file may mix them, and so is whether the file ends in a line break: one at the very end closes the last record and opens none. A `\r` that is not followed by `\n`, outside quotes, is an error naming its record.
+- **The prelude** opens when the file's first line is exactly `---` and closes at the next line that is exactly `---`; between them, TCSV's own language (below). It is optional; a file with none starts at its header. A prelude that opens and never closes is an error. A `---` on any other line is no fence: after the prelude it is the header (one column named `---`), below the header it is a row.
+- **The header** is the first line after the prelude. Every other line is a row. A file with no line after its prelude (an empty file, or a prelude alone) has no columns and no rows.
+- **A row** has as many fields as the header, or fewer, the missing ones blank. More is an error naming the row. A blank line among the rows is a row whose every field is blank.
 
 ## A header cell
 
