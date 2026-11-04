@@ -1,0 +1,14 @@
+{
+  "columns": [
+    { "name": "label", "type": "text!" },
+    { "name": "shelf", "type": "'A\t1'|B" }
+  ],
+  "rows": [
+    { "label": { "text": "first" }, "shelf": { "choice": "A\t1" } },
+    { "label": { "text": "second" }, "shelf": { "choice": "B" } },
+    { "label": { "text": "third" }, "shelf": null }
+  ],
+  "problems": [
+    { "row": 2, "column": "shelf", "kind": "type" }
+  ]
+}

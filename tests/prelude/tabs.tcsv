@@ -1,0 +1,6 @@
+---
+	type	Kind	=	travel|stay	// a tab before and between
+total	=	cost	*	qty
+---
+item:text!,kind:Kind,cost:EUR,qty:int
+fuel,travel,84.20,2

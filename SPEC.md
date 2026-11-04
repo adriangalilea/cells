@@ -38,7 +38,7 @@ cost:EUR>=0
 
 ## Types
 
-A type opens with what the column holds: a base, a currency, a named type, a choice or a pair. Its format, bounds and marks follow, in any order. A type that opens with a bound has no base written and is a number (below). Spaces between the parts are nothing (`travel | stay` is `travel|stay`, `text !` is `text!`); a space is never part of a word unless quoted. A type says each thing once: one base, at most one lower and one upper bound, one format, each mark once, and what a named type it uses already says counts as said. Anything else, two bases, a mark before the base, a part said twice, is an error naming the column.
+A type opens with what the column holds: a base, a currency, a named type, a choice or a pair. Its format, bounds and marks follow, in any order. A type that opens with a bound has no base written and is a number (below). Spaces and tabs between the parts, and at the type's ends, are nothing (`travel | stay` is `travel|stay`, `text !` is `text!`); a space or a tab is never part of a word unless quoted. A type says each thing once: one base, at most one lower and one upper bound, one format, each mark once, and what a named type it uses already says counts as said. Anything else, two bases, a mark before the base, a part said twice, is an error naming the column.
 
 ### Bases
 
@@ -69,7 +69,7 @@ A word that is none of these, no named type and not a choice is an error naming 
 
 ### Choices
 
-`category:travel|stay|food|gear` is one of the words, written bare. A choice holding a reserved character (below) or a space, inside it or at its ends, is quoted with single quotes, a quote inside one doubled:
+`category:travel|stay|food|gear` is one of the words, written bare. A choice holding a reserved character (below) or a space or a tab, inside it or at its ends, is quoted with single quotes, a quote inside one doubled:
 
 ```
 mood:'yay!'|meh|'so-so?'|'it''s fine'
@@ -128,7 +128,7 @@ Both are always valid and mean the same; a cell may mix them.
 | `num<10` | `num below 10` |
 | `0..100` | `num between 0 and 100` |
 
-Explicit words are separated by spaces, never commas (a comma would force the header cell into CSV quotes). A choice with a space inside is quoted: `one of travel 'sd cards'`. `between` takes two numbers joined by `and`, both bounds inclusive. `one of` takes every word after it up to the next explicit word (`key` `optional` `one` `of` `bool` `min` `max` `above` `below` `between` `and`) or mark, and at least one; a choice that spells an explicit word is quoted there: `one of 'key' lock`. `bool` followed by two words that are not explicit words is a pair, and a pair's word that spells one is quoted (`bool 'key' lock`); `bool` alone is `true`/`false`.
+Explicit words are separated by spaces or tabs, never commas (a comma would force the header cell into CSV quotes). A choice with a space inside is quoted: `one of travel 'sd cards'`. `between` takes two numbers joined by `and`, both bounds inclusive. `one of` takes every word after it up to the next explicit word (`key` `optional` `one` `of` `bool` `min` `max` `above` `below` `between` `and`) or mark, and at least one; a choice that spells an explicit word is quoted there: `one of 'key' lock`. `bool` followed by two words that are not explicit words is a pair, and a pair's word that spells one is quoted (`bool 'key' lock`); `bool` alone is `true`/`false`.
 
 ### Reserved
 
@@ -143,7 +143,7 @@ total = cost * qty                        // a computed column
 ---
 ```
 
-One statement a line; a blank line is nothing, and spaces at a line's ends are nothing. A line that is no statement is an error naming it.
+One statement a line; a blank line is nothing, and spaces and tabs at a line's ends and between a statement's parts are nothing (a tab counts as a space everywhere in the prelude, outside single quotes). A line that is no statement is an error naming it.
 
 - **`type Name = <type>`** names a type for any header cell to use: `category:Category`. A name is ASCII letters, digits and `_`, starting with a capital letter (`type category = …` is refused), and never a currency code. A name is defined once; it may name another named type defined above it, never one below it or itself. A header cell may add to a named type what it does not already say: `cost:Cost?`, `cost:Money>=0`.
 - **`name = <expression>`** is a computed column: shown and read as a column after the header's, in the prelude's order, never stored in the rows. Its name is ASCII letters, digits and `_`, not starting with a digit, and no other column's. Its expression is pure and total (it always finishes, the same answer in every implementation): numbers, the names of numeric columns, `+ - * /`, parentheses.
@@ -174,7 +174,7 @@ The shorthand, as a writer writes it:
 - the type: a base, a currency, a named type by its name, a choice's words joined by `|`, a pair's two words joined by `/` (`true/false` is `bool`);
 - then its format, then its lower bound (`>=` or `>`), then its upper bound (`<=` or `<`), then `!` or `?`. A `num` with both bounds inclusive is its range alone: `0..10`, never `num>=0<=10`;
 - a bound's number in plain decimal: `-` if negative, no exponent, no zero that changes nothing (`1e3` is `1000`, `0.50` is `0.5`, `-0` is `0`);
-- a word bare unless it must be quoted: it holds a space or a reserved character, or it is a choice's only word.
+- a word bare unless it must be quoted: it holds a space, a tab or a reserved character, or it is a choice's only word.
 
 So `cost:EUR min 0 key` is written `cost:EUR>=0!`, and `mood:one of 'so so' meh optional` is written `mood:'so so'|meh?`.
 

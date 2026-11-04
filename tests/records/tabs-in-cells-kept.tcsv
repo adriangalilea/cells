@@ -1,0 +1,4 @@
+seed:text!,count:int,kind:herb|root
+	basil,12,herb
+fennel,	8,herb
+dill,3,	herb

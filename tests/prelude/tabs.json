@@ -1,0 +1,14 @@
+{
+  "types": { "Kind": "travel|stay" },
+  "columns": [
+    { "name": "item", "type": "text!" },
+    { "name": "kind", "type": "Kind" },
+    { "name": "cost", "type": "EUR" },
+    { "name": "qty", "type": "int" },
+    { "name": "total", "type": "num?", "computed": "cost\t*\tqty" }
+  ],
+  "rows": [
+    { "item": { "text": "fuel" }, "kind": { "choice": "travel" }, "cost": { "money": "84.20", "currency": "EUR" }, "qty": { "int": "2" }, "total": { "num": "168.4" } }
+  ],
+  "problems": []
+}

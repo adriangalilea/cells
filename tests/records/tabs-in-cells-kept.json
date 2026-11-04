@@ -1,0 +1,16 @@
+{
+  "columns": [
+    { "name": "seed", "type": "text!" },
+    { "name": "count", "type": "int" },
+    { "name": "kind", "type": "herb|root" }
+  ],
+  "rows": [
+    { "seed": { "text": "\tbasil" }, "count": { "int": "12" }, "kind": { "choice": "herb" } },
+    { "seed": { "text": "fennel" }, "count": null, "kind": { "choice": "herb" } },
+    { "seed": { "text": "dill" }, "count": { "int": "3" }, "kind": null }
+  ],
+  "problems": [
+    { "row": 1, "column": "count", "kind": "type" },
+    { "row": 2, "column": "kind", "kind": "type" }
+  ]
+}
