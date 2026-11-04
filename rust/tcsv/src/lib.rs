@@ -1,0 +1,38 @@
+//! TCSV, typed CSV: the one reader and writer every surface uses. SPEC.md is the law.
+//!
+//! ```
+//! let doc = tcsv::read("item:text!,cost:EUR>=0\nfuel,84.20\nsnacks,8x.50\n".into()).unwrap();
+//! assert_eq!(doc.rows(), 2);
+//! assert_eq!(doc.describe(&doc.problems()[0]), r#"row 1, cost: "8x.50" is not a number"#);
+//! let mut doc = doc;
+//! doc.set_cell(1, 1, "8.50");
+//! assert_eq!(doc.write(), "item:text!,cost:EUR>=0\nfuel,84.20\nsnacks,8.50\n");
+//! ```
+//!
+//! `read` never refuses a file for its data: a cell that breaks its type is a `Problem`,
+//! its text kept and its value null. It refuses a broken grammar with an `Error` naming
+//! where (`At`). Columns are stored as Arrow lays them out (`column::Data`), and `arrow`
+//! exports them through the Arrow C Data Interface without a copy.
+
+#![no_std]
+
+extern crate alloc;
+#[cfg(feature = "std")]
+extern crate std;
+
+pub mod arrow;
+pub mod column;
+mod doc;
+pub mod exact;
+mod keys;
+pub mod prelude;
+mod read;
+mod scan;
+pub mod types;
+pub mod value;
+
+pub use column::{Bits, Data, Kind, Problem, Value, Why};
+pub use doc::{At, Column, Doc, Error, compose, read};
+pub use scan::quote;
+pub use types::{Base, Bound, Currency, Format, NamedType, Type, parse_type, split_header};
+pub use value::Decimal;
