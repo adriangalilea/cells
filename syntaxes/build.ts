@@ -52,8 +52,10 @@ const NOT_KEYWORD = raw`(?!${word(KEYWORDS)})`
 // ── Scopes ──────────────────────────────────────────────────────────────────
 // A column's name in the header and its text cells share one of these, in
 // turn, as the tree-sitter queries do. The first column is the text's own
-// colour; the rest were picked against GitHub, One, Catppuccin and Rosé Pine
-// (dark and light) so neighbours differ and none is a number's or a string's.
+// colour; the rest are scopes every showcase theme paints. No theme there
+// gives all six apart (`bun run colours.ts` measures what each gives), and
+// Rosé Pine's palette has only five colours that are not a number's or a
+// string's, so no choice of scopes could.
 const RAINBOW = [
   null,
   "entity.name.function",
