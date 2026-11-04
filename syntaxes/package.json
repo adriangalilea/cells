@@ -1,0 +1,15 @@
+{
+  "name": "tcsv-syntaxes",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "TCSV's TextMate grammar (VS Code, GitHub, Shiki), built, tested and shown",
+  "scripts": {
+    "build": "bun run build.ts",
+    "test": "bun run test.ts",
+    "showcase": "bun run showcase.ts"
+  },
+  "devDependencies": {
+    "shiki": "4.5.0"
+  }
+}
