@@ -42,7 +42,9 @@ The prelude, between two `---` lines, names types (`type Category = …`) and co
 
 Decided in direction, not yet in the spec ([SPEC.md, Open](SPEC.md#open)):
 
-- **Files that point at each other.** A column typed by another file's key (`account_to:accounts.account`) is a reference, brought in by the prelude (`use ../accounts.tcsv`). A folder of `.tcsv` files is typed tables joined by references: **your filesystem can be a graph database.** A reference that breaks names the file and row that broke it, and tools say so before the break lands. Whether a reference resolves live or is pinned in the file is open.
+- **Files that point at each other.** A column typed by another file's key (`account_to:accounts.account`) is a reference, brought in by the prelude (`use ../accounts.tcsv`). A folder of `.tcsv` files is typed tables joined by references: **your filesystem can be a graph database.** A reference that breaks names the file and row that broke it, and tools say so before the break lands. A local file is followed live, a remote one pinned by its hash.
+- **Every row has an identity**, its key or an `id` the engine assigns, so an edit always lands on the row it meant and two versions of a file merge row by row.
+- **One engine every app reads and writes through**, a daemon on the Mac, in-process on iOS, standalone in a page: files parsed once, changes heard as they happen, nobody's write ever lost, even an editor's that bypasses it. [ENGINE.md](ENGINE.md) is the design.
 - **Queries in standards, never our own language**: SQL, and SQL/PGQ to walk references.
 - **Charts with no setup**, because the columns are typed: a date is a time axis, money a measure, a choice a category, a reference a link to follow.
 - **Tooling**: a tree-sitter grammar, a language server (types checked as typed, a broken reference underlined, a referenced file's keys completed), highlighting in every editor.
@@ -74,9 +76,9 @@ home/money.tcsv
 use ../accounts.tcsv
 vat = amount * tax_rate / (100 + tax_rate)
 ---
-date:date,amount:EUR>0,account_from:accounts.account,account_to:accounts.account,description:text,tax_rate:pct
-2026-07-01,950.00,assets:bank:main,expenses:home:rent,rent july,0
-2026-07-12,64.30,assets:bank:main,expenses:home:power,power july,21
+id:id!,date:date,amount:EUR>0,account_from:accounts.account,account_to:accounts.account,description:text,tax_rate:pct
+k7m2q9xa,2026-07-01,950.00,assets:bank:main,expenses:home:rent,rent july,0
+p3w8c2nd,2026-07-12,64.30,assets:bank:main,expenses:home:power,power july,21
 ```
 
 ```
@@ -100,7 +102,8 @@ One law and one engine. Every surface binds the same Rust core, so there is one 
 | The law: every rule as a case, run against every binding | [`tests/`](tests) | data |
 | The engine: parsing at memory speed, typed columns in Arrow's layout (exact decimals for money, days for dates, a dictionary for choices), problems, the byte-for-byte writer | `rust/` | Rust, no dependencies |
 | The command line: `tcsv check`, then `tcsv sql` (DuckDB over the columns, so SQL and SQL/PGQ are the standards') | `rust/` | Rust |
-| A daemon watching a folder: each file parsed once, re-parsed when it changes, the references between files held as a graph, so a query or a chart never reads the disk | `rust/` | Rust |
+| The daemon ([ENGINE.md](ENGINE.md)): every client's one way to read and write, each file parsed once and re-parsed when it changes, the references held as a graph, edits by row identity, never losing a write; in-process on iOS | `rust/` | Rust |
+| The protocol: intents and queries in, Arrow frames out, over in-process calls, XPC, a Unix socket or a WebSocket | `rust/` | Rust |
 | The language server: types checked as typed, references completed and followed, semantic highlighting | `rust/` | Rust |
 | The web: the engine as wasm, a synchronous `read(text)`, columns read as typed arrays without a copy | `rust/` | Rust, wasm |
 | The Apple platforms: the engine behind a C header, swift-utils' `TCSV` and `TCSVTable` over it | `rust/` + swift-utils | Rust, Swift |
