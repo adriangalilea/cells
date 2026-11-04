@@ -65,8 +65,6 @@ Edits name stored columns only.
 
 ## Running it
 
-- TypeScript: `bun run conformance` in `ts/`.
-- Rust: `cargo test` in `rust/`.
-- Swift: swift-utils' `TCSVConformance` tests read this folder from a checkout of this repo (`TCSV_SUITE`, else `../tcsv/tests`).
+The Rust engine runs the suite (`cargo test` in `rust/`), and so does every binding of it: wasm under bun, Swift in swift-utils. Each reads this folder, or a vendored copy of it.
 
 Each runner prints every case it fails with the case's path, and exits non-zero on any.
