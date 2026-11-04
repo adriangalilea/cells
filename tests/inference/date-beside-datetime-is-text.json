@@ -1,0 +1,10 @@
+{
+  "columns": [
+    { "name": "when", "type": "text?", "inferred": true }
+  ],
+  "rows": [
+    { "when": { "text": "2026-08-14" } },
+    { "when": { "text": "2026-08-15T20:00:00Z" } }
+  ],
+  "problems": []
+}

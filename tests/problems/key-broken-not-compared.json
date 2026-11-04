@@ -1,0 +1,15 @@
+{
+  "columns": [
+    { "name": "id", "type": "int!" },
+    { "name": "title", "type": "text" }
+  ],
+  "rows": [
+    { "id": { "int": "1" }, "title": { "text": "Moss and Stone" } },
+    { "id": null, "title": { "text": "The Long Road" } },
+    { "id": null, "title": { "text": "Salt and Sky" } }
+  ],
+  "problems": [
+    { "row": 1, "column": "id", "kind": "type" },
+    { "row": 2, "column": "id", "kind": "type" }
+  ]
+}

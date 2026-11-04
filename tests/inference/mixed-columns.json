@@ -1,0 +1,14 @@
+{
+  "columns": [
+    { "name": "item", "type": "text!" },
+    { "name": "cost", "type": "EUR" },
+    { "name": "qty", "type": "int?", "inferred": true },
+    { "name": "on", "type": "date?", "inferred": true },
+    { "name": "note", "type": "text?", "inferred": true }
+  ],
+  "rows": [
+    { "item": { "text": "fuel" }, "cost": { "money": "84.20", "currency": "EUR" }, "qty": { "int": "1" }, "on": { "date": "2026-08-14" }, "note": { "text": "full tank" } },
+    { "item": { "text": "maps" }, "cost": { "money": "12.00", "currency": "EUR" }, "qty": { "int": "2" }, "on": { "date": "2026-08-15" }, "note": null }
+  ],
+  "problems": []
+}

@@ -1,0 +1,11 @@
+{
+  "columns": [
+    { "name": "sown", "type": "int?", "inferred": true }
+  ],
+  "rows": [
+    { "sown": { "int": "1" } },
+    { "sown": { "int": "0" } },
+    { "sown": { "int": "1" } }
+  ],
+  "problems": []
+}

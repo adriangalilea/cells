@@ -1,0 +1,11 @@
+{
+  "columns": [
+    { "name": "lent", "type": "text?", "inferred": true },
+    { "name": "paid", "type": "text?", "inferred": true }
+  ],
+  "rows": [
+    { "lent": { "text": "True" }, "paid": { "text": "Yes" } },
+    { "lent": { "text": "False" }, "paid": { "text": "No" } }
+  ],
+  "problems": []
+}

@@ -1,0 +1,10 @@
+{
+  "columns": [
+    { "name": "shelf", "type": "text?", "inferred": true }
+  ],
+  "rows": [
+    { "shelf": { "text": "0042" } },
+    { "shelf": { "text": "A12" } }
+  ],
+  "problems": []
+}

@@ -1,0 +1,10 @@
+{
+  "columns": [
+    { "name": "sown", "type": "text?", "inferred": true }
+  ],
+  "rows": [
+    { "sown": { "text": "true" } },
+    { "sown": { "text": "no" } }
+  ],
+  "problems": []
+}

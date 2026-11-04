@@ -1,0 +1,11 @@
+{
+  "columns": [
+    { "name": "seed", "type": "text?", "inferred": true },
+    { "name": "note", "type": "text?", "inferred": true }
+  ],
+  "rows": [
+    { "seed": { "text": "basil" }, "note": null },
+    { "seed": { "text": "fennel" }, "note": null }
+  ],
+  "problems": []
+}

@@ -1,0 +1,18 @@
+{
+  "columns": [
+    { "name": "venue", "type": "text!" }
+  ],
+  "rows": [
+    { "venue": { "text": "The Lantern" } },
+    { "venue": { "text": "Harbour Hall" } },
+    { "venue": { "text": "The Lantern" } },
+    { "venue": { "text": "Harbour Hall" } },
+    { "venue": { "text": "Old Mill" } }
+  ],
+  "problems": [
+    { "row": 0, "column": "venue", "kind": "key" },
+    { "row": 1, "column": "venue", "kind": "key" },
+    { "row": 2, "column": "venue", "kind": "key" },
+    { "row": 3, "column": "venue", "kind": "key" }
+  ]
+}

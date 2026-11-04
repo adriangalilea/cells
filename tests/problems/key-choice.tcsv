@@ -1,0 +1,4 @@
+bed:north|south|east!,crop:text
+north,beans
+south,squash
+north,leeks

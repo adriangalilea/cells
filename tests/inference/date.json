@@ -1,0 +1,11 @@
+{
+  "columns": [
+    { "name": "gig", "type": "text?", "inferred": true },
+    { "name": "on", "type": "date?", "inferred": true }
+  ],
+  "rows": [
+    { "gig": { "text": "first night" }, "on": { "date": "2026-08-14" } },
+    { "gig": { "text": "second night" }, "on": { "date": "2024-02-29" } }
+  ],
+  "problems": []
+}

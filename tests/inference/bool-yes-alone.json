@@ -1,0 +1,11 @@
+{
+  "columns": [
+    { "name": "seed", "type": "text?", "inferred": true },
+    { "name": "sown", "type": "yes/no?", "inferred": true }
+  ],
+  "rows": [
+    { "seed": { "text": "basil" }, "sown": { "bool": true } },
+    { "seed": { "text": "fennel" }, "sown": { "bool": true } }
+  ],
+  "problems": []
+}

@@ -1,0 +1,11 @@
+{
+  "columns": [
+    { "name": "venue", "type": "text?", "inferred": true },
+    { "name": "paid", "type": "yes/no?", "inferred": true }
+  ],
+  "rows": [
+    { "venue": { "text": "The Lantern" }, "paid": { "bool": true } },
+    { "venue": { "text": "Harbour Hall" }, "paid": { "bool": false } }
+  ],
+  "problems": []
+}

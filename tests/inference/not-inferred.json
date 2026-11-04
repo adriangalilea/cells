@@ -1,0 +1,14 @@
+{
+  "columns": [
+    { "name": "at", "type": "text?", "inferred": true },
+    { "name": "share", "type": "text?", "inferred": true },
+    { "name": "site", "type": "text?", "inferred": true },
+    { "name": "contact", "type": "text?", "inferred": true },
+    { "name": "fee", "type": "text?", "inferred": true }
+  ],
+  "rows": [
+    { "at": { "text": "14:30" }, "share": { "text": "12%" }, "site": { "text": "https://example.com/gigs" }, "contact": { "text": "band@example.com" }, "fee": { "text": "€5" } },
+    { "at": { "text": "21:00" }, "share": { "text": "8%" }, "site": { "text": "https://example.com/tour" }, "contact": { "text": "crew@example.com" }, "fee": { "text": "€12" } }
+  ],
+  "problems": []
+}

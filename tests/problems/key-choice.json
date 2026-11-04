@@ -1,0 +1,15 @@
+{
+  "columns": [
+    { "name": "bed", "type": "north|south|east!" },
+    { "name": "crop", "type": "text" }
+  ],
+  "rows": [
+    { "bed": { "choice": "north" }, "crop": { "text": "beans" } },
+    { "bed": { "choice": "south" }, "crop": { "text": "squash" } },
+    { "bed": { "choice": "north" }, "crop": { "text": "leeks" } }
+  ],
+  "problems": [
+    { "row": 0, "column": "bed", "kind": "key" },
+    { "row": 2, "column": "bed", "kind": "key" }
+  ]
+}

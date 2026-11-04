@@ -1,0 +1,10 @@
+{
+  "columns": [
+    { "name": "shelf", "type": "int?", "inferred": true }
+  ],
+  "rows": [
+    { "shelf": { "int": "42" } },
+    { "shelf": { "int": "7" } }
+  ],
+  "problems": []
+}

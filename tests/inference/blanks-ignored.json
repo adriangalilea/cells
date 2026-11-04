@@ -1,0 +1,13 @@
+{
+  "columns": [
+    { "name": "seed", "type": "text?", "inferred": true },
+    { "name": "count", "type": "int?", "inferred": true }
+  ],
+  "rows": [
+    { "seed": { "text": "basil" }, "count": { "int": "12" } },
+    { "seed": null, "count": null },
+    { "seed": { "text": "fennel" }, "count": null },
+    { "seed": { "text": "dill" }, "count": { "int": "3" } }
+  ],
+  "problems": []
+}

@@ -159,9 +159,11 @@ An error inside a statement (a type that does not read, an expression that names
 
 ## Reading
 
-- **Inference.** A column with no type is read from its values: every non-blank value an integer is `int`, a number `num`, `true`/`false` or `yes`/`no` a boolean in those words, an ISO date `date`, an ISO instant `datetime`, otherwise `text`. An inferred column is always optional. An ambiguous value infers the plainer kind: `0042` is an integer, but `0042` beside `A12` is text.
-- **A blank cell** is missing: a problem unless the type is `?`, its value null either way.
-- **A cell that breaks its type loads and is reported, never coerced.** The cell's text is kept as written, its value null, and a problem names the row, the column and why: `row 3, cost: "8x.50" is not a number`. A duplicate key reports both rows. The file always opens, so the tool that can fix it can show it.
+- **Inference.** A column with no type is read from its values: every non-blank value an `int` is `int`, a `num` `num` (so integers beside one decimal are `num`), every one `true` or `false` `bool`, every one `yes` or `no` a boolean in those words (`yes/no`, a column of `yes` alone too), a `date` `date`, a `datetime` `datetime`, otherwise `text`. Nothing else is inferred: a time, a percentage, a URL, an address, an amount or an `id` is `text`, and so is a column mixing kinds (`true` beside `no`, a date beside an instant). A column with no value at all is `text`. An inferred column is always optional, so it is never reported. An ambiguous value infers the plainer kind: `0042` is an integer, but `0042` beside `A12` is text.
+- **A blank cell** is missing: a problem unless the type is `?`, its value null either way. A quoted empty field (`""`) is blank too.
+- **A cell that breaks its type loads and is reported, never coerced.** The cell's text is kept as written, its value null, and a problem names the row, the column and why: `row 3, cost: "8x.50" is not a number`. A bound broken is the type broken. The file always opens, so the tool that can fix it can show it.
+- **Keys.** Two rows hold the same key when their values are equal: `7` and `007` in an `int` key, `1.5` and `1.50` in a currency, two spellings of one instant. A duplicate key is reported on every row that holds it. A blank or broken key is missing or broken, and in no comparison.
+- A cell has at most one problem: missing, broken, or a duplicate key.
 
 ## Writing
 

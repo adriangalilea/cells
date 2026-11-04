@@ -1,0 +1,15 @@
+{
+  "columns": [
+    { "name": "seed", "type": "text!" },
+    { "name": "count", "type": "int" }
+  ],
+  "rows": [
+    { "seed": { "text": "basil" }, "count": { "int": "12" } },
+    { "seed": null, "count": { "int": "3" } },
+    { "seed": null, "count": { "int": "5" } }
+  ],
+  "problems": [
+    { "row": 1, "column": "seed", "kind": "missing" },
+    { "row": 2, "column": "seed", "kind": "missing" }
+  ]
+}

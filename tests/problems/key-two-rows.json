@@ -1,0 +1,15 @@
+{
+  "columns": [
+    { "name": "item", "type": "text!" },
+    { "name": "cost", "type": "EUR" }
+  ],
+  "rows": [
+    { "item": { "text": "fuel" }, "cost": { "money": "84.20", "currency": "EUR" } },
+    { "item": { "text": "maps" }, "cost": { "money": "12.00", "currency": "EUR" } },
+    { "item": { "text": "fuel" }, "cost": { "money": "40.00", "currency": "EUR" } }
+  ],
+  "problems": [
+    { "row": 0, "column": "item", "kind": "key" },
+    { "row": 2, "column": "item", "kind": "key" }
+  ]
+}

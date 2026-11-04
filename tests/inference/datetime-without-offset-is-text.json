@@ -1,0 +1,10 @@
+{
+  "columns": [
+    { "name": "doors", "type": "text?", "inferred": true }
+  ],
+  "rows": [
+    { "doors": { "text": "2026-08-14T20:00:00" } },
+    { "doors": { "text": "2026-08-15T21:30:00" } }
+  ],
+  "problems": []
+}

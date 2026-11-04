@@ -1,0 +1,21 @@
+{
+  "columns": [
+    { "name": "item", "type": "text!" },
+    { "name": "qty", "type": "int>=1" },
+    { "name": "cost", "type": "EUR" }
+  ],
+  "rows": [
+    { "item": { "text": "fuel" }, "qty": { "int": "1" }, "cost": { "money": "84.20", "currency": "EUR" } },
+    { "item": { "text": "maps" }, "qty": null, "cost": null },
+    { "item": { "text": "fuel" }, "qty": null, "cost": { "money": "12.00", "currency": "EUR" } },
+    { "item": { "text": "tent" }, "qty": { "int": "2" }, "cost": null }
+  ],
+  "problems": [
+    { "row": 0, "column": "item", "kind": "key" },
+    { "row": 1, "column": "qty", "kind": "type" },
+    { "row": 1, "column": "cost", "kind": "missing" },
+    { "row": 2, "column": "item", "kind": "key" },
+    { "row": 2, "column": "qty", "kind": "missing" },
+    { "row": 3, "column": "cost", "kind": "type" }
+  ]
+}

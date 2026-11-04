@@ -1,0 +1,11 @@
+{
+  "columns": [
+    { "name": "title", "type": "text?", "inferred": true },
+    { "name": "lent", "type": "bool?", "inferred": true }
+  ],
+  "rows": [
+    { "title": { "text": "Moss and Stone" }, "lent": { "bool": true } },
+    { "title": { "text": "The Long Road" }, "lent": { "bool": false } }
+  ],
+  "problems": []
+}

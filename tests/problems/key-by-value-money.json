@@ -1,0 +1,15 @@
+{
+  "columns": [
+    { "name": "price", "type": "EUR!" },
+    { "name": "item", "type": "text" }
+  ],
+  "rows": [
+    { "price": { "money": "1.5", "currency": "EUR" }, "item": { "text": "seed tray" } },
+    { "price": { "money": "2.25", "currency": "EUR" }, "item": { "text": "twine" } },
+    { "price": { "money": "1.50", "currency": "EUR" }, "item": { "text": "label stakes" } }
+  ],
+  "problems": [
+    { "row": 0, "column": "price", "kind": "key" },
+    { "row": 2, "column": "price", "kind": "key" }
+  ]
+}

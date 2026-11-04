@@ -1,0 +1,10 @@
+{
+  "columns": [
+    { "name": "sown", "type": "text?", "inferred": true }
+  ],
+  "rows": [
+    { "sown": { "text": "2026-02-28" } },
+    { "sown": { "text": "2026-02-30" } }
+  ],
+  "problems": []
+}
