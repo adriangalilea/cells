@@ -92,25 +92,25 @@ Ledgers in plain text (hledger, beancount) keep books readable, diffable and you
 
 ## The pieces
 
-One law, one core, native readers held to the law. TOML is the model: `toml-test` is its law, `taplo` (Rust) its parser, formatter, language server and command line, and every language keeps a reader of its own.
+One law and one engine. Every surface binds the same Rust core, so there is one reader to make fast and none to drift.
 
 | Piece | Where | In |
 |---|---|---|
 | The format | [SPEC.md](SPEC.md) | prose |
-| The law: every rule as a case, read by every implementation | [`tests/`](tests) | data |
-| The core: reader, writer, checker, the folder as a graph | [`rust/`](rust) | Rust |
-| The command line: `tcsv check`, `tcsv sql` (DuckDB, so SQL and SQL/PGQ are the standards') | [`rust/`](rust) | Rust |
-| The language server: types checked as typed, references completed and followed, semantic highlighting in every editor that speaks LSP | [`rust/`](rust) | Rust |
-| Python | the core, bound | Rust (PyO3) |
-| Highlighting in Helix, Neovim, Zed | [`tree-sitter/`](tree-sitter) | tree-sitter |
-| Highlighting in VS Code, GitHub, Shiki | [`syntaxes/`](syntaxes) | TextMate |
-| TypeScript, the browser's reader, no dependencies | [`ts/`](ts) | TypeScript |
-| Swift, the Apple platforms' reader | swift-utils' `TCSV` and `TCSVTable` | Swift |
-| Go | TODO, native | Go |
+| The law: every rule as a case, run against every binding | [`tests/`](tests) | data |
+| The engine: parsing at memory speed, typed columns in Arrow's layout (exact decimals for money, days for dates, a dictionary for choices), problems, the byte-for-byte writer | `rust/` | Rust, no dependencies |
+| The command line: `tcsv check`, then `tcsv sql` (DuckDB over the columns, so SQL and SQL/PGQ are the standards') | `rust/` | Rust |
+| A daemon watching a folder: each file parsed once, re-parsed when it changes, the references between files held as a graph, so a query or a chart never reads the disk | `rust/` | Rust |
+| The language server: types checked as typed, references completed and followed, semantic highlighting | `rust/` | Rust |
+| The web: the engine as wasm, a synchronous `read(text)`, columns read as typed arrays without a copy | `rust/` | Rust, wasm |
+| The Apple platforms: the engine behind a C header, swift-utils' `TCSV` and `TCSVTable` over it | `rust/` + swift-utils | Rust, Swift |
+| Python | the engine, bound | Rust (PyO3) |
+| Highlighting in Helix, Neovim, Zed | `tree-sitter/` | tree-sitter |
+| Highlighting in VS Code, GitHub, Shiki | `syntaxes/` | TextMate |
 
-Rust for the core because it is as fast as C and reaches every other place: a C ABI, wasm for the web, PyO3 for Python, `tower-lsp` for the server, DuckDB's bindings for queries. The TypeScript and Swift readers stay native so a page needs no wasm and an app no Rust toolchain; the suite keeps them saying the same thing.
+Rust because it is as fast as C and reaches everything else: a C ABI, wasm, PyO3, `tower-lsp`, DuckDB's bindings. Arrow because typed columns are what it is: DuckDB, Python, the browser and Swift take them as they lie, and a chart reads a column, never a row. DuckDB ships with the command line, the daemon and the apps, never in a page.
 
-The TypeScript reader's API: `read`, `write`, `setCell`, `setType`, `parseHeader`, `compose`, and `Infer<"header">`, the row type from a header line at compile time. `bun run examples` runs its examples.
+Being built now. Until the engine lands, [`ts/`](ts) is the TypeScript reader in use: `read`, `write`, `setCell`, `setType`, `parseHeader`, `compose`, and `Infer<"header">`, the row type from a header line at compile time.
 
 ## Where it is used
 
