@@ -18,6 +18,7 @@ groceries,food,96.75,2,no,2026-08-15,the market on the square
 |---|---|
 | [SPEC.md](SPEC.md) | the format, and in its Open section what is decided in direction and what is not |
 | [tests/README.md](tests/README.md) | the conformance suite: what a case is, and how an implementation runs it |
+| [rust/README.md](rust/README.md) | the core in Rust: its crates, its API, what it measures, the wasm and Apple builds |
 | [ENGINE.md](ENGINE.md) | the engine every app reads and writes through: v0, one Mac, and what comes later |
 | [ACCOUNTING.md](ACCOUNTING.md) | books kept in TCSV, drafted with the primitives the spec proposes |
 
