@@ -274,6 +274,44 @@ pub unsafe extern "C" fn tcsv_reshaped(
     doc_or_fail(d.doc.reshaped(&order, threads.max(1)), failure)
 }
 
+/// A change of a computed column: computed column `index` given `name` and `expression`,
+/// a new one, or `index` taken out.
+#[repr(C)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum TcsvComputing {
+    TcsvComputingSet = 0,
+    TcsvComputingNew = 1,
+    TcsvComputingRemoved = 2,
+}
+
+/// The file with one computed column changed, its prelude line alone rewritten, read again
+/// as a new doc on up to `threads` threads; this one untouched. Null when the prelude no
+/// longer reads (an expression that does not parse, a name taken, a column it reads
+/// missing or no number), `failure` then set at its prelude line.
+///
+/// # Safety
+/// `d` is a live `.tcsv` doc; `index` below its computed columns for Set and Removed;
+/// `name` and `expression` UTF-8 (unread for Removed); `failure` is null or writable.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn tcsv_recomputed(
+    d: *mut TcsvDoc,
+    change: TcsvComputing,
+    index: usize,
+    name: TcsvStr,
+    expression: TcsvStr,
+    threads: usize,
+    failure: *mut TcsvFailure,
+) -> *mut TcsvDoc {
+    // SAFETY: the caller's promise.
+    let (d, name, expression) = unsafe { (doc(d), text_of(name.ptr, name.len), text_of(expression.ptr, expression.len)) };
+    let change = match change {
+        TcsvComputing::TcsvComputingSet => tcsv::Computing::Set(index, name, expression),
+        TcsvComputing::TcsvComputingNew => tcsv::Computing::New(name, expression),
+        TcsvComputing::TcsvComputingRemoved => tcsv::Computing::Removed(index),
+    };
+    doc_or_fail(d.doc.recomputed(change, threads.max(1)), failure)
+}
+
 /// The file written in a dialect (`sep` as for `tcsv_read_as`): a plain file's header the
 /// columns' names, computed ones with their values; a `.tcsv` file's header the `count`
 /// cells of `header` when `count` is not 0 (one a stored column), its prelude kept.
@@ -1078,6 +1116,17 @@ mod tests {
             let head = [lent("c:int"), lent("b:int"), lent("new")];
             assert_eq!(text(tcsv_written_as(r, 0, head.as_ptr(), 3)), "c:int,b:int,new\n,2,x\n5,4,y\n");
             tcsv_free(r);
+            tcsv_free(d);
+
+            let src = b"---\ntotal = cost * qty  // never stored\n---\ncost:EUR,qty:int\n2.50,4\n";
+            let d = tcsv_read(src.as_ptr(), src.len(), 1, &mut f);
+            let set = tcsv_recomputed(d, TcsvComputing::TcsvComputingSet, 0, lent("sum"), lent("cost * 2"), 1, &mut f);
+            assert_eq!(text(tcsv_write(set)), "---\nsum = cost * 2  // never stored\n---\ncost:EUR,qty:int\n2.50,4\n");
+            let bad = tcsv_recomputed(d, TcsvComputing::TcsvComputingNew, 0, lent("x"), lent("cost *"), 1, &mut f);
+            assert!(bad.is_null());
+            assert_eq!((f.at, f.number), (TcsvAt::TcsvAtPreludeLine, 2));
+            tcsv_failure_free(&mut f);
+            tcsv_free(set);
             tcsv_free(d);
         }
     }
