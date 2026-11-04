@@ -142,6 +142,23 @@ fn main() {
                 black_box(tcsv::read_parallel(bytes.clone(), threads).unwrap());
             }
         }
-        _ => eprintln!("tcsv-bench gen <rows> <file> | read <file> [threads] [tcsv|csv] | loop <file> <times>"),
+        Some("edit") => {
+            // One cell set in each column, the file read as its extension says (a `.csv`
+            // plain, by its separator): what an edit costs a table.
+            let bytes = fs::read(&args[2]).unwrap();
+            let threads = std::thread::available_parallelism().unwrap().get();
+            let dialect = if args[2].ends_with(".tcsv") { tcsv::Dialect::Tcsv } else { tcsv::Dialect::Plain(tcsv::detect(&bytes)) };
+            let doc = tcsv::read_as(bytes, dialect, threads).unwrap();
+            println!("{} ({} rows, {dialect:?})", args[2], doc.rows());
+            for c in 0..doc.stored() {
+                let mut d = doc.clone();
+                let row = doc.rows() / 2;
+                let text = doc.text(row, c).into_owned();
+                let t = Instant::now();
+                d.set_cell(row, c, &text);
+                println!("{:<20} {:>8.2} ms", doc.columns()[c].name, t.elapsed().as_secs_f64() * 1e3);
+            }
+        }
+        _ => eprintln!("tcsv-bench gen <rows> <file> | read <file> [threads] [tcsv|csv] | loop <file> <times> | edit <file>"),
     }
 }
