@@ -16,6 +16,8 @@ pub struct Handle {
     doc: Doc,
     out: Vec<u8>,
     problems: Vec<u32>,
+    /// Where each cell `tcsv_cells` wrote ends, in UTF-16 units.
+    ends: Vec<u32>,
 }
 
 /// The module's one piece of state: the length of the last bytes returned, and the last
@@ -87,7 +89,7 @@ pub unsafe extern "C" fn tcsv_read(ptr: *mut u8, len: usize, cap: usize) -> *mut
     // SAFETY: the caller's promise.
     let bytes = unsafe { took(ptr, len, cap) };
     match tcsv::read(bytes) {
-        Ok(doc) => Box::into_raw(Box::new(Handle { doc, out: Vec::new(), problems: Vec::new() })),
+        Ok(doc) => Box::into_raw(Box::new(Handle { doc, out: Vec::new(), problems: Vec::new(), ends: Vec::new() })),
         Err(e) => {
             let mut s = String::from("{\"at\":");
             json_str(&mut s, &e.at.to_string());
@@ -164,6 +166,8 @@ pub unsafe extern "C" fn tcsv_meta(h: *mut Handle) -> *const u8 {
     let mut s = String::with_capacity(512);
     let _ = write!(s, "{{\"rows\":{},\"stored\":{},\"newline\":", doc.rows(), doc.stored());
     json_str(&mut s, doc.newline());
+    s.push_str(",\"prelude\":");
+    json_str(&mut s, doc.prelude_text());
     let _ = write!(
         s,
         ",\"trailing\":{},\"problems\":{},\"problemCount\":{},\"named\":{{",
@@ -188,6 +192,10 @@ pub unsafe extern "C" fn tcsv_meta(h: *mut Handle) -> *const u8 {
         json_str(&mut s, &c.name);
         s.push_str(",\"type\":");
         json_str(&mut s, &c.ty.shorthand());
+        if let Some(spelled) = &c.spelled {
+            s.push_str(",\"spelled\":");
+            json_str(&mut s, spelled);
+        }
         s.push_str(",\"base\":");
         json_str(&mut s, if c.computed.is_some() { "num" } else { c.ty.base.tag() });
         let _ = write!(s, ",\"inferred\":{},\"key\":{},\"optional\":{}", c.ty.inferred, c.ty.key, c.ty.optional);
@@ -292,6 +300,55 @@ pub unsafe extern "C" fn tcsv_describe(h: *mut Handle, i: usize) -> *const u8 {
     let h = unsafe { handle(h) };
     h.out = h.doc.describe(&h.doc.problems()[i]).into_bytes();
     give(&h.out)
+}
+
+/// Problem `i` in words without its place: `"8x.50" is not a number`.
+///
+/// # Safety
+/// `h` is a live handle from `tcsv_read`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn tcsv_why(h: *mut Handle, i: usize) -> *const u8 {
+    // SAFETY: the caller's promise.
+    let h = unsafe { handle(h) };
+    h.out = h.doc.why(&h.doc.problems()[i]).into_bytes();
+    give(&h.out)
+}
+
+/// Every stored cell's text, unquoted, row by row and in each row column by column, one
+/// after another: one decode in the page, cut at `tcsv_cell_ends`, never a call per cell.
+///
+/// # Safety
+/// `h` is a live handle from `tcsv_read`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn tcsv_cells(h: *mut Handle) -> *const u8 {
+    // SAFETY: the caller's promise.
+    let h = unsafe { handle(h) };
+    let (rows, stored) = (h.doc.rows(), h.doc.stored());
+    let mut out = Vec::with_capacity(h.doc.source().len());
+    let mut ends = Vec::with_capacity(rows * stored);
+    let mut units = 0u32;
+    for r in 0..rows {
+        for t in h.doc.texts(r) {
+            out.extend_from_slice(t.as_bytes());
+            units += if t.is_ascii() { t.len() as u32 } else { t.chars().map(|c| c.len_utf16() as u32).sum() };
+            ends.push(units);
+        }
+    }
+    h.out = out;
+    h.ends = ends;
+    give(&h.out)
+}
+
+/// Where each cell the last `tcsv_cells` wrote ends, `u32`s in UTF-16 units of its text
+/// decoded, rows times stored columns of them.
+///
+/// # Safety
+/// `h` is a live handle from `tcsv_read`, `tcsv_cells` called on it.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn tcsv_cell_ends(h: *mut Handle) -> *const u32 {
+    // SAFETY: the caller's promise.
+    let h = unsafe { handle(h) };
+    h.ends.as_ptr()
 }
 
 /// Takes the text a page wrote into room from `tcsv_alloc`.

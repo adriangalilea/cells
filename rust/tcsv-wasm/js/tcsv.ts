@@ -24,6 +24,9 @@ interface Exports {
   tcsv_write(h: number): number
   tcsv_text(h: number, row: number, column: number): number
   tcsv_describe(h: number, i: number): number
+  tcsv_why(h: number, i: number): number
+  tcsv_cells(h: number): number
+  tcsv_cell_ends(h: number): number
   tcsv_set_cell(h: number, row: number, column: number, ptr: number, len: number, cap: number): void
   tcsv_set_type(h: number, column: number, ptr: number, len: number, cap: number): number
 }
@@ -73,6 +76,7 @@ export type Value = string | number | boolean | null
 interface ColumnMeta {
   name: string
   type: string
+  spelled?: string
   base: string
   inferred: boolean
   key: boolean
@@ -96,7 +100,8 @@ interface ColumnMeta {
 interface Meta {
   rows: number
   stored: number
-  newline: string
+  newline: "\n" | "\r\n"
+  prelude: string
   trailing: boolean
   problems: number
   problemCount: number
@@ -146,6 +151,11 @@ export class Column {
   /** The type in canonical shorthand: `EUR>=0`, `text!`, `yes/no?`. */
   get type(): string {
     return this.m.type
+  }
+  /** The type as the header cell spells it after its `:`; `""` for a plain column and
+   *  a computed one. */
+  get spelled(): string {
+    return this.m.spelled ?? ""
   }
   /** What the column holds: `text`, `int`, `num`, `pct`, `money`, `bool`, `date`, ... */
   get base(): string {
@@ -291,6 +301,9 @@ export interface Problem {
   readonly text: string
   /** The problem in words: `row 3, cost: "8x.50" is not a number`. */
   readonly why: string
+  /** The same without its place, for a view that shows it on the cell:
+   *  `"8x.50" is not a number`. */
+  readonly reason: string
 }
 
 const KINDS = ["type", "missing", "key"] as const
@@ -322,6 +335,39 @@ export class Doc {
   get named(): Record<string, string> {
     return this.meta.named
   }
+  /** The text before the header, the byte order mark and the prelude, as written. */
+  get prelude(): string {
+    return this.meta.prelude
+  }
+  /** The header's line break, the one new lines take. */
+  get newline(): "\n" | "\r\n" {
+    return this.meta.newline
+  }
+  /** Whether the file ends in a line break. */
+  get trailing(): boolean {
+    return this.meta.trailing
+  }
+
+  /** Every stored cell's text as written, unquoted, row by row: what a host that keeps
+   *  its own rows takes (and gives back to `compose`). One decode for the whole file. */
+  cells(): string[][] {
+    const at = x.tcsv_cells(this.handle)
+    const all = decoder.decode(new Uint8Array(x.memory.buffer, at, x.tcsv_len()))
+    const n = this.stored
+    const ends = new Uint32Array(x.memory.buffer, x.tcsv_cell_ends(this.handle), this.rowCount * n)
+    const out: string[][] = new Array(this.rowCount)
+    let from = 0
+    for (let r = 0; r < this.rowCount; r++) {
+      const row: string[] = new Array(n)
+      for (let k = 0; k < n; k++) {
+        const to = ends[r * n + k] as number
+        row[k] = all.slice(from, to)
+        from = to
+      }
+      out[r] = row
+    }
+    return out
+  }
 
   column(name: string): Column {
     const c = this.columns.find((c) => c.name === name)
@@ -347,6 +393,9 @@ export class Doc {
         },
         get why() {
           return returned(x.tcsv_describe(doc.handle, k))
+        },
+        get reason() {
+          return returned(x.tcsv_why(doc.handle, k))
         },
       })
     }
@@ -428,4 +477,24 @@ export function setType(doc: Doc, column: string | number, spelled: string): Doc
 /** The file's text: what was read, but for what was changed. */
 export function write(doc: Doc): string {
   return returned(x.tcsv_write(doc.handle))
+}
+
+/** A cell's text in the file's form: quoted only when it holds `,`, `"` or a line
+ *  break (the core's `scan::quote`). */
+const quote = (text: string): string => (/[",\r\n]/.test(text) ? `"${text.replaceAll('"', '""')}"` : text)
+
+/** A file written from cells, for a host that keeps its own rows (a table editing the
+ *  file) and hands back the header's cells and the rows' texts: `like`'s byte order
+ *  mark and prelude, its line break and its final break, every field quoted only where
+ *  CSV needs it (the core's `tcsv::compose`, here so the rows never cross into the
+ *  module). Pure: nothing is read or changed. */
+export function compose(
+  like: { prelude: string; newline: "\n" | "\r\n"; trailing: boolean },
+  header: readonly string[],
+  rows: readonly (readonly string[])[],
+): string {
+  const parts: string[] = new Array(rows.length + 1)
+  parts[0] = header.map(quote).join(",")
+  for (let r = 0; r < rows.length; r++) parts[r + 1] = (rows[r] as readonly string[]).map(quote).join(",")
+  return like.prelude + parts.join(like.newline) + (like.trailing ? like.newline : "")
 }

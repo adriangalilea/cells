@@ -1,14 +1,20 @@
 // The conformance suite (tests/README.md) through the wasm wrapper, under bun: every case
 // read and compared, written back, and in write/ edited. Prints every case it fails and
-// exits non-zero on any.
+// exits non-zero on any. `--lib` runs it through another copy of the wrapper (one a
+// project vendored), whose imports resolve from where it lies.
 //
-//   bun rust/tcsv-wasm/js/conformance.ts [suite folder]
+//   bun rust/tcsv-wasm/js/conformance.ts [suite folder] [--lib path/to/tcsv.ts]
 
 import { readdirSync, readFileSync, existsSync, statSync } from "node:fs"
-import { join, relative } from "node:path"
-import { type Column, type Doc, read, setCell, setType, setValue, TcsvError, type Value, write } from "./tcsv.ts"
+import { join, relative, resolve } from "node:path"
+import type { Column, Doc, Value } from "./tcsv.ts"
 
-const root = process.argv[2] ?? join(import.meta.dir, "../../../tests")
+const args = process.argv.slice(2)
+const libAt = args.indexOf("--lib")
+const lib = libAt < 0 ? "./tcsv.ts" : resolve(args.splice(libAt, 2)[1] as string)
+const { compose, read, setCell, setType, setValue, TcsvError, write } = (await import(lib)) as typeof import("./tcsv.ts")
+type TcsvError = InstanceType<typeof TcsvError>
+const root = args[0] ?? join(import.meta.dir, "../../../tests")
 
 function cases(dir: string): string[] {
   return readdirSync(dir)
@@ -78,6 +84,30 @@ function check(doc: Doc, want: Want): string[] {
   const a = JSON.stringify(doc.problems().map((p) => [p.row, p.column, p.kind]))
   const b = JSON.stringify(want.problems.map((p) => [p.row, p.column, p.kind]))
   if (a !== b) f.push(`problems ${a}, the suite says ${b}`)
+  for (const p of doc.problems())
+    if (p.why !== `row ${p.row}, ${p.column}: ${p.reason}`) f.push(`problem ${JSON.stringify(p.why)} is not its reason ${JSON.stringify(p.reason)} at its place`)
+  f.push(...hosted(doc))
+  return f
+}
+
+/** What a host that keeps its own rows gets: `cells` is every cell's `text`, and the
+ *  file `compose` writes from them reads back to the same cells and types. */
+function hosted(doc: Doc): string[] {
+  const f: string[] = []
+  const cells = doc.cells()
+  const stored = doc.columns.slice(0, doc.stored)
+  cells.forEach((row, r) =>
+    stored.forEach((c, k) => {
+      if (row[k] !== c.text(r)) f.push(`cells()[${r}][${k}] ${JSON.stringify(row[k])}, text says ${JSON.stringify(c.text(r))}`)
+    }),
+  )
+  const header = stored.map((c) => (c.spelled ? `${c.name}:${c.spelled}` : c.name))
+  if (header.length === 0) return f
+  const again = read(compose(doc, header, cells)).doc
+  if (JSON.stringify(again.cells()) !== JSON.stringify(cells)) f.push("compose of its cells reads back other cells")
+  if (JSON.stringify(again.columns.map((c) => c.type)) !== JSON.stringify(doc.columns.map((c) => c.type)))
+    f.push("compose of its cells reads back other types")
+  again.free()
   return f
 }
 
