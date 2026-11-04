@@ -1,0 +1,15 @@
+{
+  "columns": [
+    { "name": "door", "type": "text" },
+    { "name": "fastening", "type": "key|lock|min" }
+  ],
+  "rows": [
+    { "door": { "text": "shed" }, "fastening": { "choice": "key" } },
+    { "door": { "text": "gate" }, "fastening": { "choice": "lock" } },
+    { "door": { "text": "hatch" }, "fastening": { "choice": "min" } },
+    { "door": { "text": "porch" }, "fastening": null }
+  ],
+  "problems": [
+    { "row": 3, "column": "fastening", "kind": "type" }
+  ]
+}

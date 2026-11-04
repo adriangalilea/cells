@@ -1,0 +1,5 @@
+entry:text,kind:text|image|date
+poster,image
+setlist,text
+tour,date
+demo,audio

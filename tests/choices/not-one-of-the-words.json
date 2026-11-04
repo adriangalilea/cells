@@ -1,0 +1,17 @@
+{
+  "columns": [
+    { "name": "item", "type": "text" },
+    { "name": "category", "type": "travel|stay|food" }
+  ],
+  "rows": [
+    { "item": { "text": "fuel" }, "category": { "choice": "travel" } },
+    { "item": { "text": "bus" }, "category": null },
+    { "item": { "text": "train" }, "category": null },
+    { "item": { "text": "crisps" }, "category": null }
+  ],
+  "problems": [
+    { "row": 1, "column": "category", "kind": "type" },
+    { "row": 2, "column": "category", "kind": "type" },
+    { "row": 3, "column": "category", "kind": "type" }
+  ]
+}

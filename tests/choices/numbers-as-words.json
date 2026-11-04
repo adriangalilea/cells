@@ -1,0 +1,16 @@
+{
+  "columns": [
+    { "name": "book", "type": "text" },
+    { "name": "volume", "type": "1|2|3" }
+  ],
+  "rows": [
+    { "book": { "text": "the first winter" }, "volume": { "choice": "1" } },
+    { "book": { "text": "the long thaw" }, "volume": { "choice": "3" } },
+    { "book": { "text": "the late spring" }, "volume": null },
+    { "book": { "text": "the dry summer" }, "volume": null }
+  ],
+  "problems": [
+    { "row": 2, "column": "volume", "kind": "type" },
+    { "row": 3, "column": "volume", "kind": "type" }
+  ]
+}

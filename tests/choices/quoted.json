@@ -1,0 +1,13 @@
+{
+  "columns": [
+    { "name": "gig", "type": "text" },
+    { "name": "mood", "type": "'yay!'|meh|'so-so?'|'it''s fine'" }
+  ],
+  "rows": [
+    { "gig": { "text": "harbour hall" }, "mood": { "choice": "yay!" } },
+    { "gig": { "text": "the cellar" }, "mood": { "choice": "meh" } },
+    { "gig": { "text": "open air" }, "mood": { "choice": "so-so?" } },
+    { "gig": { "text": "rooftop" }, "mood": { "choice": "it's fine" } }
+  ],
+  "problems": []
+}

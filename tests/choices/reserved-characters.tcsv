@@ -1,0 +1,13 @@
+shelf:text,mark:'a|b'|'c/d'|'e!'|'f?'|'<g'|'h>'|'i=j'|'k..l'|'(m)'|'n''o'|'p:q'
+A1,a|b
+A2,c/d
+A3,e!
+A4,f?
+A5,<g
+A6,h>
+A7,i=j
+A8,k..l
+A9,(m)
+B1,n'o
+B2,p:q
+B3,a

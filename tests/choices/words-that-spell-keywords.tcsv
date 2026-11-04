@@ -1,0 +1,5 @@
+door:text,fastening:key|lock|min
+shed,key
+gate,lock
+hatch,min
+porch,max

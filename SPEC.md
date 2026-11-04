@@ -69,11 +69,13 @@ A word that is none of these, no named type and not a choice is an error naming 
 
 ### Choices
 
-`category:travel|stay|food|gear` is one of the words, written bare. A choice holding a reserved character (below) or a space at its ends is quoted with single quotes, a quote inside one doubled:
+`category:travel|stay|food|gear` is one of the words, written bare. A choice holding a reserved character (below) or a space, inside it or at its ends, is quoted with single quotes, a quote inside one doubled:
 
 ```
 mood:'yay!'|meh|'so-so?'|'it''s fine'
 ```
+
+A word beside `|` is always a choice's word, even one that spells a base or an explicit word (`text|image`, `key|lock`). A choice of one word is quoted (`'paperback'`), since a bare word alone is a type. A cell is one of the words exactly, case and spaces included. A choice's words differ from each other, and none is empty: `''` is refused, a blank cell being missing, never a word.
 
 ### A boolean in the file's own words
 

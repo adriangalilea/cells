@@ -1,0 +1,23 @@
+{
+  "columns": [
+    { "name": "shelf", "type": "text" },
+    { "name": "mark", "type": "'a|b'|'c/d'|'e!'|'f?'|'<g'|'h>'|'i=j'|'k..l'|'(m)'|'n''o'|'p:q'" }
+  ],
+  "rows": [
+    { "shelf": { "text": "A1" }, "mark": { "choice": "a|b" } },
+    { "shelf": { "text": "A2" }, "mark": { "choice": "c/d" } },
+    { "shelf": { "text": "A3" }, "mark": { "choice": "e!" } },
+    { "shelf": { "text": "A4" }, "mark": { "choice": "f?" } },
+    { "shelf": { "text": "A5" }, "mark": { "choice": "<g" } },
+    { "shelf": { "text": "A6" }, "mark": { "choice": "h>" } },
+    { "shelf": { "text": "A7" }, "mark": { "choice": "i=j" } },
+    { "shelf": { "text": "A8" }, "mark": { "choice": "k..l" } },
+    { "shelf": { "text": "A9" }, "mark": { "choice": "(m)" } },
+    { "shelf": { "text": "B1" }, "mark": { "choice": "n'o" } },
+    { "shelf": { "text": "B2" }, "mark": { "choice": "p:q" } },
+    { "shelf": { "text": "B3" }, "mark": null }
+  ],
+  "problems": [
+    { "row": 11, "column": "mark", "kind": "type" }
+  ]
+}
