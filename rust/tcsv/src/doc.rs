@@ -927,6 +927,7 @@ impl Doc {
     pub fn set_cell(&mut self, row: usize, column: usize, text: &str) {
         assert!(column < self.stored, "column {column} is not stored");
         assert!(row < self.rows(), "row {row} does not exist");
+        let was = self.text(row, column).into_owned();
         let blank = self.quote("");
         let mut fields: Vec<Cow<'_, str>> = self.raw_fields(self.line(row)).into_iter().map(|f| self.sound(f)).collect();
         while fields.len() <= column {
@@ -940,7 +941,7 @@ impl Doc {
             joined.push_str("\"\"");
         }
         self.edits.insert(row as u32, joined);
-        self.decode_cell(row, column, text);
+        self.decode_cell(row, column, text, &was);
         if matches!(self.dialect, Dialect::Plain(_)) {
             // The row's width may have changed: a field written past a short row's end.
             self.problems.retain(|p| !(p.row == row as u32 && p.kind() == Kind::Ragged));
@@ -958,12 +959,20 @@ impl Doc {
         self.set_cell(row, column, &text);
     }
 
-    fn decode_cell(&mut self, row: usize, column: usize, text: &str) {
+    fn decode_cell(&mut self, row: usize, column: usize, text: &str, was: &str) {
         let col = &mut self.columns[column];
-        let why = match col.ty.inferred {
-            true => None,
-            false => put(col, row, text),
-        };
+        if col.ty.inferred {
+            // What the column's values could be is the meet of what each could be, so a
+            // value that could be exactly what the one it replaces could be changes nothing
+            // the column infers: it is decoded in place. Anything else is the column read
+            // again, as a fresh read would infer it.
+            let could = |t: &str| (!t.is_empty()).then(|| infer::narrow(infer::ALL, t.as_bytes()));
+            if could(text) == could(was) && put(col, row, text) == Some(None) {
+                return self.compute_values();
+            }
+            return self.rebuild(column);
+        }
+        let why = put(col, row, text);
         let Some(why) = why else { return self.rebuild(column) };
         let at = self.problems.partition_point(|p| p.order() < (row as u32, column as u32));
         let end = at + self.problems[at..].iter().take_while(|p| p.order() == (row as u32, column as u32)).count();

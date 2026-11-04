@@ -130,9 +130,7 @@ fn an_edit_reads_back_as_written() {
         for r in 0..doc.rows() {
             for c in 0..doc.stored() {
                 assert_eq!(again.text(r, c), doc.text(r, c), "{:?}", doc.write());
-                if !doc.columns()[c].ty.inferred {
-                    assert_eq!(again.value(r, c), doc.value(r, c), "row {r} column {c} of {:?}", doc.write());
-                }
+                assert_eq!(again.value(r, c), doc.value(r, c), "row {r} column {c} of {:?}", doc.write());
             }
         }
         let ours: Vec<_> = doc.problems().iter().map(|p| (p.row, p.column, p.kind())).collect();
@@ -297,6 +295,9 @@ fn a_plain_edit_reads_back_as_written() {
         assert_eq!(again.problems(), doc.problems(), "{:?}", doc.write());
         for c in 0..doc.stored() {
             assert_eq!(again.columns()[c].ty, doc.columns()[c].ty, "{:?}", doc.write());
+            for r in 0..doc.rows() {
+                assert_eq!(again.value(r, c), doc.value(r, c), "row {r} column {c} of {:?}", doc.write());
+            }
         }
     }
 }
