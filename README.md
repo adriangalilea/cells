@@ -90,12 +90,27 @@ home/money.tcsv rows 3 and 9: the same invoice twice
 
 Ledgers in plain text (hledger, beancount) keep books readable, diffable and yours, but each invents a syntax of its own and cannot say that a column is euros, that an account must exist, or that VAT is derived from the amount. TCSV is the table those books are.
 
-## Implementations
+## The pieces
 
-- **TypeScript**, the reference: [`ts/`](ts). No dependencies; `read`, `write`, `setCell`, `setType`, `parseHeader`, and `Infer<"header">`, the row type from a header line at compile time. `bun run examples` runs every rule.
-- **Swift**: the `TCSV` module (reading and writing) and `TCSVTable` (a document edited in an `InkTable`).
-- **Go**: TODO.
-- **Python**: TODO.
+One law, one core, native readers held to the law. TOML is the model: `toml-test` is its law, `taplo` (Rust) its parser, formatter, language server and command line, and every language keeps a reader of its own.
+
+| Piece | Where | In |
+|---|---|---|
+| The format | [SPEC.md](SPEC.md) | prose |
+| The law: every rule as a case, read by every implementation | [`tests/`](tests) | data |
+| The core: reader, writer, checker, the folder as a graph | [`rust/`](rust) | Rust |
+| The command line: `tcsv check`, `tcsv sql` (DuckDB, so SQL and SQL/PGQ are the standards') | [`rust/`](rust) | Rust |
+| The language server: types checked as typed, references completed and followed, semantic highlighting in every editor that speaks LSP | [`rust/`](rust) | Rust |
+| Python | the core, bound | Rust (PyO3) |
+| Highlighting in Helix, Neovim, Zed | [`tree-sitter/`](tree-sitter) | tree-sitter |
+| Highlighting in VS Code, GitHub, Shiki | [`syntaxes/`](syntaxes) | TextMate |
+| TypeScript, the browser's reader, no dependencies | [`ts/`](ts) | TypeScript |
+| Swift, the Apple platforms' reader | swift-utils' `TCSV` and `TCSVTable` | Swift |
+| Go | TODO, native | Go |
+
+Rust for the core because it is as fast as C and reaches every other place: a C ABI, wasm for the web, PyO3 for Python, `tower-lsp` for the server, DuckDB's bindings for queries. The TypeScript and Swift readers stay native so a page needs no wasm and an app no Rust toolchain; the suite keeps them saying the same thing.
+
+The TypeScript reader's API: `read`, `write`, `setCell`, `setType`, `parseHeader`, `compose`, and `Infer<"header">`, the row type from a header line at compile time. `bun run examples` runs its examples.
 
 ## Where it is used
 
