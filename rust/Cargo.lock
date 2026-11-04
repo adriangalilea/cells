@@ -110,6 +110,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "tcsv-ffi"
+version = "0.1.0"
+dependencies = [
+ "tcsv",
+]
+
+[[package]]
 name = "tcsv-wasm"
 version = "0.1.0"
 dependencies = [

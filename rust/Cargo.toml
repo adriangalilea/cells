@@ -1,7 +1,7 @@
 [workspace]
 resolver = "3"
-members = ["tcsv", "tcsv-cli", "tcsv-wasm", "tcsv-bench"]
-default-members = ["tcsv", "tcsv-cli"]
+members = ["tcsv", "tcsv-cli", "tcsv-wasm", "tcsv-ffi", "tcsv-bench"]
+default-members = ["tcsv", "tcsv-cli", "tcsv-ffi"]
 
 [workspace.package]
 edition = "2024"
@@ -17,6 +17,16 @@ debug = "line-tables-only"
 
 [profile.bench]
 inherits = "release"
+
+# The Apple static libraries: release, no debug info. Build scripts and proc macros are
+# never stripped (Xcode 27's strip corrupts the dylibs they load from).
+[profile.apple]
+inherits = "release"
+debug = false
+strip = "debuginfo"
+
+[profile.apple.build-override]
+strip = false
 
 [profile.wasm]
 inherits = "release"
