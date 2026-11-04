@@ -55,12 +55,19 @@ An editor cannot hide part of a line, so in one the ids are visible, dimmed and 
 
 ## Across devices
 
-Every device is a full replica: the files sync as files (iCloud Drive, git, Syncthing), each device's engine keeps its own cache, and a device reads, queries and writes with every other one off. On iOS the engine asks iCloud Drive to download what it opens, since iOS may evict files to save space.
+Every device is a full replica, never a viewer of another:
+
+- **The files are the replica.** They sync as files (iCloud Drive, git, Syncthing), so each device holds every file it shows, as text, and whatever moves files moves the books.
+- **Each device's engine keeps its own cache** and rebuilds it from its own files. Nothing derived ever crosses devices.
+- **Reads and queries are local and instant**, and a device reads, queries and writes with every other one off: the phone opens the books on a plane with the Mac asleep.
+- **What is local stays local.** iOS may evict an iCloud Drive file to save space; the engine asks for the download of what it opens, and a folder kept downloaded never leaves the device.
 
 How devices reconcile writes is open, and the write path serves both answers:
 
-- **Owned.** One device owns a set of books. Another records an edit as an intent, shows it at once as pending, and the owner applies it when it is in reach, refusing one that no longer applies. Money never conflicts.
-- **Merged.** Each device writes its copy, and two versions of a file merge by row identity against the last version both had: different rows and different cells merge, and only two edits of the same cell are a conflict, shown, never resolved by guessing.
+- **Owned.** One device owns a set of books. Another records an edit as an intent, shows it at once as pending, and the owner applies it when it is in reach, refusing one that no longer applies. Money never conflicts. This is Turso's embedded replicas: a local copy read in place, writes sent to the primary.
+- **Merged.** Each device writes its copy, and two versions of a file merge by row identity against the last version both had: different rows and different cells merge, and only two edits of the same cell are a conflict, shown, never resolved by guessing. This is Turso's offline writes, and Dolt's merge of tables by primary key: applied locally first, reconciled when the devices meet.
+
+Prior art for the whole shape: Ink & Switch's [Local-first software](https://www.inkandswitch.com/local-first/) (the data on the person's devices, the network optional), Turso's replicas, Dolt, and CRDT libraries such as Automerge, which merge without asking but cannot say that two edits to an amount are a conflict, so the engine does not take them for money.
 
 Both rest on what is built now: edits as intents by row identity, kept in a log.
 
