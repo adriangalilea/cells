@@ -5,7 +5,7 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use tcsv::{Base, ColumnAt, Dialect, Doc, Naming, Separator, Value};
+use tcsv::{Base, ColumnAt, Computing, Dialect, Doc, Naming, Separator, Value};
 
 /// JSON, as much of it as the suite writes.
 #[derive(Clone, Debug, PartialEq)]
@@ -311,6 +311,31 @@ fn apply(doc: &mut Doc, edits: &Json) -> Result<String, String> {
             };
             let header: Option<Vec<&str>> = e.get("header").map(|h| h.array().iter().map(Json::str).collect());
             return Ok(doc.written_as(dialect, header.as_deref()));
+        }
+        let computed = |doc: &Doc, key: &str| {
+            let name = e.get(key).unwrap().str();
+            doc.computed().iter().position(|c| c.name == name).ok_or_else(|| format!("no computed column {name}"))
+        };
+        let expression = || e.get("expression").map(Json::str).unwrap_or("");
+        let changed = if let Some(name) = e.get("compute") {
+            Some(doc.recomputed(Computing::New(name.str(), expression()), 1))
+        } else if e.get("recompute").is_some() {
+            let k = computed(doc, "recompute")?;
+            let name = e.get("name").map_or(doc.computed()[k].name.as_str(), Json::str);
+            Some(doc.recomputed(Computing::Set(k, name, expression()), 1))
+        } else if e.get("uncompute").is_some() {
+            Some(doc.recomputed(Computing::Removed(computed(doc, "uncompute")?), 1))
+        } else {
+            None
+        };
+        if let Some(r) = changed {
+            match (r, e.get("refused").map(Json::str)) {
+                (Ok(d), None) => *doc = d,
+                (Err(err), Some(at)) if err.at.to_string() == at => {}
+                (Err(err), want) => return Err(format!("refused at {} ({err}), the suite says {want:?}", err.at)),
+                (Ok(_), Some(at)) => return Err(format!("taken, the suite says it is refused at {at}")),
+            }
+            continue;
         }
         let stored: Vec<ColumnAt> = (0..doc.stored()).map(ColumnAt::Kept).collect();
         let reshaped = if let Some(Json::Number(at)) = e.get("insert") {

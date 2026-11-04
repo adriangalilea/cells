@@ -180,6 +180,15 @@ pub enum ColumnAt<'a> {
     New(&'a str, &'a [&'a str]),
 }
 
+/// A computed column changed (`Doc::recomputed`): one the prelude has, by its index among
+/// the computed columns, given a name and an expression; a new one; or one taken out.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Computing<'a> {
+    Set(usize, &'a str, &'a str),
+    New(&'a str, &'a str),
+    Removed(usize),
+}
+
 /// A plain file's header cell that names its column badly. TCSV refuses both (SPEC.md, A
 /// header cell); a plain file reads with them, so the tool that can fix them shows them.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -743,6 +752,83 @@ impl Doc {
         }
         out.push_str(&self.source[cursor..]);
         out
+    }
+
+    /// The file with one computed column changed, read again on up to `threads` threads:
+    /// its prelude line rewritten as `name = expression` (the spacing before its comment and
+    /// the comment kept), a new one a line at the prelude's end (a file with no prelude
+    /// gains one), or its line taken out. Every other byte stays as it is. Refused, this doc
+    /// untouched, when the prelude no longer reads (an expression that does not parse, a
+    /// name taken, a column it reads that does not exist or is no number) or a `//` in the
+    /// expression would make the rest of it a comment.
+    pub fn recomputed(&self, change: Computing, threads: usize) -> Result<Doc, Error> {
+        assert_eq!(self.dialect, Dialect::Tcsv, "a plain file computes nothing: written as TCSV, it can");
+        let text = self.write();
+        let body = self.body as usize;
+        let bom = if text.starts_with('\u{feff}') { 3 } else { 0 };
+        let nl = self.newline();
+        let statement = |name: &str, expression: &str| {
+            assert!(!name.contains(['\n', '\r']) && !expression.contains(['\n', '\r']), "a computed column is one line");
+            format!("{name} = {}", expression.trim_matches([' ', '\t']))
+        };
+        let computed = |k: usize| {
+            assert!(k < self.prelude.computed.len(), "no computed column {k}");
+            self.prelude.computed[k].line as usize
+        };
+        // The prelude's lines with their breaks, the fences included.
+        let lines: Vec<&str> = text[bom..body].split_inclusive('\n').collect();
+        let mut out = String::with_capacity(text.len() + 64);
+        out.push_str(&text[..bom]);
+        let (line, written) = match change {
+            Computing::Set(k, name, expression) => {
+                let at = computed(k);
+                for (n, l) in lines.iter().enumerate() {
+                    if n != at {
+                        out.push_str(l);
+                        continue;
+                    }
+                    let content = &l[..l.len() - ending(l).len()];
+                    let said = prelude::uncomment(content);
+                    let kept = &content[said.trim_end_matches([' ', '\t']).len()..];
+                    out.push_str(&statement(name, expression));
+                    out.push_str(kept);
+                    out.push_str(ending(l));
+                }
+                (at as u32, Some(expression))
+            }
+            Computing::New(name, expression) => {
+                if lines.is_empty() {
+                    out.push_str(&format!("---{nl}{}{nl}---{nl}", statement(name, expression)));
+                    (1, Some(expression))
+                } else {
+                    let (last, inside) = lines.split_last().unwrap();
+                    for l in inside {
+                        out.push_str(l);
+                    }
+                    out.push_str(&statement(name, expression));
+                    out.push_str(ending(inside.last().unwrap()));
+                    out.push_str(last);
+                    (inside.len() as u32, Some(expression))
+                }
+            }
+            Computing::Removed(k) => {
+                let at = computed(k);
+                for (n, l) in lines.iter().enumerate() {
+                    if n != at {
+                        out.push_str(l);
+                    }
+                }
+                (at as u32, None)
+            }
+        };
+        out.push_str(&text[body..]);
+        let doc = read_on(out.into_bytes(), self.dialect, threads)?;
+        if let Some(expression) = written
+            && !doc.prelude.computed.iter().any(|c| c.line == line && c.expression == expression.trim_matches([' ', '\t']))
+        {
+            return Err(error(At::PreludeLine(line), "a // in an expression opens a comment"));
+        }
+        Ok(doc)
     }
 
     /// The file with exactly `rows`, in their order, read again on up to `threads`

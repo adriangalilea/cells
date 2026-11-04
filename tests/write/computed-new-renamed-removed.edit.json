@@ -1,0 +1,1 @@
+[{ "recompute": "total", "name": "sum", "expression": "cost * qty" }, { "compute": "vat", "expression": "sum * tax / 100" }, { "uncompute": "vat" }, { "compute": "net", "expression": "sum - 1" }]

@@ -43,7 +43,7 @@ pub struct Prelude {
 }
 
 /// The line with its `//` comment cut, outside single quotes.
-fn uncomment(line: &str) -> &str {
+pub(crate) fn uncomment(line: &str) -> &str {
     let b = line.as_bytes();
     let mut quoted = false;
     for i in 0..b.len() {

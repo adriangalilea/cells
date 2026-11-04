@@ -39,7 +39,7 @@ pub mod value;
 pub use column::{Bits, Data, Kind, Problem, Value, Why};
 #[cfg(feature = "std")]
 pub use doc::read_parallel;
-pub use doc::{At, Column, ColumnAt, Doc, Error, Naming, Row, compose, read, read_as};
+pub use doc::{At, Column, ColumnAt, Computing, Doc, Error, Naming, Row, compose, read, read_as};
 pub use format::{Dialect, Separator, detect};
 pub use identity::{Change, Refused, RowAt, Version};
 pub use scan::quote;

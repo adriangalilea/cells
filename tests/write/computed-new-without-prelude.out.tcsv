@@ -1,0 +1,5 @@
+---
+total = cost * qty
+---
+item,cost:EUR,qty:int
+fuel,2.50,4

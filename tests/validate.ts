@@ -229,6 +229,28 @@ function edits(path: string, j: Json) {
       if (i !== j.length - 1) fault(path, `${what}: "as" writes the file, so it is the last edit`)
       return
     }
+    const refused = () => {
+      if ("refused" in e && (typeof e.refused !== "string" || !AT.test(e.refused)))
+        fault(path, `"${String(e.refused)}" is no place a refusal is reported`)
+    }
+    if ("compute" in e) {
+      keysAre(path, what, e, ["compute", "expression"], ["refused"])
+      if (typeof e.compute !== "string" || e.compute === "") fault(path, `${what}: "compute" is not a name`)
+      if (typeof e.expression !== "string") fault(path, `${what}: "expression" is not an expression`)
+      return refused()
+    }
+    if ("recompute" in e) {
+      keysAre(path, what, e, ["recompute", "expression"], ["name", "refused"])
+      named(what, e.recompute)
+      if (typeof e.expression !== "string") fault(path, `${what}: "expression" is not an expression`)
+      if ("name" in e && typeof e.name !== "string") fault(path, `${what}: "name" is not a name`)
+      return refused()
+    }
+    if ("uncompute" in e) {
+      keysAre(path, what, e, ["uncompute"], ["refused"])
+      named(what, e.uncompute)
+      return refused()
+    }
     if ("insert" in e) {
       keysAre(path, what, e, ["insert", "header"], ["cells"])
       place(what, e.insert)

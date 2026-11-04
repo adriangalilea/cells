@@ -1,0 +1,1 @@
+[{ "recompute": "total", "expression": "cost * qty * 2" }]

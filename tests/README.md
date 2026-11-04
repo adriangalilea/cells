@@ -60,6 +60,10 @@ Every case that reads is also a write case: the file read and written with nothi
 - `{ "remove": "bed" }`: the column taken out, its header cell and every row's field;
 - `{ "move": "qty", "to": 0 }`: the column taken out and put back at that place;
 - `{ "rename": "qty", "to": "count" }`: the column under a new name, its type kept as spelled;
+- `{ "compute": "vat", "expression": "total * tax / 100" }`: a new computed column, a line `vat = total * tax / 100` at the prelude's end (a file with no prelude gains one, its fences broken as the header's line);
+- `{ "recompute": "total", "expression": "cost * qty * 2" }`, a `"name"` to rename it: the computed column's prelude line rewritten as `name = expression`, the spacing before its comment and the comment kept, every other byte as it was;
+- `{ "uncompute": "total" }`: the computed column's prelude line taken out, the fences kept;
+- any of these three with `"refused": "prelude line 1"`: the change is refused at that place (an expression that does not parse, a name taken, a column it reads missing or not a number, a `//` that would make the rest of it a comment), the file left as it was;
 - `{ "as": ";" }` or `{ "as": "tcsv", "header": ["item:text!", "cost:EUR"] }`, always last: the file written in another dialect (`tcsv`, or a plain file with that separator, `","` `";"` `"\t"` `"|"`), and that text is the output. A plain file's header is the columns' names, computed ones included with their values a column after the stored ones (in the plain form of a decimal, `10`, never `10.00`); `header` gives a `.tcsv` file's header cells, one a stored column. A record is kept as written when the separator is the same and nothing joins it; otherwise it is written from its cells, quoted where the dialect needs it.
 
 Edits name stored columns only. A column's fields move with it whole: a short row's missing fields are written blank, and a plain file's fields past its header stay after the columns.
