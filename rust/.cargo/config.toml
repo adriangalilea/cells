@@ -1,0 +1,4 @@
+# Every browser that runs WebAssembly today runs its SIMD (Chrome 91, Firefox 89,
+# Safari 16.4): the scan reads 64 bytes at a time there too.
+[target.wasm32-unknown-unknown]
+rustflags = ["-C", "target-feature=+simd128"]

@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-members = ["tcsv", "tcsv-cli", "tcsv-bench"]
+members = ["tcsv", "tcsv-cli", "tcsv-wasm", "tcsv-bench"]
 default-members = ["tcsv", "tcsv-cli"]
 
 [workspace.package]

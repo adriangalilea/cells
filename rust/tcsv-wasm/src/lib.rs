@@ -1,0 +1,339 @@
+//! The tcsv core as WebAssembly. A page hands the file's bytes in, gets a handle, and
+//! reads the columns where they lie in linear memory: offsets, bytes, values and validity
+//! as typed-array views, strings decoded only when a cell is asked for. One description
+//! of the columns (JSON, small) says where everything is; nothing is serialized per row.
+//!
+//! Every function that returns bytes returns their address and leaves their length for
+//! `tcsv_len`; the bytes live until the next call on the same handle.
+
+use std::cell::UnsafeCell;
+use std::fmt::Write;
+
+use tcsv::{Base, Data, Doc};
+
+/// Results that outlive the call that made them, one set per handle.
+pub struct Handle {
+    doc: Doc,
+    out: Vec<u8>,
+    problems: Vec<u32>,
+}
+
+/// The module's one piece of state: the length of the last bytes returned, and the last
+/// read's error. A wasm instance runs one call at a time.
+struct Shared {
+    len: usize,
+    error: Vec<u8>,
+}
+
+struct Global(UnsafeCell<Shared>);
+
+// SAFETY: wasm32-unknown-unknown without the atomics feature has one thread.
+unsafe impl Sync for Global {}
+
+static SHARED: Global = Global(UnsafeCell::new(Shared { len: 0, error: Vec::new() }));
+
+fn shared() -> &'static mut Shared {
+    // SAFETY: one thread, and no call holds this across another.
+    unsafe { &mut *SHARED.0.get() }
+}
+
+fn give(bytes: &[u8]) -> *const u8 {
+    shared().len = bytes.len();
+    bytes.as_ptr()
+}
+
+/// The length of the bytes the last call returned.
+#[unsafe(no_mangle)]
+pub extern "C" fn tcsv_len() -> usize {
+    shared().len
+}
+
+/// Room for `len` bytes the page fills (a file, a cell's text).
+#[unsafe(no_mangle)]
+pub extern "C" fn tcsv_alloc(len: usize) -> *mut u8 {
+    let mut v = Vec::<u8>::with_capacity(len.max(1));
+    let p = v.as_mut_ptr();
+    std::mem::forget(v);
+    p
+}
+
+/// Gives back room from `tcsv_alloc` that no call took.
+///
+/// # Safety
+/// `ptr` and `cap` are exactly what `tcsv_alloc(cap)` gave.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn tcsv_free(ptr: *mut u8, cap: usize) {
+    // SAFETY: the caller's promise.
+    drop(unsafe { Vec::from_raw_parts(ptr, 0, cap.max(1)) });
+}
+
+/// Takes room from `tcsv_alloc(cap)` with its first `len` bytes written.
+///
+/// # Safety
+/// `ptr` and `cap` are what `tcsv_alloc(cap)` gave, `len <= cap` of it written.
+unsafe fn took(ptr: *mut u8, len: usize, cap: usize) -> Vec<u8> {
+    assert!(len <= cap.max(1));
+    // SAFETY: the caller's promise.
+    unsafe { Vec::from_raw_parts(ptr, len, cap.max(1)) }
+}
+
+/// Reads the `len` bytes written at `ptr` (room from `tcsv_alloc(cap)`, which this call
+/// takes). Null when the file does not read; `tcsv_error` says where and why.
+///
+/// # Safety
+/// `ptr` and `cap` are what `tcsv_alloc(cap)` gave, `len` bytes of it written.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn tcsv_read(ptr: *mut u8, len: usize, cap: usize) -> *mut Handle {
+    // SAFETY: the caller's promise.
+    let bytes = unsafe { took(ptr, len, cap) };
+    match tcsv::read(bytes) {
+        Ok(doc) => Box::into_raw(Box::new(Handle { doc, out: Vec::new(), problems: Vec::new() })),
+        Err(e) => {
+            let mut s = String::from("{\"at\":");
+            json_str(&mut s, &e.at.to_string());
+            s.push_str(",\"why\":");
+            json_str(&mut s, &e.why);
+            s.push('}');
+            shared().error = s.into_bytes();
+            std::ptr::null_mut()
+        }
+    }
+}
+
+/// The last failed read's error, `{"at":"row 3","why":"..."}`.
+#[unsafe(no_mangle)]
+pub extern "C" fn tcsv_error() -> *const u8 {
+    give(&shared().error)
+}
+
+/// # Safety
+/// `h` is a live handle from `tcsv_read`.
+unsafe fn handle<'a>(h: *mut Handle) -> &'a mut Handle {
+    assert!(!h.is_null(), "a null handle");
+    // SAFETY: the caller's promise.
+    unsafe { &mut *h }
+}
+
+/// Lets a handle go.
+///
+/// # Safety
+/// `h` is a live handle from `tcsv_read`, used no more.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn tcsv_drop(h: *mut Handle) {
+    // SAFETY: the caller's promise.
+    drop(unsafe { Box::from_raw(h) });
+}
+
+fn json_str(s: &mut String, v: &str) {
+    s.push('"');
+    for c in v.chars() {
+        match c {
+            '"' => s.push_str("\\\""),
+            '\\' => s.push_str("\\\\"),
+            '\n' => s.push_str("\\n"),
+            '\r' => s.push_str("\\r"),
+            '\t' => s.push_str("\\t"),
+            c if (c as u32) < 0x20 => {
+                let _ = write!(s, "\\u{:04x}", c as u32);
+            }
+            c => s.push(c),
+        }
+    }
+    s.push('"');
+}
+
+fn addr<T>(v: &[T]) -> usize {
+    v.as_ptr() as usize
+}
+
+/// Where everything is: the rows, the named types, every column's type, kind and buffers,
+/// the problems as `u32` triples (row, column, kind: 0 type, 1 missing, 2 key). Read again
+/// after every edit: an edit may move a column's buffers.
+///
+/// # Safety
+/// `h` is a live handle from `tcsv_read`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn tcsv_meta(h: *mut Handle) -> *const u8 {
+    // SAFETY: the caller's promise.
+    let h = unsafe { handle(h) };
+    let doc = &h.doc;
+    h.problems.clear();
+    for p in doc.problems() {
+        h.problems.extend([p.row, p.column, p.kind() as u32]);
+    }
+    let mut s = String::with_capacity(512);
+    let _ = write!(s, "{{\"rows\":{},\"stored\":{},\"newline\":", doc.rows(), doc.stored());
+    json_str(&mut s, doc.newline());
+    let _ = write!(
+        s,
+        ",\"trailing\":{},\"problems\":{},\"problemCount\":{},\"named\":{{",
+        doc.trailing(),
+        addr(&h.problems),
+        doc.problems().len()
+    );
+    for (k, t) in doc.named().iter().enumerate() {
+        if k > 0 {
+            s.push(',');
+        }
+        json_str(&mut s, &t.name);
+        s.push(':');
+        json_str(&mut s, &t.ty.shorthand());
+    }
+    s.push_str("},\"columns\":[");
+    for (k, c) in doc.columns().iter().enumerate() {
+        if k > 0 {
+            s.push(',');
+        }
+        s.push_str("{\"name\":");
+        json_str(&mut s, &c.name);
+        s.push_str(",\"type\":");
+        json_str(&mut s, &c.ty.shorthand());
+        s.push_str(",\"base\":");
+        json_str(&mut s, if c.computed.is_some() { "num" } else { c.ty.base.tag() });
+        let _ = write!(s, ",\"inferred\":{},\"key\":{},\"optional\":{}", c.ty.inferred, c.ty.key, c.ty.optional);
+        if let Some(e) = &c.computed {
+            s.push_str(",\"computed\":");
+            json_str(&mut s, e);
+        }
+        match &c.ty.base {
+            Base::Money(cur) => {
+                s.push_str(",\"currency\":");
+                json_str(&mut s, cur.as_str());
+            }
+            Base::Choice(words) => {
+                s.push_str(",\"choices\":[");
+                for (j, w) in words.iter().enumerate() {
+                    if j > 0 {
+                        s.push(',');
+                    }
+                    json_str(&mut s, w);
+                }
+                s.push(']');
+            }
+            Base::Bool { yes, no } => {
+                s.push_str(",\"words\":[");
+                json_str(&mut s, yes);
+                s.push(',');
+                json_str(&mut s, no);
+                s.push(']');
+            }
+            _ => {}
+        }
+        if let Some(f) = &c.ty.format {
+            s.push_str(",\"format\":");
+            json_str(&mut s, &f.spelled);
+        }
+        let _ = write!(s, ",\"nulls\":{},\"valid\":{}", c.nulls(), addr(&c.valid.bytes));
+        match &c.data {
+            Data::Text { offsets, bytes } => {
+                let _ =
+                    write!(s, ",\"kind\":\"text\",\"offsets\":{},\"bytes\":{},\"bytesLen\":{}", addr(offsets), addr(bytes), bytes.len());
+            }
+            Data::Int(v) => {
+                let _ = write!(s, ",\"kind\":\"int\",\"values\":{}", addr(v));
+            }
+            Data::Decimal { values, scale } => {
+                let _ = write!(s, ",\"kind\":\"decimal\",\"values\":{},\"scale\":{scale}", addr(values));
+            }
+            Data::Bool(b) => {
+                let _ = write!(s, ",\"kind\":\"bool\",\"values\":{}", addr(&b.bytes));
+            }
+            Data::Date(v) => {
+                let _ = write!(s, ",\"kind\":\"date\",\"values\":{}", addr(v));
+            }
+            Data::Time(v) => {
+                let _ = write!(s, ",\"kind\":\"time\",\"values\":{}", addr(v));
+            }
+            Data::DateTime { values, unit } => {
+                let _ = write!(s, ",\"kind\":\"datetime\",\"values\":{},\"unit\":{unit}", addr(values));
+            }
+            Data::Choice(v) => {
+                let _ = write!(s, ",\"kind\":\"choice\",\"values\":{}", addr(v));
+            }
+        }
+        s.push('}');
+    }
+    s.push_str("]}");
+    h.out = s.into_bytes();
+    give(&h.out)
+}
+
+/// The file's text: what was read, but for what was changed.
+///
+/// # Safety
+/// `h` is a live handle from `tcsv_read`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn tcsv_write(h: *mut Handle) -> *const u8 {
+    // SAFETY: the caller's promise.
+    let h = unsafe { handle(h) };
+    h.out = h.doc.write().into_bytes();
+    give(&h.out)
+}
+
+/// A stored cell's text as written, unquoted.
+///
+/// # Safety
+/// `h` is a live handle from `tcsv_read`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn tcsv_text(h: *mut Handle, row: usize, column: usize) -> *const u8 {
+    // SAFETY: the caller's promise.
+    let h = unsafe { handle(h) };
+    h.out = h.doc.text(row, column).into_owned().into_bytes();
+    give(&h.out)
+}
+
+/// Problem `i` in words: `row 3, cost: "8x.50" is not a number`.
+///
+/// # Safety
+/// `h` is a live handle from `tcsv_read`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn tcsv_describe(h: *mut Handle, i: usize) -> *const u8 {
+    // SAFETY: the caller's promise.
+    let h = unsafe { handle(h) };
+    h.out = h.doc.describe(&h.doc.problems()[i]).into_bytes();
+    give(&h.out)
+}
+
+/// Takes the text a page wrote into room from `tcsv_alloc`.
+///
+/// # Safety
+/// As `took`, the bytes UTF-8.
+unsafe fn take(ptr: *mut u8, len: usize, cap: usize) -> String {
+    // SAFETY: the caller's promise.
+    String::from_utf8(unsafe { took(ptr, len, cap) }).expect("the page writes UTF-8")
+}
+
+/// One cell's text changed (room from `tcsv_alloc(cap)`, `len` bytes of it written, which
+/// this call takes).
+///
+/// # Safety
+/// `h` is a live handle; `ptr`, `len`, `cap` as for `tcsv_read`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn tcsv_set_cell(h: *mut Handle, row: usize, column: usize, ptr: *mut u8, len: usize, cap: usize) {
+    // SAFETY: the caller's promise.
+    let (h, text) = unsafe { (handle(h), take(ptr, len, cap)) };
+    h.doc.set_cell(row, column, &text);
+}
+
+/// One column's type rewritten in shorthand; 0 when it read, else 1 with the error at
+/// `tcsv_error`.
+///
+/// # Safety
+/// `h` is a live handle; `ptr`, `len`, `cap` as for `tcsv_read`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn tcsv_set_type(h: *mut Handle, column: usize, ptr: *mut u8, len: usize, cap: usize) -> u32 {
+    // SAFETY: the caller's promise.
+    let (h, spelled) = unsafe { (handle(h), take(ptr, len, cap)) };
+    match h.doc.set_type(column, &spelled) {
+        Ok(()) => 0,
+        Err(e) => {
+            let mut s = String::from("{\"at\":");
+            json_str(&mut s, &e.at.to_string());
+            s.push_str(",\"why\":");
+            json_str(&mut s, &e.why);
+            s.push('}');
+            shared().error = s.into_bytes();
+            1
+        }
+    }
+}

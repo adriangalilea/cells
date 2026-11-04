@@ -1,0 +1,14 @@
+[package]
+name = "tcsv-wasm"
+version = "0.1.0"
+description = "The tcsv core as WebAssembly: read, write, set_cell, set_type over linear memory"
+publish = false
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+tcsv = { path = "../tcsv", default-features = false }
