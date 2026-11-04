@@ -31,7 +31,7 @@ interface Exports {
   tcsv_set_type(h: number, column: number, ptr: number, len: number, cap: number): number
 }
 
-function decodeBase64(s: string): Uint8Array {
+function decodeBase64(s: string): Uint8Array<ArrayBuffer> {
   const bin = atob(s)
   const out = new Uint8Array(bin.length)
   for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i)
@@ -110,6 +110,12 @@ interface Meta {
 }
 
 const TWO32 = 2 ** 32
+// BigInts by call, never by literal: a project vendoring this may compile for ES2017,
+// Next.js's default, where `0n` does not parse.
+const ZERO = BigInt(0)
+const ONE = BigInt(1)
+const TEN = BigInt(10)
+const WORD = BigInt(32)
 const pad = (n: number, w: number) => String(n).padStart(w, "0")
 
 /** `2026-08-14` from days since 1970-01-01 (Hinnant's civil_from_days). */
@@ -211,8 +217,8 @@ export class Column {
     let small = Math.abs(hi) < 0x200000
     for (let k = 2; k < words; k++) small &&= w[at + k] === sign
     if (small) return hi * TWO32 + lo
-    let v = 0n
-    for (let k = words - 1; k >= 0; k--) v = (v << 32n) | BigInt((w[at + k] as number) >>> 0)
+    let v = ZERO
+    for (let k = words - 1; k >= 0; k--) v = (v << WORD) | BigInt((w[at + k] as number) >>> 0)
     return BigInt.asIntN(32 * words, v)
   }
 
@@ -243,13 +249,13 @@ export class Column {
         return (m.choices as string[])[this.i16[(v >> 1) + i] as number] as string
       case "datetime": {
         const t = BigInt(this.wide((v >> 2) + 2 * i, 2))
-        const per = 10n ** BigInt(m.unit as number)
-        const secs = t / per - (t % per < 0n ? 1n : 0n)
+        const per = TEN ** BigInt(m.unit as number)
+        const secs = t / per - (t % per < ZERO ? ONE : ZERO)
         const frac = ((t % per) + per) % per
         const s = Number(secs)
         const days = Math.floor(s / 86400)
         let out = `${isoDate(days)}T${isoTime(s - days * 86400)}`
-        if (frac !== 0n) out += `.${frac.toString().padStart(m.unit as number, "0").replace(/0+$/, "")}`
+        if (frac !== ZERO) out += `.${frac.toString().padStart(m.unit as number, "0").replace(/0+$/, "")}`
         return `${out}Z`
       }
     }
