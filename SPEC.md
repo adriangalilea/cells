@@ -32,9 +32,9 @@ cost:EUR>=0
  ①  ②  ③
 ```
 
-1. **The name** is everything before the first `:`. A name may hold any character but `:`.
+1. **The name** is everything before the first `:`, spaces included (` item` and `item` are two names). A name may hold any character but `:`, and is at least one character. No two columns share a name, computed columns included.
 2. **`:`** says a type follows. A cell with no `:` is a plain column, its type inferred from its values (below). So every CSV is a TCSV with no types written.
-3. **The type** is everything after it. It never holds a `,` or a `"`, so a header cell never needs CSV's quoting.
+3. **The type** is everything after it, and never empty. It never holds a `,` or a `"`, so a header cell never needs CSV's quoting; a name that holds one quotes the whole cell (`"price, net:EUR"`).
 
 ## Types
 

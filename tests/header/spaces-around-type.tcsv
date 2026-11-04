@@ -1,0 +1,2 @@
+item: text !,qty:  int  >= 1 ,cost: EUR ?
+fuel,2,

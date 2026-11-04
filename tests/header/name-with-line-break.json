@@ -1,0 +1,10 @@
+{
+  "columns": [
+    { "name": "sown\non", "type": "date" },
+    { "name": "seed", "type": "text" }
+  ],
+  "rows": [
+    { "sown\non": { "date": "2026-03-14" }, "seed": { "text": "basil" } }
+  ],
+  "problems": []
+}

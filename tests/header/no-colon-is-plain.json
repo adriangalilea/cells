@@ -1,0 +1,12 @@
+{
+  "columns": [
+    { "name": "venue", "type": "text?", "inferred": true },
+    { "name": "crowd", "type": "int?", "inferred": true },
+    { "name": "date", "type": "date" }
+  ],
+  "rows": [
+    { "venue": { "text": "the old mill" }, "crowd": { "int": "120" }, "date": { "date": "2026-05-02" } },
+    { "venue": { "text": "the harbour shed" }, "crowd": { "int": "85" }, "date": { "date": "2026-05-09" } }
+  ],
+  "problems": []
+}

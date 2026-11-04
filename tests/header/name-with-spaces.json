@@ -1,0 +1,10 @@
+{
+  "columns": [
+    { "name": "item name", "type": "text!" },
+    { "name": "unit price", "type": "EUR" }
+  ],
+  "rows": [
+    { "item name": { "text": "fuel" }, "unit price": { "money": "1.80", "currency": "EUR" } }
+  ],
+  "problems": []
+}

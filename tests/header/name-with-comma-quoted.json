@@ -1,0 +1,10 @@
+{
+  "columns": [
+    { "name": "item", "type": "text" },
+    { "name": "price, net", "type": "EUR" }
+  ],
+  "rows": [
+    { "item": { "text": "fuel" }, "price, net": { "money": "70.00", "currency": "EUR" } }
+  ],
+  "problems": []
+}
