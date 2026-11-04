@@ -142,6 +142,34 @@ fn an_edit_reads_back_as_written() {
 }
 
 #[test]
+fn rows_rearranged_keep_their_cells() {
+    use crate::Row;
+    let mut rng = Rng(23);
+    for _ in 0..2000 {
+        let src = file(&mut rng);
+        let doc = crate::read(src.clone()).unwrap();
+        if doc.rows() == 0 {
+            continue;
+        }
+        // Reversed, the first row dropped, a new row in the middle.
+        let blank: Vec<&str> = (0..doc.stored()).map(|_| "").collect();
+        let mut order: Vec<Row> = (1..doc.rows()).rev().map(Row::Kept).collect();
+        order.insert(order.len() / 2, Row::New(&blank));
+        let after = doc.rearranged(&order, 1).unwrap_or_else(|e| panic!("{src:?}: {e}"));
+        assert_eq!(after.rows(), order.len(), "{src:?} became {:?}", after.write());
+        for (r, o) in order.iter().enumerate() {
+            for c in 0..doc.stored() {
+                let want = match o {
+                    Row::Kept(k) => doc.text(*k, c).into_owned(),
+                    Row::New(_) => String::new(),
+                };
+                assert_eq!(after.text(r, c), want, "row {r} of {:?}", after.write());
+            }
+        }
+    }
+}
+
+#[test]
 fn a_tail_read_alone_is_the_whole_read() {
     let mut rng = Rng(11);
     for _ in 0..3000 {
