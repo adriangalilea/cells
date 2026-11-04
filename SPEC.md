@@ -2,11 +2,13 @@
 
 > **Not yet final.** This spec is a draft: what follows is what the TypeScript and Swift readers implement today, and [Open](#open) holds what is decided in direction but not written, and what is undecided. Any of it may still change.
 
-Typed CSV. A `.tcsv` file is an RFC 4180 CSV whose header cells carry their column's type, `name:type`, and which may open with a prelude of named types and computed columns. One file, never a sidecar: the types travel with the data. MIME type `text/tcsv`.
+Typed CSV. A `.tcsv` file is a table whose header cells carry their column's type, `name:type`, and which may open with a prelude of named types and computed columns, fenced by `---`. One file, never a sidecar: the types travel with the data. MIME type `text/tcsv`.
 
 ```
-#! type Category = travel|stay|food|gear
-#! total = cost * qty                     // computed, never stored
+---
+type Category = travel|stay|food|gear
+total = cost * qty                        // computed, never stored
+---
 item:text!,category:Category,cost:EUR>=0,qty:int>=1,paid:yes/no,on:date
 fuel,travel,84.20,1,yes,2026-08-14
 groceries,food,96.75,2,no,2026-08-15
@@ -17,7 +19,7 @@ TCSV is its own format, read by TCSV readers. Its records borrow RFC 4180's quot
 ## The file
 
 - **Records** are RFC 4180: fields separated by `,`, a field holding `,`, `"` or a line break is quoted, `""` is a quote inside one. Lines end in `\n` or `\r\n`; whichever the file uses is kept, and so is whether it ends in a line break.
-- **The prelude** is the lines before the header that begin with `#!`. Each is a named type or a computed column (below). It is optional; a file with none starts at its header.
+- **The prelude** opens when the file's first line is `---` and closes at the next line that is `---`; between them, TCSV's own language (below). It is optional; a file with none starts at its header. A prelude that opens and never closes is an error.
 - **The header** is the first line after the prelude. Every other line is a row.
 - **A row** has as many fields as the header, or fewer, the missing ones blank. More is an error naming the row.
 
@@ -109,14 +111,18 @@ Inside a type, outside single quotes: `|` `/` `!` `?` `<` `>` `=` `..` `(` `)` `
 ## The prelude
 
 ```
-#! type Category = travel|stay|food|gear     // a named type
-#! total = cost * qty                        // a computed column
+---
+type Category = travel|stay|food|gear     // a named type
+total = cost * qty                        // a computed column
+---
 ```
 
-- **`#! type Name = <type>`** names a type for any header cell to use: `category:Category`. A name is a word starting with a capital letter; it may name another named type defined above it.
-- **`#! name = <expression>`** is a computed column: shown and read as a column after the header's, never stored in the rows. Its expression is pure and total (it always finishes, the same answer in every implementation): numbers, the names of numeric columns, `+ - * /`, parentheses. A blank or broken input makes the computed cell blank.
+One statement a line; a blank line is nothing.
+
+- **`type Name = <type>`** names a type for any header cell to use: `category:Category`. A name is a word starting with a capital letter; it may name another named type defined above it.
+- **`name = <expression>`** is a computed column: shown and read as a column after the header's, never stored in the rows. Its expression is pure and total (it always finishes, the same answer in every implementation): numbers, the names of numeric columns, `+ - * /`, parentheses. A blank or broken input makes the computed cell blank.
 - **`//`** starts a comment to the line's end, in the prelude only.
-- **Never an import.** A file never refers to another: what travels is one file.
+- **No import yet.** Today a file refers to no other; references between files are the next part of the format ([Open](#open)).
 
 ## Reading
 
@@ -136,10 +142,9 @@ The use it is designed against is **plain text accounting done properly**: books
 
 ### Decided in direction, not yet written
 
-- **TCSV is its own format.** It is read by TCSV readers; no rule is bent to keep a file readable by CSV tools. Compatibility survives only where it costs nothing.
 - **The filesystem as a graph database.** Files reference each other: a column typed by another file's key (`account_to:accounts.account`, `vendor:vendors.vendor`) is an edge, so a folder of `.tcsv` files is a graph of typed tables. No limit on how files compose. A reference that breaks (an account that does not exist, a key renamed in the other file) is a problem naming the file and row that broke it, never hidden; a tool notices before a break lands (the language server warns on the rename, the writer refuses to save a dangling reference without saying so).
   ```
-  ~/
+  ~/books/
   ├── accounts.tcsv              account:text!,kind:assets|liabilities|expenses|income
   ├── vendors.tcsv               vendor:text!,name:text,vat_id:text?
   ├── home/money.tcsv            account_from/account_to → accounts, vendor → vendors
@@ -147,8 +152,7 @@ The use it is designed against is **plain text accounting done properly**: books
   ├── travel/money.tcsv
   └── studio/money.tcsv
   ```
-- **Imports.** A file brings another's names (types, keys) into scope. Undecided between two semantics, or both: resolved live at every read (the graph is always current; a file alone is incomplete), or resolved when written with the imported definitions carried in the file, as a lockfile pins what it uses (a file alone is whole; a stale copy is detectable against its source). The syntax is open (`use ../accounts.tcsv`).
-- **The prelude a fenced block.** `---` above and below, TCSV's own language inside, `//` comments; in place of a `#!` on every line, which existed only so CSV tools could skip it.
+- **Imports.** A file brings another's names (types, keys) into scope with a statement in its prelude. Undecided between two semantics, or both: resolved live at every read (the graph is always current; a file alone is incomplete), or resolved when written with the imported definitions carried in the file, as a lockfile pins what it uses (a file alone is whole; a stale copy is detectable against its source). The keyword is open (`use`).
   ```
   ---
   use ../accounts.tcsv
@@ -166,16 +170,16 @@ The use it is designed against is **plain text accounting done properly**: books
 - **The query language.** Never one of ours. The candidates:
   - **SQL**, which every reader knows and which already runs over files (DuckDB reads a folder of CSV as tables); a folder of `.tcsv` is typed tables, so `amount` is a number and `date` a date:
     ```
-    $ tcsv sql ~ "
+    $ tcsv sql ~/books "
       select vendor, sum(amount) from money
-      where account_to like 'expenses:house:%' and year(date) = 2026
+      where account_to like 'expenses:home:%' and year(date) = 2026
       group by vendor"
     ```
     `money` is every `money.tcsv` under the folder, one table.
   - **GQL** (ISO/IEC 39075, 2024, Cypher's successor), the shape of the graph: following references from a movement to its account, an account to its parent, a vendor to everything it touched; awkward for sums and grouping, which are most of accounting.
   - **SQL/PGQ** (SQL:2023, property graph queries): GQL's `MATCH` inside SQL, so one query walks the graph and then sums and groups; DuckDB has it (`duckpgq`). The likely answer: the two standards, composed, nothing invented.
     ```
-    $ tcsv sql ~ "
+    $ tcsv sql ~/books "
       from graph_table(books
         match (m:money)-[:account_to]->(a:accounts)
         where a.account like 'expenses:%'
@@ -184,11 +188,11 @@ The use it is designed against is **plain text accounting done properly**: books
     ```
 - **The command line.** `tcsv sql` (above), `tcsv check` (every broken cell, dangling reference and duplicate key across a folder, by file and row), and what else a folder-as-database needs (a visualisation of the graph, a rename followed through every file).
   ```
-  $ tcsv check ~
+  $ tcsv check ~/books
   travel/money.tcsv row 14: account "assets:bank:mian" does not exist (accounts.tcsv)
   home/money.tcsv rows 3 and 9: the same invoice INV-0042 twice
   ```
-- **Words about a column and a title for the table.** A header cell has no room for a description without bloating it. With a fenced prelude, the prelude is the natural place; its syntax for them is open.
+- **Words about a column and a title for the table.** A header cell has no room for a description without bloating it; the prelude is the natural place, its syntax for them open.
 - **Strictness.** "A broken cell loads and is reported" is the proposal; whether a reader may also be asked to refuse a file is not decided.
 - **The expression language.** The arithmetic above is the floor. Its grammar beyond it (comparisons, text, conditionals, functions, reaching into a referenced file), and whether it is CEL itself, is undecided. It stays pure and total: an expression always finishes and gives the same answer in every implementation.
 - **Several values in one cell** (`tags:text[]`, split on `;`): useful (tags on a movement), and where a table starts to stretch; undecided.

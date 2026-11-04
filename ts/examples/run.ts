@@ -39,8 +39,10 @@ function throws(run: () => unknown, message: string) {
   throw new Error(`did not throw "${message}"`)
 }
 
-const BUDGET = `#! type Category = travel|stay|food|gear
-#! total = cost * qty                     // computed, never stored
+const BUDGET = `---
+type Category = travel|stay|food|gear
+total = cost * qty                        // computed, never stored
+---
 item:text!,category:Category,cost:EUR>=0,qty:int>=1,paid:yes/no,on:date
 fuel,travel,84.20,1,yes,2026-08-14
 groceries,food,96.75,2,no,2026-08-15
@@ -89,10 +91,10 @@ example("an edit changes that cell alone", () => {
 })
 
 example("compose: cells back into the file's own frame", () => {
-  const { doc } = read("#! type C = a|b\r\nk:C,n\r\na,1\r\n")
+  const { doc } = read("---\r\ntype C = a|b\r\n---\r\nk:C,n\r\na,1\r\n")
   equal(
     compose(doc, ["k:C", "n"], [["b", "2, or so"]]),
-    '#! type C = a|b\r\nk:C,n\r\nb,"2, or so"\r\n',
+    '---\r\ntype C = a|b\r\n---\r\nk:C,n\r\nb,"2, or so"\r\n',
     "prelude and line ending kept, quoted where needed",
   )
 })
@@ -195,14 +197,15 @@ example("every grammar error names where", () => {
   throws(() => read("a:travel|stay>=1\nx\n"), "a choice or a boolean takes no bounds")
   throws(() => read("a:int(YYYY)\n1\n"), "only a date or a time takes a format")
   throws(() => read("a:text int\nx\n"), "two types in one cell")
-  throws(() => read("#! nonsense here\na\n1\n"), "prelude line 1")
-  throws(() => read("#! t = a * b\na\n1\n"), 'no column "b"')
+  throws(() => read("---\nnonsense here\n---\na\n1\n"), "prelude line 1")
+  throws(() => read("---\n\n// why\nt = a * b\n---\na\n1\n"), 'no column "b"')
+  throws(() => read("---\ntype C = a|b\nk:C\na\n"), "opens with --- and never closes")
   throws(() => read('a\n"never closed\n'), "a quoted field is not closed")
   throws(() => parseHeader("a:between 1 2"), "between takes two numbers and and")
 })
 
 example("computed columns: blank or broken inputs make blank cells", () => {
-  const { rows } = read("#! per = cost / qty\ncost:num?,qty:int?\n10,0\n,2\n9,3\n")
+  const { rows } = read("---\nper = cost / qty\n---\ncost:num?,qty:int?\n10,0\n,2\n9,3\n")
   equal(rows.map((r) => r.per), [null, null, 3], "÷0 and a blank are blank")
 })
 

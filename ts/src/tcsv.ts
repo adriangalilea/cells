@@ -644,6 +644,9 @@ function evaluate(e: Expr, row: Record<string, Value>): number | null {
 
 // ── Reading and writing ─────────────────────────────────────────────────────────
 
+/** The line above and below the prelude. */
+const FENCE = "---"
+
 const stripComment = (line: string): string => {
   let quoted = false
   for (let i = 0; i < line.length; i++) {
@@ -665,9 +668,10 @@ export interface Read {
 export function read(text: string): Read {
   const newline = text.includes("\r\n") ? "\r\n" : "\n"
   const lines = text.split(newline)
-  const prelude: string[] = []
-  while (lines.length > 0 && (lines[0] as string).startsWith("#!"))
-    prelude.push(lines.shift() as string)
+  const fenced = lines[0] === FENCE
+  const close = fenced ? lines.indexOf(FENCE, 1) : -1
+  if (fenced && close < 0) throw new TcsvError("the prelude", `opens with ${FENCE} and never closes`)
+  const prelude = fenced ? lines.splice(0, close + 1) : []
   const body = lines.join(newline)
   const trailing = body.endsWith(newline)
   const all = records(trailing ? body.slice(0, -newline.length) : body, (n) =>
@@ -677,9 +681,9 @@ export function read(text: string): Read {
   const rows = all.slice(1)
   const named: Record<string, ColumnType> = {}
   const computed: { name: string; expression: string }[] = []
-  prelude.forEach((line, n) => {
+  prelude.slice(1, -1).forEach((line, n) => {
     const where = `prelude line ${n + 1}`
-    const said = stripComment(line.slice(2)).trim()
+    const said = stripComment(line).trim()
     if (said === "") return
     const t = /^type\s+([A-Z][A-Za-z0-9_]*)\s*=\s*(.+)$/.exec(said)
     if (t) {
