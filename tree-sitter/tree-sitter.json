@@ -15,7 +15,7 @@
   "metadata": {
     "version": "0.1.0",
     "description": "TCSV, typed CSV: records, typed header cells and the prelude",
-    "authors": [{ "name": "Adrian Galilea", "email": "adriangalilea@gmail.com" }],
+    "authors": [{ "name": "Adrian Galilea" }],
     "links": { "repository": "https://github.com/adriangalilea/tcsv" }
   },
   "bindings": {

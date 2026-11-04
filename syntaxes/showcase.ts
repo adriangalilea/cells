@@ -11,8 +11,7 @@ import grammar from "./tcsv.tmLanguage.json"
 
 const examples = join(import.meta.dir, "../tree-sitter/examples")
 
-// The pairs, the first shown first: rose pine is the palette Adrian's Helix
-// theme is built on.
+// The pairs, the first shown first.
 const PAIRS = [
   { id: "rose-pine", label: "Rosé Pine", dark: "rose-pine-moon", light: "rose-pine-dawn" },
   { id: "github", label: "GitHub", dark: "github-dark", light: "github-light" },
