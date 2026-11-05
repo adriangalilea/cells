@@ -1,0 +1,8 @@
+[
+  { "insert": 4, "header": "sum:EUR=cost * qty" },
+  { "insert": 5, "header": "vat:EUR=sum * tax / 100" },
+  { "remove": "vat" },
+  { "column": "qty", "type": "int=2" },
+  { "column": "qty", "type": "int" },
+  { "row": 0, "column": "qty", "text": "5" }
+]

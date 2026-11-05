@@ -15,6 +15,9 @@ const FOLDERS = [
   "marks",
   "explicit",
   "prelude",
+  "formulas",
+  "tables",
+  "imports",
   "inference",
   "problems",
   "write",
@@ -37,8 +40,10 @@ const TAGS = new Set([
   "id",
   "money",
   "choice",
+  "ref",
 ])
-const KINDS = ["type", "missing", "key"]
+const KINDS = ["type", "missing", "key", "formula", "reference"]
+const FROM = ["formula", "cell"]
 const AT = /^(the file|the header|the prelude|column [1-9]\d*|prelude line [1-9]\d*|row (0|[1-9]\d*))$/
 const DECIMAL = /^-?(0|[1-9]\d*)(\.\d+)?$/
 const INTEGER = /^-?(0|[1-9]\d*)$/
@@ -69,7 +74,10 @@ function value(path: string, what: string, v: Json | undefined): string | null {
     fault(path, `${what} is neither null nor a tagged value`)
     return null
   }
-  const tags = Object.keys(v).filter((k) => k !== "currency")
+  if ("from" in v && (typeof v.from !== "string" || !FROM.includes(v.from))) fault(path, `${what}: "from" is formula or cell`)
+  const tags = Object.keys(v).filter((k) => k !== "currency" && k !== "from")
+  // `{ "from": "formula" }`: a computed cell that gave nothing.
+  if (tags.length === 0 && "from" in v) return null
   if (tags.length !== 1) {
     fault(path, `${what} has ${tags.length} tags, not one`)
     return null
@@ -98,6 +106,7 @@ function value(path: string, what: string, v: Json | undefined): string | null {
     email: (x) => typeof x === "string",
     id: (x) => typeof x === "string" && /^[0-9a-hjkmnp-tv-z]{8}$/.test(x),
     choice: (x) => typeof x === "string",
+    ref: (x) => typeof x === "string",
   }
   if (!(shaped[tag] as (x: Json | undefined) => boolean)(x))
     fault(path, `${what}: ${JSON.stringify(x)} is not how the suite writes a ${tag}`)
@@ -131,12 +140,10 @@ function readsCase(path: string, j: { [k: string]: Json }, plain: boolean) {
   const columns = Array.isArray(j.columns) ? j.columns : []
   if (!Array.isArray(j.columns)) fault(path, `"columns" is not a list`)
   const names: string[] = []
-  const stored: string[] = []
-  let computedSeen = false
   columns.forEach((c, i) => {
     const what = `column ${i + 1}`
     if (!isObject(c)) return fault(path, `${what} is not an object`)
-    keysAre(path, what, c, ["name", "type"], plain ? ["inferred"] : ["inferred", "computed"])
+    keysAre(path, what, c, ["name", "type"], plain ? ["inferred"] : ["inferred", "formula"])
     if (plain && c.inferred !== true) fault(path, `${what}: a plain file's columns are all inferred`)
     if (typeof c.name !== "string" || (c.name === "" && !plain)) fault(path, `${what} has no name`)
     else if (names.includes(c.name) && !twice) fault(path, `${what}: the name "${c.name}" is taken`)
@@ -145,17 +152,13 @@ function readsCase(path: string, j: { [k: string]: Json }, plain: boolean) {
     if ("inferred" in c && c.inferred !== true) fault(path, `${what}: "inferred" is only ever true`)
     if (c.inferred === true && typeof c.type === "string" && !c.type.endsWith("?"))
       fault(path, `${what} is inferred, so optional, but its type is "${c.type}"`)
-    if ("computed" in c) {
-      if (typeof c.computed !== "string" || c.computed.trim() !== c.computed || c.computed === "")
-        fault(path, `${what}: "computed" is not an expression`)
-      if (c.type !== "num?") fault(path, `${what} is computed, so num?, not "${c.type}"`)
-      if ("inferred" in c) fault(path, `${what} is computed and inferred`)
-      computedSeen = true
-    } else {
-      if (computedSeen) fault(path, `${what} is stored, after a computed column`)
-      if (typeof c.name === "string") stored.push(c.name)
+    if ("formula" in c) {
+      if (typeof c.formula !== "string" || c.formula.trim() !== c.formula || c.formula === "")
+        fault(path, `${what}: "formula" is not a formula`)
+      if ("inferred" in c) fault(path, `${what} has a formula, so a type, and is no inferred column`)
     }
   })
+  const stored = names
   const rows = Array.isArray(j.rows) ? j.rows : []
   if (!Array.isArray(j.rows)) fault(path, `"rows" is not a list`)
   if (twice && rows.length > 0) fault(path, "two columns of one name, so rows keyed by name cannot say it: no rows")
@@ -174,8 +177,8 @@ function readsCase(path: string, j: { [k: string]: Json }, plain: boolean) {
       if (before === undefined) kinds.set(name, kind)
       else if (before !== kind) fault(path, `column "${name}" holds ${before} and ${kind}`)
       const column = columns.find((c) => isObject(c) && c.name === name)
-      if (isObject(column) && "computed" in column && kind !== "num")
-        fault(path, `row ${n}, ${name}: a computed value is num, not ${kind}`)
+      if (isObject(v) && v.from === "formula" && isObject(column) && !("formula" in column))
+        fault(path, `row ${n}, ${name}: computed by a formula its column does not have`)
     }
   })
   const problems = Array.isArray(j.problems) ? j.problems : []
@@ -188,16 +191,18 @@ function readsCase(path: string, j: { [k: string]: Json }, plain: boolean) {
     if (typeof p.row !== "number" || !Number.isInteger(p.row) || p.row < 0 || p.row >= rows.length)
       return fault(path, `${what} names no row`)
     if (typeof p.column !== "string" || !stored.includes(p.column))
-      return fault(path, `${what} names no stored column`)
+      return fault(path, `${what} names no column`)
     if (typeof p.kind !== "string" || !(plain ? ["ragged", "type"] : KINDS).includes(p.kind))
       return fault(path, `${what} has no known kind${plain ? " (a plain file's problems are ragged rows and control characters)" : ""}`)
     const at: [number, number] = [p.row, stored.indexOf(p.column)]
     if (at[0] < last[0] || (at[0] === last[0] && at[1] <= last[1]))
       fault(path, `${what} is out of order, or a second problem on one cell`)
     last = at
-    const v = (rows[p.row] as { [k: string]: Json })[p.column]
+    const cell = (rows[p.row] as { [k: string]: Json })[p.column]
+    const v = isObject(cell) && Object.keys(cell).every((k) => k === "from") ? null : cell
     if (p.kind === "key" && v === null) fault(path, `${what} is a duplicate key on a null value`)
-    if (!["key", "ragged"].includes(p.kind) && v !== null) fault(path, `${what} is ${p.kind}, but the value is not null`)
+    if (p.kind === "reference" && v === null) fault(path, `${what} is a reference to no row on a null value`)
+    if (!["key", "ragged", "reference"].includes(p.kind) && v !== null) fault(path, `${what} is ${p.kind}, but the value is not null`)
   })
 }
 
@@ -232,24 +237,6 @@ function edits(path: string, j: Json) {
     const refused = () => {
       if ("refused" in e && (typeof e.refused !== "string" || !AT.test(e.refused)))
         fault(path, `"${String(e.refused)}" is no place a refusal is reported`)
-    }
-    if ("compute" in e) {
-      keysAre(path, what, e, ["compute", "expression"], ["refused"])
-      if (typeof e.compute !== "string" || e.compute === "") fault(path, `${what}: "compute" is not a name`)
-      if (typeof e.expression !== "string") fault(path, `${what}: "expression" is not an expression`)
-      return refused()
-    }
-    if ("recompute" in e) {
-      keysAre(path, what, e, ["recompute", "expression"], ["name", "refused"])
-      named(what, e.recompute)
-      if (typeof e.expression !== "string") fault(path, `${what}: "expression" is not an expression`)
-      if ("name" in e && typeof e.name !== "string") fault(path, `${what}: "name" is not a name`)
-      return refused()
-    }
-    if ("uncompute" in e) {
-      keysAre(path, what, e, ["uncompute"], ["refused"])
-      named(what, e.uncompute)
-      return refused()
     }
     if ("insert" in e) {
       keysAre(path, what, e, ["insert", "header"], ["cells", "refused"])

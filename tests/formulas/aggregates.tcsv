@@ -1,0 +1,4 @@
+item:text,cost:EUR,"share:pct=round(cost * 100 / sum(cost), 1)",above_average:bool=cost > avg(cost),rank_top:bool=cost = max(cost)
+rent,950.00,,,
+power,64.30,,,
+food,210.00,,,

@@ -3,8 +3,8 @@
 type Shelf = A|B
 
 
-double = copies * 2
+type Copies = int>=0
 
 ---
-title:text,shelf:Shelf,copies:int
-Salt and Sky,A,2
+title:text,shelf:Shelf,copies:Copies,double:num?=copies * 2
+Salt and Sky,A,2,

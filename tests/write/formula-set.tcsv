@@ -1,0 +1,2 @@
+﻿item:text!,cost:EUR,qty:int,total:EUR=cost * qty
+fuel,84.20,2,

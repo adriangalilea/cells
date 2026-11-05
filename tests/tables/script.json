@@ -1,0 +1,13 @@
+{
+  "columns": [
+    { "name": "date", "type": "date" },
+    { "name": "usd", "type": "USD>0" },
+    { "name": "eur", "type": "EUR", "formula": "usd * eurusd[date].rate" },
+    { "name": "note", "type": "text?" }
+  ],
+  "rows": [
+    { "date": { "date": "2026-11-03" }, "usd": { "money": "180.00", "currency": "USD" }, "eur": { "money": "167.17", "currency": "EUR", "from": "formula" }, "note": { "text": "two nights" } },
+    { "date": { "date": "2026-11-05" }, "usd": { "money": "42.50", "currency": "USD" }, "eur": { "from": "formula" }, "note": null }
+  ],
+  "problems": []
+}

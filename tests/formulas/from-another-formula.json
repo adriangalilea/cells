@@ -1,0 +1,15 @@
+{
+  "columns": [
+    { "name": "item", "type": "text" },
+    { "name": "cost", "type": "EUR" },
+    { "name": "qty", "type": "int" },
+    { "name": "fee", "type": "EUR" },
+    { "name": "total", "type": "EUR", "formula": "subtotal + fee" },
+    { "name": "subtotal", "type": "EUR", "formula": "cost * qty" }
+  ],
+  "rows": [
+    { "item": { "text": "tickets" }, "cost": { "money": "4.50", "currency": "EUR" }, "qty": { "int": "3" }, "fee": { "money": "1.25", "currency": "EUR" }, "total": { "money": "14.75", "currency": "EUR", "from": "formula" }, "subtotal": { "money": "13.5", "currency": "EUR", "from": "formula" } },
+    { "item": { "text": "maps" }, "cost": { "money": "2.75", "currency": "EUR" }, "qty": { "int": "4" }, "fee": { "money": "0", "currency": "EUR" }, "total": { "money": "11", "currency": "EUR", "from": "formula" }, "subtotal": { "money": "11", "currency": "EUR", "from": "formula" } }
+  ],
+  "problems": []
+}

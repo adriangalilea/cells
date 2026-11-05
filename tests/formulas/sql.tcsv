@@ -1,0 +1,3 @@
+item:text,cost:EUR,qty:int?,size:text=case when cost > 50 then 'big' else 'small' end,"label:text=item || ' x' || coalesce(qty, 0)",dear:yes/no=cost >= 80 and qty is not null,"rounded:EUR=round(cost / 3, 2)",loud:text=upper(item)
+fuel,84.20,1,,,,,
+maps,12.50,,,,,,

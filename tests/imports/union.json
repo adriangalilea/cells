@@ -1,0 +1,15 @@
+{
+  "columns": [
+    { "name": "amount", "type": "EUR" },
+    { "name": "to", "type": "shared.account|clients.account" }
+  ],
+  "rows": [
+    { "amount": { "money": "2400.00", "currency": "EUR" }, "to": { "ref": "salary:acme" } },
+    { "amount": { "money": "950.00", "currency": "EUR" }, "to": { "ref": "rent" } },
+    { "amount": { "money": "12.00", "currency": "EUR" }, "to": { "ref": "nowhere" } }
+  ],
+  "problems": [
+    { "row": 1, "column": "to", "kind": "reference" },
+    { "row": 2, "column": "to", "kind": "reference" }
+  ]
+}

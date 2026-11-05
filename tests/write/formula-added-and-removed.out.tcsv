@@ -1,0 +1,2 @@
+item:text,cost:EUR,qty:int,tax:pct,sum:EUR=cost * qty
+fuel,2.50,5,21,

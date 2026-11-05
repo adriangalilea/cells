@@ -1,5 +1,0 @@
----
-total = cost * qty
----
-item,cost:EUR,qty:int,note
-fuel,2.50,4,full tank

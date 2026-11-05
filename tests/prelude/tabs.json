@@ -1,14 +1,14 @@
 {
-  "types": { "Kind": "travel|stay" },
+  "types": { "Kind": "travel|stay", "Cost": "EUR" },
   "columns": [
     { "name": "item", "type": "text!" },
     { "name": "kind", "type": "Kind" },
-    { "name": "cost", "type": "EUR" },
+    { "name": "cost", "type": "Cost" },
     { "name": "qty", "type": "int" },
-    { "name": "total", "type": "num?", "computed": "cost\t*\tqty" }
+    { "name": "total", "type": "EUR", "formula": "cost\t*\tqty" }
   ],
   "rows": [
-    { "item": { "text": "fuel" }, "kind": { "choice": "travel" }, "cost": { "money": "84.20", "currency": "EUR" }, "qty": { "int": "2" }, "total": { "num": "168.4" } }
+    { "item": { "text": "fuel" }, "kind": { "choice": "travel" }, "cost": { "money": "84.20", "currency": "EUR" }, "qty": { "int": "2" }, "total": { "money": "168.4", "currency": "EUR", "from": "formula" } }
   ],
   "problems": []
 }

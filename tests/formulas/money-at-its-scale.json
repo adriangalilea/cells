@@ -1,0 +1,17 @@
+{
+  "columns": [
+    { "name": "amount", "type": "num" },
+    { "name": "eur", "type": "EUR", "formula": "amount" },
+    { "name": "jpy", "type": "JPY", "formula": "amount" },
+    { "name": "kwd", "type": "KWD", "formula": "amount" },
+    { "name": "gold", "type": "XAU", "formula": "amount" },
+    { "name": "share", "type": "num", "formula": "amount / 3" }
+  ],
+  "rows": [
+    { "amount": { "num": "2.345" }, "eur": { "money": "2.34", "currency": "EUR", "from": "formula" }, "jpy": { "money": "2", "currency": "JPY", "from": "formula" }, "kwd": { "money": "2.345", "currency": "KWD", "from": "formula" }, "gold": { "money": "2.345", "currency": "XAU", "from": "formula" }, "share": { "num": "0.7816666666666666666666666666666667", "from": "formula" } },
+    { "amount": { "num": "2.355" }, "eur": { "money": "2.36", "currency": "EUR", "from": "formula" }, "jpy": { "money": "2", "currency": "JPY", "from": "formula" }, "kwd": { "money": "2.355", "currency": "KWD", "from": "formula" }, "gold": { "money": "2.355", "currency": "XAU", "from": "formula" }, "share": { "num": "0.785", "from": "formula" } },
+    { "amount": { "num": "1234.5" }, "eur": { "money": "1234.50", "currency": "EUR", "from": "formula" }, "jpy": { "money": "1234", "currency": "JPY", "from": "formula" }, "kwd": { "money": "1234.500", "currency": "KWD", "from": "formula" }, "gold": { "money": "1234.5", "currency": "XAU", "from": "formula" }, "share": { "num": "411.5", "from": "formula" } },
+    { "amount": { "num": "1.23456" }, "eur": { "money": "1.23", "currency": "EUR", "from": "formula" }, "jpy": { "money": "1", "currency": "JPY", "from": "formula" }, "kwd": { "money": "1.235", "currency": "KWD", "from": "formula" }, "gold": { "money": "1.23456", "currency": "XAU", "from": "formula" }, "share": { "num": "0.41152", "from": "formula" } }
+  ],
+  "problems": []
+}

@@ -1,13 +1,13 @@
 {
-  "types": { "Stage": "main|side" },
+  "types": { "Stage": "main|side", "Length": "num>0" },
   "columns": [
     { "name": "band", "type": "text" },
     { "name": "stage", "type": "Stage" },
     { "name": "minutes", "type": "int" },
-    { "name": "length", "type": "num?", "computed": "minutes / 60" }
+    { "name": "hours", "type": "Length", "formula": "minutes / 60" }
   ],
   "rows": [
-    { "band": { "text": "The Lanterns" }, "stage": { "choice": "main" }, "minutes": { "int": "90" }, "length": { "num": "1.5" } }
+    { "band": { "text": "The Lanterns" }, "stage": { "choice": "main" }, "minutes": { "int": "90" }, "hours": { "num": "1.5", "from": "formula" } }
   ],
   "problems": []
 }

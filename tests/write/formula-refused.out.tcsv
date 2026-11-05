@@ -1,0 +1,2 @@
+item:text,cost:EUR,qty:int,note,total:EUR=cost * qty
+fuel,2.50,4,full tank,

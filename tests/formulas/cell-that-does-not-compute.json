@@ -1,0 +1,20 @@
+{
+  "columns": [
+    { "name": "item", "type": "text" },
+    { "name": "cost", "type": "EUR" },
+    { "name": "qty", "type": "int" },
+    { "name": "total", "type": "EUR", "formula": "cost * qty" }
+  ],
+  "rows": [
+    { "item": { "text": "broken" }, "cost": { "from": "cell" }, "qty": { "int": "1" }, "total": { "from": "formula" } },
+    { "item": { "text": "missing" }, "cost": { "from": "cell" }, "qty": { "int": "1" }, "total": { "from": "formula" } },
+    { "item": { "text": "itself" }, "cost": { "from": "cell" }, "qty": { "int": "2" }, "total": { "from": "formula" } },
+    { "item": { "text": "wrong kind" }, "cost": { "from": "cell" }, "qty": { "int": "1" }, "total": { "from": "formula" } }
+  ],
+  "problems": [
+    { "row": 0, "column": "cost", "kind": "formula" },
+    { "row": 1, "column": "cost", "kind": "formula" },
+    { "row": 2, "column": "cost", "kind": "formula" },
+    { "row": 3, "column": "cost", "kind": "formula" }
+  ]
+}

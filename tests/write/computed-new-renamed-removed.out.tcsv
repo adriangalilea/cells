@@ -1,7 +1,0 @@
-﻿---
-// the budget
-sum = cost * qty
-net = sum - 1
----
-item,cost:EUR,qty:int,tax:pct
-fuel,2.50,4,21

@@ -1,9 +1,9 @@
 ---
 // the gigs of the tour
 type Venue = hall|club|park   // where we play
-fee = price * tickets          // never stored
+type Price = EUR>=0           // never below nothing
 // the end of the prelude
 ---
-night:text!,venue:Venue,price:EUR,tickets:int
-first,club,12.50,3
-second,park,4.50,10
+night:text!,venue:Venue,price:Price,tickets:int,fee:EUR=price * tickets
+first,club,12.50,3,
+second,park,4.50,10,

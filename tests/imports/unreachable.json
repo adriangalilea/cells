@@ -1,0 +1,13 @@
+{
+  "types": { "Region": "text" },
+  "columns": [
+    { "name": "vendor", "type": "vendors.vendor" },
+    { "name": "region", "type": "Region" },
+    { "name": "amount", "type": "EUR" },
+    { "name": "rate", "type": "num", "formula": "rates[vendor].rate" }
+  ],
+  "rows": [
+    { "vendor": { "ref": "fuel-stop" }, "region": { "text": "north" }, "amount": { "money": "10", "currency": "EUR" }, "rate": { "from": "formula" } }
+  ],
+  "problems": []
+}

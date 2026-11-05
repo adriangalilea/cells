@@ -1,0 +1,6 @@
+{
+  "types": { "Rate": "pct>=0" },
+  "columns": [{ "name": "note", "type": "text" }],
+  "rows": [{ "note": { "text": "the shared rates" } }],
+  "problems": []
+}

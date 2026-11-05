@@ -1,0 +1,8 @@
+---
+rates = run every hour
+```ts
+export default async () => []
+```
+---
+amount:EUR
+10

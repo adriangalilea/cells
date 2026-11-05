@@ -1,0 +1,16 @@
+{
+  "columns": [
+    { "name": "item", "type": "text" },
+    { "name": "paid", "type": "EUR" },
+    { "name": "refund", "type": "EUR" },
+    { "name": "net", "type": "EUR>=0", "formula": "paid - refund" },
+    { "name": "units", "type": "int", "formula": "paid / 4" }
+  ],
+  "rows": [
+    { "item": { "text": "tent" }, "paid": { "money": "120.00", "currency": "EUR" }, "refund": { "money": "20.00", "currency": "EUR" }, "net": { "money": "100", "currency": "EUR", "from": "formula" }, "units": { "int": "30", "from": "formula" } },
+    { "item": { "text": "boots" }, "paid": { "money": "60.00", "currency": "EUR" }, "refund": { "money": "90.00", "currency": "EUR" }, "net": { "from": "formula" }, "units": { "int": "15", "from": "formula" } }
+  ],
+  "problems": [
+    { "row": 1, "column": "net", "kind": "type" }
+  ]
+}

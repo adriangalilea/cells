@@ -1,0 +1,15 @@
+{
+  "columns": [
+    { "name": "dinner", "type": "text" },
+    { "name": "bill", "type": "int" },
+    { "name": "people", "type": "int" },
+    { "name": "share", "type": "num", "formula": "bill / people" }
+  ],
+  "rows": [
+    { "dinner": { "text": "first" }, "bill": { "int": "1" }, "people": { "int": "3" }, "share": { "num": "0.3333333333333333333333333333333333", "from": "formula" } },
+    { "dinner": { "text": "second" }, "bill": { "int": "2" }, "people": { "int": "3" }, "share": { "num": "0.6666666666666666666666666666666667", "from": "formula" } },
+    { "dinner": { "text": "third" }, "bill": { "int": "10" }, "people": { "int": "4" }, "share": { "num": "2.5", "from": "formula" } },
+    { "dinner": { "text": "fourth" }, "bill": { "int": "-7" }, "people": { "int": "3" }, "share": { "num": "-2.333333333333333333333333333333333", "from": "formula" } }
+  ],
+  "problems": []
+}

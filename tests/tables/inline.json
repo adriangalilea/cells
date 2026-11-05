@@ -1,0 +1,17 @@
+{
+  "columns": [
+    { "name": "date", "type": "date" },
+    { "name": "amount", "type": "EUR>0" },
+    { "name": "kind", "type": "fees.kind" },
+    { "name": "fee", "type": "EUR", "formula": "amount * fees[kind].pct / 100" },
+    { "name": "card_rate", "type": "pct", "formula": "fees['card'].pct" }
+  ],
+  "rows": [
+    { "date": { "date": "2026-11-03" }, "amount": { "money": "120.00", "currency": "EUR" }, "kind": { "ref": "card" }, "fee": { "money": "1.68", "currency": "EUR", "from": "formula" }, "card_rate": { "pct": "1.4", "from": "formula" } },
+    { "date": { "date": "2026-11-04" }, "amount": { "money": "45.50", "currency": "EUR" }, "kind": { "ref": "transfer" }, "fee": { "money": "0", "currency": "EUR", "from": "formula" }, "card_rate": { "pct": "1.4", "from": "formula" } },
+    { "date": { "date": "2026-11-05" }, "amount": { "money": "10.00", "currency": "EUR" }, "kind": { "ref": "cash" }, "fee": { "from": "formula" }, "card_rate": { "pct": "1.4", "from": "formula" } }
+  ],
+  "problems": [
+    { "row": 2, "column": "kind", "kind": "reference" }
+  ]
+}

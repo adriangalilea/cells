@@ -1,0 +1,2 @@
+item:text,qty:int,total:int=total + 1
+fuel,1,

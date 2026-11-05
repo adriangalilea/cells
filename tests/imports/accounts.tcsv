@@ -1,0 +1,7 @@
+---
+export type Kind = assets|expenses|income
+---
+account:text!,kind:Kind
+bank,assets
+rent,expenses
+salary,income

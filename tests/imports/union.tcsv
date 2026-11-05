@@ -1,0 +1,12 @@
+---
+import shared from "./accounts.tcsv"
+clients = ```tcsv
+account:text!
+salary:acme
+rent
+```
+---
+amount:EUR,to:shared.account|clients.account
+2400.00,salary:acme
+950.00,rent
+12.00,nowhere

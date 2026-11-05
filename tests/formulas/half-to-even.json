@@ -1,0 +1,12 @@
+{
+  "columns": [
+    { "name": "jar", "type": "text" },
+    { "name": "grains", "type": "num" },
+    { "name": "half", "type": "num", "formula": "grains / 2" }
+  ],
+  "rows": [
+    { "jar": { "text": "first" }, "grains": { "num": "12345678901234567890123456789012345" }, "half": { "num": "6172839450617283945061728394506172", "from": "formula" } },
+    { "jar": { "text": "second" }, "grains": { "num": "12345678901234567890123456789012347" }, "half": { "num": "6172839450617283945061728394506174", "from": "formula" } }
+  ],
+  "problems": []
+}

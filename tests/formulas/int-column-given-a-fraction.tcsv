@@ -1,0 +1,3 @@
+box:text,items:int,people:int,each:int=items / people
+first,12,4,
+second,10,4,

@@ -1,6 +1,4 @@
----
-total = cost * qty
----
-seed,cost:EUR,qty:int
-basil,2.50,4
-"leek, winter",1.10,
+seed,cost:EUR,qty:int?,total:EUR=cost * qty
+basil,2.50,4,
+"leek, winter",1.10,,
+chard,3.00,2,7.00

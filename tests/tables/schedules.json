@@ -1,0 +1,5 @@
+{
+  "columns": [{ "name": "n", "type": "int" }],
+  "rows": [{ "n": { "int": "1" } }],
+  "problems": []
+}

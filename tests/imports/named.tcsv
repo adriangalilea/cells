@@ -1,0 +1,5 @@
+---
+import { Rate, fees } from "./exports.tcsv"
+---
+amount:EUR,kind:fees.kind,rate:Rate=fees[kind].pct
+120.00,card,

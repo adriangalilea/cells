@@ -1,13 +1,13 @@
 {
-  "types": { "Shelf": "A|B" },
+  "types": { "Shelf": "A|B", "Copies": "int>=0" },
   "columns": [
     { "name": "title", "type": "text" },
     { "name": "shelf", "type": "Shelf" },
-    { "name": "copies", "type": "int" },
-    { "name": "double", "type": "num?", "computed": "copies * 2" }
+    { "name": "copies", "type": "Copies" },
+    { "name": "double", "type": "num?", "formula": "copies * 2" }
   ],
   "rows": [
-    { "title": { "text": "Salt and Sky" }, "shelf": { "choice": "A" }, "copies": { "int": "2" }, "double": { "num": "4" } }
+    { "title": { "text": "Salt and Sky" }, "shelf": { "choice": "A" }, "copies": { "int": "2" }, "double": { "num": "4", "from": "formula" } }
   ],
   "problems": []
 }

@@ -1,0 +1,5 @@
+amount:num,eur:EUR=amount,jpy:JPY=amount,kwd:KWD=amount,gold:XAU=amount,share:num=amount / 3
+2.345,,,,,
+2.355,,,,,
+1234.5,,,,,
+1.23456,,,,,

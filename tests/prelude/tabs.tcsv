@@ -1,6 +1,6 @@
 ---
 	type	Kind	=	travel|stay	// a tab before and between
-total	=	cost	*	qty
+type	Cost	=	EUR
 ---
-item:text!,kind:Kind,cost:EUR,qty:int
-fuel,travel,84.20,2
+item:text!,kind:Kind,cost:Cost,qty:int,total:EUR=cost	*	qty
+fuel,travel,84.20,2,

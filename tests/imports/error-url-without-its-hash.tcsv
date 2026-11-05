@@ -1,0 +1,5 @@
+---
+import rates from "https://rates.example/eurusd.tcsv"
+---
+amount:EUR
+10

@@ -1,0 +1,2 @@
+item:text,cost:EUR,total:EUR=cost * item
+fuel,84.20,

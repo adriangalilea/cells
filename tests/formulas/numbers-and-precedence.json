@@ -1,0 +1,19 @@
+{
+  "columns": [
+    { "name": "a", "type": "int" },
+    { "name": "b", "type": "int" },
+    { "name": "c", "type": "int" },
+    { "name": "d", "type": "int" },
+    { "name": "sum_first", "type": "num", "formula": "a + b * c" },
+    { "name": "grouped", "type": "num", "formula": "(a + b) * c" },
+    { "name": "from_left", "type": "num", "formula": "d - a - b" },
+    { "name": "divided", "type": "num", "formula": "d / c * a" },
+    { "name": "soil", "type": "num", "formula": "0.5 * a + 2" },
+    { "name": "owed", "type": "num", "formula": "-d" },
+    { "name": "twice_back", "type": "num", "formula": "2 * -b" }
+  ],
+  "rows": [
+    { "a": { "int": "2" }, "b": { "int": "3" }, "c": { "int": "4" }, "d": { "int": "12" }, "sum_first": { "num": "14", "from": "formula" }, "grouped": { "num": "20", "from": "formula" }, "from_left": { "num": "7", "from": "formula" }, "divided": { "num": "6", "from": "formula" }, "soil": { "num": "3", "from": "formula" }, "owed": { "num": "-12", "from": "formula" }, "twice_back": { "num": "-6", "from": "formula" } }
+  ],
+  "problems": []
+}

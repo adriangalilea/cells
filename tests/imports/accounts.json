@@ -1,0 +1,13 @@
+{
+  "types": { "Kind": "assets|expenses|income" },
+  "columns": [
+    { "name": "account", "type": "text!" },
+    { "name": "kind", "type": "Kind" }
+  ],
+  "rows": [
+    { "account": { "text": "bank" }, "kind": { "choice": "assets" } },
+    { "account": { "text": "rent" }, "kind": { "choice": "expenses" } },
+    { "account": { "text": "salary" }, "kind": { "choice": "income" } }
+  ],
+  "problems": []
+}

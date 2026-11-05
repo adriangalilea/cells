@@ -1,0 +1,10 @@
+---
+fees = ```tcsv
+kind:text!
+```
+fees = ```tcsv
+kind:text!
+```
+---
+amount:EUR
+10

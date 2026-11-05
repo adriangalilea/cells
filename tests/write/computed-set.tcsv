@@ -1,6 +1,0 @@
----
-type Category = travel|food
-total = cost * qty                        // never stored
----
-item:text!,category:Category,cost:EUR,qty:int
-fuel,travel,84.20,2

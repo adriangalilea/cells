@@ -1,5 +1,0 @@
----
-total = total + 1
----
-item:text,qty:int
-fuel,1

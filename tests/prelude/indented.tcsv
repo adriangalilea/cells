@@ -1,6 +1,6 @@
 ---
     type Stage = main|side
-  length = minutes / 60
+  type Length = num>0
 ---
-band:text,stage:Stage,minutes:int
-The Lanterns,main,90
+band:text,stage:Stage,minutes:int,hours:Length=minutes / 60
+The Lanterns,main,90,

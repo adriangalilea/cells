@@ -1,0 +1,3 @@
+dinner:text,bill:EUR,people:int,share:EUR=bill / people
+first,30.00,0,
+second,30.00,4,

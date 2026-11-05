@@ -1,0 +1,21 @@
+---
+eurusd = run every day at 18:00 in Europe/Madrid
+```ts
+export default async function ({ last }) {
+  const res = await fetch(`https://api.exchange.example/usdeur?since=${last.date}`)
+  return (await res.json()).map(d => ({ date: d.day, rate: String(d.close) }))
+}
+```
+```tcsv
+date:date!,rate:num>0,run:int
+2026-11-03,0.9287,9
+2026-11-04,0.9312,9
+```
+```tcsv runs
+run:int!,at:datetime,outcome:ok|failed,error:text?
+9,2026-11-04T17:00:03Z,ok,
+```
+---
+date:date,usd:USD>0,eur:EUR=usd * eurusd[date].rate,note:text?
+2026-11-03,180.00,,two nights
+2026-11-05,42.50,,

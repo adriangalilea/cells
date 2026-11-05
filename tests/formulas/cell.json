@@ -1,0 +1,13 @@
+{
+  "columns": [
+    { "name": "item", "type": "text" },
+    { "name": "cost", "type": "EUR" },
+    { "name": "qty", "type": "int" }
+  ],
+  "rows": [
+    { "item": { "text": "fuel" }, "cost": { "money": "84.20", "currency": "EUR" }, "qty": { "int": "1" } },
+    { "item": { "text": "split dinner" }, "cost": { "money": "32.25", "currency": "EUR", "from": "cell" }, "qty": { "int": "1" } },
+    { "item": { "text": "twice" }, "cost": { "money": "4.5", "currency": "EUR", "from": "cell" }, "qty": { "int": "2", "from": "cell" } }
+  ],
+  "problems": []
+}

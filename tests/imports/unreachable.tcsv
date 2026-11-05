@@ -1,0 +1,7 @@
+---
+import vendors from "./nowhere.tcsv"
+import { Region } from "./nowhere.tcsv"
+import rates from "https://rates.example/eurusd.tcsv" with { sha256: "9c1e7f0a5d" }
+---
+vendor:vendors.vendor,region:Region,amount:EUR,rate:num=rates[vendor].rate
+fuel-stop,north,10,

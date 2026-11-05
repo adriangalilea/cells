@@ -1,0 +1,12 @@
+{
+  "columns": [
+    { "name": "item", "type": "text" },
+    { "name": "amount", "type": "EUR" },
+    { "name": "vat", "type": "EUR", "formula": "amount * 21 / 121" }
+  ],
+  "rows": [
+    { "item": { "text": "lamp" }, "amount": { "money": "64.30", "currency": "EUR" }, "vat": { "money": "11.16", "currency": "EUR", "from": "formula" } },
+    { "item": { "text": "invoice 42" }, "amount": { "money": "80.00", "currency": "EUR" }, "vat": { "money": "13.89", "currency": "EUR" } }
+  ],
+  "problems": []
+}

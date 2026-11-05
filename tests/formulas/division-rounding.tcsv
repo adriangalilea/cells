@@ -1,0 +1,5 @@
+dinner:text,bill:int,people:int,share:num=bill / people
+first,1,3,
+second,2,3,
+third,10,4,
+fourth,-7,3,

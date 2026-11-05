@@ -1,0 +1,2 @@
+a:int,b:int,c:int,d:int,sum_first:num=a + b * c,grouped:num=(a + b) * c,from_left:num=d - a - b,divided:num=d / c * a,soil:num=0.5 * a + 2,owed:num=-d,twice_back:num=2 * -b
+2,3,4,12,,,,,,,

@@ -1,0 +1,3 @@
+item:text,paid:EUR,refund:EUR,net:EUR>=0=paid - refund,units:int=paid / 4
+tent,120.00,20.00,,
+boots,60.00,90.00,,

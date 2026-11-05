@@ -1,0 +1,12 @@
+{
+  "columns": [
+    { "name": "note", "type": "text" },
+    { "name": "code", "type": "text?" }
+  ],
+  "rows": [
+    { "note": { "text": "=> see invoice" }, "code": { "text": "=x" } },
+    { "note": { "text": "`=x`" }, "code": { "text": "``=y`" } },
+    { "note": { "text": "`=` alone" }, "code": { "text": "`plain`" } }
+  ],
+  "problems": []
+}

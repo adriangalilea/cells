@@ -1,6 +1,0 @@
----
-share = bill / people
----
-dinner:text,bill:EUR,people:int
-first,30.00,0
-second,30.00,4

@@ -1,1 +1,0 @@
-[{ "recompute": "total", "expression": "cost * nope", "refused": "prelude line 1" }, { "compute": "x", "expression": "note * 2", "refused": "prelude line 2" }, { "compute": "qty", "expression": "cost", "refused": "prelude line 2" }, { "compute": "y", "expression": "cost // qty", "refused": "prelude line 2" }, { "uncompute": "total" }]

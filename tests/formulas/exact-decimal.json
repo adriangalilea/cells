@@ -1,0 +1,13 @@
+{
+  "columns": [
+    { "name": "deposit", "type": "num" },
+    { "name": "fee", "type": "num" },
+    { "name": "both", "type": "num", "formula": "deposit + fee" },
+    { "name": "thrice", "type": "num", "formula": "fee * 3" }
+  ],
+  "rows": [
+    { "deposit": { "num": "0.1" }, "fee": { "num": "0.2" }, "both": { "num": "0.3", "from": "formula" }, "thrice": { "num": "0.6", "from": "formula" } },
+    { "deposit": { "num": "0.7" }, "fee": { "num": "1.10" }, "both": { "num": "1.8", "from": "formula" }, "thrice": { "num": "3.3", "from": "formula" } }
+  ],
+  "problems": []
+}

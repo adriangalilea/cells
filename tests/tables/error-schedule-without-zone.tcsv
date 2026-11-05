@@ -1,0 +1,11 @@
+---
+rates = run every day at 18:00
+```ts
+export default async () => []
+```
+```tcsv
+rate:num
+```
+---
+amount:EUR
+10

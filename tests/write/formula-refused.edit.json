@@ -1,0 +1,7 @@
+[
+  { "column": "total", "type": "EUR=cost * nope", "refused": "column 5" },
+  { "column": "total", "type": "EUR=note * 2", "refused": "column 5" },
+  { "column": "total", "type": "EUR=total + 1", "refused": "column 5" },
+  { "column": "cost", "type": "text", "refused": "column 2" },
+  { "insert": 5, "header": "x:EUR=cost *", "refused": "column 6" }
+]

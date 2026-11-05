@@ -1,0 +1,2 @@
+item:text,cost:EUR,x:EUR=sqrt(cost)
+fuel,4,

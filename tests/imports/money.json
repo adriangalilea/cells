@@ -1,0 +1,19 @@
+{
+  "types": { "Kind": "assets|expenses|income" },
+  "columns": [
+    { "name": "date", "type": "date" },
+    { "name": "amount", "type": "EUR>0" },
+    { "name": "from", "type": "accounts.account" },
+    { "name": "to", "type": "accounts.account" },
+    { "name": "spending", "type": "bool", "formula": "to.kind = 'expenses'" },
+    { "name": "kind", "type": "Kind?" }
+  ],
+  "rows": [
+    { "date": { "date": "2026-11-01" }, "amount": { "money": "950.00", "currency": "EUR" }, "from": { "ref": "bank" }, "to": { "ref": "rent" }, "spending": { "bool": true, "from": "formula" }, "kind": null },
+    { "date": { "date": "2026-11-03" }, "amount": { "money": "2400.00", "currency": "EUR" }, "from": { "ref": "salary" }, "to": { "ref": "bank" }, "spending": { "bool": false, "from": "formula" }, "kind": { "choice": "income" } },
+    { "date": { "date": "2026-11-05" }, "amount": { "money": "30.00", "currency": "EUR" }, "from": { "ref": "bank" }, "to": { "ref": "coffee" }, "spending": { "from": "formula" }, "kind": null }
+  ],
+  "problems": [
+    { "row": 2, "column": "to", "kind": "reference" }
+  ]
+}

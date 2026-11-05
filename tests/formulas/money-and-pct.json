@@ -1,0 +1,14 @@
+{
+  "columns": [
+    { "name": "item", "type": "text" },
+    { "name": "amount", "type": "EUR" },
+    { "name": "rate", "type": "pct" },
+    { "name": "vat", "type": "EUR", "formula": "amount * rate / (100 + rate)" }
+  ],
+  "rows": [
+    { "item": { "text": "lamp" }, "amount": { "money": "64.30", "currency": "EUR" }, "rate": { "pct": "21" }, "vat": { "money": "11.16", "currency": "EUR", "from": "formula" } },
+    { "item": { "text": "book" }, "amount": { "money": "18.40", "currency": "EUR" }, "rate": { "pct": "10" }, "vat": { "money": "1.67", "currency": "EUR", "from": "formula" } },
+    { "item": { "text": "fee" }, "amount": { "money": "950.00", "currency": "EUR" }, "rate": { "pct": "0" }, "vat": { "money": "0", "currency": "EUR", "from": "formula" } }
+  ],
+  "problems": []
+}

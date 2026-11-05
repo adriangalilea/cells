@@ -1,0 +1,15 @@
+{
+  "columns": [
+    { "name": "item", "type": "text" },
+    { "name": "cost", "type": "EUR" },
+    { "name": "share", "type": "pct", "formula": "round(cost * 100 / sum(cost), 1)" },
+    { "name": "above_average", "type": "bool", "formula": "cost > avg(cost)" },
+    { "name": "rank_top", "type": "bool", "formula": "cost = max(cost)" }
+  ],
+  "rows": [
+    { "item": { "text": "rent" }, "cost": { "money": "950.00", "currency": "EUR" }, "share": { "pct": "77.6", "from": "formula" }, "above_average": { "bool": true, "from": "formula" }, "rank_top": { "bool": true, "from": "formula" } },
+    { "item": { "text": "power" }, "cost": { "money": "64.30", "currency": "EUR" }, "share": { "pct": "5.3", "from": "formula" }, "above_average": { "bool": false, "from": "formula" }, "rank_top": { "bool": false, "from": "formula" } },
+    { "item": { "text": "food" }, "cost": { "money": "210.00", "currency": "EUR" }, "share": { "pct": "17.2", "from": "formula" }, "above_average": { "bool": false, "from": "formula" }, "rank_top": { "bool": false, "from": "formula" } }
+  ],
+  "problems": []
+}

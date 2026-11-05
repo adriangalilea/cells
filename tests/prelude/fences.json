@@ -5,11 +5,11 @@
     { "name": "category", "type": "Category" },
     { "name": "cost", "type": "EUR>=0" },
     { "name": "qty", "type": "int>=1" },
-    { "name": "total", "type": "num?", "computed": "cost * qty" }
+    { "name": "total", "type": "EUR", "formula": "cost * qty" }
   ],
   "rows": [
-    { "item": { "text": "fuel" }, "category": { "choice": "travel" }, "cost": { "money": "84.20", "currency": "EUR" }, "qty": { "int": "1" }, "total": { "num": "84.2" } },
-    { "item": { "text": "groceries" }, "category": { "choice": "food" }, "cost": { "money": "96.75", "currency": "EUR" }, "qty": { "int": "2" }, "total": { "num": "193.5" } }
+    { "item": { "text": "fuel" }, "category": { "choice": "travel" }, "cost": { "money": "84.20", "currency": "EUR" }, "qty": { "int": "1" }, "total": { "money": "84.2", "currency": "EUR", "from": "formula" } },
+    { "item": { "text": "groceries" }, "category": { "choice": "food" }, "cost": { "money": "96.75", "currency": "EUR" }, "qty": { "int": "2" }, "total": { "money": "193.5", "currency": "EUR", "from": "formula" } }
   ],
   "problems": []
 }

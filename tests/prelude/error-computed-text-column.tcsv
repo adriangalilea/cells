@@ -1,6 +1,0 @@
----
-// item is text, never a number
-total = cost * item
----
-item:text,cost:EUR,qty:int
-fuel,84.20,1

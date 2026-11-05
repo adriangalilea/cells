@@ -1,0 +1,2 @@
+seed:text,kilos:num,grams:num=1e3 * kilos
+basil,0.5,

@@ -1,0 +1,15 @@
+{
+  "columns": [
+    { "name": "box", "type": "text" },
+    { "name": "items", "type": "int" },
+    { "name": "people", "type": "int" },
+    { "name": "each", "type": "int", "formula": "items / people" }
+  ],
+  "rows": [
+    { "box": { "text": "first" }, "items": { "int": "12" }, "people": { "int": "4" }, "each": { "int": "3", "from": "formula" } },
+    { "box": { "text": "second" }, "items": { "int": "10" }, "people": { "int": "4" }, "each": { "from": "formula" } }
+  ],
+  "problems": [
+    { "row": 1, "column": "each", "kind": "type" }
+  ]
+}
