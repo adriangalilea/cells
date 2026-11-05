@@ -128,6 +128,98 @@ fn doc_or_fail(read: Result<Doc, cells::Error>, failure: *mut CellsFailure) -> *
     }
 }
 
+/// Reads the file as `cells_read` does, its imports followed through the files the caller
+/// holds: `count` paths, each with its text, by the path an import names read from `at`,
+/// the file's own path (`books/home/money.cell` importing `../accounts.cell` finds
+/// `books/accounts.cell`). An import of a file not held reads as unreachable.
+///
+/// # Safety
+/// As `cells_read`; `at` is UTF-8; `paths` and `texts` point at `count` strings of UTF-8.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn cells_read_with(
+    bytes: *const u8,
+    len: usize,
+    at: CellsStr,
+    paths: *const CellsStr,
+    texts: *const CellsStr,
+    count: usize,
+    threads: usize,
+    failure: *mut CellsFailure,
+) -> *mut CellsDoc {
+    // SAFETY: the caller's promise.
+    let (src, at) = unsafe { (owned(bytes, len), text_of(at.ptr, at.len)) };
+    let held: std::collections::BTreeMap<String, String> = (0..count)
+        .map(|k| {
+            // SAFETY: the caller's promise: `count` strings at each.
+            unsafe {
+                let (p, t) = (&*paths.add(k), &*texts.add(k));
+                (text_of(p.ptr, p.len).to_owned(), text_of(t.ptr, t.len).to_owned())
+            }
+        })
+        .collect();
+    doc_or_fail(cells::read_with(src, &mut cells::files::Files::new(&held, at), threads.max(1)), failure)
+}
+
+/// Reads the file at `path`, its bytes given, its imports followed from the disk: a path
+/// read from the importing file's folder as it is now. A URL, or a file at a revision,
+/// reads as unreachable: the command line fetches and reads git, an app does neither.
+///
+/// # Safety
+/// As `cells_read`; `path` is UTF-8.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn cells_read_at(
+    bytes: *const u8,
+    len: usize,
+    path: CellsStr,
+    threads: usize,
+    failure: *mut CellsFailure,
+) -> *mut CellsDoc {
+    // SAFETY: the caller's promise.
+    let (src, path) = unsafe { (owned(bytes, len), text_of(path.ptr, path.len)) };
+    doc_or_fail(cells::read_with(src, &mut Disk::new(std::path::Path::new(path)), threads.max(1)), failure)
+}
+
+/// The imports of the file at `at`, read from its folder.
+struct Disk {
+    at: std::path::PathBuf,
+    /// The files importing this one, so a cycle is found.
+    stack: Vec<std::path::PathBuf>,
+}
+
+impl Disk {
+    fn new(at: &std::path::Path) -> Disk {
+        Disk { at: std::fs::canonicalize(at).unwrap_or_else(|_| at.to_path_buf()), stack: Vec::new() }
+    }
+}
+
+impl cells::Imports for Disk {
+    fn import(&mut self, i: &cells::Import) -> Result<Option<Doc>, String> {
+        if cells::files::is_url(&i.from) || i.with.iter().any(|(k, _)| k == "rev") {
+            return Ok(None);
+        }
+        let folder = self.at.parent().unwrap_or(std::path::Path::new("."));
+        let path = folder.join(&i.from);
+        let Ok(path) = std::fs::canonicalize(&path) else { return Ok(None) };
+        if path == self.at || self.stack.contains(&path) {
+            return Err(format!("{} imports itself", path.display()));
+        }
+        let Ok(bytes) = std::fs::read(&path) else { return Ok(None) };
+        let mut stack = self.stack.clone();
+        stack.push(self.at.clone());
+        let mut inner = Disk { at: path, stack };
+        cells::read_with(bytes, &mut inner, 1).map(Some).map_err(|e| format!("{e}"))
+    }
+}
+
+/// `len` bytes copied out of the caller's buffer.
+///
+/// # Safety
+/// `bytes` points at `len` readable bytes, or `len` is 0.
+unsafe fn owned(bytes: *const u8, len: usize) -> Vec<u8> {
+    // SAFETY: the caller's promise.
+    if len == 0 { Vec::new() } else { unsafe { std::slice::from_raw_parts(bytes, len) }.to_vec() }
+}
+
 /// `cells_read` in a dialect: `sep` 0 for Cells, else a plain file's separator byte (`,`
 /// `;` `\t` `|`), read leniently: a plain file is refused only for bytes that are not
 /// UTF-8, or past 4 GiB.
@@ -1109,6 +1201,36 @@ mod tests {
 
     fn lent(s: &str) -> CellsStr {
         CellsStr::of(s)
+    }
+
+    #[test]
+    fn imports_held_and_on_disk() {
+        let accounts = "account:text!\nrent\nbank\n";
+        let money = "---\nimport accounts from \"../accounts.cell\"\n---\namount:EUR,to:accounts.account\n950,rent\n9,rnet\n";
+        let mut f = CellsFailure { at: CellsAt::CellsAtNone, number: 0, why: ptr::null_mut(), why_len: 0 };
+        // SAFETY: valid pointers throughout.
+        unsafe {
+            let paths = [lent("books/accounts.cell"), lent("books/home/money.cell")];
+            let texts = [lent(accounts), lent(money)];
+            let d =
+                cells_read_with(money.as_ptr(), money.len(), lent("books/home/money.cell"), paths.as_ptr(), texts.as_ptr(), 2, 1, &mut f);
+            assert!(!d.is_null());
+            assert_eq!(cells_problem_count(d), 1);
+            assert_eq!(cells_problem(d, 0).kind, CellsKind::CellsKindReference);
+            cells_free(d);
+
+            let dir = std::env::temp_dir().join(format!("cells-ffi-{}", std::process::id()));
+            std::fs::create_dir_all(dir.join("home")).unwrap();
+            std::fs::write(dir.join("accounts.cell"), accounts).unwrap();
+            let at = dir.join("home/money.cell");
+            let at = at.to_str().unwrap();
+            let d = cells_read_at(money.as_ptr(), money.len(), lent(at), 1, &mut f);
+            assert!(!d.is_null());
+            assert_eq!(cells_problem_count(d), 1);
+            assert_eq!(text(cells_describe(d, 0)), "row 1, to: \"rnet\" is no key of accounts");
+            cells_free(d);
+            std::fs::remove_dir_all(&dir).unwrap();
+        }
     }
 
     #[test]
