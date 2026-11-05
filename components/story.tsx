@@ -87,7 +87,7 @@ function Step({ step, index }: { step: StoryStep; index: number }) {
             </div>
           )}
           {files.length === 1 && <FileName name={file.name} />}
-          <CellEditor name={file.name} value={file.text} onChange={edit} problems={judged.problems} label={`edit ${file.name}`} />
+          <CellEditor name={file.name} value={file.text} onChange={edit} problems={judged.problems} broken={judged.broken} label={`edit ${file.name}`} />
         </Pane>
         <View step={step} files={files} read={read} />
       </div>
@@ -126,14 +126,14 @@ function FileName({ name, note }: { name: string; note?: string }) {
   )
 }
 
+/** What breaks the file's grammar, then what breaks its cells: each in the engine's words. */
 function Problems({ read }: { read: ViewTable }) {
-  if (read.error) return <p className="px-4 py-3 font-mono text-[12px] text-haze">{read.error}</p>
-  if (read.problems.length === 0)
-    return <p className="px-4 py-3 font-mono text-[12px] text-edge/80">every cell holds its type</p>
+  const said = [...read.broken.map((b) => b.why), ...read.problems.map((p) => p.why)]
+  if (said.length === 0) return <p className="px-4 py-3 font-mono text-[12px] text-edge/80">every cell holds its type</p>
   return (
     <ul className="space-y-1 px-4 py-3 font-mono text-[12px] text-haze">
-      {read.problems.map((p) => (
-        <li key={`${p.row}:${p.at}`}>{p.why}</li>
+      {said.map((s) => (
+        <li key={s}>{s}</li>
       ))}
     </ul>
   )

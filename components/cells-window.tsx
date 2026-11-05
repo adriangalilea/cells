@@ -17,27 +17,11 @@ type Row = { id: string; cells: ViewCell[] }
 
 const NONE: { name: string; text: string }[] = []
 
-/** A file read as it stands (`now`), and the table to show (`shown`): the file's own while
- *  it reads; while its grammar does not (a header cell half typed), `held`, the text as it
- *  last read (a still has no past to remember, so the caller says it), else the last
- *  table this view drew. A table never gives way to an error, and nothing moves. */
-function useRead(
-  name: string,
-  text: string,
-  others: { name: string; text: string }[],
-  held?: string,
-): { now: ViewTable; shown: ViewTable } {
+/** A file read as it stands. It always has its table: a break in its grammar (a header
+ *  cell half typed) degrades only what it breaks, that column read as text. */
+function useRead(name: string, text: string, others: { name: string; text: string }[]): ViewTable {
   const engine = useEngine()
-  const now = React.useMemo(() => readFiles(engine, [{ name, text }, ...others]), [engine, name, text, others])
-  const kept = React.useMemo(
-    () => (now.error && held !== undefined ? readFiles(engine, [{ name, text: held }, ...others]) : null),
-    [engine, now, name, held, others],
-  )
-  const good = React.useRef<ViewTable | null>(null)
-  if (!now.error) good.current = now
-  else if (kept && !kept.error) good.current = kept
-  const shown = now.error && good.current ? { ...good.current, problems: [] } : now
-  return { now, shown }
+  return React.useMemo(() => readFiles(engine, [{ name, text }, ...others]), [engine, name, text, others])
 }
 
 /** A file as a table: its columns, its rows, its problems by cell. */
@@ -45,19 +29,16 @@ export function CellsTable({
   name,
   text,
   others = NONE,
-  held,
   label,
   className,
 }: {
   name: string
   text: string
   others?: { name: string; text: string }[]
-  /** The text as it last read, shown while `text` does not. */
-  held?: string
   label: string
   className?: string
 }) {
-  const read = useRead(name, text, others, held).shown
+  const read = useRead(name, text, others)
   const rows = React.useMemo<Row[]>(() => read.rows.map((cells, i) => ({ id: String(i), cells })), [read])
   const problems = React.useMemo(() => {
     const m = new Map<string, string>()
@@ -87,8 +68,6 @@ export function CellsTable({
       })),
     [read],
   )
-  // A file that has never read (nothing to keep on screen): its columns' place, empty.
-  if (read.error) return <div className={className} />
   return (
     <Table
       rows={rows}
@@ -113,19 +92,17 @@ export function CellsWindow({
   name,
   text,
   others = NONE,
-  held,
   className,
 }: {
   name: string
   text: string
   /** The files it imports, as they stand. */
   others?: { name: string; text: string }[]
-  /** The text as it last read, shown while `text` does not. */
-  held?: string
   className?: string
 }) {
-  const { now } = useRead(name, text, others)
-  const said = now.error ? [now.error] : now.problems.map((p) => p.why)
+  const now = useRead(name, text, others)
+  // A break in the grammar first (it names its column), then the cells' problems.
+  const said = [...now.broken.map((b) => b.why), ...now.problems.map((p) => p.why)]
   return (
     <div
       data-slot="cells-window"
@@ -143,7 +120,7 @@ export function CellsWindow({
         </span>
       </div>
       <div className="dark min-h-0 flex-1 overflow-hidden text-[11px]">
-        <CellsTable name={name} text={text} others={others} held={held} label={name} className="h-full" />
+        <CellsTable name={name} text={text} others={others} label={name} className="h-full" />
       </div>
       <div
         data-slot="cells-window-problems"

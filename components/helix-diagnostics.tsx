@@ -13,7 +13,7 @@ import { useEngine } from "@/components/use-engine"
 import { readFiles } from "@/lib/cells"
 import { type CodeTimeline, codeFrameAt, placeOf } from "@/lib/code-session"
 import { textAt } from "@/lib/hero"
-import { placeProblems } from "@/lib/spans"
+import { placeBroken, placeProblems } from "@/lib/spans"
 import { LINE_HEIGHT } from "@/lib/terminal-session"
 
 /** terminal-editor's own: rows kept between the caret and the foot, the gutter's least
@@ -32,8 +32,7 @@ export function HelixDiagnostics({ timeline, rows, others = [] }: { timeline: Co
   if (!f.active) return null
   const imports = others.filter((p) => p !== f.active).map((p) => ({ name: p, text: textAt(timeline, p, ms) }))
   const read = readFiles(engine, [{ name: f.active, text: f.text }, ...imports])
-  if (read.error) return null
-  const placed = placeProblems(f.text, read.problems)
+  const placed = [...placeBroken(f.text, read.broken), ...placeProblems(f.text, read.problems)]
   const lines = f.text.split("\n")
   const top = Math.max(0, placeOf(f.text, f.caret).line - rows + SCROLL_OFF)
   const gutter = Math.max(DIGITS, String(lines.length).length) + 2

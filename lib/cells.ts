@@ -35,8 +35,10 @@ export interface ViewTable {
   /** Each value by column name, for a step that asks questions of it. */
   values: Record<string, Value[]>
   problems: { row: number; at: number; column: string; kind: Problem["kind"]; why: string; reason: string }[]
-  /** The file does not read at all (its grammar): where and why. */
-  error?: string
+  /** Where the file's grammar breaks (a header cell half typed, a prelude statement):
+   *  only that part degrades, the table always reads. `why` names what broke; `span` is
+   *  its first byte and length in UTF-8 bytes of the text. */
+  broken: { at: string; why: string; span?: [number, number] }[]
 }
 
 const NUMERIC = new Set(["int", "num", "pct", "money"])
@@ -50,44 +52,40 @@ function shown(c: Column, r: number, v: Value): string {
   return c.form(v)
 }
 
-/** The first file of `files`, read as the reader would open it. */
+/** The first file of `files`, read as the reader would open it. A file always opens with
+ *  its table; the engine throws only for bytes that are not UTF-8, which a string never
+ *  holds, so a throw here is a bug and screams. */
 export function readFiles(engine: Engine, files: readonly StoryFile[]): ViewTable {
   const [first, ...others] = files
   if (!first) throw new Error("cells: a step with no file")
+  const r = first.name.endsWith(".csv")
+    ? engine.readAs(first.text, engine.detect(first.text))
+    : engine.read(first.text, { at: first.name, files: Object.fromEntries(others.map((f) => [f.name, f.text])) })
   try {
-    const r = first.name.endsWith(".csv")
-      ? engine.readAs(first.text, engine.detect(first.text))
-      : engine.read(first.text, { at: first.name, files: Object.fromEntries(others.map((f) => [f.name, f.text])) })
-    try {
-      const columns = r.columns.map(
-        (c): ViewColumn => ({
-          name: c.name,
-          spelled: c.spelled,
-          base: c.base,
-          ...(c.formula ? { formula: c.formula } : {}),
-          key: c.type.includes("!"),
-          inferred: c.inferred,
+    const columns = r.columns.map(
+      (c): ViewColumn => ({
+        name: c.name,
+        spelled: c.spelled,
+        base: c.base,
+        ...(c.formula ? { formula: c.formula } : {}),
+        key: c.type.includes("!"),
+        inferred: c.inferred,
+      }),
+    )
+    const rows: ViewCell[][] = []
+    const values: Record<string, Value[]> = Object.fromEntries(r.columns.map((c) => [c.name, []]))
+    for (let i = 0; i < r.doc.rowCount; i++)
+      rows.push(
+        r.columns.map((c) => {
+          const v = c.value(i)
+          values[c.name]?.push(v)
+          return { text: c.text(i), shown: shown(c, i, v), origin: c.origin(i), numeric: NUMERIC.has(c.base) }
         }),
       )
-      const rows: ViewCell[][] = []
-      const values: Record<string, Value[]> = Object.fromEntries(r.columns.map((c) => [c.name, []]))
-      for (let i = 0; i < r.doc.rowCount; i++)
-        rows.push(
-          r.columns.map((c) => {
-            const v = c.value(i)
-            values[c.name]?.push(v)
-            return { text: c.text(i), shown: shown(c, i, v), origin: c.origin(i), numeric: NUMERIC.has(c.base) }
-          }),
-        )
-      const problems = r.problems.map((p) => ({ row: p.row, at: p.at, column: p.column, kind: p.kind, why: p.why, reason: p.reason }))
-      return { columns, rows, values, problems }
-    } finally {
-      r.doc.free()
-    }
-  } catch (e) {
-    // A file whose grammar does not read (being typed, mid-edit) is shown as that, never
-    // as a crash; anything else is a bug and screams.
-    if (e instanceof engine.CellsError) return { columns: [], rows: [], values: {}, problems: [], error: `${e.where}: ${e.why}` }
-    throw e
+    const problems = r.problems.map((p) => ({ row: p.row, at: p.at, column: p.column, kind: p.kind, why: p.why, reason: p.reason }))
+    const broken = r.broken.map((b) => ({ at: b.at, why: b.why, ...(b.span ? { span: b.span } : {}) }))
+    return { columns, rows, values, problems, broken }
+  } finally {
+    r.doc.free()
   }
 }

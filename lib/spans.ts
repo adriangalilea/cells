@@ -80,6 +80,33 @@ function recordsFrom(text: string, start: number): [number, number][][] {
   return records
 }
 
+/** A break in the file's grammar placed on its characters, as a problem is: the engine's
+ *  span is in UTF-8 bytes of the text, turned here into the text's own characters. A
+ *  break with no span is named in a list, never drawn on a guess. A span may cross lines
+ *  (a fence never closed): it is marked on its first. */
+export function placeBroken(text: string, broken: readonly { why: string; span?: [number, number] }[]): Placed[] {
+  const bytes = new TextEncoder().encode(text)
+  const decoder = new TextDecoder()
+  const charAt = (byte: number) => decoder.decode(bytes.subarray(0, byte)).length
+  const placed: Placed[] = []
+  for (const b of broken) {
+    if (!b.span) continue
+    const [start, length] = b.span
+    if (start + length > bytes.length) throw new Error(`spans: a break's span ${start}+${length} runs past the text's ${bytes.length} bytes`)
+    const from = charAt(start)
+    const lineStart = text.lastIndexOf("\n", from - 1) + 1
+    const lineEnd = text.indexOf("\n", from)
+    const to = Math.min(charAt(start + length), lineEnd === -1 ? text.length : lineEnd)
+    placed.push({
+      line: text.slice(0, from).split("\n").length,
+      from: from - lineStart,
+      to: Math.max(from - lineStart + 1, to - lineStart),
+      message: b.why,
+    })
+  }
+  return placed
+}
+
 /** Every problem placed on its cell's characters. A problem whose cell the text does
  *  not hold (a file mid-edit, a row the engine read that this scan did not) is left out
  *  rather than drawn in the wrong place. */

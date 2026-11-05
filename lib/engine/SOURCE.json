@@ -1,9 +1,9 @@
 {
   "from": "/Users/adrian/Developer/tcsv",
-  "copied": "2026-11-05T16:25:21.914Z",
+  "copied": "2026-11-05T17:04:31.939Z",
   "files": {
-    "lib/engine/cells.ts": "rust/cells-wasm/js/cells.ts sha256:6e0a86f6784b69f9",
-    "public/cells.wasm": "rust/cells-wasm/js/cells.wasm sha256:10e870c55539f60e",
+    "lib/engine/cells.ts": "rust/cells-wasm/js/cells.ts sha256:961b52974ec17cfb",
+    "public/cells.wasm": "rust/cells-wasm/js/cells.wasm sha256:b436944b96b33d41",
     "lib/engine/cells.tmLanguage.json": "syntaxes/cells.tmLanguage.json sha256:39a6e37f4cf6da45"
   }
 }

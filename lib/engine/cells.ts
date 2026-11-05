@@ -7,7 +7,10 @@
 //
 // A column's values stay in the module's memory as typed arrays; `rows` builds objects only
 // when it is read, and `column.value(i)` reads one cell. A broken cell is a problem, its
-// value null; a broken grammar throws `CellsError` naming where. Unlike ts/src/cells.ts, an
+// value null; a broken grammar takes out only what it breaks, each break in `broken` (a
+// header cell that does not read is a column of text, a prelude statement left out, a
+// column formula's cells blank, the rows ending at a record that does not read). Only
+// bytes that are not UTF-8 throw `CellsError`. Unlike ts/src/cells.ts, an
 // edit changes the doc it is given (and returns it): the file is held once, in the module.
 
 import { engineModule } from "@/lib/engine-module"
@@ -110,6 +113,7 @@ interface Meta {
   dialect: Dialect
   quotesAll: boolean
   names: { column: number; kind: "blank" | "twice" }[]
+  broken: Broken[]
   prelude: string
   trailing: boolean
   problems: number
@@ -295,7 +299,7 @@ export class Column {
    *  text that would read as a formula (`` `=x` ``) with its first backtick doubled. */
   form(v: Value): string {
     if (v === null) return ""
-    if (typeof v === "string" && /^`+=.*`$/s.test(v) && v.length >= 3) return `\`${v}`
+    if (typeof v === "string" && /^`+=[\s\S]*`$/.test(v) && v.length >= 3) return `\`${v}`
     if (typeof v === "boolean") {
       const [yes, no] = this.m.words ?? ["true", "false"]
       return v ? yes : no
@@ -327,7 +331,7 @@ export interface Problem {
   /** The column's name, and its place among the columns. */
   column: string
   at: number
-  /** `ragged`: a plain file's row of another width than its header; `formula`: a cell's
+  /** `ragged`: a row longer than its header (in a plain file, shorter too); `formula`: a cell's
    *  own formula that does not compute; `reference`: a key no table it names holds, or
    *  two do. */
   kind: "type" | "missing" | "key" | "ragged" | "formula" | "reference"
@@ -338,6 +342,17 @@ export interface Problem {
   /** The same without its place, for a view that shows it on the cell:
    *  `"8x.50" is not a number`. */
   readonly reason: string
+}
+
+/** Where a file's grammar breaks, the rest read. */
+export interface Broken {
+  /** `column 3`, `prelude line 2`, `row 4`, `the header`, `the prelude`. */
+  at: string
+  /** In words naming what broke: `to: accounts has no column "a" (its key is account)`. */
+  why: string
+  /** Where it is in the text `write` gives now: its first byte and its length, in UTF-8
+   *  bytes. */
+  span?: [number, number]
 }
 
 /** A plain file's header cell that names its column badly: blank, or another's name too. */
@@ -404,6 +419,10 @@ export class Doc {
         return returned(x.cells_naming_why(doc.handle, i))
       },
     }))
+  }
+  /** Where the grammar breaks, in the file's order; empty for a file that reads whole. */
+  get broken(): Broken[] {
+    return this.meta.broken
   }
   /** Whether the file ends in a line break. */
   get trailing(): boolean {
@@ -477,6 +496,7 @@ export interface Read {
   /** Each row's values by column name, computed cells included; built when first read. */
   readonly rows: Record<string, Value>[]
   problems: Problem[]
+  broken: Broken[]
 }
 
 /** Files a page holds, for a file's imports: `at` the file's own path, `files` every other
@@ -522,6 +542,7 @@ function opened(h: number): Read {
     doc,
     columns: doc.columns,
     problems: doc.problems(),
+    broken: doc.broken,
     get rows() {
       if (rows === null) {
         rows = []

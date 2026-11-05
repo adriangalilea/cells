@@ -9,7 +9,7 @@
 import * as React from "react"
 import { useCodeColours } from "@/components/ui/use-code-colours"
 import { langOf, runsOf } from "@/lib/code-tokens"
-import { placeProblems, type ProblemAt } from "@/lib/spans"
+import { placeBroken, placeProblems, type ProblemAt } from "@/lib/spans"
 import { cn } from "@/lib/utils"
 
 /** The editor's type: one size, one line height, shared by the colours, the textarea
@@ -22,6 +22,7 @@ export function CellEditor({
   value,
   onChange,
   problems,
+  broken,
   label,
   className,
 }: {
@@ -29,12 +30,14 @@ export function CellEditor({
   value: string
   onChange: (text: string) => void
   problems: readonly ProblemAt[]
+  /** Where the file's grammar breaks, marked on its characters as a problem is. */
+  broken: readonly { why: string; span?: [number, number] }[]
   label: string
   className?: string
 }) {
   const colours = useCodeColours(value, langOf(name))
   const lines = runsOf(value, colours)
-  const placed = placeProblems(value, problems)
+  const placed = [...placeBroken(value, broken), ...placeProblems(value, problems)]
   const byLine = new Map<number, typeof placed>()
   for (const p of placed) byLine.set(p.line, [...(byLine.get(p.line) ?? []), p])
   return (
