@@ -1,6 +1,6 @@
 # cellular.computer
 
-The Cells site: one page, every example live on the real engine (the wasm build, copied into `lib/engine`), built from ui's @ag items, served as static files by a Cloudflare Worker.
+The Cells site: one page, every example live on the real engine (this repository's wasm build, copied into `lib/engine`), built from ui's @ag items, served as static files by a Cloudflare Worker.
 
 | | |
 |---|---|
@@ -12,7 +12,7 @@ The Cells site: one page, every example live on the real engine (the wasm build,
 ```bash
 UI=~/Developer/ui pnpm ui                 # first, every time: each @ag item as ui main has it
 pnpm install
-CELLS=~/Developer/cells pnpm engine       # the engine and grammar, after they change
+pnpm engine                               # the engine and grammar from this repo, after they change
 pnpm dev                                  # :3200; ?still=0.5 holds the hero at a moment
 pnpm check                                # ui's items fresh, types, the story's claims
 pnpm deploy                               # next build, then wrangler (workers.dev)

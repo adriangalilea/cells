@@ -1,4 +1,4 @@
-// Brings the Cells engine and grammar into the site from a Cells checkout: the wasm build's
+// Brings the Cells engine and grammar into the site from this repository: the wasm build's
 // JS wrapper and its module (rust/cells-wasm/js), and the TextMate grammar every editor
 // gets (syntaxes/cells.tmLanguage.json). The site runs the same engine and colours with
 // the same grammar as everything else. Re-run after the engine changes
@@ -11,12 +11,12 @@
 // that instantiates its module another way stops this script rather than being patched
 // blind.
 //
-//   CELLS=~/Developer/cells bun scripts/engine.ts
+//   bun scripts/engine.ts
 
 import { createHash } from "node:crypto"
 
-const cells = process.env.CELLS
-if (!cells) throw new Error("CELLS must name a Cells checkout")
+/** The repository's root: the site lives in its `web/`. */
+const cells = new URL("../..", import.meta.url).pathname.replace(/\/$/, "")
 
 const INSTANTIATE = "const x = new WebAssembly.Instance(new WebAssembly.Module(decodeBase64(wasm)), {}).exports as unknown as Exports"
 const IMPORT = 'import { wasm } from "./wasm.ts"'
@@ -40,7 +40,7 @@ const site = `${import.meta.dir}/..`
 const manifest: Record<string, string> = {}
 for (const [from, to, change] of COPIES) {
   const file = Bun.file(`${cells}/${from}`)
-  if (!(await file.exists())) throw new Error(`${cells}/${from} does not exist: is CELLS a Cells checkout?`)
+  if (!(await file.exists())) throw new Error(`${cells}/${from} does not exist: build the wasm first (bun rust/cells-wasm/build.ts)`)
   const bytes = await file.bytes()
   await Bun.write(`${site}/${to}`, change ? change(new TextDecoder().decode(bytes)) : bytes)
   manifest[to] = `${from} sha256:${createHash("sha256").update(bytes).digest("hex").slice(0, 16)}`
