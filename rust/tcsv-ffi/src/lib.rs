@@ -493,16 +493,30 @@ unsafe fn text_of<'a>(ptr: *const c_char, len: usize) -> &'a str {
     std::str::from_utf8(unsafe { std::slice::from_raw_parts(ptr as *const u8, len) }).expect("the caller hands UTF-8")
 }
 
-/// One cell's text changed; every other byte stays as read.
+/// One cell's text changed; every other byte stays as read. False when the text holds a
+/// control character, the doc untouched and `failure` set.
 ///
 /// # Safety
 /// `d` is a live doc; `row < tcsv_rows(d)`, `column < tcsv_stored(d)`; `text` points at
-/// `len` bytes of UTF-8.
+/// `len` bytes of UTF-8; `failure` is null or writable.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn tcsv_set_cell(d: *mut TcsvDoc, row: usize, column: usize, text: *const c_char, len: usize) {
+pub unsafe extern "C" fn tcsv_set_cell(
+    d: *mut TcsvDoc,
+    row: usize,
+    column: usize,
+    text: *const c_char,
+    len: usize,
+    failure: *mut TcsvFailure,
+) -> bool {
     // SAFETY: the caller's promise.
     let (d, t) = unsafe { (doc(d), text_of(text, len)) };
-    d.doc.set_cell(row, column, t);
+    match d.doc.set_cell(row, column, t) {
+        Ok(()) => true,
+        Err(e) => {
+            fail(failure, e);
+            false
+        }
+    }
 }
 
 /// One column's type rewritten in shorthand (`""` makes it plain). False when the type
@@ -826,13 +840,23 @@ pub unsafe extern "C" fn tcsv_problem_why(d: *mut TcsvDoc, i: usize) -> TcsvStr 
 
 /// One cell set to a value given in its canonical spelling (a decimal with a point, an
 /// integer, `true`/`false`, `YYYY-MM-DD`, `HH:mm:ss`, an ISO instant, any text), written in
-/// the column's form: its pair's words, its format. `null` blanks the cell.
+/// the column's form: its pair's words, its format. `null` blanks the cell. False, as for
+/// `tcsv_set_cell`, when the text holds a control character.
 ///
 /// # Safety
 /// `d` is a live doc; `row < tcsv_rows(d)`, `column < tcsv_stored(d)`; `text` points at
-/// `len` bytes of UTF-8, the canonical spelling of a value of the column's base.
+/// `len` bytes of UTF-8, the canonical spelling of a value of the column's base; `failure`
+/// is null or writable.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn tcsv_set_value(d: *mut TcsvDoc, row: usize, column: usize, null: bool, text: *const c_char, len: usize) {
+pub unsafe extern "C" fn tcsv_set_value(
+    d: *mut TcsvDoc,
+    row: usize,
+    column: usize,
+    null: bool,
+    text: *const c_char,
+    len: usize,
+    failure: *mut TcsvFailure,
+) -> bool {
     // SAFETY: the caller's promise.
     let (d, t) = unsafe { (doc(d), text_of(text, len)) };
     let b = t.as_bytes();
@@ -857,7 +881,13 @@ pub unsafe extern "C" fn tcsv_set_value(d: *mut TcsvDoc, row: usize, column: usi
         }
     };
     let text = d.doc.columns()[column].form(v);
-    d.doc.set_cell(row, column, &text);
+    match d.doc.set_cell(row, column, &text) {
+        Ok(()) => true,
+        Err(e) => {
+            fail(failure, e);
+            false
+        }
+    }
 }
 
 /// A row of a file rearranged: `kept`, a row it has, or when `kept` is negative a new row
@@ -1058,8 +1088,11 @@ mod tests {
             assert_eq!((p.row, p.column, p.kind), (1, 1, TcsvKind::TcsvKindType));
             let t = tcsv_column_type(d, 1);
             assert_eq!(std::slice::from_raw_parts(t.ptr as *const u8, t.len), b"EUR");
-            tcsv_set_cell(d, 1, 1, c"12.00".as_ptr(), 5);
+            assert!(tcsv_set_cell(d, 1, 1, c"12.00".as_ptr(), 5, ptr::null_mut()));
             assert_eq!(tcsv_problem_count(d), 0);
+            assert!(!tcsv_set_cell(d, 1, 0, c"a\x07".as_ptr(), 2, &mut f));
+            assert_eq!((f.at, f.number), (TcsvAt::TcsvAtRow, 1));
+            tcsv_failure_free(&mut f);
             let mut s = ArrowSchema::empty();
             let mut a = ArrowArray::empty();
             tcsv_export(d, &mut s, &mut a);
