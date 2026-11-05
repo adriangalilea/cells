@@ -1,110 +1,178 @@
 "use client"
 
-// THE STORY'S STEPS, drawn from lib/story: each one idea, its words on one side and its
-// files on the other, the first file editable and read by the engine at every keystroke
-// into what it becomes. The step list is the whole content; a walkthrough player can draw
-// the same list (its steps: words, a file state, a live view).
+// THE STORY: one file built a step at a time (lib/story), each step its own screen. A step
+// plays once it is in view (ui's Playback): the spot it is about is marked and everything
+// else dimmed, the change happens in the file (keys typed, a name retyped), the table
+// lights what it did, and only then the told line arrives. The table is not there until
+// the step it arrives in. Afterwards the file is the reader's to edit, read by the engine
+// at every keystroke. Reduced motion: each step at rest, every part shown.
 
 import * as React from "react"
 import { CellEditor } from "@/components/cell-editor"
-import { CellsTable } from "@/components/cells-window"
+import { CellsTable, type TableLight } from "@/components/cells-window"
+import { Playback, usePlayhead } from "@/components/ui/playback"
 import { useEngine } from "@/components/use-engine"
 import { readFiles, type ViewTable } from "@/lib/cells"
 import { PRODUCT } from "@/lib/product"
+import { type SceneFrame, type SceneTimeline, sceneFrameAt, sceneTimeline } from "@/lib/scene"
 import { STORY, type StoryFile, type StoryStep } from "@/lib/story"
 import { cn } from "@/lib/utils"
 
+/** The characters a line of the editor shows in half the story's row (max-w-6xl, 13px mono,
+ *  its padding taken off). */
+const HALF_ROW_CHARS = 60
+
 export function Story() {
   return (
-    <div className="space-y-40 md:space-y-56">
+    <div>
       {STORY.map((step, i) => (
-        <Step key={step.id} step={step} index={i} />
+        <Scene key={step.id} step={step} index={i} />
       ))}
     </div>
   )
 }
 
-function Step({ step, index }: { step: StoryStep; index: number }) {
-  const [files, setFiles] = React.useState<StoryFile[]>(step.files)
-  const [open, setOpen] = React.useState(0)
-  const engine = useEngine()
-  const read = React.useMemo(() => readFiles(engine, files), [engine, files])
-  const file = files[open] as StoryFile
-  // The file shown in the editor is judged as the reader would open it: the first through
-  // its imports, any other alone.
-  const judged = React.useMemo(() => (open === 0 ? read : readFiles(engine, [file])), [engine, open, read, file])
-  const edit = (text: string) => setFiles((fs) => fs.map((f, k) => (k === open ? { ...f, text } : f)))
+function Scene({ step, index }: { step: StoryStep; index: number }) {
+  const timeline = React.useMemo(() => sceneTimeline(step), [step])
+  const clip = React.useMemo(() => ({ duration: timeline.total, chapters: [] }), [timeline])
+  // A screen to itself, the step in its middle: one is in view at a time, so it plays
+  // when the reader reaches it, never while they read the one before.
   return (
-    <section id={step.id} aria-labelledby={`${step.id}-title`} className="mx-auto grid max-w-6xl scroll-mt-24 gap-10 px-6 lg:grid-cols-[minmax(0,5fr)_minmax(0,7fr)] lg:gap-16">
-      <div className="lg:sticky lg:top-28 lg:self-start">
-        <p className="font-mono text-[11px] tracking-[0.18em] text-muted-foreground/70">{String(index + 1).padStart(2, "0")}</p>
-        <h2 id={`${step.id}-title`} className="mt-4 text-balance text-[clamp(1.75rem,3.2vw,2.5rem)] leading-[1.1] font-medium tracking-[-0.025em]">
-          {step.lead} <span className="text-muted-foreground">{step.rest}</span>
-        </h2>
-        <p className="mt-6 max-w-[42ch] text-pretty text-[15px] leading-relaxed text-muted-foreground">{step.why}</p>
-        {step.reads && (
-          <dl className="mt-6 max-w-[44ch] space-y-2 text-[14px]">
-            {step.reads.map((r) => (
-              <div key={r.formula} className="grid grid-cols-[minmax(0,11rem)_1fr] gap-3">
-                <dt className="font-mono text-[12.5px] text-foreground/90">{r.formula.replaceAll("`", "")}</dt>
-                <dd className="text-muted-foreground">{r.says}</dd>
-              </div>
-            ))}
-          </dl>
-        )}
-        {step.note && (
-          <p className="mt-5 max-w-[44ch] text-pretty text-[13px] leading-relaxed text-muted-foreground/80">
-            <Ticks text={step.note} />
-          </p>
-        )}
-        {step.try && (
-          <p className="mt-6 font-mono text-[12px] text-edge/90">
-            <span className="text-muted-foreground/60">try </span>
-            {step.try.replaceAll("`", "")}
-          </p>
-        )}
-      </div>
-      <div className="min-w-0 space-y-4">
-        <Pane>
-          {files.length > 1 && (
-            <div role="tablist" aria-label="files" className="flex gap-1 border-b border-border px-2 pt-2">
-              {files.map((f, k) => (
-                <button
-                  key={f.name}
-                  role="tab"
-                  type="button"
-                  aria-selected={k === open}
-                  onClick={() => setOpen(k)}
-                  className={cn(
-                    "rounded-t-md px-3 py-1.5 font-mono text-[11.5px] transition-colors",
-                    k === open ? "bg-foreground/6 text-foreground" : "text-muted-foreground hover:text-foreground",
-                  )}
-                >
-                  {f.name}
-                </button>
-              ))}
-            </div>
-          )}
-          {files.length === 1 && <FileName name={file.name} />}
-          <CellEditor name={file.name} value={file.text} onChange={edit} problems={judged.problems} broken={judged.broken} label={`edit ${file.name}`} />
-        </Pane>
-        <View step={step} files={files} read={read} />
-      </div>
+    <section id={step.id} aria-labelledby={`${step.id}-told`} className="mx-auto flex min-h-svh max-w-6xl flex-col justify-center px-6 py-16">
+      <Playback clip={clip} delay={250}>
+        <Played step={step} index={index} timeline={timeline} />
+      </Playback>
     </section>
   )
 }
 
-/** Prose whose `backticked` parts are code, set in the mono face. */
-function Ticks({ text }: { text: string }) {
-  return text.split(/(`[^`]+`)/).map((part, i) =>
-    part.startsWith("`") ? (
-      // biome-ignore lint/suspicious/noArrayIndexKey: the parts of one fixed string, in order
-      <code key={i} className="font-mono text-[12px] text-foreground/80">
-        {part.slice(1, -1)}
-      </code>
-    ) : (
-      part
-    ),
+function Played({ step, index, timeline }: { step: StoryStep; index: number; timeline: SceneTimeline }) {
+  const at = usePlayhead(undefined).at
+  const frame = sceneFrameAt(timeline, at * timeline.total)
+  const played = at >= 1
+  // Once played, the files are the reader's: edits land here and the step's marks go.
+  const [edited, setEdited] = React.useState<StoryFile[] | null>(null)
+  const [open, setOpen] = React.useState(0)
+  // The files as the frame stands, one identity per text, so the engine reads a file once
+  // per change, never once per frame.
+  const shown = React.useMemo(() => [{ name: frame.name, text: frame.text }, ...step.others], [step, frame.name, frame.text])
+  const files = edited ?? shown
+  const file = files[open] as StoryFile
+  const engine = useEngine()
+  const read = React.useMemo(() => readFiles(engine, files), [engine, files])
+  const judged = React.useMemo(() => (open === 0 ? read : readFiles(engine, [file])), [engine, open, read, file])
+  const marking = edited === null && open === 0
+  const edit = (text: string) => setEdited(files.map((f, k) => (k === open ? { ...f, text } : f)))
+  // Side by side only when the file's longest line fits half the row; else the file spans
+  // it, with the table under it.
+  const wide = React.useMemo(() => Math.max(...step.text.after.split("\n").map((l) => l.length)) > HALF_ROW_CHARS, [step])
+  const table = step.table !== "none"
+  const light: TableLight | undefined = marking && step.lit ? { ...step.lit, amount: frame.lit, dim: frame.dim } : undefined
+  return (
+    <div>
+      <p className="font-mono text-[11px] tracking-[0.18em] text-muted-foreground/70">{String(index + 1).padStart(2, "0")}</p>
+      <div className={cn("mt-5 grid gap-4", table ? !wide && "lg:grid-cols-2 lg:gap-5" : "max-w-2xl")}>
+        <Pane className="self-start">
+          <Tabs files={files} open={open} choose={played ? setOpen : undefined} frame={marking ? frame : null} />
+          <CellEditor
+            name={file.name}
+            value={file.text}
+            onChange={played ? edit : undefined}
+            problems={judged.problems}
+            broken={judged.broken}
+            band={marking ? frame.band : null}
+            dim={marking ? frame.dim : 0}
+            caret={marking && frame.caret?.in === "text" ? frame.caret.at : null}
+            label={`edit ${file.name}`}
+          />
+        </Pane>
+        {table && (
+          <div style={{ opacity: frame.table, transform: `translateY(${(1 - frame.table) * 12}px)` }} className="self-start">
+            <Pane>
+              <div className="border-b border-border px-4 py-2 font-mono text-[11.5px] text-muted-foreground">
+                {files[0]?.name} · {PRODUCT.name}
+              </div>
+              <CellsTable name={files[0]?.name ?? ""} text={files[0]?.text ?? ""} others={files.slice(1)} label={`${files[0]?.name}, as a table`} light={light} className="max-h-72" />
+              <div className="border-t border-border">
+                <Problems read={read} />
+              </div>
+            </Pane>
+          </div>
+        )}
+      </div>
+      <Told step={step} frame={frame} />
+    </div>
+  )
+}
+
+/** The file's name and its imports', a tab each; the first's name marked and retyped by a
+ *  rename while the step plays. */
+function Tabs({
+  files,
+  open,
+  choose,
+  frame,
+}: {
+  files: StoryFile[]
+  open: number
+  choose?: (k: number) => void
+  frame: SceneFrame | null
+}) {
+  return (
+    <div role="tablist" aria-label="files" className="flex gap-1 border-b border-border px-2 pt-2">
+      {files.map((f, k) => (
+        <button
+          key={k === 0 ? "file" : f.name}
+          role="tab"
+          type="button"
+          aria-selected={k === open}
+          disabled={!choose}
+          onClick={() => choose?.(k)}
+          className={cn(
+            "relative rounded-t-md px-3 py-1.5 font-mono text-[11.5px] whitespace-pre transition-colors",
+            k === open ? "bg-foreground/6 text-foreground" : "text-muted-foreground enabled:hover:text-foreground",
+          )}
+        >
+          {k === 0 && frame ? <Named name={f.name} frame={frame} /> : f.name}
+        </button>
+      ))}
+    </div>
+  )
+}
+
+function Named({ name, frame }: { name: string; frame: SceneFrame }) {
+  const band = frame.nameBand
+  const caret = frame.caret?.in === "name" ? frame.caret.at : null
+  if (!band) return name
+  return (
+    <>
+      {name.slice(0, band[0])}
+      <span className="rounded-[3px] bg-edge/16 shadow-[0_0_0_1px_color-mix(in_oklch,var(--edge)_50%,transparent)]">{name.slice(band[0], band[1])}</span>
+      {name.slice(band[1])}
+      {caret !== null && <span className="absolute top-[0.45em] bottom-[0.45em] w-[2px] bg-edge" style={{ left: `calc(0.75rem + ${caret}ch)` }} />}
+    </>
+  )
+}
+
+/** The line told once the step has shown it, and the forms of the idea under it. */
+function Told({ step, frame }: { step: StoryStep; frame: SceneFrame }) {
+  const style = { opacity: frame.tell, transform: `translateY(${(1 - frame.tell) * 8}px)` }
+  return (
+    <div style={style} className="mt-10 max-w-3xl">
+      <h2 id={`${step.id}-told`} className="text-balance text-[clamp(1.5rem,2.6vw,2.125rem)] leading-[1.15] font-medium tracking-[-0.02em]">
+        {step.lead} <span className="text-muted-foreground">{step.rest}</span>
+      </h2>
+      {step.forms && (
+        <dl className="mt-6 grid max-w-2xl gap-x-6 gap-y-2 text-[14px] sm:grid-cols-[auto_1fr]">
+          {step.forms.map((f) => (
+            <React.Fragment key={f.formula}>
+              <dt className="font-mono text-[12.5px] text-foreground/90">{f.formula}</dt>
+              <dd className="text-muted-foreground">{f.says}</dd>
+            </React.Fragment>
+          ))}
+        </dl>
+      )}
+    </div>
   )
 }
 
@@ -116,105 +184,15 @@ function Pane({ children, className }: { children: React.ReactNode; className?: 
   )
 }
 
-function FileName({ name, note }: { name: string; note?: string }) {
-  return (
-    <div className="flex items-center justify-between border-b border-border px-4 py-2 font-mono text-[11.5px] text-muted-foreground">
-      <span>{name}</span>
-      {note && <span className="text-muted-foreground/60">{note}</span>}
-    </div>
-  )
-}
-
 /** What breaks the file's grammar, then what breaks its cells: each in the engine's words. */
 function Problems({ read }: { read: ViewTable }) {
   const said = [...read.broken.map((b) => b.why), ...read.problems.map((p) => p.why)]
-  if (said.length === 0) return <p className="px-4 py-3 font-mono text-[12px] text-edge/80">every cell holds its type</p>
+  if (said.length === 0) return <p className="px-4 py-3 font-mono text-[12px] text-edge/80">no problems</p>
   return (
     <ul className="space-y-1 px-4 py-3 font-mono text-[12px] text-haze">
       {said.map((s) => (
         <li key={s}>{s}</li>
       ))}
     </ul>
-  )
-}
-
-function View({ step, files, read }: { step: StoryStep; files: StoryFile[]; read: ViewTable }) {
-  const [first, ...others] = files as [StoryFile, ...StoryFile[]]
-  if (step.view.kind === "query") return <Query files={files} />
-  if (step.view.kind === "run") return <Run file={first} />
-  return (
-    <Pane>
-      <FileName name={`what ${PRODUCT.name} reads`} note={step.view.kind === "linked" ? `${first.name} with its imports` : undefined} />
-      <CellsTable name={first.name} text={first.text} others={others} label={`${first.name}, read`} className="max-h-72" />
-      <div className="border-t border-border">
-        <Problems read={read} />
-      </div>
-    </Pane>
-  )
-}
-
-/** A script's table, as the file keeps it: the rows its last run stored and its runs, from
- *  the file's own fences. Nothing runs here. */
-function Run({ file }: { file: StoryFile }) {
-  const fence = (lang: string) => {
-    const m = new RegExp("```" + lang + "\\n([\\s\\S]*?)\\n```").exec(file.text)
-    return m ? `${m[1]}\n` : ""
-  }
-  const stored = fence("cells")
-  const runs = fence("cells runs")
-  return (
-    <div className="grid gap-4 md:grid-cols-2">
-      <Pane>
-        <FileName name="eurusd, as stored" note="last run 12" />
-        <CellsTable name="eurusd.cell" text={stored} label="the rows the last run stored" />
-      </Pane>
-      <Pane>
-        <FileName name="its runs" note="recorded" />
-        <CellsTable name="runs.cell" text={runs} label="the script's runs" />
-      </Pane>
-      <Pane className="md:col-span-2">
-        <FileName name={`${file.name}, read`} note="eur from each day's rate" />
-        <CellsTable name={file.name} text={file.text} label={`${file.name}, read`} />
-        <p className="border-t border-border px-4 py-3 text-[12.5px] text-muted-foreground">
-          These runs are recorded: this page runs no script. <code className="font-mono text-foreground/80">{PRODUCT.cli} run {file.name}</code> runs it, with Bun, when you ask.
-        </p>
-      </Pane>
-    </div>
-  )
-}
-
-/** The folder asked a question: every movement, by the kind of the account it went to.
- *  Answered here from the engine's typed columns; `cells sql` (DuckDB over the same
- *  columns) is next. */
-function Query({ files }: { files: StoryFile[] }) {
-  const accounts = files.find((f) => f.name.startsWith("accounts")) as StoryFile
-  const money = files.filter((f) => f !== accounts)
-  const engine = useEngine()
-  const kinds = readFiles(engine, [accounts])
-  const kindOf = new Map<string, string>()
-  kinds.values.account?.forEach((a, i) => kindOf.set(String(a), String(kinds.values.kind?.[i])))
-  const sums = new Map<string, number>()
-  for (const m of money) {
-    const t = readFiles(engine, [m, ...files.filter((f) => f !== m)])
-    t.values.to?.forEach((to, i) => {
-      const kind = kindOf.get(String(to)) ?? "unknown"
-      sums.set(kind, (sums.get(kind) ?? 0) + Number(t.values.amount?.[i] ?? 0))
-    })
-  }
-  const answer = `kind:text!,total:EUR\n${[...sums].map(([k, v]) => `${k},${v.toFixed(2)}`).join("\n")}\n`
-  return (
-    <Pane>
-      <FileName name="every money file, by where it went" note="direction: cells sql" />
-      <pre className="overflow-x-auto px-4 py-3 font-mono text-[12.5px] leading-relaxed text-foreground/85">
-        {`$ ${PRODUCT.cli} sql . "select a.kind, sum(m.amount) from money m
-    join accounts a on m.to = a.account group by a.kind"`}
-      </pre>
-      <div className="border-t border-border">
-        <CellsTable name="answer.cell" text={answer} label="the answer" />
-      </div>
-      <p className="border-t border-border px-4 py-3 text-[12.5px] text-muted-foreground">
-        Answered here from the engine's typed columns of {money.map((m) => m.name).join(" and ")}. <code className="font-mono text-foreground/80">{PRODUCT.cli} sql</code>, DuckDB over the same columns, is what comes next.
-      </p>
-    </Pane>
   )
 }

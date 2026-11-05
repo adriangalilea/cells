@@ -7,9 +7,10 @@
 import { readFiles as readWith } from "@/lib/cells"
 import { loadEngine } from "@/lib/engine-module"
 import { codeTimeline } from "@/lib/code-session"
-import { HERO, textAt } from "@/lib/hero"
+import { HERO, savedAt, textAt } from "@/lib/hero"
 import { placeBroken } from "@/lib/spans"
-import { STORY } from "@/lib/story"
+import { sceneFrameAt, sceneTimeline } from "@/lib/scene"
+import { filesOf, STORY } from "@/lib/story"
 
 const engine = await loadEngine()
 const readFiles = (files: Parameters<typeof readWith>[1]) => readWith(engine, files)
@@ -22,8 +23,20 @@ const fail = (where: string, what: string) => {
 
 for (const step of STORY) {
   const before = failed
-  const t = readFiles(step.files)
+  const t = readFiles(filesOf(step))
   if (t.broken.length) fail(step.id, `its grammar breaks: ${t.broken.map((b) => b.why).join("; ")}`)
+  // The file before the step reads whole too, and both marks are in the text they mark.
+  const was = readFiles([{ name: step.name.before, text: step.text.before }, ...step.others])
+  if (was.broken.length) fail(step.id, `before the step its grammar breaks: ${was.broken.map((b) => b.why).join("; ")}`)
+  if (step.spot && !step.text.before.includes(step.spot)) fail(step.id, `the spot "${step.spot}" is not in the file before`)
+  if (!step.text.after.includes(step.mark)) fail(step.id, `the mark "${step.mark}" is not in the file after`)
+  if (step.lit && !t.columns.some((c) => c.name === step.lit?.column)) fail(step.id, `no column ${step.lit.column} to light`)
+  // Played frame by frame, the step ends on the file it claims, never throwing on the way.
+  const timeline = sceneTimeline(step)
+  let last = sceneFrameAt(timeline, 0)
+  for (let ms = 0; ms <= timeline.total; ms += 5) last = sceneFrameAt(timeline, ms)
+  if (last.text !== step.text.after || last.name !== step.name.after || last.tell !== 1)
+    fail(step.id, `played, it ends on ${last.name} "${last.text.slice(0, 40)}…", told ${last.tell}`)
   const got = t.problems.map((p) => p.why)
   const want = step.expect.problems
   if (JSON.stringify(got) !== JSON.stringify(want)) fail(step.id, `problems ${JSON.stringify(got)}, expected ${JSON.stringify(want)}`)
@@ -48,9 +61,9 @@ for (const [name, frame] of Object.entries(HERO.checkpoints)) {
 // The running total follows its column's order, never the lines': the same rows in
 // another order give each item the same running value.
 {
-  const step = STORY.find((s) => s.id === "formula")
-  const file = step?.files[0]
-  if (!file) throw new Error("examples: no formula step")
+  const step = STORY.find((s) => s.id === "running")
+  if (!step) throw new Error("examples: no running step")
+  const file = { name: step.name.after, text: step.text.after }
   const [header, ...rows] = file.text.trimEnd().split("\n")
   const shuffled = { name: file.name, text: `${header}\n${[...rows].reverse().join("\n")}\n` }
   const by = (t: ReturnType<typeof readFiles>) =>
@@ -81,6 +94,23 @@ const end = played.total
 if (textAt(played, HERO.money, end) !== HERO.checkpoints.fixed.money || textAt(played, HERO.accounts, end) !== HERO.checkpoints.fixed.accounts)
   fail("hero edit", "the played edit does not end on the fixed checkpoint")
 else console.log("✓ hero edit: the played edit ends on the fixed checkpoint")
+
+// What the Cells window reads is the file as written: at every save of the edit, both
+// files read whole (no half-typed header, no value computed from half a formula).
+{
+  let saves = 0
+  for (const [i, s] of played.steps.entries()) {
+    if (s.kind !== "save") continue
+    saves++
+    const ms = played.ends[i] as number
+    const t = readFiles([
+      { name: HERO.money, text: savedAt(played, HERO.money, ms) },
+      { name: HERO.accounts, text: savedAt(played, HERO.accounts, ms) },
+    ])
+    if (t.broken.length) fail("hero saves", `save ${saves} breaks: ${t.broken.map((b) => b.why).join("; ")}`)
+  }
+  console.log(`✓ hero saves: the ${saves} saved states all read whole`)
+}
 
 // The terminal's failing check is the CLI's line for the typo: the file's name, then the
 // engine's problem.
