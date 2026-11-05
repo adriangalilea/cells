@@ -9,7 +9,7 @@
 use std::cell::UnsafeCell;
 use std::fmt::Write;
 
-use tcsv::{Base, ColumnAt, Computing, Data, Dialect, Doc, Naming, Separator};
+use tcsv::{Base, ColumnAt, Data, Dialect, Doc, Naming, Origin, Separator};
 
 /// Results that outlive the call that made them, one set per handle.
 pub struct Handle {
@@ -166,6 +166,31 @@ impl<'a> Strings<'a> {
     }
 }
 
+/// Reads the file as `tcsv_read` does, its imports followed through the files the page
+/// holds: a list (room from `tcsv_alloc(files_cap)`, which this call takes) of the file's
+/// own path, then each file's path and its text. An import of a file the list does not
+/// hold reads as unreachable.
+///
+/// # Safety
+/// `ptr`, `len`, `cap` as for `tcsv_read`; `files`, `files_len`, `files_cap` the same for
+/// the list.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn tcsv_read_with(
+    ptr: *mut u8,
+    len: usize,
+    cap: usize,
+    files: *mut u8,
+    files_len: usize,
+    files_cap: usize,
+) -> *mut Handle {
+    // SAFETY: the caller's promise.
+    let (bytes, list) = unsafe { (took(ptr, len, cap), took(files, files_len, files_cap)) };
+    let list = Strings { bytes: &list, at: 0 }.list();
+    let (at, rest) = list.split_first().expect("the list opens with the file's own path");
+    let held: std::collections::BTreeMap<String, String> = rest.chunks(2).map(|p| (p[0].to_owned(), p[1].to_owned())).collect();
+    handled(tcsv::read_with(bytes, &mut tcsv::files::Files::new(&held, at), 1))
+}
+
 /// The file with exactly the columns the page wrote (room from `tcsv_alloc(cap)`, `len`
 /// bytes of it, which this call takes), as a new handle; null when it does not read, the
 /// error at `tcsv_error`. Each column is a tag byte and its parts: 0 and a `u32` index
@@ -219,27 +244,6 @@ pub unsafe extern "C" fn tcsv_written_as(h: *mut Handle, sep: u32, ptr: *mut u8,
     let header = Strings { bytes: &spec, at: 0 }.list();
     h.out = h.doc.written_as(dialect(sep), if header.is_empty() { None } else { Some(&header) }).into_bytes();
     give(&h.out)
-}
-
-/// The file with one computed column changed (`Doc::recomputed`), as a new handle; null
-/// when the prelude no longer reads, the error at `tcsv_error`. `kind` 0 sets computed
-/// column `index`, 1 adds one, 2 takes `index` out; the page's list (room from
-/// `tcsv_alloc(cap)`, which this call takes) is the name and the expression, empty for 2.
-///
-/// # Safety
-/// `h` is a live handle; `ptr`, `len`, `cap` as for `tcsv_read`.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn tcsv_recomputed(h: *mut Handle, kind: u32, index: usize, ptr: *mut u8, len: usize, cap: usize) -> *mut Handle {
-    // SAFETY: the caller's promise.
-    let (h, spec) = unsafe { (handle(h), took(ptr, len, cap)) };
-    let parts = Strings { bytes: &spec, at: 0 }.list();
-    let change = match kind {
-        0 => Computing::Set(index, parts[0], parts[1]),
-        1 => Computing::New(parts[0], parts[1]),
-        2 => Computing::Removed(index),
-        k => panic!("{k} is no change of a computed column"),
-    };
-    handled(h.doc.recomputed(change, 1))
 }
 
 /// A header problem in words without its place, `has no name`.
@@ -301,9 +305,11 @@ fn addr<T>(v: &[T]) -> usize {
 }
 
 /// Where everything is: the rows, the dialect (`"tcsv"`, or a plain file's separator), the
-/// named types, every column's type, kind and buffers, the header problems, the problems as
-/// `u32` triples (row, column, kind: 0 type, 1 missing, 2 key, 3 ragged). Read again after
-/// every edit: an edit may move a column's buffers.
+/// named types, every column's type, formula, kind and buffers (its cells' origins too,
+/// bytes 0 written, 1 its formula's, 2 their own, when any is computed), the header
+/// problems, the problems as `u32` triples (row, column, kind: 0 type, 1 missing, 2 key,
+/// 3 ragged, 4 formula, 5 reference). Read again after every edit: an edit may move a
+/// column's buffers.
 ///
 /// # Safety
 /// `h` is a live handle from `tcsv_read`.
@@ -317,7 +323,7 @@ pub unsafe extern "C" fn tcsv_meta(h: *mut Handle) -> *const u8 {
         h.problems.extend([p.row, p.column, p.kind() as u32]);
     }
     let mut s = String::with_capacity(512);
-    let _ = write!(s, "{{\"rows\":{},\"stored\":{},\"newline\":", doc.rows(), doc.stored());
+    let _ = write!(s, "{{\"rows\":{},\"newline\":", doc.rows());
     json_str(&mut s, doc.newline());
     s.push_str(",\"dialect\":");
     match doc.dialect() {
@@ -367,13 +373,28 @@ pub unsafe extern "C" fn tcsv_meta(h: *mut Handle) -> *const u8 {
             json_str(&mut s, spelled);
         }
         s.push_str(",\"base\":");
-        json_str(&mut s, if c.computed.is_some() { "num" } else { c.ty.base.tag() });
+        json_str(&mut s, c.ty.base.tag());
         let _ = write!(s, ",\"inferred\":{},\"key\":{},\"optional\":{}", c.ty.inferred, c.ty.key, c.ty.optional);
-        if let Some(e) = &c.computed {
-            s.push_str(",\"computed\":");
-            json_str(&mut s, e);
+        if let Some(f) = &c.formula {
+            s.push_str(",\"formula\":");
+            json_str(&mut s, f);
+        }
+        if !c.origin.is_empty() {
+            // `Origin` as bytes, the order its variants are declared in.
+            let bytes: &Vec<Origin> = &c.origin;
+            let _ = write!(s, ",\"origin\":{}", bytes.as_ptr() as usize);
         }
         match &c.ty.base {
+            Base::Ref(targets) => {
+                s.push_str(",\"targets\":[");
+                for (j, t) in targets.iter().enumerate() {
+                    if j > 0 {
+                        s.push(',');
+                    }
+                    json_str(&mut s, &format!("{}.{}", t.table, t.column));
+                }
+                s.push(']');
+            }
             Base::Money(cur) => {
                 s.push_str(",\"currency\":");
                 json_str(&mut s, cur.as_str());
@@ -493,7 +514,7 @@ pub unsafe extern "C" fn tcsv_why(h: *mut Handle, i: usize) -> *const u8 {
 pub unsafe extern "C" fn tcsv_cells(h: *mut Handle) -> *const u8 {
     // SAFETY: the caller's promise.
     let h = unsafe { handle(h) };
-    let (rows, stored) = (h.doc.rows(), h.doc.stored());
+    let (rows, stored) = (h.doc.rows(), h.doc.columns().len());
     let mut out = Vec::with_capacity(h.doc.source().len());
     let mut ends = Vec::with_capacity(rows * stored);
     let mut units = 0u32;

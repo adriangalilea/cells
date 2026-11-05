@@ -12,13 +12,12 @@ import type { Column, Doc, Value } from "./tcsv.ts"
 const args = process.argv.slice(2)
 const libAt = args.indexOf("--lib")
 const lib = libAt < 0 ? "./tcsv.ts" : resolve(args.splice(libAt, 2)[1] as string)
-const { compose, detect, readAs, recompute, reshape, setCell, setType, setValue, TcsvError, write, writtenAs } = (await import(
+const { compose, detect, read, readAs, reshape, setCell, setType, setValue, TcsvError, write, writtenAs } = (await import(
   lib
 )) as typeof import("./tcsv.ts")
 type TcsvError = InstanceType<typeof TcsvError>
 type Dialect = import("./tcsv.ts").Dialect
 type ColumnAt = import("./tcsv.ts").ColumnAt
-type Computing = import("./tcsv.ts").Computing
 const root = args[0] ?? join(import.meta.dir, "../../../tests")
 
 /** A case's file: a `.tcsv`, or under `plain/` a `.csv`, `.tsv` or `.txt`; never an
@@ -59,7 +58,9 @@ function ours(c: Column, r: number): Tagged {
 function theirs(v: unknown): Tagged {
   if (v === null) return null
   const o = v as Record<string, unknown>
-  const tag = Object.keys(o).find((k) => k !== "currency") as string
+  // `{ "from": "formula" }`: a computed cell that gave nothing.
+  const tag = Object.keys(o).find((k) => k !== "currency" && k !== "from")
+  if (tag === undefined) return null
   const raw = String(o[tag])
   return [tag, ["int", "num", "pct", "money"].includes(tag) ? normal(raw) : raw, o.currency as string | undefined]
 }
@@ -69,7 +70,7 @@ interface Want {
   types?: Record<string, string>
   separator?: string
   names?: { column: number; kind: string }[]
-  columns: { name: string; type: string; inferred?: boolean; computed?: string }[]
+  columns: { name: string; type: string; inferred?: boolean; formula?: string }[]
   rows: Record<string, unknown>[]
   problems: { row: number; column: string; kind: string }[]
 }
@@ -79,8 +80,8 @@ function check(doc: Doc, want: Want): string[] {
   if (want.columns.length !== doc.columns.length) return [`${doc.columns.length} columns, the suite says ${want.columns.length}`]
   want.columns.forEach((w, k) => {
     const c = doc.columns[k] as Column
-    if (c.name !== w.name || c.type !== w.type || c.inferred !== (w.inferred ?? false) || c.computed !== w.computed)
-      f.push(`column ${k}: ${JSON.stringify([c.name, c.type, c.inferred, c.computed])}, the suite says ${JSON.stringify(w)}`)
+    if (c.name !== w.name || c.type !== w.type || c.inferred !== (w.inferred ?? false) || c.formula !== w.formula)
+      f.push(`column ${k}: ${JSON.stringify([c.name, c.type, c.inferred, c.formula])}, the suite says ${JSON.stringify(w)}`)
   })
   for (const [name, def] of Object.entries(want.types ?? {})) if (doc.named[name] !== def) f.push(`type ${name}: ${doc.named[name]}, the suite says ${def}`)
   if (want.rows.length !== doc.rowCount) f.push(`${doc.rowCount} rows, the suite says ${want.rows.length}`)
@@ -90,6 +91,8 @@ function check(doc: Doc, want: Want): string[] {
         const a = JSON.stringify(ours(c, r))
         const b = JSON.stringify(theirs(w[c.name]))
         if (a !== b) f.push(`row ${r}, ${c.name}: ${a}, the suite says ${b}`)
+        const from = (w[c.name] as { from?: string } | null)?.from ?? "written"
+        if (c.origin(r) !== from) f.push(`row ${r}, ${c.name}: from ${c.origin(r)}, the suite says ${from}`)
       }
     })
   const a = JSON.stringify(doc.problems().map((p) => [p.row, p.column, p.kind]))
@@ -113,7 +116,7 @@ function check(doc: Doc, want: Want): string[] {
 function hosted(doc: Doc): string[] {
   const f: string[] = []
   const cells = doc.cells()
-  const stored = doc.columns.slice(0, doc.stored)
+  const stored = doc.columns
   cells.forEach((row, r) =>
     stored.forEach((c, k) => {
       if (row[k] !== c.text(r)) f.push(`cells()[${r}][${k}] ${JSON.stringify(row[k])}, text says ${JSON.stringify(c.text(r))}`)
@@ -141,25 +144,17 @@ const text = (b: Uint8Array) => new TextDecoder("utf-8", { ignoreBOM: true }).de
 let passed = 0
 let failed = 0
 const all = cases(root)
+/** Every `.tcsv` file by its path in the suite, for a case's imports to follow. */
+const files: Record<string, string> = {}
+for (const p of all) if (p.endsWith(".tcsv")) files[relative(root, p)] = readFileSync(p, "utf8")
 /** The edits applied in order, and the file's text after them: as written, or after a
  *  last `as` edit the file written in that dialect. */
 function edited(start: Doc, edits: Record<string, unknown>[]): string {
   let doc = start
   const at = (name: unknown) => doc.columns.findIndex((c) => c.name === name)
-  const kept = (): ColumnAt[] => doc.columns.slice(0, doc.stored).map((_, k) => ({ kept: k }))
+  const kept = (): ColumnAt[] => doc.columns.map((_, k) => ({ kept: k }))
   for (const e of edits) {
     if ("as" in e) return writtenAs(doc, e.as as Dialect, e.header as string[] | undefined)
-    const computed = (name: unknown) => {
-      const k = doc.columns.findIndex((c, i) => i >= doc.stored && c.name === name)
-      if (k < 0) throw new Error(`no computed column ${String(name)}`)
-      return k - doc.stored
-    }
-    let change: Computing | null = null
-    if ("compute" in e) change = { name: e.compute as string, expression: e.expression as string }
-    else if ("recompute" in e) {
-      const at = computed(e.recompute)
-      change = { at, name: (e.name ?? e.recompute) as string, expression: e.expression as string }
-    } else if ("uncompute" in e) change = { at: computed(e.uncompute) }
     /** The edit made, against what the suite says of it: taken, or refused at `refused`. */
     const taken = (edit: () => void) => {
       try {
@@ -170,13 +165,6 @@ function edited(start: Doc, edits: Record<string, unknown>[]): string {
         return
       }
       if (e.refused) throw new Error(`taken, the suite says it is refused at ${e.refused}`)
-    }
-    if (change) {
-      const c = change
-      taken(() => {
-        doc = recompute(doc, c).doc
-      })
-      continue
     }
     let order: ColumnAt[] | null = null
     if ("insert" in e) {
@@ -213,7 +201,7 @@ for (const path of all) {
   const fails: string[] = []
   let got: ReturnType<typeof readAs> | TcsvError
   try {
-    got = readAs(bytes, dialect)
+    got = dialect === "tcsv" ? read(bytes, { at: relative(root, path), files }) : readAs(bytes, dialect)
   } catch (e) {
     got = e as TcsvError
   }

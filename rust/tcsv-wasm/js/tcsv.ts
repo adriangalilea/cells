@@ -34,7 +34,7 @@ interface Exports {
   tcsv_reshaped(h: number, ptr: number, len: number, cap: number): number
   tcsv_written_as(h: number, sep: number, ptr: number, len: number, cap: number): number
   tcsv_naming_why(h: number, i: number): number
-  tcsv_recomputed(h: number, kind: number, index: number, ptr: number, len: number, cap: number): number
+  tcsv_read_with(ptr: number, len: number, cap: number, files: number, filesLen: number, filesCap: number): number
 }
 
 function decodeBase64(s: string): Uint8Array<ArrayBuffer> {
@@ -87,7 +87,9 @@ interface ColumnMeta {
   inferred: boolean
   key: boolean
   optional: boolean
-  computed?: string
+  formula?: string
+  origin?: number
+  targets?: string[]
   currency?: string
   choices?: string[]
   words?: [string, string]
@@ -110,7 +112,6 @@ export type Dialect = "tcsv" | Separator
 
 interface Meta {
   rows: number
-  stored: number
   newline: "\n" | "\r\n" | "\r"
   dialect: Dialect
   quotesAll: boolean
@@ -172,8 +173,8 @@ export class Column {
   get type(): string {
     return this.m.type
   }
-  /** The type as the header cell spells it after its `:`; `""` for a plain column and
-   *  a computed one. */
+  /** What the header cell spells after its `:`, its formula included; `""` for a plain
+   *  column. */
   get spelled(): string {
     return this.m.spelled ?? ""
   }
@@ -184,8 +185,18 @@ export class Column {
   get inferred(): boolean {
     return this.m.inferred
   }
-  get computed(): string | undefined {
-    return this.m.computed
+  /** The column's formula, as its header cell writes it after the type's `=`. */
+  get formula(): string | undefined {
+    return this.m.formula
+  }
+  /** The tables a reference column names, `accounts.account`. */
+  get targets(): string[] | undefined {
+    return this.m.targets
+  }
+  /** Where the cell's value comes from: its text, its column's formula, or its own. */
+  origin(i: number): Origin {
+    if (this.m.origin === undefined) return "written"
+    return ORIGINS[new Uint8Array(x.memory.buffer, this.m.origin, this.doc.rowCount)[i] as number] as Origin
   }
   get currency(): string | undefined {
     return this.m.currency
@@ -286,9 +297,11 @@ export class Column {
     return neg ? `-${whole}` : whole
   }
 
-  /** A value as this column writes it: its pair's words, its format, ISO otherwise. */
+  /** A value as this column writes it: its pair's words, its format, ISO otherwise, and
+   *  text that would read as a formula (`` `=x` ``) with its first backtick doubled. */
   form(v: Value): string {
     if (v === null) return ""
+    if (typeof v === "string" && /^`+=.*`$/s.test(v) && v.length >= 3) return `\`${v}`
     if (typeof v === "boolean") {
       const [yes, no] = this.m.words ?? ["true", "false"]
       return v ? yes : no
@@ -303,12 +316,16 @@ export class Column {
     return String(v)
   }
 
-  /** The cell's text as the file writes it, unquoted. */
+  /** The cell's text as the file writes it, unquoted: blank where its column's formula
+   *  computes it, `` `=…` `` where its own does. */
   text(i: number): string {
-    if (this.index >= this.doc.stored) throw new TcsvError(`column "${this.name}"`, "is computed, never written")
     return returned(x.tcsv_text(this.doc.handle, i, this.index))
   }
 }
+
+/** Where a cell's value comes from. */
+export type Origin = "written" | "formula" | "cell"
+const ORIGINS = ["written", "formula", "cell"] as const
 
 export interface Problem {
   /** The data row, from 0. */
@@ -316,8 +333,10 @@ export interface Problem {
   /** The column's name, and its place among the columns. */
   column: string
   at: number
-  /** `ragged`: a plain file's row of another width than its header. */
-  kind: "type" | "missing" | "key" | "ragged"
+  /** `ragged`: a plain file's row of another width than its header; `formula`: a cell's
+   *  own formula that does not compute; `reference`: a key no table it names holds, or
+   *  two do. */
+  kind: "type" | "missing" | "key" | "ragged" | "formula" | "reference"
   /** The cell's text as written. */
   readonly text: string
   /** The problem in words: `row 3, cost: "8x.50" is not a number`. */
@@ -336,7 +355,7 @@ export interface Naming {
   readonly reason: string
 }
 
-const KINDS = ["type", "missing", "key", "ragged"] as const
+const KINDS = ["type", "missing", "key", "ragged", "formula", "reference"] as const
 const live = new FinalizationRegistry<number>((h) => x.tcsv_drop(h))
 
 /** A file read, held by the module. */
@@ -358,9 +377,6 @@ export class Doc {
 
   get rowCount(): number {
     return this.meta.rows
-  }
-  get stored(): number {
-    return this.meta.stored
   }
   get named(): Record<string, string> {
     return this.meta.named
@@ -400,12 +416,12 @@ export class Doc {
     return this.meta.trailing
   }
 
-  /** Every stored cell's text as written, unquoted, row by row: what a host that keeps
-   *  its own rows takes (and gives back to `compose`). One decode for the whole file. */
+  /** Every cell's text as written, unquoted, row by row: what a host that keeps its own
+   *  rows takes (and gives back to `compose`). One decode for the whole file. */
   cells(): string[][] {
     const at = x.tcsv_cells(this.handle)
     const all = decoder.decode(new Uint8Array(x.memory.buffer, at, x.tcsv_len()))
-    const n = this.stored
+    const n = this.columns.length
     const ends = new Uint32Array(x.memory.buffer, x.tcsv_cell_ends(this.handle), this.rowCount * n)
     const out: string[][] = new Array(this.rowCount)
     let from = 0
@@ -464,14 +480,26 @@ export class Doc {
 export interface Read {
   doc: Doc
   columns: Column[]
-  /** Each row's values by column name, computed columns included; built when first read. */
+  /** Each row's values by column name, computed cells included; built when first read. */
   readonly rows: Record<string, Value>[]
   problems: Problem[]
 }
 
-/** A `.tcsv` file's text (or its bytes), read. */
-export function read(input: string | Uint8Array): Read {
-  return readAs(input, "tcsv")
+/** Files a page holds, for a file's imports: `at` the file's own path, `files` every other
+ *  file's text by its path. An import of a file not among them reads as unreachable. */
+export interface Files {
+  at: string
+  files: Record<string, string>
+}
+
+/** A `.tcsv` file's text (or its bytes), read; its imports followed through `files` when
+ *  given, else read alone (what it imports unchecked). */
+export function read(input: string | Uint8Array, files?: Files): Read {
+  if (!files) return readAs(input, "tcsv")
+  const [p, len, cap] = put(input)
+  const list = [files.at, ...Object.entries(files.files).flat()]
+  const [fp, flen, fcap] = put(new Spec().list(list).bytes())
+  return opened(x.tcsv_read_with(p, len, cap, fp, flen, fcap))
 }
 
 const sepByte = (d: Dialect): number => (d === "tcsv" ? 0 : d.charCodeAt(0))
@@ -516,12 +544,13 @@ function opened(h: number): Read {
 
 function columnOf(doc: Doc, column: string | number): number {
   const k = typeof column === "number" ? column : doc.columns.findIndex((c) => c.name === column)
-  if (k < 0 || k >= doc.stored) throw new TcsvError(`column "${column}"`, "is not a stored column")
+  if (k < 0 || k >= doc.columns.length) throw new TcsvError(`column "${column}"`, "does not exist")
   return k
 }
 
 /** One cell's text changed; every other byte stays as read. Returns `doc`, changed; text
- *  holding a control character throws `TcsvError` at the row, `doc` untouched. */
+ *  holding a control character throws `TcsvError` at the row, `doc` untouched. Text of
+ *  `` `=…` `` is the cell's own formula; blank in a column with a formula, the formula's. */
 export function setCell(doc: Doc, row: number, column: string | number, text: string): Doc {
   const k = columnOf(doc, column)
   if (row < 0 || row >= doc.rowCount) throw new TcsvError(`row ${row}`, "does not exist")
@@ -538,7 +567,8 @@ export function setValue(doc: Doc, row: number, column: string | number, value: 
   return setCell(doc, row, k, (doc.columns[k] as Column).form(value))
 }
 
-/** One column's type rewritten, in the shorthand a writer writes; `""` makes it plain. */
+/** One column's header cell rewritten after its `:`: its type in the shorthand a writer
+ *  writes and its formula when given (`EUR=cost*qty`); `""` makes it plain. */
 export function setType(doc: Doc, column: string | number, spelled: string): Doc {
   const k = columnOf(doc, column)
   const [p, len, cap] = put(spelled)
@@ -595,7 +625,7 @@ export type ColumnAt = { kept: number; name?: string } | { header: string; cells
 /** The file with exactly `columns`, in their order, read again as a new doc (`doc` is
  *  untouched): inserting, removing, moving and renaming columns. Each kept column keeps
  *  every row's field as written; a `.tcsv` file whose columns no longer read (two of one
- *  name, a computed column reading one taken out) throws. */
+ *  name, a formula reading one taken out) throws. */
 export function reshape(doc: Doc, columns: readonly ColumnAt[]): Read {
   const spec = new Spec()
   for (const c of columns) {
@@ -607,22 +637,9 @@ export function reshape(doc: Doc, columns: readonly ColumnAt[]): Read {
   return opened(x.tcsv_reshaped(doc.handle, p, len, cap))
 }
 
-/** A computed column changed: `at` (its index among the computed columns) given a name
- *  and an expression, a new one (no `at`), or taken out (no `name`). Only its prelude
- *  line changes; a prelude that no longer reads throws, `doc` untouched. */
-export type Computing = { at: number; name: string; expression: string } | { name: string; expression: string } | { at: number }
-
-/** The file with one computed column changed, read again as a new doc. */
-export function recompute(doc: Doc, change: Computing): Read {
-  const kind = "name" in change ? ("at" in change ? 0 : 1) : 2
-  const spec = "name" in change ? [change.name, change.expression] : []
-  const [p, len, cap] = put(new Spec().list(spec).bytes())
-  return opened(x.tcsv_recomputed(doc.handle, kind, "at" in change ? change.at : 0, p, len, cap))
-}
-
-/** The file written in another dialect: a plain file's header the columns' names, the
- *  computed ones among them with their values; a `.tcsv` file's header `header` when given
- *  (each column's cell with its type), its prelude kept. */
+/** The file written in another dialect: a plain file's header the columns' names and
+ *  every computed cell its value; a `.tcsv` file's header `header` when given (each
+ *  column's cell with its type), its prelude kept. */
 export function writtenAs(doc: Doc, dialect: Dialect, header?: readonly string[]): string {
   const [p, len, cap] = put(new Spec().list(header ?? []).bytes())
   return returned(x.tcsv_written_as(doc.handle, sepByte(dialect), p, len, cap))
