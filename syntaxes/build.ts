@@ -89,6 +89,8 @@ const S = {
   formulaMark: "punctuation.definition.formula.cells",
   function: "support.function.formula.cells",
   formulaWord: "keyword.operator.word.formula.cells",
+  // TABLE, FIRST, THIS, LAST: the language's own names, as `this` is a language's.
+  languageWord: "variable.language.cells",
   text: "string.quoted.single.cells",
   null: "constant.language.null.cells",
   columnRef: "variable.other.property.cells",
@@ -144,6 +146,15 @@ const type = [
     comment: "A column's formula: everything after the first `=` that closes no `>=` or `<=`.",
     match: raw`(?<![<>])(=)(.*)`,
     captures: { 1: { name: S.assign }, 2: { name: S.formula, patterns: [{ include: "#formula" }] } },
+  },
+  {
+    comment: "A currency's scale, EUR(6): its digits after the point.",
+    match: raw`(\()\s*(\d+)\s*(\))`,
+    captures: {
+      1: { name: `${S.parens} punctuation.section.parens.begin.cells` },
+      2: { name: S.number },
+      3: { name: `${S.parens} punctuation.section.parens.end.cells` },
+    },
   },
   {
     comment: "A format: how the file writes a date or a time.",
@@ -251,16 +262,33 @@ const header = cycle(headerCell, 4, (column) => ({
 // text, `84.20` a number.
 const whole = (body: string) => raw`(?<=^|,)[ \t]*(?:${body})[ \t]*$`
 
+// A cell is what is written (84.20), what a formula computed (84.20=), or that and its
+// own formula (32.25=96.75 / 3): the first `=` that is no `'=` splits what the file
+// stores from how it is computed.
 const value = [
   {
-    comment: "A cell's own formula, `=96.75 / 3` between backticks.",
-    match: whole(raw`(\x60=)(.*)(\x60)`),
+    match: whole(raw`(")((?:[^"]|"")*)(")`),
+    name: S.string,
     captures: {
-      1: { name: S.formulaMark },
-      2: { name: S.formula, patterns: [{ include: "#formula" }] },
-      3: { name: S.formulaMark },
+      1: { name: S.stringBegin },
+      2: { patterns: [{ match: '""', name: S.escape }] },
+      3: { name: S.stringEnd },
     },
   },
+  {
+    comment: "A computed cell: what the file stores, `=`, then its own formula or none (its column's).",
+    match: raw`(?<=^|,)[ \t]*((?:'=|[^=])*?)(?<!')(=)(.*)$`,
+    captures: {
+      1: { name: "meta.stored.cells", patterns: [{ include: "#written" }] },
+      2: { name: S.formulaMark },
+      3: { name: S.formula, patterns: [{ include: "#formula" }] },
+    },
+  },
+  { include: "#written" },
+]
+
+// What a cell holds as written, by its spelling alone.
+const written = [
   {
     match: whole(raw`(")((?:[^"]|"")*)(")`),
     name: S.string,
@@ -277,6 +305,7 @@ const value = [
   { match: whole("true|false|yes|no"), name: S.boolean },
   { match: whole(raw`[A-Za-z][A-Za-z0-9+.-]*://[^,\s"]+`), name: S.link },
   { match: whole(raw`[^\s@,"]+@[^\s@,"]+\.[^\s@,"]+`), name: S.link },
+  { comment: "A text's `=`, written `'=`.", match: "'=", name: S.escape },
 ]
 
 const row = cycle(rowCell, 1, (column) => ({ 0: { name: RAINBOW[column], patterns: [{ include: "#value" }] } }))
@@ -284,9 +313,12 @@ const row = cycle(rowCell, 1, (column) => ({ 0: { name: RAINBOW[column], pattern
 // ── The prelude ─────────────────────────────────────────────────────────────
 
 // ── A formula ───────────────────────────────────────────────────────────────
-// SQL's scalar expressions, its keywords in any case.
+// SQL's scalar expressions, the language in capitals and only in capitals: a word
+// in lower case is always a name the file gave, never a function or a keyword.
 
-const ci = (words: string[]) => raw`(?i)\b(?:${words.join("|")})\b`
+const caps = (words: string[]) => raw`\b(?:${words.join("|")})\b`
+// A row by where it is from this one, or an end of a range of rows.
+const END = raw`FIRST|THIS|LAST|[+-]\d+`
 
 const formula = [
   {
@@ -295,11 +327,31 @@ const formula = [
     captures: { 1: { patterns: [{ match: "''", name: S.escape }] } },
   },
   { match: raw`"[^"]*"`, name: S.columnRef },
+  {
+    comment: "A range of rows by where they are, total[FIRST:THIS], cost[-2:+2].",
+    match: raw`(\[)\s*(${END})\s*(:)\s*(${END})\s*(\])`,
+    captures: {
+      1: { name: S.brackets },
+      2: { patterns: [{ match: "FIRST|THIS|LAST", name: S.languageWord }, { match: raw`[+-]\d+`, name: S.number }] },
+      3: { name: S.range },
+      4: { patterns: [{ match: "FIRST|THIS|LAST", name: S.languageWord }, { match: raw`[+-]\d+`, name: S.number }] },
+      5: { name: S.brackets },
+    },
+  },
+  {
+    comment: "A row by where it is from this one, running[-1].",
+    match: raw`(\[)\s*([+-]\d+)\s*(\])`,
+    captures: { 1: { name: S.brackets }, 2: { name: S.number }, 3: { name: S.brackets } },
+  },
   { match: NUM.replace("[+-]?", ""), name: S.number },
-  { match: ci(["true", "false"]), name: S.boolean },
-  { match: ci(["null"]), name: S.null },
-  { match: ci(["and", "or", "not", "is", "case", "when", "then", "else", "end"]), name: S.formulaWord },
-  { match: raw`\b([A-Za-z_][A-Za-z0-9_]*)(?=\()`, name: S.function },
+  { match: caps(["TRUE", "FALSE"]), name: S.boolean },
+  { match: caps(["NULL"]), name: S.null },
+  { match: caps(["TABLE", "FIRST", "THIS", "LAST"]), name: S.languageWord },
+  {
+    match: caps(["AND", "OR", "NOT", "IS", "CASE", "WHEN", "THEN", "ELSE", "END", "OVER", "ORDER", "BY", "DESC"]),
+    name: S.formulaWord,
+  },
+  { match: raw`\b[A-Z][A-Z0-9_]*(?=\s*\()`, name: S.function },
   { match: raw`\|\||<>|!=|<=|>=|[-+*/<>=]`, name: S.arithmetic },
   { match: raw`[()]`, name: S.parens },
   { match: raw`[\[\]]`, name: S.brackets },
@@ -456,6 +508,7 @@ const grammar = {
     type: { patterns: type },
     formula: { patterns: formula },
     value: { patterns: value },
+    written: { patterns: written },
     header,
     row: { ...row, name: "meta.row.cells" },
   },

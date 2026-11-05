@@ -21,8 +21,8 @@ rates = run every day at 18:00 in Europe/Madrid
 export default async () => []
 \`\`\`
 ---
-item:text!,category:Category,cost:EUR>=0,paid:yes/no,on:date(DD/MM/YYYY),note:text?,score:0..10,to:accounts.account,x:one of a b key,y:bool si no optional,z:num between 0 and 100,w:num min 1,total:EUR=abs(cost) * (score - 1)
-fuel,travel,\`=84.20 * 2\`,yes,14/08/2026,"a ""b""",7,assets:bank,a,si,2026-08-14T10:00:00Z,https://example.com,
+item:text!,category:Category,cost:EUR>=0,paid:yes/no,on:date(DD/MM/YYYY),note:text?,score:0..10,to:accounts.account,x:one of a b key,y:bool si no optional,z:num between 0 and 100,w:num min 1,total:EUR=ABS(cost) * (score - 1),fee:EUR(6),running:EUR=running[-1] + total,cum:EUR=SUM(total[FIRST:THIS]),low:num=round(cost),memo:text
+fuel,travel,32.25=96.75 / 3,yes,14/08/2026,"a ""b""",7,assets:bank,a,si,2026-08-14T10:00:00Z,https://example.com,84.20=,0.001200,84.20=,=SUM(TABLE.total),84=,'=> see invoice
 a,"two
 lines",b
 `
@@ -108,18 +108,37 @@ const EXPECT: [string, string][] = [
   ["total", "meta.column.1.cells"],
   ["EUR", "support.type.currency.cells"],
   ["=", "keyword.operator.assignment.cells"],
-  ["abs", "support.function.formula.cells"],
+  ["ABS", "support.function.formula.cells"],
   ["cost", "variable.other.property.cells"],
   ["*", "keyword.operator.arithmetic.cells"],
   ["score", "variable.other.property.cells"],
   ["1", "constant.numeric.cells"],
+  // a currency's scale
+  ["fee", "meta.column.2.cells"],
+  ["(", "punctuation.section.parens.begin.cells"],
+  ["6", "constant.numeric.cells"],
+  [")", "punctuation.section.parens.end.cells"],
+  // rows by where they are: the line above, and a range
+  ["running", "meta.column.3.cells"],
+  ["running", "variable.other.property.cells"],
+  ["[", "punctuation.section.brackets.cells"],
+  ["-1", "constant.numeric.cells"],
+  ["]", "punctuation.section.brackets.cells"],
+  ["total", "variable.other.property.cells"],
+  ["SUM", "support.function.formula.cells"],
+  ["FIRST", "variable.language.cells"],
+  [":", "keyword.operator.range.cells"],
+  ["THIS", "variable.language.cells"],
+  // a word in lower case is a name, never a function
+  ["round", "variable.other.property.cells"],
   // a row: every cell in its column's colour, typed spellings scoped inside it
   ["fuel", "meta.column.1.cells"],
   ["travel", "meta.column.2.cells"],
-  ["`=", "punctuation.definition.formula.cells"],
-  ["84.20", "constant.numeric.cells"],
-  ["*", "keyword.operator.arithmetic.cells"],
-  ["`", "punctuation.definition.formula.cells"],
+  // a value and its own formula: what the file stores, `=`, how it is computed
+  ["32.25", "meta.stored.cells"],
+  ["=", "punctuation.definition.formula.cells"],
+  ["96.75", "constant.numeric.cells"],
+  ["/", "keyword.operator.arithmetic.cells"],
   ["yes", "constant.language.boolean.cells"],
   ["14/08/2026", "meta.column.5.cells"],
   ['"', "punctuation.definition.string.begin.cells"],
@@ -128,6 +147,16 @@ const EXPECT: [string, string][] = [
   ["assets:bank", "meta.column.2.cells"],
   ["2026-08-14T10:00:00Z", "constant.other.symbol.date.cells"],
   ["https://example.com", "markup.underline.link.cells"],
+  // a value its column's formula computed
+  ["84.20", "constant.numeric.cells"],
+  ["=", "punctuation.definition.formula.cells"],
+  ["0.001200", "constant.numeric.cells"],
+  // a formula not computed yet
+  ["=", "punctuation.definition.formula.cells"],
+  ["SUM", "support.function.formula.cells"],
+  ["TABLE", "variable.language.cells"],
+  // a text's `=`, written `'=`
+  ["'=", "constant.character.escape.cells"],
   // a quoted field across a line break stays one string
   ["two", "string.quoted.double.cells"],
   ["lines", "string.quoted.double.cells"],
