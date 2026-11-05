@@ -1,0 +1,2 @@
+item:text,amount:EUR,first:EUR=this['fuel'].amount
+fuel,10.00,

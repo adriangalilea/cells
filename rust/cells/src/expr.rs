@@ -592,6 +592,9 @@ pub enum F {
 /// index in the scope.
 pub type Table = Option<usize>;
 
+/// The name a formula reads the file's own table by, whatever the file is named.
+pub const THIS: &str = "this";
+
 /// A formula resolved: every name a place, every kind checked.
 #[derive(Clone, Debug, PartialEq)]
 pub enum Ir {
@@ -600,7 +603,7 @@ pub enum Ir {
     Col(usize),
     /// A key, looked up in each target in turn (its table, the key column, the column
     /// read on the row found).
-    Follow(Box<Ir>, Vec<(usize, usize, usize)>),
+    Follow(Box<Ir>, Vec<(Table, usize, usize)>),
     Agg(Agg, Table, Box<Ir>, usize),
     Neg(Box<Ir>),
     Not(Box<Ir>),
@@ -621,7 +624,7 @@ pub trait Scope {
     /// column is no reference.
     fn targets(&self, table: Table, column: usize) -> Vec<(usize, usize)>;
     /// A table's key column.
-    fn key(&self, table: usize) -> Option<usize>;
+    fn key(&self, table: Table) -> Option<usize>;
 }
 
 /// Resolves a parsed formula; `aggregates` counts the aggregates resolved so far, each one
@@ -646,13 +649,16 @@ impl Resolver<'_, '_> {
             Expr::Path(path, at) => self.path(path, *at, table)?,
             Expr::Lookup(name, key, rest, at) => {
                 let fail = |why: String| Fault::at(*at, why);
-                let t = self.scope.table(name).ok_or_else(|| fail(format!("no table \"{name}\"")))?;
+                if self.scope.column(table, name).is_some() && self.named(name).is_some() {
+                    return Err(fail(format!("{name} names a column and a table, so it means neither")));
+                }
+                let t = self.named(name).ok_or_else(|| fail(format!("no table \"{name}\"")))?;
                 let k = self.scope.key(t).ok_or_else(|| fail(format!("{name} has no key, so no row is found by one")))?;
                 let (key, _) = self.at(key, table, inside)?;
                 let (col, kind) =
-                    self.scope.column(Some(t), &rest[0]).ok_or_else(|| fail(format!("{name} has no column \"{}\"", rest[0])))?;
+                    self.scope.column(t, &rest[0]).ok_or_else(|| fail(format!("{name} has no column \"{}\"", rest[0])))?;
                 let ir = Ir::Follow(Box::new(key), Vec::from([(t, k, col)]));
-                self.follow(ir, Some(t), col, kind, &rest[1..], &rest[0], *at)?
+                self.follow(ir, t, col, kind, &rest[1..], &rest[0], *at)?
             }
             Expr::Neg(a) => {
                 let (a, k) = self.at(a, table, inside)?;
@@ -722,12 +728,31 @@ impl Resolver<'_, '_> {
         })
     }
 
+    /// A table by the name a formula reads it by: `this`, the file's own, or one the
+    /// prelude names.
+    fn named(&self, name: &str) -> Option<Table> {
+        if name == THIS { Some(None) } else { self.scope.table(name).map(Some) }
+    }
+
     fn path(&mut self, path: &[String], at: Sp, table: Table) -> Result<(Ir, K), Fault> {
         let first = &path[0];
-        if let Some((col, kind)) = self.scope.column(table, first) {
+        let column = self.scope.column(table, first);
+        let named = self.named(first);
+        if column.is_some() && named.is_some() {
+            return Err(Fault::at(at, format!("{first} names a column and a table, so it means neither")));
+        }
+        if let Some((col, kind)) = column {
             return self.follow(Ir::Col(col), table, col, kind, &path[1..], first, at);
         }
-        if self.scope.table(first).is_some() {
+        // Inside an aggregate over the table: `sum(fees.pct)`, `sum(this.amount)`.
+        if let Some(t) = named
+            && t == table
+            && let Some(name) = path.get(1)
+        {
+            let (col, kind) = self.scope.column(table, name).ok_or_else(|| Fault::at(at, format!("{first} has no column \"{name}\"")))?;
+            return self.follow(Ir::Col(col), table, col, kind, &path[2..], name, at);
+        }
+        if named.is_some() {
             return Err(Fault::at(
                 at,
                 match path.get(1) {
@@ -764,9 +789,9 @@ impl Resolver<'_, '_> {
             for (t, key) in targets {
                 let (c, kc) = self.scope.column(Some(t), name).ok_or_else(|| fail(format!("{shown} leads to no column \"{name}\"")))?;
                 k = k.meet(kc).ok_or_else(|| fail(format!("{name} is {} in one table and {} in another", k.word(), kc.word())))?;
-                steps.push((t, key, c));
+                steps.push((Some(t), key, c));
             }
-            table = Some(steps[0].0);
+            table = steps[0].0;
             col = steps[0].2;
             kind = k;
             ir = Ir::Follow(Box::new(ir), steps);
@@ -901,7 +926,7 @@ pub trait Source {
     fn cell(&mut self, table: Table, row: usize, column: usize) -> V;
     fn rows(&self, table: Table) -> usize;
     /// The row of `table` whose key column `key` holds `value`.
-    fn find(&mut self, table: usize, key: usize, value: &V) -> Option<usize>;
+    fn find(&mut self, table: Table, key: usize, value: &V) -> Option<usize>;
     /// An aggregate's value, when it was evaluated already.
     fn recall(&mut self, slot: usize) -> Option<V>;
     fn remember(&mut self, slot: usize, v: V);
@@ -919,7 +944,7 @@ pub fn eval(ir: &Ir, table: Table, row: usize, src: &mut dyn Source) -> V {
             }
             for &(t, key_col, col) in targets {
                 if let Some(r) = src.find(t, key_col, &k) {
-                    return src.cell(Some(t), r, col);
+                    return src.cell(t, r, col);
                 }
             }
             V::Null
@@ -1170,7 +1195,7 @@ mod tests {
         fn targets(&self, _: Table, _: usize) -> Vec<(usize, usize)> {
             Vec::new()
         }
-        fn key(&self, _: usize) -> Option<usize> {
+        fn key(&self, _: Table) -> Option<usize> {
             None
         }
     }
@@ -1184,7 +1209,7 @@ mod tests {
         fn rows(&self, _: Table) -> usize {
             self.0.len()
         }
-        fn find(&mut self, _: usize, _: usize, _: &V) -> Option<usize> {
+        fn find(&mut self, _: Table, _: usize, _: &V) -> Option<usize> {
             None
         }
         fn recall(&mut self, slot: usize) -> Option<V> {

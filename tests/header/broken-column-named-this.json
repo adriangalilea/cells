@@ -1,0 +1,13 @@
+{
+  "columns": [
+    { "name": "item", "type": "text!" },
+    { "name": "this", "type": "num" }
+  ],
+  "rows": [
+    { "item": { "text": "fuel" }, "this": { "num": "3" } }
+  ],
+  "problems": [],
+  "broken": [
+    { "at": "column 2", "span": [11, 4] }
+  ]
+}

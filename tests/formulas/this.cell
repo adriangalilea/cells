@@ -1,0 +1,3 @@
+id:text!,amount:EUR,share:num=amount / sum(this.amount),second:EUR=this['k2'].amount,none:EUR=this['zz'].amount,all:EUR=sum(amount)
+k1,30.00,,,,
+k2,70.00,,,,

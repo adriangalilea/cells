@@ -1,0 +1,9 @@
+---
+fees = ```cells
+kind:text!,pct:num
+card,2
+cash,0.5
+```
+---
+item:text!,cost:num,total:num=sum(fees.pct) + cost
+fuel,10,

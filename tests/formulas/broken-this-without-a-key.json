@@ -1,0 +1,14 @@
+{
+  "columns": [
+    { "name": "item", "type": "text" },
+    { "name": "amount", "type": "EUR" },
+    { "name": "first", "type": "EUR", "formula": "this['fuel'].amount" }
+  ],
+  "rows": [
+    { "item": { "text": "fuel" }, "amount": { "money": "10.00", "currency": "EUR" }, "first": { "from": "formula" } }
+  ],
+  "problems": [],
+  "broken": [
+    { "at": "column 3", "span": [31, 4] }
+  ]
+}

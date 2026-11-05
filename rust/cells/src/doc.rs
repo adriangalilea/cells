@@ -502,6 +502,22 @@ fn read_in(bytes: Vec<u8>, dialect: Dialect, threads: usize, imports: &mut dyn I
             }
         }
     }
+    // A column and a prelude name spelled alike: a formula could mean either, so it is
+    // broken naming both, the column read as written.
+    if !plain {
+        for (j, h) in heads.iter().enumerate() {
+            let why = if h.name == expr::THIS {
+                Some(format!("{}: this is the name formulas read the file's own table by; a column takes another", h.name))
+            } else if doc.tables.iter().any(|t| t.name == h.name) {
+                Some(format!("{0}: a column and the table {0} are spelled alike, so a formula could mean either; rename one", h.name))
+            } else {
+                None
+            };
+            if let Some(why) = why {
+                broken.push(Error { at: At::Column(j as u32 + 1), why, within: Some((0, h.name.len() as u32)) });
+            }
+        }
+    }
     // A record that does not read ends the rows: those before it read, it and every byte
     // after it kept as written.
     let quoted = |fields: &[(u32, u32)]| fields.iter().all(|&(s, e)| s < e && src[s as usize] == b'"');
@@ -2094,7 +2110,7 @@ impl Doc {
             rows,
             memo: &mut memo,
             aggregates: alloc::vec![None; aggregates],
-            indexes: (0..self.tables.len()).map(|_| None).collect(),
+            indexes: (0..=self.tables.len()).map(|_| None).collect(),
             cycles: Vec::new(),
         };
         let mut results: Vec<Vec<(usize, V)>> = Vec::with_capacity(self.columns.len());
@@ -2324,8 +2340,9 @@ impl expr::Scope for DocScope<'_> {
             .collect()
     }
 
-    fn key(&self, table: usize) -> Option<usize> {
-        match &self.tables[table].doc {
+    fn key(&self, table: expr::Table) -> Option<usize> {
+        let Some(t) = table else { return self.columns.iter().position(|c| c.ty.key) };
+        match &self.tables[t].doc {
             None => Some(0),
             Some(d) => d.columns.iter().position(|c| c.ty.key),
         }
@@ -2349,7 +2366,8 @@ struct Eval<'a> {
     rows: usize,
     memo: &'a mut [Vec<Slot>],
     aggregates: Vec<Option<V>>,
-    /// Each table's key values, as `V::canonical` writes them, and the row of each.
+    /// Each table's key values, as `V::canonical` writes them, and the row of each; the
+    /// file's own last.
     indexes: Vec<Option<BTreeMap<String, usize>>>,
     /// The computed cells found reading themselves.
     cycles: Vec<(usize, usize)>,
@@ -2397,7 +2415,21 @@ impl expr::Source for Eval<'_> {
         }
     }
 
-    fn find(&mut self, table: usize, key: usize, value: &V) -> Option<usize> {
+    fn find(&mut self, table: expr::Table, key: usize, value: &V) -> Option<usize> {
+        let Some(table) = table else {
+            // The file's own rows, their keys as the formulas read them.
+            let own = self.tables.len();
+            if self.indexes[own].is_none() {
+                let mut m = BTreeMap::new();
+                for r in (0..self.rows).rev() {
+                    if let Some(s) = expr::Source::cell(self, None, r, key).canonical() {
+                        m.insert(s, r);
+                    }
+                }
+                self.indexes[own] = Some(m);
+            }
+            return self.indexes[own].as_ref().unwrap().get(&value.canonical()?).copied();
+        };
         let doc = self.tables[table].doc.as_deref()?;
         let index = self.indexes[table].get_or_insert_with(|| {
             let mut m = BTreeMap::new();

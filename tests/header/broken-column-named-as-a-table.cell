@@ -1,0 +1,8 @@
+---
+fees = ```cells
+kind:text!,pct:num
+card,2
+```
+---
+item:text!,fees:num
+fuel,3
