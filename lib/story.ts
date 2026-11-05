@@ -40,8 +40,8 @@ export interface StoryStep {
   view: StoryView
   /** Ways of writing the step's idea, each with what it means: shown as a short list. */
   reads?: { formula: string; says: string }[]
-  /** What the engine does not do yet, said as coming; never shown as working. */
-  soon?: string
+  /** One line more, under the list (what an app adds, a limit). */
+  note?: string
   /** What the reader can try, said as an action. */
   try?: string
   /** What the engine must find in the first file as the page ships it: each problem's
@@ -107,19 +107,23 @@ fuel,12.00,0,maybe
     lead: "Columns that compute.",
     rest: "The rule beside the column it fills.",
     why: "The field stays empty and the header holds the formula, so a value is never stored twice and never stale.",
-    try: "Change a cost and watch total follow.",
+    reads: [
+      { formula: "total:EUR=cost * qty", says: "each row from its own cells" },
+      { formula: "running:EUR=sum(total) over (order by on)", says: "the rows before it, in the order a column gives, never the order of the lines" },
+    ],
+    try: "Change a cost and watch total and running follow.",
     files: [
       {
         name: `groceries${ext}`,
-        text: `item:text!,cost:EUR>=0,qty:int>=1,total:EUR=cost * qty
-fuel,84.20,1,
-groceries,96.75,2,
-coffee,2.10,3,
+        text: `item:text!,on:date,cost:EUR>=0,qty:int>=1,total:EUR=cost * qty,running:EUR=sum(total) over (order by on)
+fuel,2026-11-01,84.20,1,,
+groceries,2026-11-02,96.75,2,,
+coffee,2026-11-03,2.10,3,,
 `,
       },
     ],
     view: { kind: "table" },
-    expect: { problems: [], values: { total: [84.2, 193.5, 6.3] } },
+    expect: { problems: [], values: { total: [84.2, 193.5, 6.3], running: [84.2, 277.7, 284] } },
   },
   {
     id: "cell",
@@ -131,9 +135,10 @@ coffee,2.10,3,
       { formula: "`=to.kind`", says: "through a reference, a column of the row it names" },
       { formula: "`=fees['card'].pct`", says: "another table's row, by its key" },
       { formula: "`=sum(cost)`", says: "a whole column" },
+      { formula: "`=this['fuel'].cost`", says: "a row of this file, by its key" },
     ],
-    soon: "`=this['k7m2q9xa'].amount`, a row of the file's own by its key, comes next. An app will take `this[#3]` as you type it and write the row's key.",
-    try: "Write `=cost / qty` in a cell of reads.",
+    note: "An app will take `this[#3]` as you type it and write the row's key, so the formula still names the row after lines move.",
+    try: "Write `=this['dinner'].cost / 3` in a cell of reads.",
     files: [
       {
         name: `groceries${ext}`,
@@ -153,11 +158,12 @@ fuel,84.20,1,bank,\`=cost * qty\`
 dinner,96.75,3,food,\`=to.kind\`
 card fee,2.40,1,bank,\`=fees['card'].pct\`
 coffee,2.10,3,food,\`=sum(cost)\`
+tip,1.00,1,food,\`=this['fuel'].cost\`
 `,
       },
     ],
     view: { kind: "table" },
-    expect: { problems: [], values: { reads: ["84.2", "expenses", "1.4", "185.45"] } },
+    expect: { problems: [], values: { reads: ["84.2", "expenses", "1.4", "186.45", "84.2"] } },
   },
   {
     id: "references",

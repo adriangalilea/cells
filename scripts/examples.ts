@@ -45,6 +45,23 @@ for (const [name, frame] of Object.entries(HERO.checkpoints)) {
   else console.log(`✓ hero ${name}: ${got.length} problems`)
 }
 
+// The running total follows its column's order, never the lines': the same rows in
+// another order give each item the same running value.
+{
+  const step = STORY.find((s) => s.id === "formula")
+  const file = step?.files[0]
+  if (!file) throw new Error("examples: no formula step")
+  const [header, ...rows] = file.text.trimEnd().split("\n")
+  const shuffled = { name: file.name, text: `${header}\n${[...rows].reverse().join("\n")}\n` }
+  const by = (t: ReturnType<typeof readFiles>) =>
+    Object.fromEntries((t.values.item ?? []).map((item, i) => [String(item), t.values.running?.[i]]))
+  const a = by(readFiles([file]))
+  const b = by(readFiles([shuffled]))
+  if (JSON.stringify(a) !== JSON.stringify(Object.fromEntries(Object.keys(a).map((k) => [k, b[k]]))))
+    fail("formula order", `running depends on the lines: ${JSON.stringify(a)} vs ${JSON.stringify(b)}`)
+  else console.log("✓ formula order: the running total follows on, not the lines")
+}
+
 // A header cell half typed: the table still reads, that column as text, and the break is
 // placed on the characters the engine names.
 {

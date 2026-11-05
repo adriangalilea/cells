@@ -52,10 +52,9 @@ function Step({ step, index }: { step: StoryStep; index: number }) {
             ))}
           </dl>
         )}
-        {step.soon && (
+        {step.note && (
           <p className="mt-5 max-w-[44ch] text-pretty text-[13px] leading-relaxed text-muted-foreground/80">
-            <span className="font-mono text-[11px] tracking-[0.14em] text-haze/80">COMING </span>
-            <Ticks text={step.soon} />
+            <Ticks text={step.note} />
           </p>
         )}
         {step.try && (

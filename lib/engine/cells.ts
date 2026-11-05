@@ -37,6 +37,7 @@ interface Exports {
   cells_reshaped(h: number, ptr: number, len: number, cap: number): number
   cells_written_as(h: number, sep: number, ptr: number, len: number, cap: number): number
   cells_naming_why(h: number, i: number): number
+  cells_spans(h: number): number
   cells_read_with(ptr: number, len: number, cap: number, files: number, filesLen: number, filesCap: number): number
 }
 
@@ -113,8 +114,9 @@ interface Meta {
   dialect: Dialect
   quotesAll: boolean
   names: { column: number; kind: "blank" | "twice" }[]
-  broken: Broken[]
+  broken: { at: string; why: string }[]
   prelude: string
+  unread: string
   trailing: boolean
   problems: number
   problemCount: number
@@ -342,6 +344,10 @@ export interface Problem {
   /** The same without its place, for a view that shows it on the cell:
    *  `"8x.50" is not a number`. */
   readonly reason: string
+  /** Where it is in the text `write` gives now: the cell's text inside its quotes, the
+   *  control character it holds, the part of its own formula that does not read, an
+   *  empty span where a missing cell stands. */
+  readonly span: Span
 }
 
 /** Where a file's grammar breaks, the rest read. */
@@ -350,10 +356,13 @@ export interface Broken {
   at: string
   /** In words naming what broke: `to: accounts has no column "a" (its key is account)`. */
   why: string
-  /** Where it is in the text `write` gives now: its first byte and its length, in UTF-8
-   *  bytes. */
-  span?: [number, number]
+  /** Where it is in the text `write` gives now, its start and length in UTF-16 units (a
+   *  string's indices); null for the file as a whole. */
+  readonly span: Span | null
 }
+
+/** Where something is in a file's text: its start and its length, in UTF-16 units. */
+export type Span = [start: number, length: number]
 
 /** A plain file's header cell that names its column badly: blank, or another's name too. */
 export interface Naming {
@@ -382,6 +391,24 @@ export class Doc {
   refresh(): void {
     this.meta = JSON.parse(returned(x.cells_meta(this.handle))) as Meta
     this.columns = this.meta.columns.map((m, k) => new Column(this, m, k))
+    this.spanned = null
+  }
+
+  private spanned: Uint32Array | null = null
+  /** Every problem's span, then every break's, as pairs: asked of the module once per
+   *  version of the doc, when a span is first read. */
+  private spans(): Uint32Array {
+    if (this.spanned === null) {
+      const n = 2 * (this.meta.problemCount + this.meta.broken.length)
+      this.spanned = new Uint32Array(x.memory.buffer, x.cells_spans(this.handle), n).slice()
+    }
+    return this.spanned
+  }
+  /** Span `k` of `spans`. */
+  span(k: number): Span | null {
+    const s = this.spans()
+    const start = s[2 * k] as number
+    return start === 0xffffffff ? null : [start, s[2 * k + 1] as number]
   }
 
   get rowCount(): number {
@@ -393,6 +420,12 @@ export class Doc {
   /** The text before the header, the byte order mark and the prelude, as written. */
   get prelude(): string {
     return this.meta.prelude
+  }
+  /** What follows the rows read, from a record that does not read on (all of it after the
+   *  prelude when the header does not), kept as written: `compose` writes it after the
+   *  rows. Empty for a file that reads whole. */
+  get unread(): string {
+    return this.meta.unread
   }
   /** The header's line break, the one new lines take (a plain file's may be a lone `\r`). */
   get newline(): "\n" | "\r\n" | "\r" {
@@ -422,7 +455,14 @@ export class Doc {
   }
   /** Where the grammar breaks, in the file's order; empty for a file that reads whole. */
   get broken(): Broken[] {
-    return this.meta.broken
+    const doc = this
+    const after = this.meta.problemCount
+    return this.meta.broken.map((b, i) => ({
+      ...b,
+      get span() {
+        return doc.span(after + i)
+      },
+    }))
   }
   /** Whether the file ends in a line break. */
   get trailing(): boolean {
@@ -477,6 +517,9 @@ export class Doc {
         },
         get reason() {
           return returned(x.cells_why(doc.handle, k))
+        },
+        get span() {
+          return doc.span(k) as Span
         },
       })
     }
@@ -669,16 +712,27 @@ function quoter(separator: Separator, all: boolean): (text: string) => string {
 /** A file written from cells, for a host that keeps its own rows (a table editing the
  *  file) and hands back the header's cells and the rows' texts: `like`'s byte order
  *  mark and prelude, its separator, its line break and its final break, every field quoted
- *  only where the file needs it (the core's `cells::compose`, here so the rows never cross
- *  into the module). Pure: nothing is read or changed. */
+ *  only where the file needs it, and what it did not read after the rows, as written (the
+ *  core's `cells::compose`, here so the rows never cross into the module). Pure: nothing
+ *  is read or changed. */
 export function compose(
-  like: { prelude: string; newline: "\n" | "\r\n" | "\r"; trailing: boolean; separator: Separator; quotesAll: boolean },
+  like: {
+    prelude: string
+    newline: "\n" | "\r\n" | "\r"
+    trailing: boolean
+    separator: Separator
+    quotesAll: boolean
+    unread: string
+  },
   header: readonly string[],
   rows: readonly (readonly string[])[],
 ): string {
+  // A header that did not read leaves nothing but what follows the prelude.
+  if (header.length === 0 && like.unread !== "") return like.prelude + like.unread
   const quote = quoter(like.separator, like.quotesAll)
   const parts: string[] = new Array(rows.length + 1)
   parts[0] = header.map(quote).join(like.separator)
   for (let r = 0; r < rows.length; r++) parts[r + 1] = (rows[r] as readonly string[]).map(quote).join(like.separator)
-  return like.prelude + parts.join(like.newline) + (like.trailing ? like.newline : "")
+  const end = like.unread !== "" ? like.newline + like.unread : like.trailing ? like.newline : ""
+  return like.prelude + parts.join(like.newline) + end
 }
