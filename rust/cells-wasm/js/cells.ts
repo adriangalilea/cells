@@ -301,7 +301,7 @@ export class Column {
    *  text that would read as a formula (`` `=x` ``) with its first backtick doubled. */
   form(v: Value): string {
     if (v === null) return ""
-    if (typeof v === "string" && /^`+=.*`$/s.test(v) && v.length >= 3) return `\`${v}`
+    if (typeof v === "string" && /^`+=[\s\S]*`$/.test(v) && v.length >= 3) return `\`${v}`
     if (typeof v === "boolean") {
       const [yes, no] = this.m.words ?? ["true", "false"]
       return v ? yes : no
