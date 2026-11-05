@@ -1,16 +1,31 @@
 # TCSV
 
-Typed CSV. A `.tcsv` file is a table in plain text whose header cells carry their column's type, in the file itself: one file, never a sidecar. It is its own format, designed for its own ergonomics, never bent to suit readers that do not know it. [SPEC.md](SPEC.md) is the whole format, and not final yet.
+Typed CSV. A `.tcsv` file is a table in plain text whose header cells carry their column's type, and its formula when it computes, in the file itself: one file, never a sidecar. Files import each other, so a folder of them is typed tables joined by references, and a table can be filled by a script. It is its own format, designed for its own ergonomics, never bent to suit readers that do not know it. [SPEC.md](SPEC.md) is the whole format, and not final yet.
 
+````
+---
+import accounts from "./accounts.tcsv"
+
+eurusd = run every day at 18:00 in Europe/Madrid
+```ts
+export default async function ({ last }) {
+  const res = await fetch(`https://api.exchange.example/usdeur?since=${last.date}`)
+  return (await res.json()).map(d => ({ date: d.day, rate: String(d.close) }))
+}
+```
+```tcsv
+date:date!,rate:num>0,run:int?
+2026-11-03,0.9287,9
+2026-11-04,0.9312,9
 ```
 ---
-type Category = travel|stay|food|gear
-total = cost * qty                        // computed, never stored
----
-item:text!,category:Category,cost:EUR>=0,qty:int>=1,paid:yes/no,on:date,note:text?
-fuel,travel,84.20,1,yes,2026-08-14,
-groceries,food,96.75,2,no,2026-08-15,the market on the square
-```
+date:date,usd:USD>0,from:accounts.account,to:accounts.account,eur:EUR=usd * eurusd[date].rate,note:text?
+2026-11-03,180.00,card,hotel,,two nights
+2026-11-04,42.50,card,food,,
+2026-11-04,`=12.60 * 3`,card,food,,three coffees
+````
+
+What a person sees is the table under the second `---`: `eur` computed on every row from the day's rate, a reference that must name an account, a cell holding its own formula. Above it is the work, which an app shows folded: the accounts imported from the next file, and the rates a script fetched and the file keeps.
 
 ## The documents
 
@@ -24,7 +39,7 @@ groceries,food,96.75,2,no,2026-08-15,the market on the square
 
 ## The syntax
 
-A header cell is `name:type`. A cell with no `:` is a plain column, its type read from its values.
+A header cell is `name:type`, or `name:type=formula`. A cell with no `:` is a plain column, its type read from its values.
 
 | Header cell | The column |
 |---|---|
@@ -37,28 +52,31 @@ A header cell is `name:type`. A cell with no `:` is a plain column, its type rea
 | `note:text?` | `?`: may be blank |
 | `mood:'yay!'\|meh` | a choice; single quotes hold a reserved character |
 | `score:0..10` | a number from 0 to 10 |
+| `to:accounts.account` | a key of the table the prelude names `accounts`: it must exist |
+| `total:EUR=cost * qty` | euros its formula computes where the field is blank; a written value is that row's override |
 
 The bases are `text` `int` `num` `pct` `bool` `date` `time` `datetime` `url` `email` and every currency. Every shorthand has a word, so a header reads either way: `cost:EUR>=0` is `cost:EUR min 0`, `paid:yes/no` is `paid:bool yes no`, `item:text!` is `item:text key`.
 
-The prelude, between two `---` lines, names types (`type Category = …`) and computes columns (`total = cost * qty`), with `//` comments.
+A cell may hold its own formula between backticks, `` `=96.75 / 3` ``; a bare `=` is text. Formulas are SQL's expressions in exact decimal (`case`, `coalesce`, `round`, `||`, `sum(cost)`), and name what they read: a column of the row, `to.kind` through a reference, `fees['card'].pct` a row by its key. Never a coordinate, so a line inserted by hand moves nothing.
+
+The prelude, between two `---` lines, names types (`type Kind = …`), imports other files (`import accounts from "../accounts.tcsv"`, `import { Kind } from "./types.tcsv"`, a URL pinned by its hash), and holds tables of the file's own, written inline in a `` ```tcsv `` fence or filled by a script (`rates = run every hour`), with `//` comments.
 
 ## Reading and writing
 
-- **A broken cell opens and says why**, never coerced: `row 3, cost: "8x.50" is not a number`. Its text is kept, its value null, so the tool that can fix it can show it. A duplicate key reports both rows. A control character (a NUL, an ESC, a C1 from a bank's export) breaks its cell in any column, named by its code point, `U+0000`, since it shows nothing, and no writer writes one.
-- **Written back byte for byte** but for what changed: the line endings, the quoting, the header's spelling and the prelude as they were read.
+- **A broken cell opens and says why**, never coerced: `row 3, cost: "8x.50" is not a number`. Its text is kept, its value null, so the tool that can fix it can show it. A duplicate key reports both rows, a reference to no row says so (`"bar" is no key of accounts`), and so does a formula that does not compute. A control character (a NUL, an ESC, a C1 from a bank's export) breaks its cell in any column, named by its code point, `U+0000`, since it shows nothing, and no writer writes one.
+- **Written back byte for byte** but for what changed: the line endings, the quoting, the header's spelling and the prelude as they were read. A computed value is never written into its field; a file written as plain CSV holds every value a person saw.
 - **Records quote as RFC 4180** (a field holding `,`, `"` or a line break is quoted, `""` inside), because it is the right rule for cells.
+- **Opening never runs anything.** A script runs when asked (`tcsv run`), and a file opens with the rows its last run stored.
 
 ## Where it is going
 
 Decided in direction, not yet in the spec ([SPEC.md, Open](SPEC.md#open)):
 
-- **Files that point at each other.** A column typed by another file's key (`account_to:accounts.account`) is a reference, brought in by the prelude (`import accounts from "../accounts.tcsv"`). A folder of `.tcsv` files is typed tables joined by references: **your filesystem can be a graph database.** A reference that breaks names the file and row that broke it, and tools say so before the break lands. A local file is followed live, a remote one pinned by its hash.
+- **Your filesystem can be a graph database.** References join a folder's files today; next, tools that see a break before it lands (a key renamed in one file, followed through every file that names it) and fixes offered where a reference names nothing (`did you mean "rent"?`).
 - **Every row has an identity**, its key or an `id` the engine assigns, so an edit always lands on the row it meant and two versions of a file merge row by row.
-- **Formulas where they are read**: a computed column in its header cell (`total:EUR=cost*qty`), a formula in a cell (`=96.75/3`), naming columns and keys, never coordinates, in SQL's expressions.
-- **Tables from scripts.** A prelude names tables, written inline or produced by a TypeScript function on a schedule (`eurusd = run every day at 18:00 in Europe/Madrid`), its last results and runs stored in the file. Opening a file never runs one.
-- **One engine every app reads and writes through**: first a daemon on one Mac, standalone in a page; files parsed once, changes heard as they happen, nobody's write ever lost, even an editor's that bypasses it. Later every device a full replica, books owned by one of them. [ENGINE.md](ENGINE.md) is the design.
+- **One engine every app reads and writes through**: first a daemon on one Mac that keeps each file's schedules, standalone in a page; files parsed once, changes heard as they happen, nobody's write ever lost, even an editor's that bypasses it. Later every device a full replica, books owned by one of them. [ENGINE.md](ENGINE.md) is the design.
 - **Queries in standards, never our own language**: SQL, and SQL/PGQ to walk references.
-- **Charts with no setup**, because the columns are typed: a date is a time axis, money a measure, a choice a category, a reference a link to follow.
+- **Charts with no setup**, because the columns are typed: a date is a time axis, money a measure, a choice a category, a reference a link to follow; what a chart needs beyond the types declared, never scripted.
 - **Tooling**: a tree-sitter grammar, a language server (types checked as typed, a broken reference underlined, a referenced file's keys completed), highlighting in every editor.
 
 ## What it is for
@@ -76,7 +94,7 @@ The use it is designed against is plain text accounting done properly. Books kep
 ```
 accounts.tcsv
 ---
-type Kind = assets|liabilities|expenses|income
+export type Kind = assets|liabilities|expenses|income
 ---
 account:text!,kind:Kind
 assets:bank:main,assets
@@ -87,19 +105,24 @@ home/money.tcsv
 ---
 import accounts from "../accounts.tcsv"
 ---
-id:id!,date:date,amount:EUR>0,account_from:accounts.account,account_to:accounts.account,description:text,tax_rate:pct,vat:EUR=amount*tax_rate/(100+tax_rate)
+id:id!,date:date,amount:EUR>0,account_from:accounts.account,account_to:accounts.account,description:text,tax_rate:pct,vat:EUR=amount * tax_rate / (100 + tax_rate)
 k7m2q9xa,2026-07-01,950.00,assets:bank:main,expenses:home:rent,rent july,0,
 p3w8c2nd,2026-07-12,64.30,assets:bank:main,expenses:home:power,power july,21,
+q4x9t1mz,2026-07-30,950.00,assets:bank:main,expenses:home:rnet,rent august,0,
 ```
 
 ```
-$ tcsv sql ~/books "select account_to, sum(amount) from money
-                    where account_to like 'expenses:home:%' group by account_to"
+$ tcsv check books
+books/home/money.tcsv row 2, account_to: "expenses:home:rnet" is no key of accounts
 
-$ tcsv check ~/books
-travel/money.tcsv row 14: account "assets:bank:mian" does not exist
-home/money.tcsv rows 3 and 9: the same invoice twice
+$ tcsv show books/home/money.tcsv
+id        date        amount  account_from      account_to           description  tax_rate  vat
+k7m2q9xa  2026-07-01  950.00  assets:bank:main  expenses:home:rent   rent july    0         0
+p3w8c2nd  2026-07-12  64.30   assets:bank:main  expenses:home:power  power july   21        11.16
+q4x9t1mz  2026-07-30  950.00  assets:bank:main  expenses:home:rnet   rent august  0         0
 ```
+
+`tcsv show` writes tab-separated text (aligned here), each computed cell its value: `vat` is euros, so 64.30 at 21% is `11.16`, rounded half to even at the euro's two digits. Next: `tcsv sql ~/books "select account_to, sum(amount) from money group by account_to"`.
 
 Ledgers in plain text (hledger, beancount) keep books readable, diffable and yours, but each invents a syntax of its own and cannot say that a column is euros, that an account must exist, or that VAT is derived from the amount. TCSV is the table those books are. [ACCOUNTING.md](ACCOUNTING.md) drafts them whole: pending payments, a payslip in several rows, exchanges, lots, corrections, balances that must hold.
 
@@ -111,12 +134,12 @@ One law and one engine. Every surface binds the same Rust core, so there is one 
 |---|---|---|
 | The format | [SPEC.md](SPEC.md) | prose |
 | The law: every rule as a case, run against every binding | [`tests/`](tests) | data |
-| The engine: parsing at memory speed, typed columns in Arrow's layout (exact decimals for money, days for dates, a dictionary for choices), problems, the byte-for-byte writer | `rust/` | Rust, no dependencies |
-| The command line: `tcsv check`, then `tcsv sql` (DuckDB over the columns, so SQL and SQL/PGQ are the standards') | `rust/` | Rust |
-| The daemon ([ENGINE.md](ENGINE.md)): every client's one way to read and write, each file parsed once and re-parsed when it changes, the references held as a graph, edits by row identity, never losing a write | `rust/` | Rust |
+| The engine: parsing at memory speed, typed columns in Arrow's layout (exact decimals for money, days for dates, a dictionary for choices), formulas in exact decimal, imports followed, references checked, problems, the byte-for-byte writer | `rust/` | Rust, no dependencies |
+| The command line: `tcsv check` (a folder, its imports followed), `fmt --check`, `pin`, `run`, `show`; then `tcsv sql` (DuckDB over the columns, so SQL and SQL/PGQ are the standards') | `rust/` | Rust |
+| The daemon ([ENGINE.md](ENGINE.md)): every client's one way to read and write, each file parsed once and re-parsed when it changes, the references held as a graph, edits by row identity, the schedules kept, never losing a write | `rust/` | Rust |
 | The protocol: intents and queries in, Arrow frames out, over XPC or a Unix socket | `rust/` | Rust |
 | The language server: types checked as typed, references completed and followed, semantic highlighting | `rust/` | Rust |
-| The web: the engine as wasm, a synchronous `read(text)`, columns read as typed arrays without a copy | `rust/` | Rust, wasm |
+| The web: the engine as wasm, a synchronous `read(text)`, its imports followed through the files a page holds, columns read as typed arrays without a copy | `rust/` | Rust, wasm |
 | The Apple platforms: the engine behind a C header, swift-utils' `TCSV` and `TCSVTable` over it | `rust/` + swift-utils | Rust, Swift |
 | Python, Go | pending: after the Apple platforms and the web | Rust (PyO3), cgo |
 | Highlighting in Helix, Neovim, Zed | `tree-sitter/` | tree-sitter |
@@ -124,7 +147,7 @@ One law and one engine. Every surface binds the same Rust core, so there is one 
 
 Rust because it is as fast as C and reaches everything else: a C ABI, wasm, PyO3, `tower-lsp`, DuckDB's bindings. Arrow because typed columns are what it is: DuckDB, Python, the browser and Swift take them as they lie, and a chart reads a column, never a row. DuckDB ships with the command line, the daemon and the apps, never in a page. Bun runs a file's scripts, never the core: it is a program, and no page or app can link it. Parquet is an export of the same columns, never the source: in memory both are Arrow, and what text costs at load the daemon's cache pays once, while Parquet can never be read, diffed in git or fixed by hand.
 
-Built: the suite (430 cases, `plain/` the files that are not TCSV); the engine passing all of them in Rust and through its wasm build (`tcsv check`, `tcsv fmt --check`, a 61 KB brotli wasm with a synchronous `read`, the Apple XCFramework, released as `apple-<version>`; 1M rows read in 14 ms on 18 threads, rust/README.md); the engine reading what people's files are (a `.csv` or `.tsv` by the separator its first lines agree on, never refused for its records, a ragged row read as blanks with its problem), columns inserted, removed, moved and renamed, and a file written in another dialect; ui's table and TCSV on the wasm build; swift-utils' `TCSV` a binding over it on macOS, iOS and tvOS, passing every case through Swift. Next, in order: the Apple apps on the engine with nothing lost; a problem carrying the span of the cell that broke (its start and length in the cell's text), so every client marks the exact characters without parsing anything itself; `tcsv sql` and the daemon; charts from the types; the language server. [`ts/`](ts) is the first TypeScript reader, kept as a readable reference: `read`, `write`, `setCell`, `setType`, `parseHeader`, `compose`, and `Infer<"header">`, the row type from a header line at compile time; it predates the suite and fails 95 of its cases, the engine passes them all.
+Built: the suite (456 cases, `plain/` the files that are not TCSV); the engine passing all of them in Rust and through its wasm build (a 101 KB brotli wasm with a synchronous `read`; 1M rows read in 12 ms on 18 threads, rust/README.md): formulas in header cells and in cells, SQL's expressions in exact decimal, tables written inline, imports and exports (a URL pinned by its hash, a `rev` through git), references checked across files, scripts' tables and schedules read; the command line (`tcsv check` over a folder with its imports followed, `fmt --check`, `pin`, `run` with Bun, `show`); the engine reading what people's files are (a `.csv` or `.tsv` by the separator its first lines agree on, never refused for its records, a ragged row read as blanks with its problem), columns inserted, removed, moved and renamed, and a file written in another dialect; ui's table and TCSV on the wasm build; the Apple XCFramework, released as `apple-<version>`, and swift-utils' `TCSV` a binding over it on macOS, iOS and tvOS, which passes every case of the release before formulas moved into the header (the C header changed since: formulas, origins, references). Next, in order: swift-utils and the Apple apps on this engine; the daemon keeping the schedules; a problem carrying the span of the cell that broke (its start and length in the cell's text), so every client marks the exact characters without parsing anything itself; `tcsv sql`; charts from the types; the language server. [`ts/`](ts) is the first TypeScript reader, kept as a readable reference: `read`, `write`, `setCell`, `setType`, `parseHeader`, `compose`, and `Infer<"header">`, the row type from a header line at compile time; it predates the suite and fails many of its cases, the engine passes them all.
 
 ## Where it is used
 

@@ -1,6 +1,6 @@
 # Books in TCSV
 
-> **A draft.** Plain text accounting done properly is what TCSV is designed against (SPEC.md, "What it is for"). These are the books written with the primitives SPEC.md's Open section proposes (`import`, `money in`, `unique`, `final`, references to a file's own rows, `check`, computed columns in the header), none of which a reader implements yet. Every name and amount is invented.
+> **A draft.** Plain text accounting done properly is what TCSV is designed against (SPEC.md, "What it is for"). These are the books written with what SPEC.md writes (imports, references, formulas in the header) and the primitives its Open section proposes (`money in`, `unique`, `final`, references to a file's own rows, `check`), which no reader implements yet, so these files do not read today. Every name and amount is invented.
 
 ## What it takes from whom
 

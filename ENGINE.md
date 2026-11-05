@@ -10,7 +10,7 @@ The engine is a library: the Rust core, behind a C header on the Apple platforms
 
 ### How it runs
 
-- **The daemon.** One process per user, `tcsv serve`, kept by launchd, hosts the engine for every client on the Mac: tally, the language server, the command line. Each file is parsed once, its references are held as a graph, and every query and chart is served from memory. It runs each file's scripts on their schedules (SPEC.md, "A table can come from a script"), through Bun, and only there: a page or an app shows what the last run stored.
+- **The daemon.** One process per user, `tcsv serve`, kept by launchd, hosts the engine for every client on the Mac: tally, the language server, the command line. Each file is parsed once, its references are held as a graph, and every query and chart is served from memory. It runs each file's scripts on their schedules (SPEC.md, "Running"; `tcsv run` runs one by hand today), through Bun, and only there: a page or an app shows what the last run stored.
 - **Standalone.** A page given a `.tcsv` file (the wasm engine), or an app given a file without the daemon: read, render, edit, give it back. Nothing else is needed, and a file is complete on its own.
 
 ### The protocol
