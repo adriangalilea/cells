@@ -2,21 +2,22 @@
   "$schema": "https://tree-sitter.github.io/tree-sitter/assets/schemas/config.schema.json",
   "grammars": [
     {
-      "name": "tcsv",
-      "camelcase": "TCSV",
-      "title": "TCSV",
-      "scope": "source.tcsv",
+      "name": "cells",
+      "camelcase": "Cells",
+      "title": "Cells",
+      "scope": "source.cells",
       "path": ".",
-      "file-types": ["tcsv"],
+      "file-types": ["cell"],
       "highlights": "queries/highlights.scm",
-      "injection-regex": "^tcsv$"
+      "injections": "queries/injections.scm",
+      "injection-regex": "^cells$"
     }
   ],
   "metadata": {
     "version": "0.1.0",
-    "description": "TCSV, typed CSV: records, typed header cells and the prelude",
+    "description": "Cells: records, typed header cells and their formulas, cells holding their own, and the prelude with its imports, tables and fences",
     "authors": [{ "name": "Adrian Galilea" }],
-    "links": { "repository": "https://github.com/adriangalilea/tcsv" }
+    "links": { "repository": "https://github.com/adriangalilea/cells" }
   },
   "bindings": {
     "c": false,

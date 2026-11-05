@@ -1,4 +1,4 @@
-; TCSV highlights, in the capture names Neovim, Zed and the tree-sitter CLI
+; Cells highlights, in the capture names Neovim, Zed and the tree-sitter CLI
 ; share. Helix names its scopes differently: queries/helix/highlights.scm is
 ; the same map in Helix's names.
 ;
@@ -19,10 +19,13 @@
 
 "type" @keyword.type
 
-; PROVISIONAL: `use` and its path (SPEC, Open: imports).
-"use" @keyword.import
+"export" @keyword.modifier
 
-(path) @string.special.path
+[
+  "import"
+  "from"
+  "with"
+] @keyword.import
 
 (type_definition
   name: (type_name) @type.definition)
@@ -30,13 +33,91 @@
 (type_definition
   "=" @operator)
 
-(computed_column
-  name: (column_name) @function)
+(import_statement
+  default: (table_name) @module)
 
-(computed_column
+(imported_name) @module
+
+(named_imports
+  [
+    "{"
+    "}"
+  ] @punctuation.bracket)
+
+(named_imports
+  "," @punctuation.delimiter)
+
+(import_attributes
+  [
+    "{"
+    "}"
+  ] @punctuation.bracket)
+
+(import_attribute
+  key: (attribute_name) @attribute
+  ":" @punctuation.delimiter)
+
+(string) @string.special.path
+
+(table_definition
+  name: (table_name) @function)
+
+(table_definition
   "=" @operator)
 
+(script_definition
+  name: (table_name) @function)
+
+(script_definition
+  "=" @operator)
+
+"run" @keyword
+
+(schedule
+  [
+    "every"
+    "at"
+    "on"
+    "in"
+    "cron"
+    "when"
+    "changes"
+  ] @keyword)
+
+(schedule
+  "," @punctuation.delimiter)
+
+(schedule_time) @number
+
+(schedule_word) @string.special
+
+; A fence's backticks are its frame; its language and label say what it holds,
+; and its content is the language's own (queries/injections.scm).
+[
+  (fence_open)
+  (fence_close)
+] @punctuation.special
+
+(fence_language) @label
+
+(fence_label) @attribute
+
+; ── A formula ──────────────────────────────────────────────────────────────
+
 (column_reference) @variable.member
+
+(property) @variable.member
+
+(table_reference) @module
+
+(function_name) @function
+
+(string_literal) @string
+
+(string_literal
+  (escape_sequence) @string.escape)
+
+(null) @constant
 
 (binary_expression
   operator: _ @operator)
@@ -44,11 +125,60 @@
 (unary_expression
   operator: _ @operator)
 
+(not_expression
+  operator: _ @keyword.operator)
+
+(null_test
+  [
+    "is"
+    "not"
+  ] @keyword.operator)
+
+(case_expression
+  [
+    "case"
+    "else"
+    "end"
+  ] @keyword)
+
+(when_clause
+  [
+    "when"
+    "then"
+  ] @keyword)
+
+(member_expression
+  "." @punctuation.delimiter)
+
+(key_expression
+  [
+    "["
+    "]"
+  ] @punctuation.bracket)
+
+(call_expression
+  [
+    "("
+    ")"
+  ] @punctuation.bracket)
+
+(call_expression
+  "," @punctuation.delimiter)
+
 (parenthesized_expression
   [
     "("
     ")"
   ] @punctuation.bracket)
+
+(header_cell
+  "=" @operator)
+
+(cell_formula
+  [
+    "`="
+    "`"
+  ] @punctuation.special)
 
 ; ── A type ─────────────────────────────────────────────────────────────────
 

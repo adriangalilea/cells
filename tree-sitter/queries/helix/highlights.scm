@@ -18,10 +18,13 @@
 
 "type" @keyword.storage.type
 
-; PROVISIONAL: `use` and its path (SPEC, Open: imports).
-"use" @keyword.control.import
+"export" @keyword.storage.modifier
 
-(path) @string.special.path
+[
+  "import"
+  "from"
+  "with"
+] @keyword.control.import
 
 (type_definition
   name: (type_name) @type)
@@ -29,13 +32,91 @@
 (type_definition
   "=" @operator)
 
-(computed_column
-  name: (column_name) @function)
+(import_statement
+  default: (table_name) @namespace)
 
-(computed_column
+(imported_name) @namespace
+
+(named_imports
+  [
+    "{"
+    "}"
+  ] @punctuation.bracket)
+
+(named_imports
+  "," @punctuation.delimiter)
+
+(import_attributes
+  [
+    "{"
+    "}"
+  ] @punctuation.bracket)
+
+(import_attribute
+  key: (attribute_name) @attribute
+  ":" @punctuation.delimiter)
+
+(string) @string.special.path
+
+(table_definition
+  name: (table_name) @function)
+
+(table_definition
   "=" @operator)
 
+(script_definition
+  name: (table_name) @function)
+
+(script_definition
+  "=" @operator)
+
+"run" @keyword
+
+(schedule
+  [
+    "every"
+    "at"
+    "on"
+    "in"
+    "cron"
+    "when"
+    "changes"
+  ] @keyword)
+
+(schedule
+  "," @punctuation.delimiter)
+
+(schedule_time) @constant.numeric
+
+(schedule_word) @string.special
+
+; A fence's backticks are its frame; its language and label say what it holds,
+; and its content is the language's own (queries/injections.scm).
+[
+  (fence_open)
+  (fence_close)
+] @punctuation.special
+
+(fence_language) @label
+
+(fence_label) @attribute
+
+; ── A formula ──────────────────────────────────────────────────────────────
+
 (column_reference) @variable.other.member
+
+(property) @variable.other.member
+
+(table_reference) @namespace
+
+(function_name) @function
+
+(string_literal) @string
+
+(string_literal
+  (escape_sequence) @constant.character.escape)
+
+(null) @type.enum.variant
 
 (binary_expression
   operator: _ @operator)
@@ -43,11 +124,60 @@
 (unary_expression
   operator: _ @operator)
 
+(not_expression
+  operator: _ @keyword.operator)
+
+(null_test
+  [
+    "is"
+    "not"
+  ] @keyword.operator)
+
+(case_expression
+  [
+    "case"
+    "else"
+    "end"
+  ] @keyword)
+
+(when_clause
+  [
+    "when"
+    "then"
+  ] @keyword)
+
+(member_expression
+  "." @punctuation.delimiter)
+
+(key_expression
+  [
+    "["
+    "]"
+  ] @punctuation.bracket)
+
+(call_expression
+  [
+    "("
+    ")"
+  ] @punctuation.bracket)
+
+(call_expression
+  "," @punctuation.delimiter)
+
 (parenthesized_expression
   [
     "("
     ")"
   ] @punctuation.bracket)
+
+(header_cell
+  "=" @operator)
+
+(cell_formula
+  [
+    "`="
+    "`"
+  ] @punctuation.special)
 
 ; ── A type ─────────────────────────────────────────────────────────────────
 

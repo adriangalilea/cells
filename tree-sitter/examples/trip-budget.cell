@@ -2,16 +2,14 @@
 // Two weeks along the coast of Valmora, by train and on foot.
 type Category = travel|stay|food|gear|'tickets & tours'
 type Money = EUR>=0
-total = cost * qty
-share = cost * qty / 3                    // split three ways
 ---
-item:text!,category:Category,cost:Money,qty:int>=1,paid:yes/no,on:date,where:text?,note:text?
-night train to Port Esten,travel,64.00,3,yes,2026-08-03,Lindara Central,"couchettes, upper berths"
-hostel on the harbour,stay,38.50,6,yes,2026-08-04,Port Esten,
-market breakfast,food,7.20,3,no,2026-08-04,Port Esten,
-ferry to the islands,travel,18.00,3,no,2026-08-06,Port Esten,"leaves 07:40, ""be early"" says the guide"
-headlamp,gear,22.90,1,yes,2026-08-06,,
-cliff path guided walk,tickets & tours,31.00,3,no,2026-08-08,Cabo Ressa,
-guesthouse,stay,52.00,4,no,2026-08-09,Cabo Ressa,breakfast included
-fish supper,food,24.60,3,no,2026-08-10,Cabo Ressa,
-bus back inland,travel,11.40,3,no,2026-08-13,,
+item:text!,category:Category,cost:Money,qty:int>=1,paid:yes/no,on:date,where:text?,note:text?,total:Money=cost * qty,share:Money=cost * qty / 3
+night train to Port Esten,travel,64.00,3,yes,2026-08-03,Lindara Central,"couchettes, upper berths",,
+hostel on the harbour,stay,38.50,6,yes,2026-08-04,Port Esten,,,
+market breakfast,food,7.20,3,no,2026-08-04,Port Esten,,,
+ferry to the islands,travel,18.00,3,no,2026-08-06,Port Esten,"leaves 07:40, ""be early"" says the guide",,
+headlamp,gear,22.90,1,yes,2026-08-06,,,,22.90
+cliff path guided walk,tickets & tours,31.00,3,no,2026-08-08,Cabo Ressa,,,
+guesthouse,stay,52.00,4,no,2026-08-09,Cabo Ressa,breakfast included,,
+fish supper,food,`=73.80 / 3`,3,no,2026-08-10,Cabo Ressa,the bill split three ways,,
+bus back inland,travel,11.40,3,no,2026-08-13,,,,

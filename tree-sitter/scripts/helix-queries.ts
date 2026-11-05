@@ -67,4 +67,6 @@ const body = [";", ...lines.slice(intro + 1)]
 
 mkdirSync(join(root, "queries/helix"), { recursive: true })
 writeFileSync(join(root, "queries/helix/highlights.scm"), header + body)
-console.log("wrote queries/helix/highlights.scm")
+// Injections name languages, not scopes: the same file serves Helix.
+writeFileSync(join(root, "queries/helix/injections.scm"), readFileSync(join(root, "queries/injections.scm"), "utf8"))
+console.log("wrote queries/helix/highlights.scm and injections.scm")

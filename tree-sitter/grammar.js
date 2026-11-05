@@ -1,6 +1,8 @@
 /**
- * @file TCSV, typed CSV: RFC 4180 records, a header whose cells carry their
- * column's type (`name:type`), and an optional prelude fenced by `---`.
+ * @file Cells, data and its logic in one plain-text file: RFC 4180 records, a
+ * header whose cells carry their column's type and formula
+ * (`name:type=formula`), cells that hold their own formula, and a prelude
+ * fenced by `---` that names types, imports files and holds tables.
  * @see ../SPEC.md
  *
  * Every column of the header and of a row is a `field` (a `header_cell` in
@@ -9,9 +11,15 @@
  * by its position with anchors, `(row . (field) . (field) @second)`.
  *
  * Data cells are classified by their spelling alone (a number, a date, a
- * boolean, a URL, quoted text, text). What a column's header says its cells
- * are is the language server's to colour, as semantic tokens over these
- * nodes; the grammar never reads the header to classify a row.
+ * boolean, a URL, quoted text, text, a formula). What a column's header says
+ * its cells are is the language server's to colour, as semantic tokens over
+ * these nodes; the grammar never reads the header to classify a row.
+ *
+ * The prelude's statements are read one line each, and a fence (a script, a
+ * table written inline, a script's stored rows and runs) is a node of its
+ * own: which fence belongs to which statement, and whether a script has the
+ * fences it needs, is the reader's to check, never the highlighter's. A
+ * fence's content is injected in the language its info string names.
  */
 
 /// <reference types="tree-sitter-cli/dsl" />
@@ -33,8 +41,20 @@ const CURRENCIES = (
 
 const FORMAT_FIELDS = ['YYYY', 'MM', 'DD', 'HH', 'mm', 'ss'];
 
+const SCHEDULE_WORDS = ['every', 'at', 'on', 'in', 'cron', 'when', 'changes'];
+
+// A formula's keyword, read in any case (SPEC, Formulas: keywords are read in
+// any case), named by its lower-case spelling. Its precedence over
+// `identifier` makes `and` a keyword before it is a column's name.
+const keyword = word => alias(
+  token(prec(2, new RegExp(word.split('').map(c => `[${c}${c.toUpperCase()}]`).join('')))),
+  word,
+);
+
+const commaSep1 = rule => seq(rule, repeat(seq(',', rule)));
+
 module.exports = grammar({
-  name: 'tcsv',
+  name: 'cells',
 
   // Spaces and tabs between tokens; a line break is a token, since it ends a
   // record and a prelude statement. A comment is no extra: `//` is only a
@@ -42,10 +62,16 @@ module.exports = grammar({
   extras: _ => [/[ \t]/],
 
   externals: $ => [
-    // PROVISIONAL (SPEC, Open: references between files). `accounts` in
-    // `accounts.account`, recognised only when a column name follows the dot
-    // and no `|` or `/` does, so `v1.2|v2.0` stays a choice of two words.
+    // `accounts` in `accounts.account`, recognised only when a column name
+    // follows the dot and no `|` or `/` does, so `v1.2|v2.0` stays a choice of
+    // two words. A union of references (`shared.account|clients.account`)
+    // therefore reads as a choice: which word names a table is the reader's.
     $.reference_file,
+    // A fence: its opening backticks (three or more), what it holds up to the
+    // line of as many backticks, and that line. Only a scanner counts them.
+    $.fence_open,
+    $.fence_content,
+    $.fence_close,
     $._error_sentinel,
   ],
 
@@ -74,51 +100,188 @@ module.exports = grammar({
       $._newline,
       seq($._statement, optional($.comment), $._newline),
       seq($.comment, $._newline),
+      seq($.code_block, $._newline),
     ),
 
-    _statement: $ => choice($.use_statement, $.type_definition, $.computed_column),
-
-    // PROVISIONAL (SPEC, Open: imports; the keyword is not decided).
-    use_statement: $ => seq('use', field('path', $.path)),
-
-    path: _ => /[^\s]+/,
+    _statement: $ => choice(
+      $.type_definition,
+      $.import_statement,
+      $.table_definition,
+      $.script_definition,
+    ),
 
     type_definition: $ => seq(
+      optional('export'),
       'type',
       field('name', alias($._type_identifier, $.type_name)),
       '=',
       field('type', $.type),
     ),
 
-    computed_column: $ => seq(
-      field('name', alias($.identifier, $.column_name)),
-      '=',
-      field('value', $._expression),
+    // `import accounts from "../accounts.cell"`, `import { Kind, fees } from
+    // "./rates.cell"`, a URL pinned `with { sha256: "…" }`.
+    import_statement: $ => seq(
+      'import',
+      choice(field('default', alias($.identifier, $.table_name)), $.named_imports),
+      'from',
+      field('source', $.string),
+      optional($.import_attributes),
     ),
+
+    named_imports: $ => seq('{', commaSep1(alias($.identifier, $.imported_name)), optional(','), '}'),
+
+    import_attributes: $ => seq(
+      'with',
+      '{',
+      commaSep1($.import_attribute),
+      optional(','),
+      '}',
+    ),
+
+    import_attribute: $ => seq(
+      field('key', alias($.identifier, $.attribute_name)),
+      ':',
+      field('value', $.string),
+    ),
+
+    string: $ => seq('"', optional(alias(/[^"\r\n]+/, $.string_content)), '"'),
+
+    // `fees = ```cells`, its rows on the lines after it.
+    table_definition: $ => seq(
+      optional('export'),
+      field('name', alias($.identifier, $.table_name)),
+      '=',
+      field('table', $.code_block),
+    ),
+
+    // `eurusd = run every day at 18:00 in Europe/Madrid`; its script, table
+    // and runs are the fences on the lines after it.
+    script_definition: $ => seq(
+      optional('export'),
+      field('name', alias($.identifier, $.table_name)),
+      '=',
+      'run',
+      field('schedule', $.schedule),
+    ),
+
+    schedule: $ => repeat1(choice(
+      ...SCHEDULE_WORDS,
+      ',',
+      $.schedule_time,
+      $.schedule_word,
+    )),
+
+    schedule_time: _ => token(prec(1, /\d{1,2}:\d{2}/)),
+
+    schedule_word: _ => /[^\s,\/][^\s,]*/,
+
+    code_block: $ => seq(
+      $.fence_open,
+      optional(field('language', alias(token.immediate(/[A-Za-z0-9_+-]+/), $.fence_language))),
+      optional(field('label', alias(/[a-z]+/, $.fence_label))),
+      $._newline,
+      optional(field('content', $.fence_content)),
+      $.fence_close,
+    ),
+
+    comment: _ => token(seq('//', /[^\r\n]*/)),
+
+    // ── A formula ────────────────────────────────────────────────────────────
+    // SQL's scalar expressions (SPEC, Formulas): after a header cell's type,
+    // `total:EUR=cost * qty`, and between a cell's backticks, `` `=96.75 / 3` ``.
 
     _expression: $ => choice(
       alias($._number, $.number),
-      alias($.identifier, $.column_reference),
+      $.string_literal,
+      alias(choice(keyword('true'), keyword('false')), $.boolean),
+      alias(keyword('null'), $.null),
+      $.column_reference,
+      $.member_expression,
+      $.key_expression,
+      $.call_expression,
       $.binary_expression,
       $.unary_expression,
+      $.not_expression,
+      $.null_test,
+      $.case_expression,
       $.parenthesized_expression,
     ),
 
+    column_reference: $ => choice($.identifier, alias($._quoted_name, $.quoted_name)),
+
+    _quoted_name: _ => seq('"', /[^"\r\n]+/, '"'),
+
+    string_literal: $ => seq(
+      '\'',
+      repeat(choice(/[^'\r\n]+/, alias('\'\'', $.escape_sequence))),
+      '\'',
+    ),
+
+    // `to.kind`: the column `kind` of the row the reference `to` names.
+    member_expression: $ => prec(9, seq(
+      field('object', choice($.column_reference, $.member_expression, $.key_expression)),
+      token.immediate('.'),
+      field('property', alias(token.immediate(/[A-Za-z_][A-Za-z0-9_]*/), $.property)),
+    )),
+
+    // `fees[kind]`: a table's row by its key.
+    key_expression: $ => prec(9, seq(
+      field('table', alias($.identifier, $.table_reference)),
+      token.immediate('['),
+      field('key', $._expression),
+      ']',
+    )),
+
+    call_expression: $ => prec(9, seq(
+      field('function', alias($.identifier, $.function_name)),
+      token.immediate('('),
+      optional(commaSep1($._expression)),
+      ')',
+    )),
+
     binary_expression: $ => choice(
-      ...[['+', 1], ['-', 1], ['*', 2], ['/', 2]].map(([operator, precedence]) =>
+      ...[
+        [keyword('or'), 1],
+        [keyword('and'), 2],
+        ['=', 4], ['<>', 4], ['!=', 4], ['<', 4], ['<=', 4], ['>', 4], ['>=', 4],
+        ['||', 5],
+        ['+', 6], ['-', 6],
+        ['*', 7], ['/', 7],
+      ].map(([operator, precedence]) =>
         prec.left(/** @type {number} */ (precedence), seq(
           field('left', $._expression),
-          field('operator', /** @type {string} */ (operator)),
+          field('operator', /** @type {any} */ (operator)),
           field('right', $._expression),
         )),
       ),
     ),
 
-    unary_expression: $ => prec(3, seq(field('operator', '-'), field('operand', $._expression))),
+    not_expression: $ => prec(3, seq(field('operator', keyword('not')), field('operand', $._expression))),
+
+    null_test: $ => prec.left(4, seq(
+      field('operand', $._expression),
+      keyword('is'),
+      optional(keyword('not')),
+      keyword('null'),
+    )),
+
+    unary_expression: $ => prec(8, seq(field('operator', '-'), field('operand', $._expression))),
+
+    case_expression: $ => seq(
+      keyword('case'),
+      repeat1($.when_clause),
+      optional(seq(keyword('else'), field('else', $._expression))),
+      keyword('end'),
+    ),
+
+    when_clause: $ => seq(
+      keyword('when'),
+      field('condition', $._expression),
+      keyword('then'),
+      field('value', $._expression),
+    ),
 
     parenthesized_expression: $ => seq('(', $._expression, ')'),
-
-    comment: _ => token(seq('//', /[^\r\n]*/)),
 
     // ── The header ───────────────────────────────────────────────────────────
 
@@ -135,10 +298,12 @@ module.exports = grammar({
     _header_cell_with_comma: $ => seq(optional($._header_cell_content), ','),
 
     _header_cell_content: $ => choice(
-      seq(field('name', $.column_name), optional(seq(':', field('type', $.type)))),
-      seq(':', field('type', $.type)),
+      seq(field('name', $.column_name), optional($._typed)),
+      $._typed,
       field('name', alias($.quoted_field, $.column_name)),
     ),
+
+    _typed: $ => seq(':', field('type', $.type), optional(seq('=', field('formula', $._expression)))),
 
     column_name: _ => /[^:,\r\n" \t][^:,\r\n]*/,
 
@@ -167,7 +332,7 @@ module.exports = grammar({
 
     named_type: $ => $._type_identifier,
 
-    // PROVISIONAL (SPEC, Open): a column typed by another file's key.
+    // A column typed by another table's key: `accounts.account`.
     reference_type: $ => seq(
       field('file', $.reference_file),
       token.immediate('.'),
@@ -237,6 +402,7 @@ module.exports = grammar({
     // The order is the lexer's tie-break: a cell that reads as a date and as
     // text is a date, `84.20` is a number before it is text.
     _value: $ => choice(
+      $.cell_formula,
       $.quoted_field,
       $.datetime,
       $.date,
@@ -246,7 +412,15 @@ module.exports = grammar({
       $.url,
       $.email,
       $.text,
+      alias($._backtick_text, $.text),
     ),
+
+    // `` `=96.75 / 3` ``: a cell's own formula.
+    cell_formula: $ => seq('`=', field('formula', $._expression), '`'),
+
+    // Text that opens with a backtick but is no formula: `` `code` ``, and
+    // the escape of one that would read as a formula, ```` ``=x` ````.
+    _backtick_text: _ => /`([^=,\r\n][^,\r\n]*)?/,
 
     quoted_field: $ => seq(
       '"',
@@ -268,7 +442,7 @@ module.exports = grammar({
 
     email: _ => /[^\s@,"]+@[^\s@,"]+\.[^\s@,"]+/,
 
-    text: _ => /[^,\r\n" \t][^,\r\n]*/,
+    text: _ => /[^,\r\n" \t`][^,\r\n]*/,
 
     // ── Tokens shared by the rules above ─────────────────────────────────────
     // Declared after the rules that use them, before `_word`: on a tie the

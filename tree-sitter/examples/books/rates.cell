@@ -1,0 +1,27 @@
+---
+// The day's closing rate, fetched each evening, and what each way of paying costs.
+export eurusd = run every day at 18:00 in Europe/Madrid
+```ts
+export default async function ({ last }) {
+  const res = await fetch(`https://api.exchange.example/usdeur?since=${last.date}`)
+  return (await res.json()).map((d) => ({ date: d.day, rate: String(d.close) }))
+}
+```
+```cells
+date:date!,rate:num>0,run:int?
+2026-07-30,0.9244,4
+2026-07-31,0.9251,4
+```
+```cells runs
+run:int!,at:datetime,outcome:ok|failed,error:text?
+4,2026-07-31T16:00:02Z,ok,
+```
+
+export fees = ```cells
+kind:text!,pct:pct
+card,1.4
+transfer,0
+```
+---
+source:text,note:text?
+api.exchange.example,the closing rate of each day

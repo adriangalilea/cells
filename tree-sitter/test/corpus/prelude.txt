@@ -3,10 +3,9 @@ The SPEC's prelude
 ==================|||
 ---
 type Category = travel|stay|food|gear
-total = cost * qty                        // computed, never stored
 ---
-item:text!,category:Category,cost:EUR>=0,qty:int>=1,paid:yes/no,on:date
-fuel,travel,84.20,1,yes,2026-08-14
+item:text!,category:Category,cost:EUR>=0,qty:int>=1,paid:yes/no,on:date,total:EUR=cost * qty
+fuel,travel,84.20,1,yes,2026-08-14,
 ---|||
 
 (source_file
@@ -20,12 +19,6 @@ fuel,travel,84.20,1,yes,2026-08-14
           (choice)
           (choice)
           (choice))))
-    (computed_column
-      name: (column_name)
-      value: (binary_expression
-        left: (column_reference)
-        right: (column_reference)))
-    (comment)
     (fence))
   (header
     (header_cell
@@ -58,7 +51,16 @@ fuel,travel,84.20,1,yes,2026-08-14
     (header_cell
       name: (column_name)
       type: (type
-        (base_type))))
+        (base_type)))
+    (header_cell
+      name: (column_name)
+      type: (type
+        (currency))
+      formula: (binary_expression
+        left: (column_reference
+          (identifier))
+        right: (column_reference
+          (identifier)))))
   (row
     (field
       (text))
@@ -134,45 +136,12 @@ price:Price
         (named_type)))))
 
 ==================|||
-Expressions
+Formulas
 ==================|||
----
-a = 1
-b = cost * qty + fee
-c = (cost - discount) / 2
-d = -cost * 1.5
----
-cost:num,qty:int,fee:num,discount:num
+cost:num,qty:int,fee:num,discount:num,a:int=1,b:num=cost * qty + fee,c:num=(cost - discount) / 2,d:num=-cost * 1.5
 ---|||
 
 (source_file
-  (prelude
-    (fence)
-    (computed_column
-      name: (column_name)
-      value: (number))
-    (computed_column
-      name: (column_name)
-      value: (binary_expression
-        left: (binary_expression
-          left: (column_reference)
-          right: (column_reference))
-        right: (column_reference)))
-    (computed_column
-      name: (column_name)
-      value: (binary_expression
-        left: (parenthesized_expression
-          (binary_expression
-            left: (column_reference)
-            right: (column_reference)))
-        right: (number)))
-    (computed_column
-      name: (column_name)
-      value: (binary_expression
-        left: (unary_expression
-          operand: (column_reference))
-        right: (number)))
-    (fence))
   (header
     (header_cell
       name: (column_name)
@@ -189,7 +158,45 @@ cost:num,qty:int,fee:num,discount:num
     (header_cell
       name: (column_name)
       type: (type
-        (base_type)))))
+        (base_type)))
+    (header_cell
+      name: (column_name)
+      type: (type
+        (base_type))
+      formula: (number))
+    (header_cell
+      name: (column_name)
+      type: (type
+        (base_type))
+      formula: (binary_expression
+        left: (binary_expression
+          left: (column_reference
+            (identifier))
+          right: (column_reference
+            (identifier)))
+        right: (column_reference
+          (identifier))))
+    (header_cell
+      name: (column_name)
+      type: (type
+        (base_type))
+      formula: (binary_expression
+        left: (parenthesized_expression
+          (binary_expression
+            left: (column_reference
+              (identifier))
+            right: (column_reference
+              (identifier))))
+        right: (number)))
+    (header_cell
+      name: (column_name)
+      type: (type
+        (base_type))
+      formula: (binary_expression
+        left: (unary_expression
+          operand: (column_reference
+            (identifier)))
+        right: (number)))))
 
 ==================|||
 A prelude and nothing else
@@ -227,3 +234,59 @@ a,b
       name: (column_name))
     (header_cell
       name: (column_name))))
+
+==================|||
+A table written inline and a script's fences
+==================|||
+---
+export fees = ```cells
+kind:text!,pct:pct
+card,1.4
+```
+eurusd = run every hour, when ../money.cell changes in UTC
+````ts
+const s = "```"
+export default () => []
+````
+```cells runs
+run:int!,at:datetime,outcome:ok|failed,error:text?
+```
+---
+kind:fees.kind
+---|||
+
+(source_file
+  (prelude
+    (fence)
+    (table_definition
+      name: (table_name)
+      table: (code_block
+        (fence_open)
+        language: (fence_language)
+        content: (fence_content)
+        (fence_close)))
+    (script_definition
+      name: (table_name)
+      schedule: (schedule
+        (schedule_word)
+        (schedule_word)
+        (schedule_word)))
+    (code_block
+      (fence_open)
+      language: (fence_language)
+      content: (fence_content)
+      (fence_close))
+    (code_block
+      (fence_open)
+      language: (fence_language)
+      label: (fence_label)
+      content: (fence_content)
+      (fence_close))
+    (fence))
+  (header
+    (header_cell
+      name: (column_name)
+      type: (type
+        (reference_type
+          file: (reference_file)
+          column: (reference_column))))))

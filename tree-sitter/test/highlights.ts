@@ -10,23 +10,39 @@ import { tmpdir } from "node:os"
 import { join } from "node:path"
 
 const root = join(import.meta.dir, "..")
-const dir = mkdtempSync(join(tmpdir(), "tcsv-highlights-"))
+const dir = mkdtempSync(join(tmpdir(), "cells-highlights-"))
 
 const FIXTURE = `---
-use ../accounts.tcsv   // provisional
-type Category = travel|stay|'it''s fine'
-total = cost * (qty - 1)
+import accounts from "../accounts.cell"   // shared
+import { Kind } from "./kinds.cell" with { rev: "a1b2c3d" }
+export type Category = travel|stay|'it''s fine'
+fees = \`\`\`cells
+kind:text!,pct:pct
+card,1.4
+\`\`\`
+rates = run every day at 18:00 in Europe/Madrid
+\`\`\`ts
+export default async () => []
+\`\`\`
 ---
-item:text!,category:Category,cost:EUR>=0,paid:yes/no,on:date(DD/MM/YYYY),note:text?,score:0..10,to:accounts.account,x:one of a b key,y:bool si no optional,z:num between 0 and 100,w:num min 1
-fuel,travel,84.20,yes,14/08/2026,"a ""b""",7,assets:bank,a,si,2026-08-14T10:00:00Z,https://example.com
+item:text!,category:Category,cost:EUR>=0,paid:yes/no,on:date(DD/MM/YYYY),note:text?,score:0..10,to:accounts.account,x:one of a b key,y:bool si no optional,z:num between 0 and 100,w:num min 1,total:EUR=abs(cost) * (score - 1)
+fuel,travel,\`=84.20 * 2\`,yes,14/08/2026,"a ""b""",7,assets:bank,a,si,2026-08-14T10:00:00Z,https://example.com,
 `
 
 // [text, canonical capture, Helix scope]
 const EXPECT: [string, string, string][] = [
   ["---", "punctuation.special", "punctuation.special"],
-  ["use", "keyword.import", "keyword.control.import"],
-  ["../accounts.tcsv", "string.special.path", "string.special.path"],
-  ["// provisional", "comment", "comment.line"],
+  ["import", "keyword.import", "keyword.control.import"],
+  ["accounts", "module", "namespace"],
+  ["from", "keyword.import", "keyword.control.import"],
+  ['"../accounts.cell"', "string.special.path", "string.special.path"],
+  ["// shared", "comment", "comment.line"],
+  ["{", "punctuation.bracket", "punctuation.bracket"],
+  ["Kind", "module", "namespace"],
+  ["with", "keyword.import", "keyword.control.import"],
+  ["rev", "attribute", "attribute"],
+  ['"a1b2c3d"', "string.special.path", "string.special.path"],
+  ["export", "keyword.modifier", "keyword.storage.modifier"],
   ["type", "keyword.type", "keyword.storage.type"],
   ["Category", "type.definition", "type"],
   ["=", "operator", "operator"],
@@ -34,12 +50,15 @@ const EXPECT: [string, string, string][] = [
   ["|", "punctuation.delimiter", "punctuation.delimiter"],
   ["'it''s fine'", "constant", "type.enum.variant"],
   ["''", "string.escape", "constant.character.escape"],
-  ["total", "function", "function"],
-  ["cost", "variable.member", "variable.other.member"],
-  ["*", "operator", "operator"],
-  ["(", "punctuation.bracket", "punctuation.bracket"],
-  ["-", "operator", "operator"],
-  ["1", "number", "constant.numeric"],
+  ["fees", "function", "function"],
+  ["```", "punctuation.special", "punctuation.special"],
+  ["cells", "label", "label"],
+  ["rates", "function", "function"],
+  ["run", "keyword", "keyword"],
+  ["every", "keyword", "keyword"],
+  ["18:00", "number", "constant.numeric"],
+  ["Europe/Madrid", "string.special", "string.special"],
+  ["ts", "label", "label"],
   ["---", "punctuation.special", "punctuation.special"],
   // the header: each name in its column's colour, then its type's parts
   ["item", "variable", "variable"],
@@ -83,10 +102,24 @@ const EXPECT: [string, string, string][] = [
   ["between", "keyword.operator", "keyword.operator"],
   ["and", "keyword.operator", "keyword.operator"],
   ["min", "keyword.operator", "keyword.operator"],
+  // a column's formula, after its type's `=`
+  ["total", "variable", "variable"],
+  ["EUR", "type.builtin", "type.builtin"],
+  ["=", "operator", "operator"],
+  ["abs", "function", "function"],
+  ["cost", "variable.member", "variable.other.member"],
+  ["*", "operator", "operator"],
+  ["(", "punctuation.bracket", "punctuation.bracket"],
+  ["score", "variable.member", "variable.other.member"],
+  ["-", "operator", "operator"],
+  ["1", "number", "constant.numeric"],
   // a row: text in its column's colour, everything else by its spelling
   ["fuel", "variable", "variable"],
   ["travel", "variable.parameter", "variable.parameter"],
+  ["`=", "punctuation.special", "punctuation.special"],
   ["84.20", "number", "constant.numeric"],
+  ["*", "operator", "operator"],
+  ["`", "punctuation.special", "punctuation.special"],
   ["yes", "boolean", "constant.builtin.boolean"],
   // a date in the column's own format is text to the grammar; the language
   // server, which reads the header, colours it as the date it is
@@ -129,11 +162,11 @@ function check(label: string, query: string, file: string, column: 1 | 2): numbe
   return failures
 }
 
-const file = join(dir, "fixture.tcsv")
+const file = join(dir, "fixture.cell")
 writeFileSync(file, FIXTURE)
 
 // The same file with CRLF line endings must parse without an error.
-const crlf = join(dir, "crlf.tcsv")
+const crlf = join(dir, "crlf.cell")
 writeFileSync(crlf, FIXTURE.replaceAll("\n", "\r\n"))
 const parsed = Bun.spawnSync(["tree-sitter", "parse", "--quiet", crlf], { cwd: root })
 const crlfFailures = parsed.exitCode === 0 ? 0 : 1
