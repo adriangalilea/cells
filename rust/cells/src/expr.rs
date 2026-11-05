@@ -480,6 +480,79 @@ pub fn parse(src: &str) -> Result<Expr, Fault> {
     Ok(e)
 }
 
+/// A name a formula reads, each part where it is written: `cost`; `to.kind`, a column
+/// and what its reference leads to; `fees['card'].pct`, a table (`table`) and a column of
+/// the row its key finds.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Named {
+    pub parts: Vec<(String, Sp)>,
+    pub table: bool,
+}
+
+/// Every name a formula reads, in the order written: what a language server finds,
+/// follows and renames. A fault where the formula does not parse.
+pub fn names(src: &str) -> Result<Vec<Named>, Fault> {
+    let e = parse(src)?;
+    let toks = lex(src)?;
+    // The name tokens from the one at `from`, each after a `.`, `n` of them.
+    let parts = |mut k: usize, n: usize, first: bool| {
+        let mut out = Vec::with_capacity(n);
+        while out.len() < n {
+            if !(first && out.is_empty()) {
+                assert_eq!(toks[k].0, Tok::Sym("."), "a name's parts are joined by .");
+                k += 1;
+            }
+            let name = match &toks[k].0 {
+                Tok::Name(s) | Tok::Quoted(s) => s.clone(),
+                other => panic!("a name's part is a name, not {other:?}"),
+            };
+            out.push((name, toks[k].1));
+            k += 1;
+        }
+        out
+    };
+    let at = |s: Sp| toks.iter().position(|t| t.1.0 == s.0).expect("a name where a token starts");
+    let mut out = Vec::new();
+    let mut stack = Vec::from([&e]);
+    while let Some(e) = stack.pop() {
+        match e {
+            Expr::Path(segs, s) => out.push(Named { parts: parts(at(*s), segs.len(), true), table: false }),
+            Expr::Lookup(name, key, rest, s) => {
+                // The table, then past its `[…]`, the columns.
+                let mut k = at(*s) + 1;
+                let mut depth = 0;
+                loop {
+                    match toks[k].0 {
+                        Tok::Sym("[") => depth += 1,
+                        Tok::Sym("]") => depth -= 1,
+                        _ => {}
+                    }
+                    k += 1;
+                    if depth == 0 {
+                        break;
+                    }
+                }
+                let mut all = Vec::from([(name.clone(), *s)]);
+                all.extend(parts(k, rest.len(), false));
+                out.push(Named { parts: all, table: true });
+                stack.push(key);
+            }
+            Expr::Neg(a) | Expr::Not(a) | Expr::IsNull(a, _) => stack.push(a),
+            Expr::Bin(_, a, b, _) => stack.extend([&**b, &**a]),
+            Expr::Case(arms, other) => {
+                stack.extend(other.as_deref());
+                for (w, t) in arms.iter().rev() {
+                    stack.extend([t, w]);
+                }
+            }
+            Expr::Call(_, args, _) => stack.extend(args.iter().rev()),
+            Expr::Num(_) | Expr::Text(_) | Expr::Bool(_) | Expr::Null => {}
+        }
+    }
+    out.sort_by_key(|n| n.parts[0].1.0);
+    Ok(out)
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Agg {
     Sum,
@@ -1152,6 +1225,15 @@ mod tests {
             let refused = parse(bad).and_then(|e| resolve(&e, &One, &mut 0).map(|_| ()));
             assert!(refused.is_err(), "{bad} should not resolve");
         }
+    }
+
+    #[test]
+    fn names_are_where_they_are_written() {
+        let src = "cost * \"the qty\" + fees['card'].pct + to.kind";
+        let got: Vec<Vec<&str>> =
+            names(src).unwrap().iter().map(|n| n.parts.iter().map(|(_, (s, l))| &src[*s as usize..(s + l) as usize]).collect()).collect();
+        assert_eq!(got, [Vec::from(["cost"]), Vec::from(["\"the qty\""]), Vec::from(["fees", "pct"]), Vec::from(["to", "kind"])]);
+        assert!(names(src).unwrap()[2].table);
     }
 
     #[test]

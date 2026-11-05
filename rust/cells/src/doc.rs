@@ -870,6 +870,21 @@ pub struct Span {
     pub len: u32,
 }
 
+/// What is at a place in a file's text (`Doc::place`).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Place {
+    /// The byte order mark or the prelude.
+    Prelude,
+    /// A header cell, from 0.
+    Header(u32),
+    /// A row's cell, both from 0.
+    Cell { row: u32, column: u32 },
+    /// What the file did not read: from a record that does not read on.
+    Unread,
+    /// A line break, a field past the header's, or past the end.
+    Outside,
+}
+
 /// Field `k` of a record whose line starts at `start`: its text, inside its quotes when it
 /// is quoted; past the record's last field, an empty span at its end.
 fn field_span(start: u32, line: &str, fields: &[&str], k: usize) -> Span {
@@ -1022,6 +1037,67 @@ impl Doc {
         let line = self.header_line();
         let fields = self.raw_fields(line);
         field_span(self.body, line, &fields, n.column() as usize)
+    }
+
+    /// Where header cell `column` is in the text `write` gives now: its text, inside its
+    /// quotes.
+    pub fn header_span(&self, column: usize) -> Span {
+        assert!(column < self.columns.len(), "column {column} is not stored");
+        let line = self.header_line();
+        field_span(self.body, line, &self.raw_fields(line), column)
+    }
+
+    /// Where a cell is in the text `write` gives now: its text, inside its quotes; an
+    /// empty span at its record's end for a field a short row leaves out.
+    pub fn cell_span(&self, row: usize, column: usize) -> Span {
+        assert!(row < self.rows(), "row {row} does not exist");
+        let line = self.line(row);
+        field_span(self.written_records()[row], line, &self.raw_fields(line), column)
+    }
+
+    /// What is at byte `at` of the text `write` gives now: a field is its own from its
+    /// first byte to its separator, quotes included, so a place just after a cell's text
+    /// is still the cell.
+    pub fn place(&self, at: u32) -> Place {
+        if at < self.body {
+            return Place::Prelude;
+        }
+        let field = |start: u32, line: &str| {
+            let fields = self.raw_fields(line);
+            let mut from = start;
+            for (k, f) in fields.iter().enumerate() {
+                let end = from + f.len() as u32;
+                if at <= end {
+                    return Some(k as u32);
+                }
+                from = end + 1;
+            }
+            None
+        };
+        if self.columns.is_empty() {
+            return Place::Unread;
+        }
+        let header = self.header_line();
+        if at <= self.body + header.len() as u32 {
+            return field(self.body, header).map_or(Place::Outside, Place::Header);
+        }
+        let starts = self.written_records();
+        let row = starts.partition_point(|&s| s <= at);
+        if row == 0 {
+            return Place::Outside;
+        }
+        let row = row - 1;
+        let line = self.line(row);
+        let start = starts[row];
+        if at > start + line.len() as u32 {
+            // Past the last record read: what did not read, or the line break after it.
+            let end = start + line.len() as u32 + self.terminator(row).len() as u32;
+            return if row + 1 == self.rows() && at >= end && !self.unread().is_empty() { Place::Unread } else { Place::Outside };
+        }
+        match field(start, line) {
+            Some(column) if (column as usize) < self.columns.len() => Place::Cell { row: row as u32, column },
+            _ => Place::Outside,
+        }
     }
 
     /// Where each row's record starts in the text `write` gives now: the source's offsets,

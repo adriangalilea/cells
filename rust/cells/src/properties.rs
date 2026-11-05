@@ -167,6 +167,20 @@ fn a_problem_spans_its_cell() {
                 }
             }
         }
+        // Every cell is where `place` finds it, and `cell_span` says where.
+        for r in 0..doc.rows() {
+            for c in 0..doc.columns().len() {
+                let s = doc.cell_span(r, c);
+                let cell = crate::Place::Cell { row: r as u32, column: c as u32 };
+                if c < doc.width(r) {
+                    assert_eq!(doc.place(s.start), cell, "{src:?} row {r} column {c}");
+                    assert_eq!(doc.place(s.start + s.len), cell, "{src:?} row {r} column {c}");
+                }
+            }
+        }
+        for c in 0..doc.columns().len() {
+            assert_eq!(doc.place(doc.header_span(c).start), crate::Place::Header(c as u32), "{src:?}");
+        }
     }
 }
 
