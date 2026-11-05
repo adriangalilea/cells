@@ -1,14 +1,14 @@
 // How hot a machine runs, over time: the data a thermal view draws, framework-free.
 // A driver (a scene timeline, a page's own story, a live app) keys readings and view
-// depths at moments; `thermalAt` folds them into the one moment a frame draws. Pure,
-// so a scrubbed frame, a played one and a filmed one are the same frame.
-// device-frame draws a moment; macos-session sequences them in a scene.
+// depths at instants, a series; `thermalAt` folds it into the one state a frame draws.
+// Pure, so a scrubbed frame, a played one and a filmed one are the same frame.
+// device-frame draws a state; macos-session sequences them in a scene.
 
 /** A part of the machine with its own temperature sensor, as the machine names them
  *  (chill's badge reads the same five). */
 export type ThermalPart = "cpu" | "gpu" | "memory" | "ssd" | "battery"
 
-/** What the machine reports at one moment. Temperatures in °C, any part it has.
+/** What the machine reports at one instant. Temperatures in °C, any part it has.
  *  Parts move at their own pace and that is the picture: the chip in seconds, the
  *  battery under the palm rest in minutes (a chip at 90 °C over a cool palm rest is
  *  the normal first minute of load, not a contradiction). */
@@ -34,7 +34,7 @@ export function fanTurnRate(share: number): number {
   return share <= 0 ? 0 : 1.25 + 1.6 * Math.min(1, share)
 }
 
-/** One key on a thermal track, at `at` ms: a reading, a depth for the view, or
+/** One key on a thermal series, at `at` ms: a reading, a depth for the view, or
  *  both. */
 export interface ThermalKey {
   at: number
@@ -103,7 +103,7 @@ function depthAt(keys: ThermalKey[], ms: number): ThermalDepth {
   return at(ms)
 }
 
-/** How far each fan has turned by `ms`: its rate added up from the track's first
+/** How far each fan has turned by `ms`: its rate added up from the series' first
  *  key, in steps of a frame. Past the last key the reading holds, so the fans
  *  run on at its rate, added in one step: a stage that keeps running past its
  *  story's end costs the same every frame. */
@@ -138,7 +138,7 @@ const drift = (ms: number, seed: number, amplitude: number) =>
   (0.6 * Math.sin(ms / 700 + seed * 1.7) +
     0.4 * Math.sin(ms / 1900 + seed * 4.1))
 
-/** The track at `ms`, or null before it has a reading. Keys in time order. */
+/** The series at `ms`, or null before it has a reading. Keys in time order. */
 export function thermalAt(keys: ThermalKey[], ms: number): ThermalState | null {
   for (let i = 1; i < keys.length; i++)
     if ((keys[i] as ThermalKey).at < (keys[i - 1] as ThermalKey).at)

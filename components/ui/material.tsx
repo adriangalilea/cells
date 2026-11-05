@@ -21,18 +21,18 @@ import type { WornScheme } from "@/components/ui/material-glass"
 //
 //   auto          the page (its theme, the system's or a toggle's)
 //   light, dark   the author, whatever the page is
-//   backdrop      the pixels behind it: a picture under the surface, measured live
+//   ground        the pixels behind it: a picture under the surface, measured live
 //
 // Whoever decides, a surface has its two faces and wears one (`WornScheme`, through
-// `schemeOf`). `backdrop` is answered by the nearest `Backdrop` source above it (a
-// VideoPicture, a <Backdrop> picture: only what holds pixels can answer), per
+// `schemeOf`). `ground` is answered by the nearest `Ground` source above it (a
+// VideoPicture, a <Ground> picture: only what holds pixels can answer), per
 // surface: a control that passes its element to `useScheme` is read by the part of
 // the picture under IT, one that does not by the whole picture. The source also sets
 // how thick its glass is (as thick as its words need over that picture, no thicker)
 // and how strongly its rim reads.
 
 export type Material = "plain" | "glass"
-export type Scheme = WornScheme | "backdrop"
+export type Scheme = WornScheme | "ground"
 export type { WornScheme }
 
 /** The tokens' tones, for what says how a thing stands. */
@@ -54,28 +54,26 @@ const MaterialContext = React.createContext<{
 
 /** What a picture under the surfaces answers: the scheme the pixels under an element
  *  ask for (`null`: the whole picture), now and on every change. Made by whatever
- *  holds the pixels (ui/backdrop); `watch` returns the stop. */
-export interface BackdropSource {
+ *  holds the pixels (ui/ground); `watch` returns the stop. */
+export interface GroundSource {
   watch(
     element: HTMLElement | null,
     onChange: (scheme: "light" | "dark") => void,
   ): () => void
 }
 
-const BackdropContext = React.createContext<BackdropSource | null>(null)
+const GroundContext = React.createContext<GroundSource | null>(null)
 
-/** Makes `source` the answer to `scheme="backdrop"` for everything inside. */
-export function BackdropScope({
+/** Makes `source` the answer to `scheme="ground"` for everything inside. */
+export function GroundScope({
   source,
   children,
 }: {
-  source: BackdropSource
+  source: GroundSource
   children: React.ReactNode
 }) {
   return (
-    <BackdropContext.Provider value={source}>
-      {children}
-    </BackdropContext.Provider>
+    <GroundContext.Provider value={source}>{children}</GroundContext.Provider>
   )
 }
 
@@ -113,7 +111,7 @@ export function useMaterial(own?: Material): Material {
 }
 
 /** The scheme a control wears: its own `scheme` prop when given, else the nearest
- *  provider's, else the page's; `backdrop` answered by the picture under `element`
+ *  provider's, else the page's; `ground` answered by the picture under `element`
  *  (the control's root; unset, the whole picture). Dark until the picture has been
  *  read, the scheme of a picture still loading. */
 export function useScheme(
@@ -121,18 +119,18 @@ export function useScheme(
   element?: HTMLElement | null,
 ): WornScheme {
   const around = React.useContext(MaterialContext)
-  const source = React.useContext(BackdropContext)
+  const source = React.useContext(GroundContext)
   const asked = own ?? around.scheme
-  if (asked === "backdrop" && !source)
+  if (asked === "ground" && !source)
     throw new Error(
-      'scheme="backdrop" with no picture above to read: place it inside a VideoPicture or a <Backdrop>, or name a scheme',
+      'scheme="ground" with no picture above to read: place it inside a VideoPicture or a <Ground>, or name a scheme',
     )
   const [seen, setSeen] = React.useState<"light" | "dark">("dark")
   React.useEffect(() => {
-    if (asked !== "backdrop" || !source) return
+    if (asked !== "ground" || !source) return
     return source.watch(element ?? null, setSeen)
   }, [asked, source, element])
-  return asked === "backdrop" ? seen : asked
+  return asked === "ground" ? seen : asked
 }
 
 /** A SURFACE's scheme: `useScheme` read by the surface's own element, and the ref

@@ -161,18 +161,18 @@ export function useSoundTap(
 }
 
 /** A tapped element: its analysers and the context they live in (null before the tap),
- *  and the element, whose own recording a preview is heard from. */
+ *  and the element, whose own recording a skim is heard from. */
 export interface SoundTap {
   analysers: readonly AnalyserNode[] | null
   context: AudioContext | null
   element: HTMLMediaElement | null
 }
 
-/** How much of the recording a preview loops, s: long enough to be a sound (a
+/** How much of the recording a skim loops, s: long enough to be a sound (a
  *  syllable), short enough to be the moment under the hand. */
-const PREVIEW_S = 0.25
+const SKIM_S = 0.25
 
-// A recording decoded once per source and context, however many previews ask.
+// A recording decoded once per source and context, however many skims ask.
 const decoded = new WeakMap<
   BaseAudioContext,
   Map<string, Promise<AudioBuffer>>
@@ -196,12 +196,12 @@ function decodedSound(
   return sound
 }
 
-/** The sound of the moment a preview shows: the element's own recording, decoded once
- *  (on the first preview), a short stretch at `ms` looped into analysers that never
- *  reach the speakers. Null while there is no preview, no tap yet, or the recording is
+/** The sound of the instant a skim shows: the element's own recording, decoded once
+ *  (on the first skim), a short stretch at `ms` looped into analysers that never
+ *  reach the speakers. Null while there is no skim, no tap yet, or the recording is
  *  still decoding. A drawing reading these sees the hovered moment, not the silence
  *  of a held timebase. */
-export function usePreviewSound(
+export function useSkimSound(
   { context, element }: SoundTap,
   ms: number | null,
 ): readonly AnalyserNode[] | null {
@@ -223,7 +223,7 @@ export function usePreviewSound(
     let live = true
     decodedSound(context, src).then(
       (b) => live && setSound({ src, buffer: b }),
-      (error: unknown) => console.warn("sound-source: no preview sound", error),
+      (error: unknown) => console.warn("sound-source: no skim sound", error),
     )
     return () => {
       live = false
@@ -234,13 +234,13 @@ export function usePreviewSound(
     if (!context || !bus || !buffer || ms === null) return
     const at = Math.min(
       Math.max(0, ms / 1000),
-      Math.max(0, buffer.duration - PREVIEW_S),
+      Math.max(0, buffer.duration - SKIM_S),
     )
     const node = context.createBufferSource()
     node.buffer = buffer
     node.loop = true
     node.loopStart = at
-    node.loopEnd = at + PREVIEW_S
+    node.loopEnd = at + SKIM_S
     node.connect(bus.input)
     node.start(0, at)
     return () => {
@@ -253,7 +253,7 @@ export function usePreviewSound(
 }
 
 /** The spectrum for everything inside, playing when the timebase around it plays;
- *  while it previews, the previewed moment's sound (`usePreviewSound`). Read here,
+ *  while it skims, the skimmed instant's sound (`useSkimSound`). Read here,
  *  under the timebase, so the player itself never re-renders on a play or pause. */
 export function TimebaseSoundSource({
   sound,
@@ -262,9 +262,9 @@ export function TimebaseSoundSource({
   sound: SoundTap
   children: React.ReactNode
 }) {
-  const playing = useTimebaseState((s) => s.playing && s.preview === null)
-  const preview = useTimebaseState((s) => s.preview)
-  const heard = usePreviewSound(sound, preview)
+  const playing = useTimebaseState((s) => s.playing && s.skim === null)
+  const skim = useTimebaseState((s) => s.skim)
+  const heard = useSkimSound(sound, skim)
   const { analysers } = sound
   const source = React.useMemo(
     () =>

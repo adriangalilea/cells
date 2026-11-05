@@ -2,7 +2,7 @@
 
 // A media element as the owner of a timebase (lib/timebase): the one implementation
 // behind ui/video's VideoPlayback and ui/audio's AudioPlayback, so a video and a sound
-// seek, step, preview, loop, remember and start the same way, and every player part
+// seek, step, skim, loop, remember and start the same way, and every player part
 // (PlayerBar, PlayerKeys, PlayerSpeed, PlayerSound, a playlist) drives either unchanged.
 // What differs by medium is only the CLOCK, read off the element itself:
 //
@@ -13,20 +13,20 @@
 //   on pause and on every landed seek. Its `fps` stays null, so nothing offers to step.
 //
 // Seeks coalesce (a sweep never queues stale positions behind the pointer) and a step
-// or jump counts from where it is HEADING, so three fast presses move three. A preview
+// or jump counts from where it is HEADING, so three fast presses move three. A skim
 // pauses and shows its instant; ending it returns where it was and plays again if it
 // played. `range` loops a span. A refused autoplay plays muted and the first press
 // anywhere brings the sound back. Volume, mute and speed are remembered under one key
 // for every medium: a person's volume is theirs, not a video's or a sound's.
 
 import * as React from "react"
-import type { Span } from "@/lib/clip"
 import {
   between,
   fields,
   isBoolean,
   setting,
 } from "@/lib/remembered-core"
+import type { Span } from "@/lib/span"
 import {
   clampRate,
   frameAt,
@@ -107,7 +107,7 @@ export function useMediaTimebase(
     next: null as number | null,
     target: start,
   })
-  // Where a preview found it, and whether it played.
+  // Where a skim found it, and whether it played.
   const held = React.useRef<{ at: number; playing: boolean } | null>(null)
   // Muted by the player because the browser refused sound, not by the person.
   const autoMuted = React.useRef(false)
@@ -180,7 +180,7 @@ export function useMediaTimebase(
         },
         seek: (ms, options) => {
           held.current = null
-          store.set({ preview: null })
+          store.set({ skim: null })
           rawSeek(ms)
           if (options?.play) play()
         },
@@ -194,20 +194,20 @@ export function useMediaTimebase(
           rawSeek(frameTime(frameAt(here(), rate) + n, rate))
         },
         jump: (ms) => rawSeek(here() + ms),
-        preview: (ms) => {
+        skim: (ms) => {
           const m = media.current
           if (!m) return
           if (!held.current) {
             held.current = { at: store.get().at, playing: !m.paused }
             m.pause()
           }
-          store.set({ preview: Math.round(ms) })
+          store.set({ skim: Math.round(ms) })
           rawSeek(ms)
         },
-        endPreview: () => {
+        endSkim: () => {
           const h = held.current
           held.current = null
-          store.set({ preview: null })
+          store.set({ skim: null })
           if (!h) return
           rawSeek(h.at)
           if (h.playing) play()
@@ -241,7 +241,7 @@ export function useMediaTimebase(
     const loop = (at: number) => {
       const s = store.get()
       const r = s.range
-      if (r && !el.paused && s.preview === null && at >= r.to) rawSeek(r.from)
+      if (r && !el.paused && s.skim === null && at >= r.to) rawSeek(r.from)
     }
     if (el instanceof HTMLVideoElement && "requestVideoFrameCallback" in el) {
       const gaps: number[] = []

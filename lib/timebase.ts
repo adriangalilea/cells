@@ -1,7 +1,7 @@
 // A timebase: the one clock an instant is read from, and the contract everything that
 // shows or moves time speaks. It is the clock and nothing else: how the medium is cut
-// (lib/clip `Outline`) and what happens in it (claims) live beside it, never in it. Exactly one thing OWNS a timebase (a synthetic clock
-// walking a clip, ui/playback; a video's decoder, ui/video); everything else FOLLOWS
+// (lib/playable `Outline`) and what happens in it (claims) live beside it, never in it. Exactly one thing OWNS a timebase (a synthetic clock
+// walking a playable, ui/playback; a video's decoder, ui/video); everything else FOLLOWS
 // it: content drawn at its moment, a video seeking to it, a still fetched for it, the
 // bar and keys that move it. Owners differ in how time passes; followers never know
 // which owner they follow. What an owner can do beyond play, pause and seek is stated,
@@ -14,7 +14,7 @@
 // nothing else.
 // Framework-free: the store, the contract and the frame arithmetic.
 
-import type { Span } from "@/lib/clip"
+import type { Span } from "@/lib/span"
 
 // ── the door to seconds ──────────────────────────────────────────────────────────
 
@@ -45,9 +45,9 @@ export interface TimebaseState {
   /** Frames per second, when the timebase knows its frames; null when it does not. */
   fps: number | null
   rate: number
-  /** A moment shown without committing (a pointer over the bar), ms, or null. While
-   *  set, the timebase holds: nothing plays underneath a preview. */
-  preview: number | null
+  /** A skim: an instant shown without committing (a pointer over the bar or a
+   *  track), ms, or null. While set, the timebase holds: nothing plays under a skim. */
+  skim: number | null
   /** The span it loops in, ms. */
   range: Span | null
   /** 0..1, or null when the timebase has no sound. */
@@ -67,10 +67,11 @@ export interface TimebaseControls {
   step(n: number): void
   /** Move by `ms`, keeping the play state. */
   jump(ms: number): void
-  /** Show `ms` without committing; the first call remembers where it was and holds. */
-  preview(ms: number): void
+  /** Skim to `ms`, shown without committing; the first call remembers where it was
+   *  and holds. */
+  skim(ms: number): void
   /** Back to where it was, playing again if it played. */
-  endPreview(): void
+  endSkim(): void
   setRange(range: Span | null): void
   /** Present only where speed can change: `RATE_MIN` to `RATE_MAX`. A person's choice
    *  is remembered with the volume (where the owner remembers); a speed the page sets
@@ -106,9 +107,9 @@ export const RATE_MAX = 16
 export const clampRate = (rate: number) =>
   Math.min(RATE_MAX, Math.max(RATE_MIN, rate))
 
-/** The moment content draws: a preview when one is showing, else where it is. */
+/** The instant content draws: a skim's while one is showing, else where it is. */
 export function shownAt(s: TimebaseState): number {
-  return s.preview ?? s.at
+  return s.skim ?? s.at
 }
 
 /** The observable state an owner writes and its followers read. Every write that
@@ -150,7 +151,7 @@ export function initialState(
     playing: false,
     fps: null,
     rate: 1,
-    preview: null,
+    skim: null,
     range: null,
     volume: null,
     muted: false,

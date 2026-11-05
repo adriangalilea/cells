@@ -11,7 +11,7 @@ import {
   entryTokens,
   requestTokens,
 } from "@/lib/agent-session"
-import type { Chapter, Clip } from "@/lib/clip"
+import type { Chapter, Playable } from "@/lib/playable"
 import { TYPE_MS } from "@/lib/terminal-session"
 import {
   DEPTH_MS,
@@ -296,10 +296,10 @@ export interface SceneClock {
   opening: number
   /** The whole story, until the last thing on screen has been taken in. */
   total: number
-  /** The story as a clip, for any driver: its length, and one chapter per caption
-   *  titled with its words. The caption line shows the chapter the moment it
-   *  begins, so a player's timeline and the stage always name the same chapter. */
-  clip: Clip
+  /** The story as a playable, for any driver: its length, and one chapter per
+   *  caption titled with its words. The caption line shows the chapter the instant
+   *  it begins, so a player's timeline and the stage always name the same chapter. */
+  playable: Playable
 }
 
 /** An agent's words: read in turn, or, behind a shut lid, when it opens. */
@@ -481,7 +481,7 @@ export function sceneClock(timeline: Timeline): SceneClock {
     deferred,
     opening: openingSteps,
     total,
-    clip: { duration: total, chapters },
+    playable: { duration: total, chapters },
   }
 }
 
@@ -816,7 +816,7 @@ export function frameAt(
     }
   })
   // The caption is the chapter the story is in, from the moment it begins.
-  const chapter = clock.clip.chapters.findLast((c) => ms >= c.start)
+  const chapter = clock.playable.chapters.findLast((c) => ms >= c.start)
   if (chapter) {
     f.caption = chapter.title
     f.captionSince = chapter.start

@@ -60,7 +60,7 @@ const useReducedMotion = () =>
 
 function Act({ act, index }: { act: StoryAct; index: number }) {
   const timeline = React.useMemo(() => actTimeline(act), [act])
-  const clip = React.useMemo(() => ({ duration: timeline.total, chapters: [] }), [timeline])
+  const playable = React.useMemo(() => ({ duration: timeline.total, chapters: [] }), [timeline])
   const [el, setEl] = React.useState<HTMLElement | null>(null)
   const reached = useReached(el)
   // Held on its first frame until it reaches the reading line, then played to its end
@@ -69,7 +69,7 @@ function Act({ act, index }: { act: StoryAct; index: number }) {
   const cue = React.useMemo(() => ({ from: 0, to: reached || reduced ? timeline.total : 0 }), [reached, reduced, timeline])
   return (
     <section ref={setEl} id={act.id} aria-labelledby={`${act.id}-told`} className="mx-auto max-w-6xl px-6 py-14 md:py-20">
-      <Playback clip={clip} cue={cue}>
+      <Playback playable={playable} cue={cue}>
         <Played act={act} index={index} timeline={timeline} />
       </Playback>
     </section>

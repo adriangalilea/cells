@@ -12,7 +12,6 @@ next-env.d.ts
 # shimmer is a studio item: Adrian's own projects only, never published.
 components/ui/shimmer.tsx
 components/ui/macos.tsx
-components/ui/player.tsx
 components/ui/table.tsx
 components/ui/table-cells.ts
 lib/player-input.ts

@@ -6,7 +6,7 @@
 //
 //   "tab"         this tab's session: kept across reloads and navigation, gone with the
 //                 tab (a query being looked through, a private view switched on)
-//   "always"      until changed (a size, lanes or rows, motion, a volume)
+//   "always"      until changed (a size, grid lanes or rows, motion, a volume)
 //   { idle: ms }  until untouched that long, then the default again (a fold, a slideshow
 //                 setting): a thing set once and forgotten falls back, a thing in use
 //                 stays, since every page that reads it touches it

@@ -186,7 +186,7 @@ function useColumns(): [React.RefObject<HTMLSpanElement | null>, number] {
 const nameOf = (path: string) => path.split("/").at(-1) as string
 
 /** An edit played in the terminal: the frame at the instant drawn as helix. Its
- *  clip, for the driver: `codeTimeline(files, steps).clip`. */
+ *  playable, for the driver: `codeTimeline(files, steps).playable`. */
 export function TerminalEditor({
   files,
   steps,

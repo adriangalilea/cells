@@ -2,7 +2,7 @@
 
 // THE HERO: a MacBook at night, open on the format revealed a step at a time.
 // Helix, the full height of the screen on the left, opens accounts.cell then money.cell;
-// the Cells window and the terminal stack on the right. One clock (lib/hero `HERO.clip`)
+// the Cells window and the terminal stack on the right. One clock (lib/hero `HERO.playable`)
 // drives it all: `Playback` plays it in view and round again; every window reads its own
 // moment from the hero's through a `Playhead`, so each ui piece keeps its clock's meaning.
 //
@@ -206,7 +206,7 @@ export function Hero() {
   if (narrow) {
     if (still !== null || reduced) return <Playhead progress={still ?? 1}>{<Stacked />}</Playhead>
     return (
-      <Playback clip={HERO.clip} playing>
+      <Playback playable={HERO.playable} playing>
         <Stacked />
       </Playback>
     )
@@ -220,7 +220,7 @@ export function Hero() {
           <Scene lid={reduced ? 1 : lid} />
         </Playhead>
       ) : (
-        <Playback clip={HERO.clip} playing>
+        <Playback playable={HERO.playable} playing>
           <Scene lid={0} />
         </Playback>
       )}

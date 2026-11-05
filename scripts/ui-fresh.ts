@@ -46,6 +46,7 @@ async function visit(name: string) {
   const item = (await json.json()) as Item
   for (const f of item.files) {
     const dest = destOf(f)
+    installed.add(dest)
     const here = Bun.file(`${site}/${dest}`)
     if (!(await here.exists())) {
       stale.push(`${dest} (${name}) is not installed`)
@@ -59,7 +60,12 @@ async function visit(name: string) {
   for (const d of item.registryDependencies ?? []) if (d.startsWith("@ag/")) await visit(d.slice(4))
 }
 
+const installed = new Set<string>()
 for (const name of UI_ITEMS) await visit(name)
+// components/ui is ui's alone: a file there that no item installs is left from an item
+// renamed or dropped, and goes (lib/ holds the site's own files too, so it is not asked).
+for (const file of new Bun.Glob("*").scanSync(`${site}/components/ui`))
+  if (!installed.has(`components/ui/${file}`)) stale.push(`components/ui/${file} is no item's: trash it`)
 for (const p of patches) console.log(`! site patch in ${p}`)
 if (stale.length) {
   for (const s of stale) console.error(`✗ ${s}`)

@@ -47,7 +47,7 @@ import {
 } from "react"
 import { cn } from "@/lib/utils"
 import { claim, type VoiceKey } from "@/lib/audible"
-import type { Span } from "@/lib/clip"
+import type { Span } from "@/lib/span"
 import { msOf, seekSeconds } from "@/lib/timebase"
 import { Image } from "@/components/ui/image"
 import { useMediaIntent } from "@/components/ui/image-intent"

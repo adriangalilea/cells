@@ -6,7 +6,6 @@
    ignores: named here, their classes are generated. */
 @source "../components/ui/macos.tsx";
 @source "../components/ui/shimmer.tsx";
-@source "../components/ui/player.tsx";
 @source "../components/ui/table.tsx";
 @source "../lib/table-data.ts";
 @source "../components/ui/table-cells.ts";
@@ -74,7 +73,6 @@
   --edge: oklch(0.56 0.11 215);
   --haze: oklch(0.62 0.15 55);
   --tone-bad: var(--haze);
-  --grid: oklch(0.2 0 0 / 5%);
 }
 
 .dark {
@@ -99,7 +97,6 @@
   --edge: oklch(0.83 0.12 208);
   --haze: oklch(0.78 0.14 62);
   --tone-bad: var(--haze);
-  --grid: oklch(1 0 0 / 4%);
 }
 
 @layer base {
@@ -123,19 +120,7 @@
   }
 }
 
-/* THE GROUND'S TABLE (components/ground): a sheet's cells, wider than tall, in hairlines
-   only there on a second look, strongest in the middle of the window and gone at its
-   edges. A rule, not utilities: two gradients and a mask no utility spells. */
 @layer components {
-  .ground-grid {
-    background-image:
-      linear-gradient(var(--grid) 1px, transparent 1px),
-      linear-gradient(90deg, var(--grid) 1px, transparent 1px);
-    background-size: 112px 32px;
-    background-position: center top;
-    mask-image: radial-gradient(70% 65% at 50% 45%, black 20%, transparent 85%);
-  }
-
   /* Light travelling along an edge: a line that lights once as data flows into what it
      edges (a computed column, a check passing), then settles. */
   .edge-light {

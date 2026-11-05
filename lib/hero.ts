@@ -4,10 +4,10 @@
 // formula, each changing what the Cells window beside it reads. A movement to an account
 // that does not exist is typed and named on its row; `:w`, and the terminal's check names
 // it too. Back in accounts.cell the account is added, `:w`, and the check passes. One
-// clock for all of it (`HERO.clip`), so a player, a playback and a fixed progress draw the
+// clock for all of it (`HERO.playable`), so a player, a playback and a fixed progress draw the
 // same frames.
 
-import type { Clip } from "@/lib/clip"
+import type { Playable } from "@/lib/playable"
 import { type CodeFile, type CodeStep, type CodeTimeline, codeTimeline, TYPE_MS } from "@/lib/code-session"
 import { PRODUCT } from "@/lib/product"
 import { parseSession, sessionTimeline } from "@/lib/terminal-session"
@@ -133,7 +133,7 @@ export const HERO = {
   total,
   terminal: { from: terminalFrom, duration: session.total },
   edit: { from: OPENING, duration: edit.total },
-  clip: {
+  playable: {
     duration: total,
     chapters: [
       { start: 0, title: "the screen" },
@@ -145,7 +145,7 @@ export const HERO = {
       { start: at(11) - (ACCOUNT.length + 1) * TYPE_MS, title: "the account added" },
       { start: savedFixed, title: `${PRODUCT.cli} check passes` },
     ],
-  } satisfies Clip,
+  } satisfies Playable,
   /** The files at three moments, and what the engine must say of money.cell read with
    *  accounts.cell (scripts/examples.ts asserts it). */
   checkpoints: {

@@ -1,5 +1,5 @@
 // WHAT THE PIXELS BEHIND A SURFACE ASK FOR: light ink or dark, read off the picture it
-// stands over. Framework-free arithmetic; the side holding the pixels (ui/backdrop:
+// stands over. Framework-free arithmetic; the side holding the pixels (ui/ground:
 // a video, a picture) samples a frame into a small grid and asks here, per surface.
 //
 // The unit is the one contrast is felt in: CIE lightness L* (0 black, 100 white,
@@ -32,7 +32,7 @@ export interface Grid {
    *  light, as the eye mixes them, never in sRGB's encoded numbers (which darken a
    *  mix). */
   rgb: Float32Array
-  /** The darkest and the brightest of each cell's `BACKDROP.fine` × `fine` samples,
+  /** The darkest and the brightest of each cell's `GROUND.fine` × `fine` samples,
    *  L*: what a glass's words can stand over inside the cell, which its mean hides. */
   lo: Float32Array
   hi: Float32Array
@@ -58,7 +58,7 @@ export interface Reading {
   color: Rgb
 }
 
-export const BACKDROP = {
+export const GROUND = {
   /** The grid a frame is sampled into: enough for a control's area to span cells,
    *  little enough to read every frame. */
   cols: 32,
@@ -145,7 +145,7 @@ export function gridOf(
   const width = cols * fine
   if (rgba.length !== width * rows * fine * 4)
     throw new Error(
-      `backdrop: ${rgba.length} values for a ${width}×${rows * fine} frame, expected ${width * rows * fine * 4}`,
+      `ground: ${rgba.length} values for a ${width}×${rows * fine} frame, expected ${width * rows * fine * 4}`,
     )
   const l = new Float32Array(cols * rows)
   const rgb = new Float32Array(cols * rows * 3)
@@ -236,11 +236,11 @@ export function reading(
   total: number,
   outside: number,
 ): Reading {
-  if (!(total > 0)) throw new Error(`backdrop: an area with no size (${total})`)
+  if (!(total > 0)) throw new Error(`ground: an area with no size (${total})`)
   const covered = cells.reduce((s, c) => s + c.weight, 0)
   if (covered > total * (1 + 1e-6))
     throw new Error(
-      `backdrop: cells cover ${covered} of an area of ${total}: two pictures of one source overlap, and only one of them shows`,
+      `ground: cells cover ${covered} of an area of ${total}: two pictures of one source overlap, and only one of them shows`,
     )
   const grey = yOf(outside)
   const all =
@@ -271,7 +271,7 @@ export function reading(
 /** One frame's area read, off-frame as `outside`. */
 export function readArea(grid: Grid, area: Area, outside: number): Reading {
   if (!(area.w > 0 && area.h > 0))
-    throw new Error(`backdrop: an area with no size (${area.w}×${area.h})`)
+    throw new Error(`ground: an area with no size (${area.w}×${area.h})`)
   return reading(cellsUnder(grid, area), area.w * area.h, outside)
 }
 
@@ -292,15 +292,15 @@ export function judge(
   visible: boolean,
 ): Verdict {
   const want: Worn =
-    read.mean > BACKDROP.lightAbove
+    read.mean > GROUND.lightAbove
       ? "light"
-      : read.mean < BACKDROP.darkBelow
+      : read.mean < GROUND.darkBelow
         ? "dark"
         : (prev?.worn ?? (read.mean >= 55 ? "light" : "dark"))
   if (!prev || !visible || want === prev.worn)
     return { worn: want, pending: null, since: now }
   if (prev.pending !== want) return { ...prev, pending: want, since: now }
-  if (now - prev.since >= BACKDROP.holdMs)
+  if (now - prev.since >= GROUND.holdMs)
     return { worn: want, pending: null, since: now }
   return prev
 }

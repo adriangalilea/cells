@@ -1,7 +1,7 @@
 // AN EDIT, scripted: what a developer does to a project's files told as steps (open a
 // file, type at a place in it, replace a range, save, ask the language server: a
 // hover, a completion, a signature, go to a definition, rename a symbol across
-// files, the problems), timed into a clip any driver moves through, and folded into
+// files, the problems), timed into a playable any driver moves through, and folded into
 // the frame an editor draws at an instant: the tabs open, the file in front and what
 // it holds then, where the caret is, a selection, what is unsaved, the modal editor's
 // mode and command line, the diagnostics, the popup open, the lines flashed. `ide`
@@ -25,7 +25,7 @@
 // The pacing is one table (TYPE_MS, OPEN_MS, ...): a step's time is decided here and
 // nowhere else, so a played edit and a scrubbed one are the same frames.
 
-import type { Chapter, Clip } from "@/lib/clip"
+import type { Chapter, Playable } from "@/lib/playable"
 
 /** A file of the project: its path (`/` between folders), and what it holds before
  *  the session. */
@@ -319,8 +319,8 @@ export interface CodeTimeline {
   total: number
   /** Each file as the session leaves it, by path. */
   final: Record<string, string>
-  /** The edit as a clip: one chapter per file opened and per thing done. */
-  clip: Clip
+  /** The edit as a playable: one chapter per file opened and per thing done. */
+  playable: Playable
   /** Each file's characters, every one it ever held, in place. */
   chars: Record<string, CodeChar[]>
   /** Every text a file passes through, each highlighted once. */
@@ -763,7 +763,7 @@ export function codeTimeline(
     ends,
     total,
     final,
-    clip: { duration: total, chapters },
+    playable: { duration: total, chapters },
     chars,
     states,
     order,

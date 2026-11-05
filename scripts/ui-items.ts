@@ -3,7 +3,7 @@
 // check (scripts/ui-fresh.ts).
 
 export const UI_ITEMS = [
-  "ambient-light",
+  "ambient",
   "app-window",
   "code",
   "code-session",

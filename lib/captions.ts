@@ -8,7 +8,7 @@
 // browser calls a WebVTT file's entries cues; here they are lines, the word a person
 // reading captions would use, since a cue means a scroll stage's act everywhere else.
 
-import type { Span } from "@/lib/clip"
+import type { Span } from "@/lib/span"
 
 /** One language's captions for a medium: a WebVTT file. `lang` is BCP 47 (`en`,
  *  `es-ES`); `label` is what the menu says (`English`); `default` shows it to a person

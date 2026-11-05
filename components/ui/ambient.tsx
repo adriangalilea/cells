@@ -52,7 +52,7 @@ export interface Glow {
   strength: number
 }
 
-export interface AmbientLightProps {
+export interface AmbientProps {
   glows: Glow[]
   /** The colour under the light (default: the page's background), or "none" for
    *  the light alone over whatever lies under it (behind a page's subject, in
@@ -84,7 +84,7 @@ function paint(canvas: HTMLCanvasElement, { glows, ground, over }: Light) {
     .createElement("canvas")
     .getContext("2d", { willReadFrequently: true })
   const ctx = canvas.getContext("2d")
-  if (!ctx || !probe) throw new Error("AmbientLight: no 2d canvas")
+  if (!ctx || !probe) throw new Error("Ambient: no 2d canvas")
   const rgb = (css: string): [number, number, number] => {
     canvas.style.color = css
     const resolved = getComputedStyle(canvas).color
@@ -180,12 +180,12 @@ function paint(canvas: HTMLCanvasElement, { glows, ground, over }: Light) {
   ctx.putImageData(image, 0, 0)
 }
 
-export function AmbientLight({
+export function Ambient({
   glows,
   ground = "var(--background)",
   over,
   className,
-}: AmbientLightProps) {
+}: AmbientProps) {
   const ref = React.useRef<HTMLCanvasElement>(null)
   const spec = JSON.stringify({
     glows,
@@ -226,7 +226,7 @@ export function AmbientLight({
       <canvas
         ref={ref}
         aria-hidden
-        data-slot="ambient-light"
+        data-slot="ambient"
         // The inline script below sets its pixel size and `data-painted`
         // before React hydrates it.
         suppressHydrationWarning

@@ -35,7 +35,7 @@
 /* How strongly the rim reads against what it stands on, a multiple of its light
    (`--glass-rim`, the glass's own state, is the other). Worked out on each element
    that wears the light (`glassLight`): the ground's (`--glass-ground-sheen`, a
-   picture's, from ui/backdrop) when there is one, else the face's own. Registered
+   picture's, from ui/ground) when there is one, else the face's own. Registered
    so it eases with the glass when the ground or the face changes; not inherited,
    since every element that reads it declares it, so its easing restyles only the
    elements that draw with it. */

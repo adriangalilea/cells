@@ -2,7 +2,7 @@
 
 // A phosphor terminal that draws a session script (lib/terminal-session) at a moment:
 // commands type char by char, output lands whole, `@ms` pauses. It draws; something
-// else moves time: inside `<Player clip={sessionTimeline(…).clip}>` it plays, inside
+// else moves time: inside `<Player playable={sessionTimeline(…).playable}>` it plays, inside
 // a scroll stage it scrolls, with a fixed `progress` it is a still. The still renderer in the same lib draws
 // the identical frame as SVG, so a CLI's media and its live demo cannot drift.
 // Display-only: role="img", zero focusables.

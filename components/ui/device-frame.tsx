@@ -1,5 +1,7 @@
-import type * as React from "react"
+"use client"
+
 import type { ComponentProps, ReactNode } from "react"
+import * as React from "react"
 import { cn } from "@/lib/utils"
 import {
   fanTurnRate,
@@ -76,10 +78,264 @@ function tone(h: number): string {
   return `rgb(${a.map((v, i) => Math.round(v + ((b[i] as number) - v) * k)).join(" ")})`
 }
 
+/** The lid as the camera sees it, in cqw: its border box W by H (84% of the
+ *  frame, a 16:10 display in its bezel), its top corners' radius R, its
+ *  thickness T, and the eye at the hinge's height at distance P, where the lid
+ *  shut spans the base's width exactly at its widest, just behind its rounded
+ *  top corners (W P / (P - (H - R)) = 100, the base drawn at its own widest).
+ *  device-frame.css turns the face with the same perspective. */
+const LID = { W: 84, H: 55.1125, R: 2.7, T: 1, P: 327.578 }
+/** How far above the frame's foot the hinge is: the base's height less the
+ *  overlap that hides the lid's foot (device-frame.css `.device-base`). */
+const HINGE = 3.55
+/** That overlap: open the base's lip covers the lid's foot by it; closing, the
+ *  hinge rises by it (times sin of the angle), so shut the lid rests on the
+ *  base's top instead of sinking into it. device-frame.css lifts the face alike. */
+const LIP = 0.15
+/** The edge's drawing box, in cqw above the hinge: the lid's height and the
+ *  most its top rises while it folds. */
+const RISE = 60
+
+/** The lid's outline in its own plane, x from its centre, y up from the hinge,
+ *  drawn `inset` in from the edge: the top corners rounded, the sides straight
+ *  down to the hinge. */
+function outline(inset: number): [number, number][] {
+  const W = LID.W - 2 * inset
+  const H = LID.H - inset
+  const R = LID.R - inset
+  const n = 16
+  const pts: [number, number][] = [[-W / 2, 0]]
+  for (let i = 0; i <= n; i++) {
+    const a = Math.PI - (i / n) * (Math.PI / 2)
+    pts.push([-W / 2 + R + R * Math.cos(a), H - R + R * Math.sin(a)])
+  }
+  for (let i = 0; i <= n; i++) {
+    const a = Math.PI / 2 - (i / n) * (Math.PI / 2)
+    pts.push([W / 2 - R + R * Math.cos(a), H - R + R * Math.sin(a)])
+  }
+  pts.push([W / 2, 0])
+  return pts
+}
+/** The edge's fillet where it meets the lid's back, the rounding a shut lid's
+ *  ends show from the front. */
+const FILLET = 0.45
+/** The solid as outlines at depths behind the face: the face's own, then the
+ *  back's, rounded over the fillet's quarter circle (each a little further back
+ *  and a little smaller), so the hull of them all is the edge with its round. */
+const LAYERS: { depth: number; pts: [number, number][] }[] = [
+  { depth: 0, pts: outline(0) },
+  ...[0, 1, 2, 3, 4].map((i) => {
+    const phi = (i / 4) * (Math.PI / 2)
+    return {
+      depth: -(LID.T - FILLET) - FILLET * Math.sin(phi),
+      pts: outline(FILLET * (1 - Math.cos(phi))),
+    }
+  }),
+]
+
+/** The lid's silhouette at `shut` (0 open .. 1 shut), as an SVG path in the edge's
+ *  box (x 0..100 across the frame, y down from RISE above the hinge). The lid is a
+ *  rounded rectangle pushed back by its thickness, a convex solid, so what any
+ *  eye sees of it is exactly the convex hull of its face's outline and its back's,
+ *  each turned about the hinge and projected. Drawn behind the face, what shows
+ *  past the face is the true edge: thin open, round its corners, the closed
+ *  laptop's front shut. */
+function lidHull(shut: number): { d: string; top: number; face: number } {
+  const { P } = LID
+  const a = (shut * Math.PI) / 2
+  const cos = Math.cos(a)
+  const sin = Math.sin(a)
+  const pts: [number, number][] = []
+  for (const { depth, pts: layer } of LAYERS) {
+    for (const [x, y] of layer) {
+      const up = y * cos - depth * sin
+      const near = y * sin + depth * cos
+      const s = P / (P - near)
+      pts.push([50 + x * s, RISE - up * s - LIP * sin])
+    }
+  }
+  pts.sort((p, q) => p[0] - q[0] || p[1] - q[1])
+  type Point = [number, number]
+  const cross = (o: Point, p: Point, q: Point) =>
+    (p[0] - o[0]) * (q[1] - o[1]) - (p[1] - o[1]) * (q[0] - o[0])
+  const half = (list: Point[]) => {
+    const h: Point[] = []
+    for (const p of list) {
+      while (
+        h.length >= 2 &&
+        cross(h[h.length - 2] as Point, h[h.length - 1] as Point, p) <= 0
+      )
+        h.pop()
+      h.push(p)
+    }
+    h.pop()
+    return h
+  }
+  const hull = [...half(pts), ...half([...pts].reverse())]
+  // The face's top edge at its middle, where the edge's visible height ends.
+  const faceUp = LID.H * cos
+  const face = RISE - (faceUp * P) / (P - LID.H * sin) - LIP * sin
+  return {
+    d: `M ${hull.map(([x, y]) => `${x.toFixed(3)} ${y.toFixed(3)}`).join(" L ")} Z`,
+    top: Math.min(...hull.map(([, y]) => y)),
+    face,
+  }
+}
+
+/** CSS's cubic-bezier(x1, y1, x2, y2) as a function of progress, solved by
+ *  bisection on x. */
+function bezier(x1: number, y1: number, x2: number, y2: number) {
+  const at = (p1: number, p2: number, t: number) =>
+    3 * p1 * t * (1 - t) ** 2 + 3 * p2 * t ** 2 * (1 - t) + t ** 3
+  return (x: number) => {
+    let lo = 0
+    let hi = 1
+    for (let i = 0; i < 24; i++) {
+      const mid = (lo + hi) / 2
+      if (at(x1, x2, mid) < x) lo = mid
+      else hi = mid
+    }
+    return at(y1, y2, (lo + hi) / 2)
+  }
+}
+/** The frame's own lid motion: 1.1 s on one easing, the angle known every frame. */
+const LID_MS = 1100
+const LID_EASE = bezier(0.65, 0, 0.35, 1)
+
+/** Where the lid is drawn: a number is the caller's instant, exact; "open" and
+ *  "closed" move it on the frame's curve whenever they change (at once under
+ *  reduced motion). */
+function useLidAt(lid: MacbookLid | undefined): number | undefined {
+  const target =
+    lid === undefined
+      ? undefined
+      : typeof lid === "number"
+        ? Math.min(1, Math.max(0, lid))
+        : lid === "closed"
+          ? 1
+          : 0
+  const owned = typeof lid === "string"
+  const [moving, setMoving] = React.useState(target)
+  const shown = React.useRef(target)
+  React.useEffect(() => {
+    if (!owned || target === undefined) return
+    const from = shown.current ?? target
+    if (
+      from === target ||
+      matchMedia("(prefers-reduced-motion: reduce)").matches
+    ) {
+      shown.current = target
+      setMoving(target)
+      return
+    }
+    const start = performance.now()
+    let raf = 0
+    const step = (now: number) => {
+      const k = Math.min(1, (now - start) / LID_MS)
+      const at = from + (target - from) * LID_EASE(k)
+      shown.current = at
+      setMoving(at)
+      if (k < 1) raf = requestAnimationFrame(step)
+    }
+    raf = requestAnimationFrame(step)
+    return () => cancelAnimationFrame(raf)
+  }, [owned, target])
+  return owned ? moving : target
+}
+
+/** The lid's edge: its silhouette (lidHull) drawn in the base's aluminium behind
+ *  the face, lit along its top, and the case's heat over it when shown. */
+function LidEdge({
+  shut,
+  thermal,
+}: {
+  shut: number
+  thermal?: MacbookThermal
+}) {
+  const id = React.useId()
+  const hull = lidHull(shut)
+  const stops =
+    thermal?.surface === undefined
+      ? undefined
+      : skinStops(thermal.surface, fanShares(thermal))
+  return (
+    <svg
+      aria-hidden
+      className="device-lid-edge"
+      viewBox={`0 0 100 ${RISE}`}
+      preserveAspectRatio="none"
+      style={{ bottom: `${HINGE}cqw`, height: `${RISE}cqw` }}
+    >
+      <defs>
+        {/* The base's own aluminium (device-frame.css `.device-base`): lit along
+            the top and darkening down the visible edge, from its top to the
+            face's top edge, so shut the lid's front and the base read as one. */}
+        <linearGradient
+          id={`${id}-metal`}
+          gradientUnits="userSpaceOnUse"
+          x1="0"
+          y1={hull.top}
+          x2="0"
+          y2={Math.max(hull.face, hull.top + 0.1)}
+        >
+          <stop offset="0" stopColor="#5f5f63" />
+          <stop offset="0.04" stopColor="#424245" />
+          <stop offset="0.18" stopColor="#27272b" />
+          <stop offset="0.62" stopColor="#1c1c20" />
+          <stop offset="0.84" stopColor="#101013" />
+          <stop offset="0.93" stopColor="#39393c" />
+          <stop offset="1" stopColor="#131315" />
+        </linearGradient>
+        {/* And the base's end shading, across the frame's width, the same at
+            every angle as on the base below it. */}
+        <linearGradient
+          id={`${id}-ends`}
+          gradientUnits="userSpaceOnUse"
+          x1="0"
+          y1="0"
+          x2="100"
+          y2="0"
+        >
+          <stop offset="0" stopColor="#141416" />
+          <stop offset="0.006" stopColor="#505054" />
+          <stop offset="0.02" stopColor="#202023" />
+          <stop offset="0.07" stopColor="#202023" stopOpacity="0" />
+          <stop offset="0.93" stopColor="#202023" stopOpacity="0" />
+          <stop offset="0.98" stopColor="#202023" />
+          <stop offset="0.994" stopColor="#505054" />
+          <stop offset="1" stopColor="#141416" />
+        </linearGradient>
+        {stops && (
+          <linearGradient id={`${id}-skin`} x1="0" y1="0" x2="1" y2="0">
+            {stops.map((s) => (
+              <stop
+                key={s.offset}
+                offset={s.offset}
+                stopColor={tone(s.heat)}
+                stopOpacity={s.alpha * 0.3}
+              />
+            ))}
+          </linearGradient>
+        )}
+      </defs>
+      <path d={hull.d} fill={`url(#${id}-metal)`} />
+      <path d={hull.d} fill={`url(#${id}-ends)`} />
+      {stops && (
+        <path
+          className="device-lid-skin"
+          d={hull.d}
+          fill={`url(#${id}-skin)`}
+        />
+      )}
+    </svg>
+  )
+}
+
 /** A 16:10 laptop display with a shallow base. `lid` puts it on a hinge (see
- *  MacbookLid): the lid's face turns in perspective and its thickness is painted
- *  where the same camera puts it (device-frame.css), so shut it is the closed
- *  laptop's front, resting on the base. Without `lid` the frame is flat 2D.
+ *  MacbookLid): the face turns in true perspective (device-frame.css) and the
+ *  lid's edge is its exact silhouette under the same camera (lidHull), so shut it
+ *  is the closed laptop's front, resting on the base. Without `lid` the frame is
+ *  flat 2D.
  *  `thermal` shows the machine's insides flat in the base's face, where they
  *  sit (MacbookThermal, MacbookInternals). */
 export function MacbookFrame({
@@ -96,14 +352,7 @@ export function MacbookFrame({
   lid?: MacbookLid
   thermal?: MacbookThermal
 }) {
-  const shut =
-    lid === undefined
-      ? undefined
-      : typeof lid === "number"
-        ? Math.min(1, Math.max(0, lid))
-        : lid === "closed"
-          ? 1
-          : 0
+  const shut = useLidAt(lid)
   const vars: Record<string, number> = {}
   if (shut !== undefined) vars["--device-lid"] = shut
   if (thermal) {
@@ -117,7 +366,6 @@ export function MacbookFrame({
       {...props}
       data-device="macbook"
       data-hinged={lid === undefined ? undefined : ""}
-      data-lid-motion={typeof lid === "string" ? "" : undefined}
       data-thermal={
         thermal ? (thermal.t === undefined ? "live" : "held") : undefined
       }
@@ -129,24 +377,13 @@ export function MacbookFrame({
         {notch && <span aria-hidden className="device-notch" />}
         <span aria-hidden className="device-camera" />
       </div>
+      {shut !== undefined && <LidEdge shut={shut} thermal={thermal} />}
       <div aria-hidden className="device-base">
         {thermal?.surface !== undefined && (
           <MacbookSkin surface={thermal.surface} fans={fanShares(thermal)} />
         )}
         {thermal && <MacbookInternals thermal={thermal} />}
       </div>
-      {lid !== undefined && (
-        <span aria-hidden className="device-lid-rim">
-          {thermal?.surface !== undefined && (
-            <span
-              className="device-lid-skin"
-              style={{
-                background: lidSkin(thermal.surface, fanShares(thermal)),
-              }}
-            />
-          )}
-        </span>
-      )}
       <span aria-hidden className="device-rubber left" />
       <span aria-hidden className="device-rubber right" />
     </div>
@@ -180,16 +417,6 @@ function skinStops(surface: number, fans: number[]) {
     const heat = skin * weight
     return { offset, heat, alpha: 0.3 + heat * 0.7 }
   })
-}
-
-/** The shut lid's face, warm with the same skin: drawn over the lid's rim,
- *  which is the closed laptop's front. */
-function lidSkin(surface: number, fans: number[]): string {
-  const stops = skinStops(surface, fans).map(
-    (s) =>
-      `color-mix(in srgb, ${tone(s.heat)} ${Math.round(s.alpha * 30)}%, transparent) ${s.offset * 100}%`,
-  )
-  return `linear-gradient(90deg, ${stops.join(", ")})`
 }
 
 /** The skin (MacbookThermal.surface), the first level of the view: the

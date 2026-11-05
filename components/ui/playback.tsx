@@ -1,14 +1,14 @@
 "use client"
 
-// Playback: a clip's own clock, and the React side of a timebase (lib/timebase).
+// Playback: a playable's own clock, and the React side of a timebase (lib/timebase).
 //
 // `Playback` OWNS a timebase: a synthetic clock walking `at` toward a `target` at the
-// clip's pace, only while the content is on screen and the tab is visible. Every
+// playable's pace, only while the content is on screen and the tab is visible. Every
 // driver is a way of setting the target: play aims at the end, pause aims where it
 // is, a seek moves both, a scroll stage's act cues a span to be in. So a scroll stage
 // and a player's bar move the SAME clock and whichever moved last wins.
 //
-// Everything inside FOLLOWS the timebase. Content on the clip contract (terminal,
+// Everything inside FOLLOWS the timebase. Content on the playable contract (terminal,
 // macos, telegram-chat) reads its moment with `usePlayhead`; a bar, keys or a
 // filmstrip move it through `useTimebase`. A media element is the other owner
 // (ui/media-timebase, under ui/video's `VideoPlayback` and ui/audio's `AudioPlayback`):
@@ -17,11 +17,11 @@
 
 import * as React from "react"
 import {
-  type Clip,
   type Outline,
   outlineOf,
-  type Span,
-} from "@/lib/clip"
+  type Playable,
+} from "@/lib/playable"
+import type { Span } from "@/lib/span"
 import {
   clampRate,
   frameAt,
@@ -117,7 +117,7 @@ type Point = { clientX: number; clientY: number }
  *  moving slowly for INTENT_MS, never while it passes over fast or the page scrolls
  *  it by, so travelling across a timeline never flashes the moments under it. Once
  *  engaged it follows the hand at once until it leaves. `show` is where the hand is;
- *  `end` gives the moment back (endPreview). A press is intent whatever came before
+ *  `end` gives the moment back (endSkim). A press is intent whatever came before
  *  (`engage`). */
 export function useHoverIntent(
   show: (at: Point) => void,
@@ -541,12 +541,12 @@ export function usePlaylist<
 const NO_SUBSCRIBE = () => () => {}
 
 /** The moment a component draws (`at`, 0..1): its own `progress` when given, else the
- *  timebase's around it (a preview when one shows). Neither is a component placed
+ *  timebase's around it (a skim when one shows). Neither is a component placed
  *  where nothing moves it, and that screams. `driven` says which: a driven component
  *  can change at any moment (a chat keeps a viewport that a landing message slides
  *  inside), one with its own progress is a still and never will. `playing` says time
- *  runs forward at the clip's pace, for content with a clock of its own (a video) to
- *  run alongside; anything else (paused, previewed, rewinding, a still) holds it on
+ *  runs forward at the playable's pace, for content with a clock of its own (a video) to
+ *  run alongside; anything else (paused, skimmed, rewinding, a still) holds it on
  *  `at`. */
 export function usePlayhead(progress: number | undefined): {
   at: number
@@ -577,7 +577,7 @@ export function usePlayhead(progress: number | undefined): {
 const clamp01 = (p: number) => Math.min(1, Math.max(0, p))
 const progressOf = (s: TimebaseState) =>
   s.duration > 0 ? clamp01(shownAt(s) / s.duration) : 0
-const moving = (s: TimebaseState) => s.playing && s.preview === null
+const moving = (s: TimebaseState) => s.playing && s.skim === null
 
 const held = (what: string) => () => {
   throw new Error(
@@ -624,8 +624,8 @@ export function Playhead({
         seek: held("seek"),
         step: held("step"),
         jump: held("jump"),
-        preview: held("preview"),
-        endPreview: held("end a preview of"),
+        skim: held("skim"),
+        endSkim: held("end a skim of"),
         setRange: held("loop"),
       },
     }),
@@ -657,34 +657,34 @@ export interface PlaybackOptions {
   autoPlay?: boolean
 }
 
-/** How much faster than the clip an aim behind the playhead plays it backwards. */
+/** How much faster than the playable an aim behind the playhead plays it backwards. */
 const REWIND = 3
 
 /** The clock. Plays once, the first time the content is on screen (after `delay`),
  *  or while the page says `playing`; holds off screen and in a hidden tab; under
  *  reduced motion every aim lands at once. One rule for motion: an AIM travels
- *  (forward at the clip's pace times its rate, backward at `REWIND`x, so scrolling
+ *  (forward at the playable's pace times its rate, backward at `REWIND`x, so scrolling
  *  back an act unwinds it), a SEEK jumps (the bar). Returns the timebase it owns and
  *  the element whose visibility gates it. */
 export function usePlayback(
-  clip: Clip,
+  playable: Playable,
   { start = 0, delay = 0, cue, playing, autoPlay = true }: PlaybackOptions = {},
 ): { root: React.RefObject<HTMLDivElement | null>; timebase: Timebase } {
-  const duration = clip.duration
+  const duration = playable.duration
   if (!(duration > 0)) throw new Error("playback: duration must be positive")
   const clamp = (ms: number) => Math.min(duration, Math.max(0, ms))
   const root = React.useRef<HTMLDivElement>(null)
   const [store] = React.useState(() => {
     const at = Math.round(clamp(Math.max(start, cue?.from ?? start)))
     return new TimebaseStore(
-      initialState({ at, duration, fps: clip.fps ?? null, ready: true }),
+      initialState({ at, duration, fps: playable.fps ?? null, ready: true }),
     )
   })
   // Where the clock is heading; `at` lives in the store. Moving forward is playing.
   const target = React.useRef(store.get().at)
   // Where the clock really is while it walks: `at` in the store is this, whole.
   const exact = React.useRef(store.get().at)
-  // Where a preview found it: its moment and where it was heading.
+  // Where a skim found it: its moment and where it was heading.
   const before = React.useRef<{ at: number; target: number } | null>(null)
   const reduced = React.useRef(false)
   const armed = React.useRef(false)
@@ -695,8 +695,8 @@ export function usePlayback(
   const pageDriven = playing !== undefined
 
   React.useEffect(() => {
-    store.set({ duration, fps: clip.fps ?? null })
-  }, [store, duration, clip.fps])
+    store.set({ duration, fps: playable.fps ?? null })
+  }, [store, duration, playable.fps])
 
   // One loop walks `at` toward the target; it runs only while they differ.
   const tick = React.useRef<(now: number) => void>(() => {})
@@ -715,7 +715,7 @@ export function usePlayback(
           last = now
           const s = store.get()
           const goal = target.current
-          if (inView.current && !document.hidden && s.preview === null) {
+          if (inView.current && !document.hidden && s.skim === null) {
             // Walked in fractions (a sixteenth speed on a fast display moves well
             // under a millisecond a frame), written whole.
             const from = exact.current
@@ -769,14 +769,14 @@ export function usePlayback(
         },
         seek: (ms, options) => {
           before.current = null
-          store.set({ preview: null })
+          store.set({ skim: null })
           go(ms, options?.play ? end() : ms)
         },
         step: (n) => {
           const fps = store.get().fps
           if (!fps)
             throw new Error(
-              "playback: this clip has no fps; it cannot step frames",
+              "playback: this playable has no fps; it cannot step frames",
             )
           const ms = frameTime(frameAt(at(), fps) + n, fps)
           go(ms, ms)
@@ -785,18 +785,18 @@ export function usePlayback(
           const next = at() + ms
           go(next, store.get().playing ? Math.max(target.current, next) : next)
         },
-        preview: (ms) => {
+        skim: (ms) => {
           if (!before.current)
             before.current = { at: at(), target: target.current }
           store.set({
-            preview: Math.round(Math.min(end(), Math.max(0, ms))),
+            skim: Math.round(Math.min(end(), Math.max(0, ms))),
             playing: false,
           })
         },
-        endPreview: () => {
+        endSkim: () => {
           const b = before.current
           before.current = null
-          store.set({ preview: null })
+          store.set({ skim: null })
           if (b) go(b.at, b.target)
         },
         setRange: (range) => store.set({ range }),
@@ -861,8 +861,7 @@ export function usePlayback(
     go(at >= duration ? 0 : at, duration)
     return store.subscribe(() => {
       const s = store.get()
-      if (s.at >= s.duration && !s.playing && s.preview === null)
-        go(0, s.duration)
+      if (s.at >= s.duration && !s.playing && s.skim === null) go(0, s.duration)
     })
   }, [playing, go, store, duration])
 
@@ -882,21 +881,21 @@ export function usePlayback(
 }
 
 export interface PlaybackProps extends PlaybackOptions {
-  clip: Clip
+  playable: Playable
   children: React.ReactNode
   className?: string
 }
 
-/** A clip that plays once on screen, with no controls: a film in a card. The same
+/** A playable that plays once on screen, with no controls: a film in a card. The same
  *  clock as the player, so a still, a playback and a player are one component apart. */
 export function Playback({
-  clip,
+  playable,
   children,
   className,
   ...options
 }: PlaybackProps) {
-  const { root, timebase } = usePlayback(clip, options)
-  const outline = React.useMemo(() => outlineOf(clip), [clip])
+  const { root, timebase } = usePlayback(playable, options)
+  const outline = React.useMemo(() => outlineOf(playable), [playable])
   return (
     <div ref={root} data-slot="playback" className={className}>
       <PlayerLayer>

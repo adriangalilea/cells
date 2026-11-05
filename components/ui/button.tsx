@@ -70,6 +70,7 @@ export type ButtonSize =
   | "icon-sm"
   | "icon"
   | "icon-lg"
+  | "icon-xl"
 export type ButtonCorners = "pill" | "soft"
 
 /** Every button, whatever it wears. An icon inside takes the size's icon size unless
@@ -96,6 +97,8 @@ const SIZE: Record<ButtonSize, string> = {
   "icon-sm": "size-7 [&_svg:not([class*='size-'])]:size-3.5",
   icon: "size-8 [&_svg:not([class*='size-'])]:size-4",
   "icon-lg": "size-10 [&_svg:not([class*='size-'])]:size-[18px]",
+  // The one press over a picture (play a video, open a reading), at `xl`'s height.
+  "icon-xl": "size-12 [&_svg:not([class*='size-'])]:size-5",
 }
 
 /** A glass pill's radius, half of `SIZE`'s height. */
@@ -109,6 +112,7 @@ const GLASS_PILL: Record<ButtonSize, string> = {
   "icon-sm": "[--glass-radius:14px]",
   icon: "[--glass-radius:16px]",
   "icon-lg": "[--glass-radius:20px]",
+  "icon-xl": "[--glass-radius:24px]",
 }
 
 const SPINNER: Record<ButtonSize, SpinnerSize> = {
@@ -121,6 +125,7 @@ const SPINNER: Record<ButtonSize, SpinnerSize> = {
   "icon-sm": "sm",
   icon: "md",
   "icon-lg": "lg",
+  "icon-xl": "lg",
 }
 
 /** Inside a light surface on a dark page (light glass over a bright picture, which

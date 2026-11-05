@@ -17,7 +17,7 @@
 // program writes them, drawn by both emitters (`spansOf`), so a session shows what
 // the terminal showed, colour included.
 
-import type { Clip } from "@/lib/clip"
+import type { Playable } from "@/lib/playable"
 
 export type SessionLine = (
   | { kind: "command"; text: string }
@@ -215,9 +215,9 @@ export interface SessionTimeline {
   /** Time (ms) at which each line is complete. */
   ends: number[]
   total: number
-  /** The session as a clip, for any driver: one chapter per command, titled with
-   *  it, starting as it starts to type (the first at 0). */
-  clip: Clip
+  /** The session as a playable, for any driver: one chapter per command, titled
+   *  with it, starting as it starts to type (the first at 0). */
+  playable: Playable
 }
 
 export function sessionTimeline(lines: SessionLine[]): SessionTimeline {
@@ -254,7 +254,7 @@ export function sessionTimeline(lines: SessionLine[]): SessionTimeline {
     starts,
     ends,
     total,
-    clip: { duration: total, chapters },
+    playable: { duration: total, chapters },
   }
 }
 
