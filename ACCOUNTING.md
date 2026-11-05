@@ -68,16 +68,16 @@ type Phase = single|pending|post|void
 type Code = purchase|refund|transfer|salary|tax|pension|exchange|sale|correction|opening
 ---
 id:id!,date:date,phase:Phase final,amount:money in commodity final,commodity:commodities.commodity final,account_from:accounts.account final,account_to:accounts.account final,amount_to:money in commodity_to optional final,commodity_to:commodities.commodity? final,pending:money.id optional unique final,group:money.id?,lot:money.id?,code:Code,vendor:vendors.vendor?,description:text,tax_rate:pct?,vat:money in commodity optional=amount*tax_rate/(100+tax_rate),cleared:yes/no
-a1b2c3d4,2026-07-01,single,950.00,EUR,assets:bank:main,expenses:home:rent,,,,,,purchase,,rent july,0,,yes
-e5f6g7h8,2026-07-14,pending,60.00,EUR,assets:bank:main,expenses:fuel,,,,,,purchase,fuel-stop,card hold at the pump,21,,no
-j9k0m1n2,2026-07-16,post,48.40,EUR,assets:bank:main,expenses:fuel,,,e5f6g7h8,,,purchase,fuel-stop,fuel,21,,yes
-p3q4r5s6,2026-07-31,single,2250.00,EUR,income:salary,assets:bank:main,,,,p3q4r5s6,,salary,,payslip july net,,,yes
-t7v8w9x0,2026-07-31,single,600.00,EUR,income:salary,expenses:tax:income,,,,p3q4r5s6,,tax,,payslip july tax,,,yes
-y1z2a3b4,2026-07-31,single,150.00,EUR,income:salary,expenses:pension,,,,p3q4r5s6,,pension,,payslip july pension,,,yes
-c5d6e7f8,2026-08-02,single,100.00,EUR,assets:bank:main,assets:cash:usd,108.30,USD,,,,exchange,,cash for the trip,,,yes
-g9h0j1k2,2026-08-03,single,1200.00,EUR,assets:bank:main,assets:broker:kite,10,KITE,,,,purchase,,10 KITE at 120.00,,,yes
-m3n4p5q6,2026-09-20,single,4,KITE,assets:broker:kite,assets:bank:main,540.00,EUR,,,g9h0j1k2,sale,,sold 4 KITE at 135.00,,,yes
-r7s8t9v0,2026-09-21,single,950.00,EUR,expenses:home:rent,assets:bank:main,,,,,,correction,,rent july booked twice,0,,yes
+a1b2c3d4,2026-07-01,single,950.00,EUR,assets:bank:main,expenses:home:rent,,,,,,purchase,,rent july,0,0.00=,yes
+e5f6g7h8,2026-07-14,pending,60.00,EUR,assets:bank:main,expenses:fuel,,,,,,purchase,fuel-stop,card hold at the pump,21,10.41=,no
+j9k0m1n2,2026-07-16,post,48.40,EUR,assets:bank:main,expenses:fuel,,,e5f6g7h8,,,purchase,fuel-stop,fuel,21,8.40=,yes
+p3q4r5s6,2026-07-31,single,2250.00,EUR,income:salary,assets:bank:main,,,,p3q4r5s6,,salary,,payslip july net,,=,yes
+t7v8w9x0,2026-07-31,single,600.00,EUR,income:salary,expenses:tax:income,,,,p3q4r5s6,,tax,,payslip july tax,,=,yes
+y1z2a3b4,2026-07-31,single,150.00,EUR,income:salary,expenses:pension,,,,p3q4r5s6,,pension,,payslip july pension,,=,yes
+c5d6e7f8,2026-08-02,single,100.00,EUR,assets:bank:main,assets:cash:usd,108.30,USD,,,,exchange,,cash for the trip,,=,yes
+g9h0j1k2,2026-08-03,single,1200.00,EUR,assets:bank:main,assets:broker:kite,10,KITE,,,,purchase,,10 KITE at 120.00,,=,yes
+m3n4p5q6,2026-09-20,single,4,KITE,assets:broker:kite,assets:bank:main,540.00,EUR,,,g9h0j1k2,sale,,sold 4 KITE at 135.00,,=,yes
+r7s8t9v0,2026-09-21,single,950.00,EUR,expenses:home:rent,assets:bank:main,,,,,,correction,,rent july booked twice,0,0.00=,yes
 ```
 
 ## What each row shows
@@ -96,10 +96,10 @@ r7s8t9v0,2026-09-21,single,950.00,EUR,expenses:home:rent,assets:bank:main,,,,,,c
 ---
 import accounts from "./accounts.cell"
 check balance_holds:
-  select b.id from balances b
-  where b.balance <> (select coalesce(sum(p.amount), 0) from postings p
-                      where p.date <= b.date and p.phase in ('single', 'post')
-                        and (p.account = b.account or (b.children and p.account like b.account || ':%')))
+  SELECT b.id FROM balances b
+  WHERE b.balance <> (SELECT COALESCE(SUM(p.amount), 0) FROM postings p
+                      WHERE p.date <= b.date AND p.phase IN ('single', 'post')
+                        AND (p.account = b.account OR (b.children AND p.account LIKE b.account || ':%')))
 ---
 id:id!,date:date,account:accounts.account,balance:money in account.commodity,children:yes/no,source:text?
 w2x3y4z5,2026-07-31,assets:bank:main,5188.20,no,statement july
@@ -123,5 +123,5 @@ The account's posted balance at the end of `date` (a statement's closing balance
 
 ## Recurring and prices
 
-- `schedules.cell`, `id:id!,every:monthly|quarterly|yearly,day:1..31,from:date,until:date?,amount:money in commodity,commodity:commodities.commodity,account_from:accounts.account,account_to:accounts.account,description:text`: each due occurrence is shown as a computed row (never stored, as a computed column's field) for forecasts and budgets. When the real movement happens, a real row is written naming the schedule.
+- `schedules.cell`, `id:id!,every:monthly|quarterly|yearly,day:1..31,from:date,until:date?,amount:money in commodity,commodity:commodities.commodity,account_from:accounts.account,account_to:accounts.account,description:text`: each due occurrence is shown as a computed row (never stored: a forecast, not a movement) for forecasts and budgets. When the real movement happens, a real row is written naming the schedule.
 - `prices.cell`, `id:id!,date:date,commodity:commodities.commodity,price:num>0,in:commodities.commodity,source:text?`: one price per date, commodity and currency (a `unique` over the three). Valuation (then, at a period's end, now) is a query over it, never data.
