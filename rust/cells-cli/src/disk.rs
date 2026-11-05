@@ -1,8 +1,11 @@
 //! Imports followed from the disk: a path from the importing file's folder, `with { rev }`
-//! through git, a URL from the cache of what was fetched by its hash, else fetched.
+//! through git, a URL from the cache of what was fetched by its hash, else fetched. A file
+//! an editor holds open is read as the editor holds it.
 
+use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use std::process::Command;
+use std::sync::Arc;
 use std::{env, fs};
 
 use cells::files::{is_url, pinned};
@@ -31,11 +34,18 @@ pub struct Disk {
     /// A cycle found under this file: every import on the way to it is refused, since a
     /// file read inside one opens with its own break and would hide it.
     cycle: Option<String>,
+    /// The files an editor holds open, by their canonical path: read as it holds them.
+    open: Arc<BTreeMap<PathBuf, String>>,
 }
 
 impl Disk {
     pub fn new(at: &Path) -> Disk {
-        Disk { at: at.to_path_buf(), stack: Vec::new(), cycle: None }
+        Disk::over(at, Arc::new(BTreeMap::new()))
+    }
+
+    /// The imports of the file at `at`, a file `open` holds read from it.
+    pub fn over(at: &Path, open: Arc<BTreeMap<PathBuf, String>>) -> Disk {
+        Disk { at: at.to_path_buf(), stack: Vec::new(), cycle: None, open }
     }
 
     fn folder(&self) -> &Path {
@@ -91,9 +101,12 @@ impl Imports for Disk {
                     Some(b) => b,
                     None => return Ok(None),
                 },
-                None => match fs::read(&path) {
-                    Ok(b) => b,
-                    Err(_) => return Ok(None),
+                None => match self.open.get(&path) {
+                    Some(text) => text.clone().into_bytes(),
+                    None => match fs::read(&path) {
+                        Ok(b) => b,
+                        Err(_) => return Ok(None),
+                    },
                 },
             };
             (bytes, path)
@@ -101,7 +114,7 @@ impl Imports for Disk {
         pinned(&bytes, &i.with)?;
         let mut stack = self.stack.clone();
         stack.push(fs::canonicalize(&self.at).unwrap_or(self.at.clone()));
-        let mut inner = Disk { at: path, stack, cycle: None };
+        let mut inner = Disk { at: path, stack, cycle: None, open: Arc::clone(&self.open) };
         let doc = cells::read_with(bytes, &mut inner, 1).map_err(|e| e.to_string())?;
         if let Some(why) = inner.cycle {
             self.cycle = Some(why.clone());

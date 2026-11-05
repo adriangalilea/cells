@@ -13,3 +13,5 @@ path = "src/main.rs"
 
 [dependencies]
 cells = { package = "cells-engine", path = "../cells" }
+tokio = { version = "1", features = ["rt-multi-thread", "io-std", "macros"] }
+tower-lsp = "0.20"

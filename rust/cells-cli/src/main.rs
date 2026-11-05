@@ -8,6 +8,7 @@
 //!   cells run <file> [script]          its scripts run once, their rows written under them
 //!   cells show <file>                  its table as tab-separated text, computed cells
 //!                                     their values
+//!   cells lsp                          the language server, on stdin and stdout
 //!
 //! A folder means every `.cell` under it, hidden folders (`.git`, the engine's `.cells`)
 //! left out. Exit 0 when nothing is found (or every run succeeds), 1 when something is (or
@@ -16,6 +17,7 @@
 
 mod disk;
 mod json;
+mod lsp;
 mod pin;
 mod run;
 
@@ -26,8 +28,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 
 use disk::Disk;
 
-const USAGE: &str =
-    "cells check <file|folder>...\ncells fmt --check <file|folder>...\ncells pin <file>...\ncells run <file> [script]\ncells show <file>";
+const USAGE: &str = "cells check <file|folder>...\ncells fmt --check <file|folder>...\ncells pin <file>...\ncells run <file> [script]\ncells show <file>\ncells lsp";
 
 /// Every `.cell` file a path names, sorted.
 fn files(path: &Path, out: &mut Vec<PathBuf>) -> Result<(), String> {
@@ -150,6 +151,10 @@ fn main() -> ExitCode {
     let args: Vec<String> = std::env::args().skip(1).collect();
     match args.first().map(String::as_str) {
         Some("check") if args.len() > 1 => run(&args[1..], check),
+        Some("lsp") if args.len() == 1 => {
+            lsp::serve();
+            ExitCode::SUCCESS
+        }
         Some("fmt") if args.get(1).map(String::as_str) == Some("--check") && args.len() > 2 => run(&args[2..], round_trip),
         Some("fmt") => {
             eprintln!("cells: fmt only checks for now: cells fmt --check <file|folder>...");
