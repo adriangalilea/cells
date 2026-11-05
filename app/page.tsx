@@ -1,4 +1,5 @@
 import { Suspense } from "react"
+import { HeroShimmer } from "@/components/ground"
 import { Hero } from "@/components/hero"
 import { Story } from "@/components/story"
 import { Code } from "@/components/ui/code"
@@ -50,7 +51,8 @@ export default function Page() {
       {/* The hero's stage sticks while its extra height scrolls by: over it the lid shuts,
           and the file's text leaves the screen for the block below (components/hero). */}
       <section data-hero-section className="relative md:-mt-[4.5rem] md:h-[170svh]">
-        <div className="flex flex-col items-center gap-8 px-4 pt-6 md:sticky md:top-0 md:h-svh md:justify-center md:gap-10 md:pt-16">
+        <div className="relative isolate flex flex-col items-center gap-8 px-4 pt-6 md:sticky md:top-0 md:h-svh md:justify-center md:gap-10 md:pt-16">
+          <HeroShimmer />
           <div className="max-w-3xl text-center">
             <h1 className="text-balance text-[clamp(2.25rem,4.6vw,3.75rem)] leading-[1.03] font-medium tracking-[-0.04em] text-foreground">
               {PRODUCT.tagline}
@@ -60,7 +62,8 @@ export default function Page() {
             </p>
           </div>
           <div className="relative w-[min(72rem,94vw,calc((100svh-17rem)*1.6))]">
-            <div aria-hidden className="absolute inset-x-[14%] top-[4%] bottom-[22%] -z-10 rounded-[40%] bg-edge/12 blur-[80px]" />
+            {/* A soft rim of light behind the machine, neutral: a product shot at night. */}
+            <div aria-hidden className="absolute inset-x-[14%] top-[4%] bottom-[22%] -z-10 rounded-[40%] bg-white/5 blur-[80px] dark:bg-white/6" />
             {/* The engine streams in; the server's HTML of the hero and the story stays on
                 screen until it has (components/use-engine). */}
             <Suspense>

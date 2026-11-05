@@ -5,6 +5,7 @@
 /* The paid @ag items are ignored by git (.gitignore), and Tailwind skips what git
    ignores: named here, their classes are generated. */
 @source "../components/ui/macos.tsx";
+@source "../components/ui/shimmer.tsx";
 @source "../components/ui/player.tsx";
 @source "../components/ui/table.tsx";
 @source "../lib/table-data.ts";
@@ -72,7 +73,7 @@
   --edge: oklch(0.56 0.11 215);
   --haze: oklch(0.62 0.15 55);
   --tone-bad: var(--haze);
-  --grid: oklch(0.45 0.05 230 / 6%);
+  --grid: oklch(0.2 0 0 / 5%);
 }
 
 .dark {
@@ -97,7 +98,7 @@
   --edge: oklch(0.83 0.12 208);
   --haze: oklch(0.78 0.14 62);
   --tone-bad: var(--haze);
-  --grid: oklch(0.8 0.08 215 / 5%);
+  --grid: oklch(1 0 0 / 4%);
 }
 
 @layer base {
@@ -121,36 +122,17 @@
   }
 }
 
-/* THE GROUND: depth, never a flat colour. A horizon of cold light under the page's top
-   and a perspective grid that is only there on a second look (Tron's floor at a
-   whisper). Behind everything, fixed, so the page passes over it. Rules, not utilities:
-   a gradient stack and a 3D transform no utility spells. */
+/* THE GROUND'S TABLE (components/ground): a sheet's cells, wider than tall, in hairlines
+   only there on a second look, strongest in the middle of the window and gone at its
+   edges. A rule, not utilities: two gradients and a mask no utility spells. */
 @layer components {
-  .ground {
-    position: fixed;
-    inset: 0;
-    z-index: -1;
-    pointer-events: none;
-    background:
-      radial-gradient(120% 60% at 50% -10%, color-mix(in oklch, var(--edge) 9%, transparent), transparent 60%),
-      radial-gradient(80% 50% at 85% 110%, color-mix(in oklch, var(--haze) 6%, transparent), transparent 60%),
-      var(--background);
-    overflow: hidden;
-  }
-  .ground::after {
-    content: "";
-    position: absolute;
-    left: -50%;
-    right: -50%;
-    bottom: -10%;
-    height: 70%;
+  .ground-grid {
     background-image:
       linear-gradient(var(--grid) 1px, transparent 1px),
       linear-gradient(90deg, var(--grid) 1px, transparent 1px);
-    background-size: 64px 64px;
-    transform: perspective(600px) rotateX(62deg);
-    transform-origin: 50% 100%;
-    mask-image: linear-gradient(to top, black 10%, transparent 75%);
+    background-size: 112px 32px;
+    background-position: center top;
+    mask-image: radial-gradient(70% 65% at 50% 45%, black 20%, transparent 85%);
   }
 
   /* Light travelling along an edge: a line that lights once as data flows into what it
