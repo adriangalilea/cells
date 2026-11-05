@@ -1,3 +1,4 @@
+import { Suspense } from "react"
 import { Hero } from "@/components/hero"
 import { Story } from "@/components/story"
 import { Code } from "@/components/ui/code"
@@ -58,7 +59,11 @@ export default function Page() {
           </div>
           <div className="hero-device relative w-[min(72rem,94vw,calc((100svh-17rem)*1.6))]">
             <div aria-hidden className="absolute inset-x-[14%] top-[4%] bottom-[22%] -z-10 rounded-[40%] bg-edge/12 blur-[80px]" />
-            <Hero />
+            {/* The engine streams in; the server's HTML of the hero and the story stays on
+                screen until it has (components/use-engine). */}
+            <Suspense>
+              <Hero />
+            </Suspense>
           </div>
         </div>
       </section>
@@ -76,7 +81,9 @@ export default function Page() {
       </section>
 
       <div className="mt-40 md:mt-56">
-        <Story />
+        <Suspense>
+          <Story />
+        </Suspense>
       </div>
 
       <section className="mx-auto mt-48 max-w-6xl px-6">

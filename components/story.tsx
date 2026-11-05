@@ -8,6 +8,7 @@
 import * as React from "react"
 import { CellEditor } from "@/components/cell-editor"
 import { CellsTable } from "@/components/cells-window"
+import { useEngine } from "@/components/use-engine"
 import { readFiles, type ViewTable } from "@/lib/cells"
 import { PRODUCT } from "@/lib/product"
 import { STORY, type StoryFile, type StoryStep } from "@/lib/story"
@@ -26,11 +27,12 @@ export function Story() {
 function Step({ step, index }: { step: StoryStep; index: number }) {
   const [files, setFiles] = React.useState<StoryFile[]>(step.files)
   const [open, setOpen] = React.useState(0)
-  const read = React.useMemo(() => readFiles(files), [files])
+  const engine = useEngine()
+  const read = React.useMemo(() => readFiles(engine, files), [engine, files])
   const file = files[open] as StoryFile
   // The file shown in the editor is judged as the reader would open it: the first through
   // its imports, any other alone.
-  const judged = React.useMemo(() => (open === 0 ? read : readFiles([file])), [open, read, file])
+  const judged = React.useMemo(() => (open === 0 ? read : readFiles(engine, [file])), [engine, open, read, file])
   const edit = (text: string) => setFiles((fs) => fs.map((f, k) => (k === open ? { ...f, text } : f)))
   return (
     <section id={step.id} aria-labelledby={`${step.id}-title`} className="mx-auto grid max-w-6xl scroll-mt-24 gap-10 px-6 lg:grid-cols-[minmax(0,5fr)_minmax(0,7fr)] lg:gap-16">
@@ -158,12 +160,13 @@ function Run({ file }: { file: StoryFile }) {
 function Query({ files }: { files: StoryFile[] }) {
   const accounts = files.find((f) => f.name.startsWith("accounts")) as StoryFile
   const money = files.filter((f) => f !== accounts)
-  const kinds = readFiles([accounts])
+  const engine = useEngine()
+  const kinds = readFiles(engine, [accounts])
   const kindOf = new Map<string, string>()
   kinds.values.account?.forEach((a, i) => kindOf.set(String(a), String(kinds.values.kind?.[i])))
   const sums = new Map<string, number>()
   for (const m of money) {
-    const t = readFiles([m, ...files.filter((f) => f !== m)])
+    const t = readFiles(engine, [m, ...files.filter((f) => f !== m)])
     t.values.to?.forEach((to, i) => {
       const kind = kindOf.get(String(to)) ?? "unknown"
       sums.set(kind, (sums.get(kind) ?? 0) + Number(t.values.amount?.[i] ?? 0))

@@ -9,6 +9,7 @@
 
 import { usePlayhead } from "@/components/ui/playback"
 import { useTerminalPalette } from "@/components/ui/terminal"
+import { useEngine } from "@/components/use-engine"
 import { readFiles } from "@/lib/cells"
 import { type CodeTimeline, codeFrameAt, placeOf } from "@/lib/code-session"
 import { placeProblems } from "@/lib/spans"
@@ -22,10 +23,11 @@ const PAD_TOP = 0.5
 
 export function HelixDiagnostics({ timeline, rows }: { timeline: CodeTimeline; rows: number }) {
   const palette = useTerminalPalette()
+  const engine = useEngine()
   const ms = usePlayhead(undefined).at * timeline.total
   const f = codeFrameAt(timeline, ms)
   if (!f.active) return null
-  const read = readFiles([{ name: f.active, text: f.text }])
+  const read = readFiles(engine, [{ name: f.active, text: f.text }])
   if (read.error) return null
   const placed = placeProblems(f.text, read.problems)
   const lines = f.text.split("\n")

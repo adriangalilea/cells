@@ -8,6 +8,7 @@
 
 import * as React from "react"
 import { Table, type TableColumn } from "@/components/ui/table"
+import { useEngine } from "@/components/use-engine"
 import { readFiles, type ViewCell } from "@/lib/cells"
 import { PRODUCT } from "@/lib/product"
 import { cn } from "@/lib/utils"
@@ -28,7 +29,8 @@ export function CellsTable({
   label: string
   className?: string
 }) {
-  const read = React.useMemo(() => readFiles([{ name, text }, ...others]), [name, text, others])
+  const engine = useEngine()
+  const read = React.useMemo(() => readFiles(engine, [{ name, text }, ...others]), [engine, name, text, others])
   const rows = React.useMemo<Row[]>(() => read.rows.map((cells, i) => ({ id: String(i), cells })), [read])
   const problems = React.useMemo(() => {
     const m = new Map<string, string>()

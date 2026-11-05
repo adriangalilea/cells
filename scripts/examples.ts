@@ -4,9 +4,13 @@
 //
 //   bun scripts/examples.ts
 
-import { readFiles } from "@/lib/cells"
+import { readFiles as readWith } from "@/lib/cells"
+import { loadEngine } from "@/lib/engine-module"
 import { HERO } from "@/lib/hero"
 import { STORY } from "@/lib/story"
+
+const engine = await loadEngine()
+const readFiles = (files: Parameters<typeof readWith>[1]) => readWith(engine, files)
 
 let failed = 0
 const fail = (where: string, what: string) => {

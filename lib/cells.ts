@@ -1,9 +1,14 @@
 // The engine as the site reads files with it: a story step's files read together, the
 // first one through its imports (the others), a plain `.csv` by its separator. Every
-// doc is freed once what the view needs is taken from it.
+// doc is freed once what the view needs is taken from it. The engine is given, never
+// imported here: it is reached through lib/engine-module (`loadEngine`), once its module
+// has streamed in.
 
-import { CellsError, type Column, detect, type Problem, read, readAs, type Value } from "@/lib/engine/cells.ts"
+import type { Column, Problem, Value } from "@/lib/engine/cells.ts"
 import type { StoryFile } from "@/lib/story"
+
+/** The engine, as `loadEngine()` gives it. */
+export type Engine = typeof import("@/lib/engine/cells.ts")
 
 /** A column as a view draws it. */
 export interface ViewColumn {
@@ -46,13 +51,13 @@ function shown(c: Column, r: number, v: Value): string {
 }
 
 /** The first file of `files`, read as the reader would open it. */
-export function readFiles(files: readonly StoryFile[]): ViewTable {
+export function readFiles(engine: Engine, files: readonly StoryFile[]): ViewTable {
   const [first, ...others] = files
   if (!first) throw new Error("cells: a step with no file")
   try {
     const r = first.name.endsWith(".csv")
-      ? readAs(first.text, detect(first.text))
-      : read(first.text, { at: first.name, files: Object.fromEntries(others.map((f) => [f.name, f.text])) })
+      ? engine.readAs(first.text, engine.detect(first.text))
+      : engine.read(first.text, { at: first.name, files: Object.fromEntries(others.map((f) => [f.name, f.text])) })
     try {
       const columns = r.columns.map(
         (c): ViewColumn => ({
@@ -82,7 +87,7 @@ export function readFiles(files: readonly StoryFile[]): ViewTable {
   } catch (e) {
     // A file whose grammar does not read (being typed, mid-edit) is shown as that, never
     // as a crash; anything else is a bug and screams.
-    if (e instanceof CellsError) return { columns: [], rows: [], values: {}, problems: [], error: `${e.where}: ${e.why}` }
+    if (e instanceof engine.CellsError) return { columns: [], rows: [], values: {}, problems: [], error: `${e.where}: ${e.why}` }
     throw e
   }
 }

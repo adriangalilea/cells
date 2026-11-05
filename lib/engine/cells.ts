@@ -10,7 +10,7 @@
 // value null; a broken grammar throws `CellsError` naming where. Unlike ts/src/cells.ts, an
 // edit changes the doc it is given (and returns it): the file is held once, in the module.
 
-import { wasm } from "./wasm.ts"
+import { engineModule } from "@/lib/engine-module"
 
 interface Exports {
   memory: WebAssembly.Memory
@@ -37,14 +37,8 @@ interface Exports {
   cells_read_with(ptr: number, len: number, cap: number, files: number, filesLen: number, filesCap: number): number
 }
 
-function decodeBase64(s: string): Uint8Array<ArrayBuffer> {
-  const bin = atob(s)
-  const out = new Uint8Array(bin.length)
-  for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i)
-  return out
-}
 
-const x = new WebAssembly.Instance(new WebAssembly.Module(decodeBase64(wasm)), {}).exports as unknown as Exports
+const x = new WebAssembly.Instance(engineModule(), {}).exports as unknown as Exports
 // A byte order mark is the file's: kept, never swallowed.
 const decoder = new TextDecoder("utf-8", { ignoreBOM: true })
 const encoder = new TextEncoder()
