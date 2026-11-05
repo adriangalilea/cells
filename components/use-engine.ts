@@ -1,13 +1,18 @@
 "use client"
 
-// The engine in a component: suspends until its module has streamed in. Inside a Suspense
-// boundary that hydrates, React keeps the page's server-rendered HTML on screen meanwhile,
-// so a reader sees every table at once and the page is live a moment later.
+// The engine in a component. In the browser it is there before any component renders:
+// this module waits for it at its top (top-level await), so the page hydrates once the
+// module has streamed in, and nothing suspends while hydrating. A Suspense boundary that
+// suspended mid-hydration lost its server HTML the moment anything above it updated (a
+// media query, the clock), and the hero and every table went blank until the engine came.
+// At build the engine is reached through `use`, inside the page's Suspense boundaries.
 
 import * as React from "react"
 import type { Engine } from "@/lib/cells"
 import { loadEngine } from "@/lib/engine-module"
 
+const ready: Engine | null = typeof window === "undefined" ? null : await loadEngine()
+
 export function useEngine(): Engine {
-  return React.use(loadEngine())
+  return ready ?? React.use(loadEngine())
 }
