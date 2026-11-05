@@ -4,7 +4,7 @@
 //! ```
 //! let doc = cells::read("item:text!,cost:EUR>=0\nfuel,84.20\nsnacks,8x.50\n").unwrap();
 //! assert_eq!(doc.rows(), 2);
-//! assert_eq!(doc.describe(&doc.problems()[0]), r#"row 1, cost: "8x.50" is not a number"#);
+//! assert_eq!(doc.describe(&doc.problems()[0]), r#"row 2, cost: "8x.50" is not a number"#);
 //! let mut doc = doc;
 //! doc.set_cell(1, 1, "8.50");
 //! assert_eq!(doc.write(), "item:text!,cost:EUR>=0\nfuel,84.20\nsnacks,8.50\n");

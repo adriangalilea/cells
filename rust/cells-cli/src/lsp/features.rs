@@ -133,7 +133,7 @@ pub fn diagnostics(file: &File) -> Vec<Diagnostic> {
         for (p, s) in doc.problems().iter().zip(doc.spans()) {
             let column = &doc.columns()[p.column as usize].name;
             let place = match table {
-                Some(t) => format!("{t}, row {}, {column}", p.row),
+                Some(t) => format!("{t}, row {}, {column}", p.row + 1),
                 None => column.clone(),
             };
             out.push(error(lines.range(shifted(s, base)), format!("{place}: {}", doc.why(p))));

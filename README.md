@@ -114,7 +114,7 @@ q4x9t1mz,2026-07-30,950.00,assets:bank:main,expenses:home:rnet,rent august,0,
 
 ```
 $ cells check books
-books/home/money.cell row 2, account_to: "expenses:home:rnet" is no key of accounts
+books/home/money.cell row 3, account_to: "expenses:home:rnet" is no key of accounts
 
 $ cells show books/home/money.cell
 id        date        amount  account_from      account_to           description  tax_rate  vat

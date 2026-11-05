@@ -1,6 +1,6 @@
 [
-  { "row": 0, "column": "note", "text": "a\u0000b", "refused": "row 0" },
-  { "row": 1, "column": "note", "value": { "text": "coast\u001b[0m" }, "refused": "row 1" },
-  { "row": 1, "column": "item", "text": "maps\u0085", "refused": "row 1" },
+  { "row": 0, "column": "note", "text": "a\u0000b", "refused": "row 1" },
+  { "row": 1, "column": "note", "value": { "text": "coast\u001b[0m" }, "refused": "row 2" },
+  { "row": 1, "column": "item", "text": "maps\u0085", "refused": "row 2" },
   { "row": 0, "column": "note", "text": "tab\there" }
 ]

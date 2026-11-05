@@ -57,7 +57,7 @@ The `.json` is one of two shapes.
 
 A break's `span` is where it is in the file, `[start, length]` in bytes, as a problem's: a header cell's type (or its whole text, for a name), narrowed to the reference that names no key or the part of a column formula that does not read (empty, at its end, for a formula that ends early); a prelude statement's first line; the record the rows end at, its first line when it never closes.
 
-`at` is one of `the header`, `column N` (1-based), `prelude line N` (1-based, inside the fences), `the prelude`, `row N` (0-based):
+`at` is one of `the header`, `column N` (1-based), `prelude line N` (1-based, inside the fences), `the prelude`, `row N` (1-based, as a table numbers its rows and every message does; a problem's `row` is an index, from 0):
 
 - `column N`: a header cell that does not read (its name, its type, a reference to no key): its column is `text?`, under the name it spells, which may be blank or another column's (and then the case has no rows, as rows are keyed by name). Its formula, when only that does not compute: the column keeps its type and its cells are blank, `{ "from": "formula" }`.
 - `prelude line N`: a statement that does not settle, left out (a type naming it breaks in turn, at its own place), or the line inside a table's fence its table breaks on. An import refused (its pin, a cycle) still names what it imports, unchecked.
@@ -85,7 +85,7 @@ Every case that reads is also a write case: the file read and written with nothi
 - `{ "remove": "bed" }`: the column taken out, its header cell and every row's field;
 - `{ "move": "qty", "to": 0 }`: the column taken out and put back at that place;
 - `{ "rename": "qty", "to": "count" }`: the column under a new name, its type and formula kept as spelled;
-- a `text`, a `value` or an `insert` with `"refused": "row 0"`: refused at that place for a control character in the text or a cell (SPEC.md, Writing), the file left as it was; a `type` with `"refused": "column 1"`: refused at the column changed, for a control character, a type or a formula that does not read, or a formula of another column that then cannot read; an `insert` with `"refused": "column N"`: the new header cell refused at its place;
+- a `text`, a `value` or an `insert` with `"refused": "row 1"` (the place's words, a row from 1): refused at that place for a control character in the text or a cell (SPEC.md, Writing), the file left as it was; a `type` with `"refused": "column 1"`: refused at the column changed, for a control character, a type or a formula that does not read, or a formula of another column that then cannot read; an `insert` with `"refused": "column N"`: the new header cell refused at its place;
 - `{ "as": ";" }` or `{ "as": "cells", "header": ["item:text!", "cost:EUR"] }`, always last: the file written in another dialect (`cells`, or a plain file with that separator, `","` `";"` `"\t"` `"|"`), and that text is the output. A plain file's header is the columns' names and its computed cells their values (in the plain form of a decimal, `10`, never `10.00`); `header` gives a `.cell` file's header cells, one a column. A record is kept as written when the separator is the same and nothing joins it; otherwise it is written from its cells, quoted where the dialect needs it.
 
 A column's fields move with it whole: a short row's missing fields are written blank, and a plain file's fields past its header stay after the columns.

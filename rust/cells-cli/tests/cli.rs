@@ -23,10 +23,10 @@ fn check_and_fmt() {
         lines,
         [
             format!("{} column 1: item: no type or currency \"EURO\"", shown("trip/broken.cell")),
-            format!("{} row 0, item: \"fuel\" is the key of row 1 too", shown("trip/money.cell")),
-            format!("{} row 0, cost: \"8x.50\" is not a number", shown("trip/money.cell")),
-            format!("{} row 1, item: \"fuel\" is the key of row 0 too", shown("trip/money.cell")),
-            format!("{} row 1, cost: \"-1\" is below 0", shown("trip/money.cell")),
+            format!("{} row 1, item: \"fuel\" is the key of row 2 too", shown("trip/money.cell")),
+            format!("{} row 1, cost: \"8x.50\" is not a number", shown("trip/money.cell")),
+            format!("{} row 2, item: \"fuel\" is the key of row 1 too", shown("trip/money.cell")),
+            format!("{} row 2, cost: \"-1\" is below 0", shown("trip/money.cell")),
         ]
     );
 
@@ -57,7 +57,7 @@ fn imports_formulas_and_a_script() {
     let shown = money.display().to_string();
 
     let check = Command::new(cells).arg("check").arg(&money).output().unwrap();
-    assert_eq!(String::from_utf8(check.stdout).unwrap(), format!("{shown} row 1, to: \"bar\" is no key of accounts\n"));
+    assert_eq!(String::from_utf8(check.stdout).unwrap(), format!("{shown} row 2, to: \"bar\" is no key of accounts\n"));
 
     let run = Command::new(cells).arg("run").arg(&money).output().unwrap();
     assert_eq!(String::from_utf8(run.stdout).unwrap(), "rates: run 1 ok, 1 added, 0 changed\n");

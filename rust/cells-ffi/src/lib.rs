@@ -1325,7 +1325,7 @@ mod tests {
             let d = cells_read_at(money.as_ptr(), money.len(), lent(at), 1, &mut f);
             assert!(!d.is_null());
             assert_eq!(cells_problem_count(d), 1);
-            assert_eq!(text(cells_describe(d, 0)), "row 1, to: \"rnet\" is no key of accounts");
+            assert_eq!(text(cells_describe(d, 0)), "row 2, to: \"rnet\" is no key of accounts");
             cells_free(d);
             std::fs::remove_dir_all(&dir).unwrap();
         }

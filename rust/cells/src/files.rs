@@ -124,7 +124,7 @@ mod tests {
         let money = files["books/home/money.cell"].clone();
         let doc = read_with(money.clone(), &mut Files::new(&files, "books/home/money.cell"), 1).unwrap();
         assert_eq!(doc.problems().len(), 1);
-        assert_eq!(doc.describe(&doc.problems()[0]), "row 1, to: \"rnet\" is no key of accounts");
+        assert_eq!(doc.describe(&doc.problems()[0]), "row 2, to: \"rnet\" is no key of accounts");
         // Read alone, the reference is unchecked.
         assert!(crate::read(money).unwrap().problems().is_empty());
         files.insert("loop.cell".to_owned(), "---\nimport me from \"./loop.cell\"\n---\na\n".to_owned());

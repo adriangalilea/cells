@@ -100,7 +100,7 @@ function check(doc: Doc, want: Want): string[] {
   const b = JSON.stringify(want.problems.map((p) => [p.row, p.column, p.kind]))
   if (a !== b) f.push(`problems ${a}, the suite says ${b}`)
   for (const p of doc.problems())
-    if (p.why !== `row ${p.row}, ${p.column}: ${p.reason}`) f.push(`problem ${JSON.stringify(p.why)} is not its reason ${JSON.stringify(p.reason)} at its place`)
+    if (p.why !== `row ${p.row + 1}, ${p.column}: ${p.reason}`) f.push(`problem ${JSON.stringify(p.why)} is not its reason ${JSON.stringify(p.reason)} at its place`)
   const broken = JSON.stringify(doc.broken.map((b) => b.at))
   const wanted = JSON.stringify((want.broken ?? []).map((b) => b.at))
   if (broken !== wanted) f.push(`broken at ${broken}, the suite says ${wanted} (${doc.broken.map((b) => b.why).join("; ")})`)

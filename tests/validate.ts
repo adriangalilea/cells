@@ -44,7 +44,7 @@ const TAGS = new Set([
 ])
 const KINDS = ["type", "missing", "key", "ragged", "formula", "reference"]
 const FROM = ["formula", "cell"]
-const AT = /^(the file|the header|the prelude|column [1-9]\d*|prelude line [1-9]\d*|row (0|[1-9]\d*))$/
+const AT = /^(the file|the header|the prelude|column [1-9]\d*|prelude line [1-9]\d*|row [1-9]\d*)$/
 const DECIMAL = /^-?(0|[1-9]\d*)(\.\d+)?$/
 const INTEGER = /^-?(0|[1-9]\d*)$/
 const DATE = /^\d{4}-\d{2}-\d{2}$/

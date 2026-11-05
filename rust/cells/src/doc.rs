@@ -57,7 +57,8 @@ impl fmt::Display for At {
             At::Column(n) => write!(f, "column {n}"),
             At::PreludeLine(n) => write!(f, "prelude line {n}"),
             At::Prelude => f.write_str("the prelude"),
-            At::Row(n) => write!(f, "row {n}"),
+            // A person counts rows from 1, as a table numbers them.
+            At::Row(n) => write!(f, "row {}", n + 1),
             At::File => f.write_str("the file"),
         }
     }
@@ -1321,9 +1322,10 @@ impl Doc {
         self.raw_fields(self.line(row)).len()
     }
 
-    /// A problem in words: `row 3, cost: "8x.50" is not a number`.
+    /// A problem in words, its row counted from 1 as a table numbers it: `row 3, cost:
+    /// "8x.50" is not a number` for `p.row` 2.
     pub fn describe(&self, p: &Problem) -> String {
-        format!("row {}, {}: {}", p.row, self.columns[p.column as usize].name, self.why(p))
+        format!("row {}, {}: {}", p.row + 1, self.columns[p.column as usize].name, self.why(p))
     }
 
     /// A problem in words without its place, for a host that shows it on the cell:
@@ -1407,7 +1409,7 @@ impl Doc {
                 if c.ty.max.is_some_and(|b| !b.inclusive) { "or at " } else { "" },
                 bound(&c.ty.max)
             ),
-            Why::Duplicate { other } => format!("is the key of row {other} too"),
+            Why::Duplicate { other } => format!("is the key of row {} too", other + 1),
         };
         match gave {
             Some(_) => format!("the formula gives \"{text}\", which {why}"),
@@ -2137,7 +2139,7 @@ impl Doc {
                 let Some(Some((_, ties))) = &eval.windows[slot] else { continue };
                 for &(r, other) in ties {
                     if self.columns[k].origin(r) == Origin::Formula {
-                        let why = format!("ties with row {other} in its window's order, which says neither comes first");
+                        let why = format!("ties with row {} in its window's order, which says neither comes first", other + 1);
                         self.unwell.entry((r as u32, k as u32)).or_insert_with(|| expr::Fault::whole(why));
                     }
                 }
