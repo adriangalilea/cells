@@ -1,0 +1,236 @@
+@import "tailwindcss";
+@import "shadcn/tailwind.css";
+@import "./tokens.css";
+
+/* The paid @ag items are ignored by git (.gitignore), and Tailwind skips what git
+   ignores: named here, their classes are generated. */
+@source "../components/ui/macos.tsx";
+@source "../components/ui/player.tsx";
+@source "../components/ui/table.tsx";
+@source "../lib/table-data.ts";
+@source "../lib/player-input.ts";
+
+@custom-variant dark (&:is(.dark *));
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: var(--font-geist);
+  --font-mono: var(--font-geist-mono);
+  --font-heading: var(--font-geist);
+  --color-ring: var(--ring);
+  --color-input: var(--input);
+  --color-border: var(--border);
+  --color-destructive: var(--destructive);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-accent: var(--accent);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-muted: var(--muted);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-secondary: var(--secondary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-primary: var(--primary);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-popover: var(--popover);
+  --color-card-foreground: var(--card-foreground);
+  --color-card: var(--card);
+  --color-edge: var(--edge);
+  --color-haze: var(--haze);
+  --radius-sm: calc(var(--radius) * 0.6);
+  --radius-md: calc(var(--radius) * 0.8);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) * 1.4);
+  --radius-2xl: calc(var(--radius) * 1.8);
+}
+
+/* THE SITE'S LIGHT, two colours used rarely (site tokens; for ui, if they earn a place
+   there: an edge light and a haze, as theme variables):
+   - the edge: a cold cyan line, light along an edge, on what the engine computes;
+   - the haze: a warm sodium amber, on what the engine names as broken. The table's and
+     the editor's problem marks wear it (`--tone-bad`, ui's tone for a broken cell).
+   Everything else is the page's greys. */
+:root {
+  --background: oklch(0.985 0.003 250);
+  --foreground: oklch(0.2 0.01 255);
+  --card: oklch(1 0 0);
+  --card-foreground: var(--foreground);
+  --popover: oklch(1 0 0);
+  --popover-foreground: var(--foreground);
+  --primary: oklch(0.24 0.01 255);
+  --primary-foreground: oklch(0.985 0 0);
+  --secondary: oklch(0.955 0.004 250);
+  --secondary-foreground: var(--foreground);
+  --muted: oklch(0.955 0.004 250);
+  --muted-foreground: oklch(0.5 0.012 255);
+  --accent: oklch(0.955 0.004 250);
+  --accent-foreground: var(--foreground);
+  --destructive: oklch(0.6 0.19 40);
+  --border: oklch(0.2 0.01 255 / 9%);
+  --input: oklch(0.2 0.01 255 / 12%);
+  --ring: oklch(0.55 0.1 215);
+  --radius: 0.625rem;
+  --edge: oklch(0.56 0.11 215);
+  --haze: oklch(0.62 0.15 55);
+  --tone-bad: var(--haze);
+  --grid: oklch(0.45 0.05 230 / 6%);
+}
+
+.dark {
+  --background: oklch(0.135 0.008 255);
+  --foreground: oklch(0.94 0.006 250);
+  --card: oklch(0.165 0.009 255);
+  --card-foreground: var(--foreground);
+  --popover: oklch(0.18 0.01 255);
+  --popover-foreground: var(--foreground);
+  --primary: oklch(0.94 0.006 250);
+  --primary-foreground: oklch(0.16 0.01 255);
+  --secondary: oklch(0.2 0.01 255);
+  --secondary-foreground: var(--foreground);
+  --muted: oklch(0.2 0.01 255);
+  --muted-foreground: oklch(0.68 0.012 250);
+  --accent: oklch(0.21 0.012 255);
+  --accent-foreground: var(--foreground);
+  --destructive: oklch(0.72 0.15 55);
+  --border: oklch(1 0 0 / 8%);
+  --input: oklch(1 0 0 / 12%);
+  --ring: oklch(0.78 0.11 210);
+  --edge: oklch(0.83 0.12 208);
+  --haze: oklch(0.78 0.14 62);
+  --tone-bad: var(--haze);
+  --grid: oklch(0.8 0.08 215 / 5%);
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  html {
+    @apply font-sans;
+    color-scheme: light;
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+  html.dark {
+    color-scheme: dark;
+  }
+  body {
+    @apply bg-background text-foreground;
+  }
+  ::selection {
+    background: color-mix(in oklch, var(--edge) 28%, transparent);
+  }
+}
+
+/* THE GROUND: depth, never a flat colour. A horizon of cold light under the page's top
+   and a perspective grid that is only there on a second look (Tron's floor at a
+   whisper). Behind everything, fixed, so the page passes over it. Rules, not utilities:
+   a gradient stack and a 3D transform no utility spells. */
+@layer components {
+  .ground {
+    position: fixed;
+    inset: 0;
+    z-index: -1;
+    pointer-events: none;
+    background:
+      radial-gradient(120% 60% at 50% -10%, color-mix(in oklch, var(--edge) 9%, transparent), transparent 60%),
+      radial-gradient(80% 50% at 85% 110%, color-mix(in oklch, var(--haze) 6%, transparent), transparent 60%),
+      var(--background);
+    overflow: hidden;
+  }
+  .ground::after {
+    content: "";
+    position: absolute;
+    left: -50%;
+    right: -50%;
+    bottom: -10%;
+    height: 70%;
+    background-image:
+      linear-gradient(var(--grid) 1px, transparent 1px),
+      linear-gradient(90deg, var(--grid) 1px, transparent 1px);
+    background-size: 64px 64px;
+    transform: perspective(600px) rotateX(62deg);
+    transform-origin: 50% 100%;
+    mask-image: linear-gradient(to top, black 10%, transparent 75%);
+  }
+
+  /* Light travelling along an edge: a line that lights once as data flows into what it
+     edges (a computed column, a check passing), then settles. */
+  .edge-light {
+    position: relative;
+  }
+  .edge-light::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    padding: 1px;
+    background: linear-gradient(90deg, transparent, color-mix(in oklch, var(--edge) 70%, transparent), transparent) 0 0 / 40% 100% no-repeat;
+    -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+    -webkit-mask-composite: xor;
+    mask-composite: exclude;
+    animation: edge-run 2.4s var(--ease-out) 1 both;
+    pointer-events: none;
+  }
+  @keyframes edge-run {
+    from {
+      background-position: -60% 0;
+      opacity: 1;
+    }
+    to {
+      background-position: 160% 0;
+      opacity: 0.25;
+    }
+  }
+
+  /* THE HERO'S CAMERA: as the page scrolls past the hero, the view goes into the screen
+     and the machine falls away. A scroll-driven animation over the hero's own view
+     timeline; where the browser has none, the hero stands still. */
+  .hero-camera {
+    view-timeline: --hero block;
+  }
+  /* Wide screens only: on a phone the windows are stacked and read in the flow. */
+  @supports (animation-timeline: view()) {
+  @media (width >= 48rem) {
+    /* The section is taller than the window and its stage sticks: over the extra
+       scroll (`contain`), the words leave first, then the camera moves into the
+       screen and the machine falls away. */
+    .hero-words {
+      animation: hero-words linear both;
+      animation-timeline: --hero;
+      animation-range: contain 0% contain 28%;
+    }
+    @keyframes hero-words {
+      to {
+        opacity: 0;
+        transform: translateY(-2.5rem);
+      }
+    }
+    .hero-device {
+      animation: hero-into linear both;
+      animation-timeline: --hero;
+      animation-range: contain 8% contain 100%;
+      transform-origin: 50% 36%;
+    }
+    @keyframes hero-into {
+      0% {
+        transform: translateY(0) scale(1);
+      }
+      70% {
+        opacity: 1;
+      }
+      100% {
+        transform: translateY(-14vh) scale(2.3);
+        opacity: 0;
+      }
+    }
+  }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .edge-light::before,
+    .hero-words,
+    .hero-device {
+      animation: none;
+    }
+  }
+}
