@@ -1,6 +1,6 @@
 // The site on Cloudflare Workers: static assets only (out/, Next's static export), no
-// code of its own. Served on workers.dev; the cellular.computer domain is attached to this
-// Worker separately, never from here (no routes in this file).
+// code of its own. Served on workers.dev and on cellular.computer and its www, both
+// Workers custom domains (listed here so every deploy keeps them).
 {
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "cells-site",
@@ -8,6 +8,10 @@
   "compatibility_date": "2026-11-01",
   "workers_dev": true,
   "preview_urls": false,
+  "routes": [
+    { "pattern": "cellular.computer", "custom_domain": true },
+    { "pattern": "www.cellular.computer", "custom_domain": true }
+  ],
   "assets": {
     "directory": "./out",
     "html_handling": "drop-trailing-slash",
