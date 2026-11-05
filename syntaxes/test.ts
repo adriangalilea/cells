@@ -6,103 +6,139 @@
 //   bun run test.ts
 
 import { createHighlighter } from "shiki"
-import grammar from "./tcsv.tmLanguage.json"
+import grammar from "./cells.tmLanguage.json"
 
 const FIXTURE = `---
-use ../accounts.tcsv   // provisional
-type Category = travel|stay|'it''s fine'
-total = cost * (qty - 1)
+import accounts from "../accounts.cell"   // shared
+import { Kind } from "./kinds.cell" with { rev: "a1b2c3d" }
+export type Category = travel|stay|'it''s fine'
+fees = \`\`\`cells
+kind:text!,pct:pct
+card,1.4
+\`\`\`
+rates = run every day at 18:00 in Europe/Madrid
+\`\`\`ts
+export default async () => []
+\`\`\`
 ---
-item:text!,category:Category,cost:EUR>=0,paid:yes/no,on:date(DD/MM/YYYY),note:text?,score:0..10,to:accounts.account,x:one of a b key,y:bool si no optional,z:num between 0 and 100,w:num min 1
-fuel,travel,84.20,yes,14/08/2026,"a ""b""",7,assets:bank,a,si,2026-08-14T10:00:00Z,https://example.com
+item:text!,category:Category,cost:EUR>=0,paid:yes/no,on:date(DD/MM/YYYY),note:text?,score:0..10,to:accounts.account,x:one of a b key,y:bool si no optional,z:num between 0 and 100,w:num min 1,total:EUR=abs(cost) * (score - 1)
+fuel,travel,\`=84.20 * 2\`,yes,14/08/2026,"a ""b""",7,assets:bank,a,si,2026-08-14T10:00:00Z,https://example.com,
 a,"two
 lines",b
 `
 
 const EXPECT: [string, string][] = [
-  ["---", "punctuation.separator.prelude.tcsv"],
-  ["use", "keyword.control.import.tcsv"],
-  ["../accounts.tcsv", "string.unquoted.path.tcsv"],
-  ["//", "punctuation.definition.comment.tcsv"],
-  [" provisional", "comment.line.double-slash.tcsv"],
-  ["type", "storage.type.tcsv"],
-  ["Category", "entity.name.type.tcsv"],
-  ["=", "keyword.operator.assignment.tcsv"],
-  ["travel", "variable.other.enummember.choice.tcsv"],
-  ["|", "punctuation.separator.choice.tcsv"],
-  ["''", "constant.character.escape.tcsv"],
-  ["total", "entity.name.function.computed.tcsv"],
-  ["cost", "variable.other.property.tcsv"],
-  ["*", "keyword.operator.arithmetic.tcsv"],
-  ["(", "punctuation.section.parens.tcsv"],
-  ["-", "keyword.operator.arithmetic.tcsv"],
-  ["1", "constant.numeric.tcsv"],
-  ["---", "punctuation.separator.prelude.tcsv"],
+  ["---", "punctuation.separator.prelude.cells"],
+  ["import", "keyword.control.import.cells"],
+  ["accounts", "entity.name.namespace.cells"],
+  ["from", "keyword.control.import.cells"],
+  ['"../accounts.cell"', "string.quoted.double.path.cells"],
+  ["//", "punctuation.definition.comment.cells"],
+  [" shared", "comment.line.double-slash.cells"],
+  ["{", "punctuation.section.braces.cells"],
+  ["Kind", "entity.name.namespace.cells"],
+  ["with", "keyword.control.import.cells"],
+  ["rev", "entity.other.attribute-name.import.cells"],
+  ['"a1b2c3d"', "string.quoted.double.path.cells"],
+  ["export", "storage.modifier.export.cells"],
+  ["type", "storage.type.cells"],
+  ["Category", "entity.name.type.cells"],
+  ["=", "keyword.operator.assignment.cells"],
+  ["travel", "variable.other.enummember.choice.cells"],
+  ["|", "punctuation.separator.choice.cells"],
+  ["''", "constant.character.escape.cells"],
+  ["fees", "entity.name.function.table.cells"],
+  ["```", "punctuation.definition.fence.cells"],
+  ["cells", "entity.name.section.language.cells"],
+  ["kind", "meta.column.1.cells"],
+  ["text", "support.type.primitive.cells"],
+  ["1.4", "constant.numeric.cells"],
+  ["```", "punctuation.definition.fence.cells"],
+  ["rates", "entity.name.function.table.cells"],
+  ["run", "keyword.control.run.cells"],
+  ["every", "keyword.other.schedule.cells"],
+  ["18:00", "constant.numeric.cells"],
+  ["Europe/Madrid", "string.unquoted.schedule.cells"],
+  ["ts", "entity.name.section.language.cells"],
+  ["export", "meta.embedded.block.typescript"],
+  ["---", "punctuation.separator.prelude.cells"],
   // the header: each name in its column's colour, then its type's parts
-  ["item", "meta.column.1.tcsv"],
-  [":", "punctuation.separator.type.tcsv"],
-  ["text", "support.type.primitive.tcsv"],
-  ["!", "storage.modifier.key.tcsv"],
-  [",", "punctuation.separator.comma.tcsv"],
-  ["category", "meta.column.2.tcsv"],
-  ["Category", "entity.name.type.tcsv"],
-  ["cost", "meta.column.3.tcsv"],
-  ["EUR", "support.type.currency.tcsv"],
-  [">=", "keyword.operator.comparison.tcsv"],
-  ["0", "constant.numeric.tcsv"],
-  ["paid", "meta.column.4.tcsv"],
-  ["yes", "constant.language.boolean.tcsv"],
-  ["/", "punctuation.separator.boolean.tcsv"],
-  ["no", "constant.language.boolean.tcsv"],
-  ["on", "meta.column.5.tcsv"],
-  ["date", "support.type.primitive.tcsv"],
-  ["(", "punctuation.section.parens.begin.tcsv"],
-  ["DD", "constant.other.placeholder.format.tcsv"],
-  ["/", "punctuation.separator.format.tcsv"],
-  ["YYYY", "constant.other.placeholder.format.tcsv"],
-  [")", "punctuation.section.parens.end.tcsv"],
-  ["note", "meta.column.6.tcsv"],
-  ["?", "keyword.operator.optional.tcsv"],
-  ["score", "meta.column.1.tcsv"],
-  ["..", "keyword.operator.range.tcsv"],
-  ["to", "meta.column.2.tcsv"],
-  ["accounts", "entity.name.namespace.tcsv"],
-  [".", "punctuation.accessor.tcsv"],
-  ["account", "variable.other.property.tcsv"],
-  ["x", "meta.column.3.tcsv"],
-  ["one", "keyword.other.one-of.tcsv"],
-  ["of", "keyword.other.one-of.tcsv"],
-  ["a", "variable.other.enummember.choice.tcsv"],
-  ["key", "storage.modifier.key.tcsv"],
-  ["bool", "support.type.primitive.tcsv"],
-  ["si", "constant.language.boolean.tcsv"],
-  ["optional", "keyword.operator.optional.tcsv"],
-  ["between", "keyword.operator.word.tcsv"],
-  ["and", "keyword.operator.word.tcsv"],
-  ["min", "keyword.operator.word.tcsv"],
+  ["item", "meta.column.1.cells"],
+  [":", "punctuation.separator.type.cells"],
+  ["text", "support.type.primitive.cells"],
+  ["!", "storage.modifier.key.cells"],
+  [",", "punctuation.separator.comma.cells"],
+  ["category", "meta.column.2.cells"],
+  ["Category", "entity.name.type.cells"],
+  ["cost", "meta.column.3.cells"],
+  ["EUR", "support.type.currency.cells"],
+  [">=", "keyword.operator.comparison.cells"],
+  ["0", "constant.numeric.cells"],
+  ["paid", "meta.column.4.cells"],
+  ["yes", "constant.language.boolean.cells"],
+  ["/", "punctuation.separator.boolean.cells"],
+  ["no", "constant.language.boolean.cells"],
+  ["on", "meta.column.5.cells"],
+  ["date", "support.type.primitive.cells"],
+  ["(", "punctuation.section.parens.begin.cells"],
+  ["DD", "constant.other.placeholder.format.cells"],
+  ["/", "punctuation.separator.format.cells"],
+  ["YYYY", "constant.other.placeholder.format.cells"],
+  [")", "punctuation.section.parens.end.cells"],
+  ["note", "meta.column.6.cells"],
+  ["?", "keyword.operator.optional.cells"],
+  ["score", "meta.column.1.cells"],
+  ["..", "keyword.operator.range.cells"],
+  ["to", "meta.column.2.cells"],
+  ["accounts", "entity.name.namespace.cells"],
+  [".", "punctuation.accessor.cells"],
+  ["account", "variable.other.property.cells"],
+  ["x", "meta.column.3.cells"],
+  ["one", "keyword.other.one-of.cells"],
+  ["of", "keyword.other.one-of.cells"],
+  ["a", "variable.other.enummember.choice.cells"],
+  ["key", "storage.modifier.key.cells"],
+  ["bool", "support.type.primitive.cells"],
+  ["si", "constant.language.boolean.cells"],
+  ["optional", "keyword.operator.optional.cells"],
+  ["between", "keyword.operator.word.cells"],
+  ["and", "keyword.operator.word.cells"],
+  ["min", "keyword.operator.word.cells"],
+  // a column's formula, after its type's `=`
+  ["total", "meta.column.1.cells"],
+  ["EUR", "support.type.currency.cells"],
+  ["=", "keyword.operator.assignment.cells"],
+  ["abs", "support.function.formula.cells"],
+  ["cost", "variable.other.property.cells"],
+  ["*", "keyword.operator.arithmetic.cells"],
+  ["score", "variable.other.property.cells"],
+  ["1", "constant.numeric.cells"],
   // a row: every cell in its column's colour, typed spellings scoped inside it
-  ["fuel", "meta.column.1.tcsv"],
-  ["travel", "meta.column.2.tcsv"],
-  ["84.20", "constant.numeric.tcsv"],
-  ["yes", "constant.language.boolean.tcsv"],
-  ["14/08/2026", "meta.column.5.tcsv"],
-  ['"', "punctuation.definition.string.begin.tcsv"],
-  ['""', "constant.character.escape.tcsv"],
-  ["7", "constant.numeric.tcsv"],
-  ["assets:bank", "meta.column.2.tcsv"],
-  ["2026-08-14T10:00:00Z", "constant.other.symbol.date.tcsv"],
-  ["https://example.com", "markup.underline.link.tcsv"],
+  ["fuel", "meta.column.1.cells"],
+  ["travel", "meta.column.2.cells"],
+  ["`=", "punctuation.definition.formula.cells"],
+  ["84.20", "constant.numeric.cells"],
+  ["*", "keyword.operator.arithmetic.cells"],
+  ["`", "punctuation.definition.formula.cells"],
+  ["yes", "constant.language.boolean.cells"],
+  ["14/08/2026", "meta.column.5.cells"],
+  ['"', "punctuation.definition.string.begin.cells"],
+  ['""', "constant.character.escape.cells"],
+  ["7", "constant.numeric.cells"],
+  ["assets:bank", "meta.column.2.cells"],
+  ["2026-08-14T10:00:00Z", "constant.other.symbol.date.cells"],
+  ["https://example.com", "markup.underline.link.cells"],
   // a quoted field across a line break stays one string
-  ["two", "string.quoted.double.tcsv"],
-  ["lines", "string.quoted.double.tcsv"],
-  ['"', "punctuation.definition.string.end.tcsv"],
+  ["two", "string.quoted.double.cells"],
+  ["lines", "string.quoted.double.cells"],
+  ['"', "punctuation.definition.string.end.cells"],
 ]
 
-const h = await createHighlighter({ themes: ["github-dark"], langs: [grammar as never] })
+const h = await createHighlighter({ themes: ["github-dark"], langs: [grammar as never, "typescript"] })
 
 function tokens(code: string): { text: string; scopes: string[] }[] {
   const out: { text: string; scopes: string[] }[] = []
-  for (const line of h.codeToTokens(code, { lang: "tcsv", theme: "github-dark", includeExplanation: true }).tokens)
+  for (const line of h.codeToTokens(code, { lang: "cells", theme: "github-dark", includeExplanation: true }).tokens)
     for (const token of line)
       for (const e of token.explanation ?? [])
         out.push({ text: e.content, scopes: e.scopes.map((s) => s.scopeName) })

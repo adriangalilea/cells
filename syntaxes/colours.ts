@@ -1,4 +1,4 @@
-// Which colours each showcase theme gives TCSV's scopes: every example
+// Which colours each showcase theme gives the Cells scopes: every example
 // tokenized with Shiki under each theme, every token filed under the scope it
 // stands in, and the colours each scope got. A rainbow column that shares a
 // colour with another column, or with a value's kind, is reported; so is a
@@ -9,29 +9,29 @@
 import { readdirSync, readFileSync, statSync } from "node:fs"
 import { join } from "node:path"
 import { createHighlighter } from "shiki"
-import grammar from "./tcsv.tmLanguage.json"
+import grammar from "./cells.tmLanguage.json"
 import { PAIRS } from "./themes.ts"
 
 const examples = join(import.meta.dir, "../tree-sitter/examples")
 const files = (dir: string): string[] =>
   readdirSync(dir).flatMap((name) => {
     const path = join(dir, name)
-    return statSync(path).isDirectory() ? files(path) : name.endsWith(".tcsv") ? [path] : []
+    return statSync(path).isDirectory() ? files(path) : name.endsWith(".cell") ? [path] : []
   })
 
-// The innermost scope a token stands in, named by what it is in TCSV.
+// The innermost scope a token stands in, named by what it is in Cells.
 const KINDS: [string, string][] = [
-  ["support.type.primitive.tcsv", "base type"],
-  ["support.type.currency.tcsv", "currency"],
-  ["entity.name.type.tcsv", "named type"],
-  ["variable.other.enummember.choice.tcsv", "choice"],
-  ["storage.modifier.key.tcsv", "key !"],
-  ["keyword.operator.optional.tcsv", "optional ?"],
-  ["constant.numeric.tcsv", "number"],
-  ["constant.other.symbol.date.tcsv", "date"],
-  ["string.quoted.double.tcsv", "quoted"],
-  ["constant.language.boolean.tcsv", "boolean"],
-  ["markup.underline.link.tcsv", "link"],
+  ["support.type.primitive.cells", "base type"],
+  ["support.type.currency.cells", "currency"],
+  ["entity.name.type.cells", "named type"],
+  ["variable.other.enummember.choice.cells", "choice"],
+  ["storage.modifier.key.cells", "key !"],
+  ["keyword.operator.optional.cells", "optional ?"],
+  ["constant.numeric.cells", "number"],
+  ["constant.other.symbol.date.cells", "date"],
+  ["string.quoted.double.cells", "quoted"],
+  ["constant.language.boolean.cells", "boolean"],
+  ["markup.underline.link.cells", "link"],
 ]
 const TYPES = ["base type", "currency", "named type", "choice", "key !", "optional ?"]
 const VALUES = ["number", "date", "quoted", "boolean", "link"]
@@ -39,21 +39,21 @@ const COLUMNS = [1, 2, 3, 4, 5, 6].map((n) => `column ${n}`)
 
 function kind(scopes: string[]): string | undefined {
   const inner = scopes.at(-1)!
-  const column = scopes.findLast((s) => /^meta\.column\.\d\.tcsv$/.test(s))
+  const column = scopes.findLast((s) => /^meta\.column\.\d\.cells$/.test(s))
   const columnOwn =
-    inner === column || inner.endsWith(".column.tcsv") || inner === "string.quoted.double.name.tcsv"
+    inner === column || inner.endsWith(".column.cells") || inner === "string.quoted.double.name.cells"
   if (column && columnOwn) return `column ${column.split(".")[2]}`
   return KINDS.find(([scope]) => inner === scope)?.[1]
 }
 
 const themeNames = PAIRS.flatMap((p) => [p.dark, p.light])
-const highlighter = await createHighlighter({ themes: themeNames, langs: [grammar as never] })
+const highlighter = await createHighlighter({ themes: themeNames, langs: [grammar as never, "typescript"] })
 const codes = files(examples).map((path) => readFileSync(path, "utf8"))
 
 const report: { theme: string; colours: Map<string, Set<string>> }[] = themeNames.map((theme) => {
   const colours = new Map<string, Set<string>>()
   for (const code of codes)
-    for (const line of highlighter.codeToTokens(code, { lang: "tcsv", theme, includeExplanation: true }).tokens)
+    for (const line of highlighter.codeToTokens(code, { lang: "cells", theme, includeExplanation: true }).tokens)
       for (const token of line)
         for (const piece of token.explanation ?? []) {
           if (!piece.content.trim()) continue

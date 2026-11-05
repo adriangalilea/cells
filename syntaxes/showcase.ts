@@ -1,25 +1,25 @@
 // showcase.html: every example in tree-sitter/examples, highlighted by the
 // TextMate grammar through Shiki, a dark and a light pane side by side, in
-// the pairs of themes.ts, which know nothing of TCSV. One self-contained file.
+// the pairs of themes.ts, which know nothing of Cells. One self-contained file.
 //
 //   bun run showcase.ts
 
 import { readdirSync, readFileSync, statSync, writeFileSync } from "node:fs"
 import { join, relative } from "node:path"
 import { createHighlighter } from "shiki"
-import grammar from "./tcsv.tmLanguage.json"
+import grammar from "./cells.tmLanguage.json"
 import { PAIRS } from "./themes.ts"
 
 const examples = join(import.meta.dir, "../tree-sitter/examples")
 
 // The order a reader meets them: the trip, the books from the chart of
 // accounts down, then everything at once.
-const ORDER = ["trip-budget.tcsv", "books/accounts.tcsv", "books/vendors.tcsv", "books/home/money.tcsv", "every-type.tcsv"]
+const ORDER = ["trip-budget.cell", "books/accounts.cell", "books/vendors.cell", "books/rates.cell", "books/home/money.cell", "every-type.cell"]
 
 function files(dir: string): string[] {
   return readdirSync(dir).flatMap((name) => {
     const path = join(dir, name)
-    return statSync(path).isDirectory() ? files(path) : name.endsWith(".tcsv") ? [path] : []
+    return statSync(path).isDirectory() ? files(path) : name.endsWith(".cell") ? [path] : []
   })
 }
 
@@ -30,13 +30,13 @@ if (missing.length || unlisted.length)
   throw new Error(`ORDER and tree-sitter/examples disagree: missing ${missing.join(", ") || "none"}, unlisted ${unlisted.join(", ") || "none"}`)
 
 const themes = Object.fromEntries(PAIRS.flatMap((p) => [[`${p.id}-dark`, p.dark], [`${p.id}-light`, p.light]]))
-const highlighter = await createHighlighter({ themes: Object.values(themes), langs: [grammar as never] })
+const highlighter = await createHighlighter({ themes: Object.values(themes), langs: [grammar as never, "typescript"] })
 
 const escape = (s: string) => s.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;")
 
 const blocks = ORDER.map((name) => {
   const code = readFileSync(join(examples, name), "utf8").replace(/\n$/, "")
-  const html = highlighter.codeToHtml(code, { lang: "tcsv", themes, defaultColor: false })
+  const html = highlighter.codeToHtml(code, { lang: "cells", themes, defaultColor: false })
   const caption = (mode: "dark" | "light") =>
     PAIRS.map((p) => `<span class="theme" data-pair="${p.id}">${p[mode]}</span>`).join("")
   return `
@@ -66,7 +66,7 @@ const page = `<!doctype html>
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>TCSV highlighting</title>
+<title>Cells highlighting</title>
 <style>
   :root { color-scheme: light dark; font-family: -apple-system, BlinkMacSystemFont, "Helvetica Neue", sans-serif; }
   body { margin: 0; padding: 32px; background: #f4f3f0; color: #1f1d2b; }
@@ -91,8 +91,8 @@ ${css}
 </head>
 <body data-pair="${PAIRS[0].id}">
 <header>
-  <h1>TCSV, highlighted</h1>
-  <p>Each example in <code>tree-sitter/examples</code>, through the TextMate grammar (<code>syntaxes/tcsv.tmLanguage.json</code>) and Shiki, the engine GitHub and VS Code share. The themes know nothing of TCSV: every colour comes from a scope they already paint.</p>
+  <h1>Cells, highlighted</h1>
+  <p>Each example in <code>tree-sitter/examples</code>, through the TextMate grammar (<code>syntaxes/cells.tmLanguage.json</code>) and Shiki, the engine GitHub and VS Code share. The themes know nothing of Cells: every colour comes from a scope they already paint.</p>
   <p>A column's name and its text cells share a colour, six in turn; numbers, dates, booleans, links and quoted text keep their own. In the header, the type, each mark, constraint and choice wear their own scope; the prelude is its own region. <code>use</code> and references like <code>accounts.account</code> are provisional, from SPEC's Open section.</p>
   <nav>${buttons}</nav>
 </header>

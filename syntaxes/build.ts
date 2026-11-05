@@ -1,4 +1,4 @@
-// tcsv.tmLanguage.json, written from this file: the TextMate grammar for VS
+// cells.tmLanguage.json, written from this file: the TextMate grammar for VS
 // Code, GitHub (linguist) and Shiki. The regexes are composed here from
 // named pieces so the shapes the spec defines are spelled once; the JSON is
 // never edited by hand.
@@ -63,54 +63,70 @@ const RAINBOW = [
   "entity.name.tag",
   "entity.other.attribute-name",
   "support.function",
-].map((scope, i) => `meta.column.${i + 1}.tcsv${scope ? ` ${scope}.column.tcsv` : ""}`)
+].map((scope, i) => `meta.column.${i + 1}.cells${scope ? ` ${scope}.column.cells` : ""}`)
 
 const S = {
-  fence: "punctuation.separator.prelude.tcsv",
-  prelude: "meta.embedded.block.prelude.tcsv",
-  comment: "comment.line.double-slash.tcsv",
-  commentMark: "punctuation.definition.comment.tcsv",
-  typeKeyword: "storage.type.tcsv",
-  typeName: "entity.name.type.tcsv",
-  assign: "keyword.operator.assignment.tcsv",
-  use: "keyword.control.import.tcsv", // PROVISIONAL
-  path: "string.unquoted.path.tcsv", // PROVISIONAL
-  computed: "entity.name.function.computed.tcsv",
-  columnRef: "variable.other.property.tcsv",
-  arithmetic: "keyword.operator.arithmetic.tcsv",
-  parens: "punctuation.section.parens.tcsv",
-  number: "constant.numeric.tcsv",
-  colon: "punctuation.separator.type.tcsv",
-  comma: "punctuation.separator.comma.tcsv",
-  type: "meta.type.tcsv",
-  base: "support.type.primitive.tcsv",
-  currency: "support.type.currency.tcsv",
-  named: "entity.name.type.tcsv",
-  referenceFile: "entity.name.namespace.tcsv", // PROVISIONAL
-  accessor: "punctuation.accessor.tcsv", // PROVISIONAL
-  referenceColumn: "variable.other.property.tcsv", // PROVISIONAL
-  choice: "variable.other.enummember.choice.tcsv",
-  pipe: "punctuation.separator.choice.tcsv",
-  oneOf: "keyword.other.one-of.tcsv",
-  boolWord: "constant.language.boolean.tcsv",
-  slash: "punctuation.separator.boolean.tcsv",
-  comparison: "keyword.operator.comparison.tcsv",
-  range: "keyword.operator.range.tcsv",
-  wordOperator: "keyword.operator.word.tcsv",
-  formatField: "constant.other.placeholder.format.tcsv",
-  formatLiteral: "punctuation.separator.format.tcsv",
+  preludeFence: "punctuation.separator.prelude.cells",
+  prelude: "meta.embedded.block.prelude.cells",
+  comment: "comment.line.double-slash.cells",
+  commentMark: "punctuation.definition.comment.cells",
+  typeKeyword: "storage.type.cells",
+  typeName: "entity.name.type.cells",
+  assign: "keyword.operator.assignment.cells",
+  export: "storage.modifier.export.cells",
+  import: "keyword.control.import.cells",
+  path: "string.quoted.double.path.cells",
+  brace: "punctuation.section.braces.cells",
+  attribute: "entity.other.attribute-name.import.cells",
+  table: "entity.name.function.table.cells",
+  run: "keyword.control.run.cells",
+  schedule: "keyword.other.schedule.cells",
+  scheduleWord: "string.unquoted.schedule.cells",
+  fence: "punctuation.definition.fence.cells",
+  fenceLanguage: "entity.name.section.language.cells",
+  fenceLabel: "entity.other.attribute-name.fence.cells",
+  formula: "meta.formula.cells",
+  formulaMark: "punctuation.definition.formula.cells",
+  function: "support.function.formula.cells",
+  formulaWord: "keyword.operator.word.formula.cells",
+  text: "string.quoted.single.cells",
+  null: "constant.language.null.cells",
+  columnRef: "variable.other.property.cells",
+  arithmetic: "keyword.operator.arithmetic.cells",
+  parens: "punctuation.section.parens.cells",
+  brackets: "punctuation.section.brackets.cells",
+  number: "constant.numeric.cells",
+  colon: "punctuation.separator.type.cells",
+  comma: "punctuation.separator.comma.cells",
+  type: "meta.type.cells",
+  base: "support.type.primitive.cells",
+  currency: "support.type.currency.cells",
+  named: "entity.name.type.cells",
+  referenceFile: "entity.name.namespace.cells",
+  accessor: "punctuation.accessor.cells",
+  referenceColumn: "variable.other.property.cells",
+  choice: "variable.other.enummember.choice.cells",
+  pipe: "punctuation.separator.choice.cells",
+  oneOf: "keyword.other.one-of.cells",
+  boolWord: "constant.language.boolean.cells",
+  slash: "punctuation.separator.boolean.cells",
+  comparison: "keyword.operator.comparison.cells",
+  range: "keyword.operator.range.cells",
+  wordOperator: "keyword.operator.word.cells",
+  formatField: "constant.other.placeholder.format.cells",
+  formatLiteral: "punctuation.separator.format.cells",
   // TypeScript's own split: a modifier for the key, an operator for `?`.
-  key: "storage.modifier.key.tcsv",
-  optional: "keyword.operator.optional.tcsv",
-  escape: "constant.character.escape.tcsv",
-  string: "string.quoted.double.tcsv",
-  stringBegin: "punctuation.definition.string.begin.tcsv",
-  stringEnd: "punctuation.definition.string.end.tcsv",
-  boolean: "constant.language.boolean.tcsv",
+  key: "storage.modifier.key.cells",
+  optional: "keyword.operator.optional.cells",
+  escape: "constant.character.escape.cells",
+  string: "string.quoted.double.cells",
+  stringBegin: "punctuation.definition.string.begin.cells",
+  stringEnd: "punctuation.definition.string.end.cells",
+  boolean: "constant.language.boolean.cells",
   // A date, a time or an instant: a constant apart from the numbers in most
   // themes (constant.other.symbol), never a string's colour.
-  date: "constant.other.symbol.date.tcsv",
-  link: "markup.underline.link.tcsv",
+  date: "constant.other.symbol.date.cells",
+  link: "markup.underline.link.cells",
 }
 
 // ── The type ────────────────────────────────────────────────────────────────
@@ -125,12 +141,17 @@ const item = (scope: string) => [quotedChoice(scope), bareChoice(scope)]
 
 const type = [
   {
+    comment: "A column's formula: everything after the first `=` that closes no `>=` or `<=`.",
+    match: raw`(?<![<>])(=)(.*)`,
+    captures: { 1: { name: S.assign }, 2: { name: S.formula, patterns: [{ include: "#formula" }] } },
+  },
+  {
     comment: "A format: how the file writes a date or a time.",
     match: raw`(\()([^)]*)(\))`,
     captures: {
-      1: { name: `${S.parens} punctuation.section.parens.begin.tcsv` },
+      1: { name: `${S.parens} punctuation.section.parens.begin.cells` },
       2: { patterns: [{ match: "YYYY|MM|DD|HH|mm|ss", name: S.formatField }, { match: ".", name: S.formatLiteral }] },
-      3: { name: `${S.parens} punctuation.section.parens.end.tcsv` },
+      3: { name: `${S.parens} punctuation.section.parens.end.cells` },
     },
   },
   {
@@ -166,7 +187,7 @@ const type = [
     captures: { 0: { patterns: [...item(S.choice), { match: raw`\|`, name: S.pipe }] } },
   },
   {
-    comment: "PROVISIONAL (SPEC, Open): a column typed by another file's key, accounts.account.",
+    comment: "A column typed by another table's key, accounts.account.",
     match: raw`${BEFORE}([A-Za-z_][A-Za-z0-9_-]*)(\.)([A-Za-z0-9_][A-Za-z0-9_-]*)${AFTER}(?!\s*[|/])`,
     captures: { 1: { name: S.referenceFile }, 2: { name: S.accessor }, 3: { name: S.referenceColumn } },
   },
@@ -220,7 +241,7 @@ function cycle(cell: string, groupsPerCell: number, captureCell: (column: number
 }
 
 const header = cycle(headerCell, 4, (column) => ({
-  0: { name: `${RAINBOW[column]} string.quoted.double.name.tcsv` },
+  0: { name: `${RAINBOW[column]} string.quoted.double.name.cells` },
   1: { name: RAINBOW[column] },
   2: { name: S.colon },
   3: { name: S.type, patterns: [{ include: "#type" }] },
@@ -231,6 +252,15 @@ const header = cycle(headerCell, 4, (column) => ({
 const whole = (body: string) => raw`(?<=^|,)[ \t]*(?:${body})[ \t]*$`
 
 const value = [
+  {
+    comment: "A cell's own formula, `=96.75 / 3` between backticks.",
+    match: whole(raw`(\x60=)(.*)(\x60)`),
+    captures: {
+      1: { name: S.formulaMark },
+      2: { name: S.formula, patterns: [{ include: "#formula" }] },
+      3: { name: S.formulaMark },
+    },
+  },
   {
     match: whole(raw`(")((?:[^"]|"")*)(")`),
     name: S.string,
@@ -253,40 +283,130 @@ const row = cycle(rowCell, 1, (column) => ({ 0: { name: RAINBOW[column], pattern
 
 // ── The prelude ─────────────────────────────────────────────────────────────
 
+// ── A formula ───────────────────────────────────────────────────────────────
+// SQL's scalar expressions, its keywords in any case.
+
+const ci = (words: string[]) => raw`(?i)\b(?:${words.join("|")})\b`
+
+const formula = [
+  {
+    match: raw`'((?:[^']|'')*)'`,
+    name: S.text,
+    captures: { 1: { patterns: [{ match: "''", name: S.escape }] } },
+  },
+  { match: raw`"[^"]*"`, name: S.columnRef },
+  { match: NUM.replace("[+-]?", ""), name: S.number },
+  { match: ci(["true", "false"]), name: S.boolean },
+  { match: ci(["null"]), name: S.null },
+  { match: ci(["and", "or", "not", "is", "case", "when", "then", "else", "end"]), name: S.formulaWord },
+  { match: raw`\b([A-Za-z_][A-Za-z0-9_]*)(?=\()`, name: S.function },
+  { match: raw`\|\||<>|!=|<=|>=|[-+*/<>=]`, name: S.arithmetic },
+  { match: raw`[()]`, name: S.parens },
+  { match: raw`[\[\]]`, name: S.brackets },
+  { match: raw`\.`, name: S.accessor },
+  { match: ",", name: S.comma },
+  { match: raw`[A-Za-z_][A-Za-z0-9_]*`, name: S.columnRef },
+]
+
+// ── The prelude ─────────────────────────────────────────────────────────────
+
+const NAME = raw`[A-Za-z_][A-Za-z0-9_]*`
+const STRING = raw`"[^"\r\n]*"`
+
+// A fence: the opening backticks (three or more) and their language, closed by
+// a line of as many. The body of a ```cells fence is a header and rows.
+const fence = (language: string, inner: object[], contentName: string, label = "") => ({
+  begin: raw`(\x60{3,})(${language})${label ? raw`(?:[ \t]+(${label}))?` : ""}[ \t]*$`,
+  beginCaptures: { 1: { name: S.fence }, 2: { name: S.fenceLanguage }, 3: { name: S.fenceLabel } },
+  end: raw`^(\1)[ \t]*$`,
+  endCaptures: { 1: { name: S.fence } },
+  contentName,
+  patterns: inner,
+})
+
+const fenced = [
+  fence("ts", [{ include: "source.ts" }], "meta.embedded.block.typescript"),
+  fence(
+    "cells",
+    [
+      {
+        comment: "The table: its header, then its rows, up to the closing fence.",
+        begin: raw`^(?=[^\r\n])`,
+        end: raw`^(?=\x60{3,}[ \t]*$)`,
+        patterns: [
+          { begin: raw`\G`, end: "$", name: "meta.header.cells", patterns: [{ include: "#header" }] },
+          { include: "#row" },
+        ],
+      },
+    ],
+    "meta.embedded.block.cells",
+    "runs",
+  ),
+  fence(raw`[A-Za-z0-9_+-]*`, [], "meta.embedded.block"),
+]
+
 const prelude = {
   begin: raw`\A(---)[ \t]*$`,
-  beginCaptures: { 1: { name: S.fence } },
+  beginCaptures: { 1: { name: S.preludeFence } },
   end: raw`^(---)[ \t]*$`,
-  endCaptures: { 1: { name: S.fence } },
+  endCaptures: { 1: { name: S.preludeFence } },
   contentName: S.prelude,
   patterns: [
     { include: "#comment" },
     {
-      comment: "PROVISIONAL (SPEC, Open: imports; the keyword is not decided).",
-      match: raw`^[ \t]*(use)[ \t]+(\S+)`,
-      captures: { 1: { name: S.use }, 2: { name: S.path } },
-    },
-    {
-      match: raw`^[ \t]*(type)[ \t]+([A-Z][A-Za-z0-9_]*)[ \t]*(=)[ \t]*((?:[^/\r\n]|/(?!/))*)`,
+      comment: "An import: a table by default, or what the other file exports, from a path or a pinned URL.",
+      match: raw`^[ \t]*(import)[ \t]+(?:(${NAME})|(\{[^}]*\}))[ \t]+(from)[ \t]+(${STRING})(?:[ \t]+(with)[ \t]+(\{[^}]*\}))?`,
       captures: {
-        1: { name: S.typeKeyword },
-        2: { name: S.typeName },
-        3: { name: S.assign },
-        4: { name: S.type, patterns: [{ include: "#type" }] },
+        1: { name: S.import },
+        2: { name: S.referenceFile },
+        3: { patterns: [{ match: "[{}]", name: S.brace }, { match: ",", name: S.comma }, { match: NAME, name: S.referenceFile }] },
+        4: { name: S.import },
+        5: { name: S.path },
+        6: { name: S.import },
+        7: {
+          patterns: [
+            { match: "[{}]", name: S.brace },
+            { match: ",", name: S.comma },
+            { match: raw`(${NAME})[ \t]*(:)`, captures: { 1: { name: S.attribute }, 2: { name: S.colon } } },
+            { match: STRING, name: S.path },
+          ],
+        },
       },
     },
     {
-      comment: "A computed column: shown and read after the header's, never stored.",
-      begin: raw`^[ \t]*([A-Za-z_][A-Za-z0-9_]*)[ \t]*(=)`,
-      beginCaptures: { 1: { name: S.computed }, 2: { name: S.assign } },
-      end: raw`(?=//)|$`,
-      patterns: [
-        { match: NUM.replace("[+-]?", ""), name: S.number },
-        { match: raw`[-+*/]`, name: S.arithmetic },
-        { match: raw`[()]`, name: S.parens },
-        { match: raw`[A-Za-z_][A-Za-z0-9_]*`, name: S.columnRef },
-      ],
+      match: raw`^[ \t]*(?:(export)[ \t]+)?(type)[ \t]+([A-Z][A-Za-z0-9_]*)[ \t]*(=)[ \t]*((?:[^/\r\n]|/(?!/))*)`,
+      captures: {
+        1: { name: S.export },
+        2: { name: S.typeKeyword },
+        3: { name: S.typeName },
+        4: { name: S.assign },
+        5: { name: S.type, patterns: [{ include: "#type" }] },
+      },
     },
+    {
+      comment: "A table a script fills: its name, `run` and the schedule; its fences follow.",
+      match: raw`^[ \t]*(?:(export)[ \t]+)?(${NAME})[ \t]*(=)[ \t]*(run)\b((?:[^/\r\n]|/(?!/))*)`,
+      captures: {
+        1: { name: S.export },
+        2: { name: S.table },
+        3: { name: S.assign },
+        4: { name: S.run },
+        5: {
+          patterns: [
+            { match: raw`\b(?:every|at|on|in|cron|when|changes)\b`, name: S.schedule },
+            { match: raw`\b\d{1,2}:\d{2}\b`, name: S.number },
+            { match: ",", name: S.comma },
+            { match: raw`[^\s,]+`, name: S.scheduleWord },
+          ],
+        },
+      },
+    },
+    {
+      comment: "A table written inline: its name, then its fence on the same line.",
+      match: raw`^[ \t]*(?:(export)[ \t]+)?(${NAME})[ \t]*(=)(?=[ \t]*\x60{3,})`,
+      captures: { 1: { name: S.export }, 2: { name: S.table }, 3: { name: S.assign } },
+    },
+    ...fenced,
   ],
 }
 
@@ -297,7 +417,7 @@ const body = {
   begin: raw`^(?=[^\r\n])`,
   end: raw`(?!)`,
   patterns: [
-    { comment: "The header is the body's first line.", begin: raw`\G`, end: "$", name: "meta.header.tcsv", patterns: [header] },
+    { comment: "The header is the body's first line.", begin: raw`\G`, end: "$", name: "meta.header.cells", patterns: [{ include: "#header" }] },
     {
       comment: "A quoted field that holds a line break: a string until its closing quote.",
       begin: raw`(?:^|(,))(")(?=(?:[^"]|"")*$)`,
@@ -307,17 +427,17 @@ const body = {
       name: S.string,
       patterns: [{ match: '""', name: S.escape }],
     },
-    { ...row, name: "meta.row.tcsv" },
+    { include: "#row" },
   ],
 }
 
 const grammar = {
   $schema: "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
-  name: "tcsv",
-  displayName: "TCSV",
-  scopeName: "source.tcsv",
-  fileTypes: ["tcsv"],
-  comment: "GENERATED by syntaxes/build.ts. TCSV, typed CSV: see SPEC.md.",
+  name: "cells",
+  displayName: "Cells",
+  scopeName: "source.cells",
+  fileTypes: ["cell"],
+  comment: "GENERATED by syntaxes/build.ts. Cells, data and its logic in one plain-text file: see SPEC.md.",
   patterns: [
     {
       comment: "A file that opens with a prelude: the prelude, then the body.",
@@ -334,10 +454,13 @@ const grammar = {
       captures: { 1: { name: S.commentMark } },
     },
     type: { patterns: type },
+    formula: { patterns: formula },
     value: { patterns: value },
+    header,
+    row: { ...row, name: "meta.row.cells" },
   },
 }
 
-const out = join(import.meta.dir, "tcsv.tmLanguage.json")
+const out = join(import.meta.dir, "cells.tmLanguage.json")
 writeFileSync(out, JSON.stringify(grammar, null, 2) + "\n")
 console.log(`wrote ${out}`)
