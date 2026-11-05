@@ -72,8 +72,8 @@ pub(crate) struct Part<'a> {
     /// part's say how many rows to make room for.
     from: usize,
     to: usize,
-    /// A plain file's reading: a record of another width than the header is a problem,
-    /// never a stop.
+    /// A plain file's reading: a record shorter than the header is a problem too, and a
+    /// cell is never a formula.
     lenient: bool,
 }
 
@@ -302,9 +302,6 @@ impl Fields for Part<'_> {
     #[inline]
     fn field(&mut self, start: u32, end: u32) -> Result<(), Stop> {
         if self.field >= self.ncols {
-            if !self.lenient {
-                return Err(Stop::TooMany);
-            }
             self.field += 1;
             return Ok(());
         }
@@ -318,7 +315,8 @@ impl Fields for Part<'_> {
         for f in self.field..self.ncols {
             self.cells[f * BATCH + self.batched] = (0, 0);
         }
-        if self.lenient && self.field != self.ncols {
+        // A short record is its blanks in a `.cell` file; a record too long is ragged in any.
+        if self.field > self.ncols || self.lenient && self.field != self.ncols {
             self.problems.push(ragged(self.rows, self.field, self.ncols));
         }
         self.records.push(self.start);
@@ -342,15 +340,12 @@ pub(crate) fn ragged(row: u32, fields: usize, ncols: usize) -> Problem {
     Problem { row, column: fields.min(ncols - 1) as u32, why: Why::Ragged { fields: fields as u32 } }
 }
 
-/// The body's records read into parts, on up to `threads` threads: `Err` names the row
-/// (from 0) and why. The parts joined are the sequential reading, whatever the threads.
-pub(crate) fn body<'a>(
-    src: &'a [u8],
-    from: usize,
-    decoders: &[CellRead],
-    how: Records,
-    threads: usize,
-) -> Result<Vec<Part<'a>>, (u32, Stop)> {
+/// Where a body's records stop reading: the row (from 0), why, and where its record starts.
+pub(crate) type Stopped = (u32, Stop, u32);
+
+/// The body's records read into parts, on up to `threads` threads, or where they stop.
+/// The parts joined are the sequential reading, whatever the threads.
+pub(crate) fn body<'a>(src: &'a [u8], from: usize, decoders: &[CellRead], how: Records, threads: usize) -> Result<Vec<Part<'a>>, Stopped> {
     #[cfg(feature = "std")]
     if let Some(parts) = parallel(src, from, decoders, how, threads) {
         return parts;
@@ -360,15 +355,15 @@ pub(crate) fn body<'a>(
     Ok(Vec::from([sequential(src, from, decoders, how)?]))
 }
 
-pub(crate) fn sequential<'a>(src: &'a [u8], from: usize, decoders: &[CellRead], how: Records) -> Result<Part<'a>, (u32, Stop)> {
+pub(crate) fn sequential<'a>(src: &'a [u8], from: usize, decoders: &[CellRead], how: Records) -> Result<Part<'a>, Stopped> {
     let mut part = Part::new(src, from, src.len(), decoders, how.lenient);
     match scan::fast(src, from, src.len(), how.sep, &mut part) {
         Ok(()) => {}
         Err(Stop::Irregular) => {
             part = Part::new(src, from, src.len(), decoders, how.lenient);
-            scan::scalar(src, from, src.len(), how, &mut part).map_err(|e| (part.rows, e))?;
+            scan::scalar(src, from, src.len(), how, &mut part).map_err(|e| (part.rows, e, part.start))?;
         }
-        Err(e) => return Err((part.rows, e)),
+        Err(e) => return Err((part.rows, e, part.start)),
     }
     part.finish();
     Ok(part)
@@ -380,13 +375,7 @@ pub(crate) fn sequential<'a>(src: &'a [u8], from: usize, decoders: &[CellRead], 
 /// body back to `sequential`, which says where the file breaks. Nothing when the input is
 /// too small to pay for threads.
 #[cfg(feature = "std")]
-fn parallel<'a>(
-    src: &'a [u8],
-    from: usize,
-    decoders: &[CellRead],
-    how: Records,
-    threads: usize,
-) -> Option<Result<Vec<Part<'a>>, (u32, Stop)>> {
+fn parallel<'a>(src: &'a [u8], from: usize, decoders: &[CellRead], how: Records, threads: usize) -> Option<Result<Vec<Part<'a>>, Stopped>> {
     // The least a thread reads: below it, starting the thread costs more than it saves.
     const PART: usize = 1 << 19;
     let len = src.len() - from;
@@ -421,14 +410,14 @@ fn parallel<'a>(
         }
     }
     bounds.push(src.len());
-    let results: Vec<Result<Part<'a>, (u32, Stop)>> = std::thread::scope(|s| {
+    let results: Vec<Result<Part<'a>, Stop>> = std::thread::scope(|s| {
         let hs: Vec<_> = bounds
             .windows(2)
             .map(|w| {
                 let (a, b) = (w[0], w[1]);
                 s.spawn(move || {
                     let mut part = Part::new(src, a, b, decoders, how.lenient);
-                    scan::fast(src, a, b, how.sep, &mut part).map_err(|e| (part.rows, e))?;
+                    scan::fast(src, a, b, how.sep, &mut part)?;
                     part.finish();
                     Ok(part)
                 })

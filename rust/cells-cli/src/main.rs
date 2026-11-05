@@ -1,7 +1,8 @@
 //! `cells`, the command line.
 //!
-//!   cells check <file|folder>...       every error and problem, `path row N, column: why`,
-//!                                     its imports followed, its own tables checked too
+//!   cells check <file|folder>...       every break and problem, `path column 3: to: why`,
+//!                                     `path row N, column: why`, its imports followed, its
+//!                                     own tables checked too
 //!   cells fmt --check <file|folder>... every file written back is the same bytes
 //!   cells pin <file>...                every import from a URL pinned by its hash now
 //!   cells run <file> [script]          its scripts run once, their rows written under them
@@ -67,8 +68,9 @@ fn check(path: &Path, threads: usize) -> Result<Said, String> {
         Ok(doc) => doc,
         Err(e) => return Ok(Said::Found(vec![format!("{shown} {e}")])),
     };
-    // The file's own tables first, in the prelude's order, then its rows.
-    let mut lines = Vec::new();
+    // Where its grammar breaks first, then its own tables, in the prelude's order, then its
+    // rows.
+    let mut lines: Vec<String> = doc.broken().iter().map(|e| format!("{shown} {e}")).collect();
     for t in doc.tables().iter().filter(|t| t.own) {
         let d = t.doc.as_ref().expect("a table of the file's own is read");
         lines.extend(d.problems().iter().map(|p| format!("{shown} {} {}", t.name, d.describe(p))));

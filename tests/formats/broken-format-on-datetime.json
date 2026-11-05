@@ -1,0 +1,13 @@
+{
+  "columns": [
+    { "name": "gig", "type": "text" },
+    { "name": "at", "type": "text?" }
+  ],
+  "rows": [
+    { "gig": { "text": "the barn" }, "at": { "text": "14/08/2026 19:30" } }
+  ],
+  "problems": [],
+  "broken": [
+    { "at": "column 2" }
+  ]
+}

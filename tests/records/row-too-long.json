@@ -1,0 +1,14 @@
+{
+  "columns": [
+    { "name": "item", "type": "text" },
+    { "name": "cost", "type": "EUR" }
+  ],
+  "rows": [
+    { "item": { "text": "fuel" }, "cost": { "money": "84.20", "currency": "EUR" } },
+    { "item": { "text": "maps" }, "cost": { "money": "12.00", "currency": "EUR" } },
+    { "item": { "text": "snacks" }, "cost": { "money": "6.50", "currency": "EUR" } }
+  ],
+  "problems": [
+    { "row": 2, "column": "cost", "kind": "ragged" }
+  ]
+}

@@ -1,0 +1,10 @@
+{
+  "columns": [
+    { "name": "", "type": "text?" }
+  ],
+  "rows": [],
+  "problems": [],
+  "broken": [
+    { "at": "column 1" }
+  ]
+}

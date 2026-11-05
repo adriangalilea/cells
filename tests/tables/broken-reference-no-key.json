@@ -1,0 +1,13 @@
+{
+  "columns": [
+    { "name": "amount", "type": "EUR" },
+    { "name": "pct", "type": "text?" }
+  ],
+  "rows": [
+    { "amount": { "money": "10", "currency": "EUR" }, "pct": { "text": "1.4" } }
+  ],
+  "problems": [],
+  "broken": [
+    { "at": "column 2" }
+  ]
+}

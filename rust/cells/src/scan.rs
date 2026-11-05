@@ -34,8 +34,6 @@ pub(crate) enum Stop {
     Quote,
     /// A `\r` outside quotes with no `\n` after it.
     Return,
-    /// A record with more fields than the header.
-    TooMany,
 }
 
 /// What the scanners hand their reader: each field's raw span (quotes included) and

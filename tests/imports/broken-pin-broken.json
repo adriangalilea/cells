@@ -1,0 +1,12 @@
+{
+  "columns": [
+    { "name": "to", "type": "accounts.account" }
+  ],
+  "rows": [
+    { "to": { "ref": "rent" } }
+  ],
+  "problems": [],
+  "broken": [
+    { "at": "prelude line 1" }
+  ]
+}

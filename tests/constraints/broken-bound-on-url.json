@@ -1,0 +1,13 @@
+{
+  "columns": [
+    { "name": "band", "type": "text" },
+    { "name": "site", "type": "text?" }
+  ],
+  "rows": [
+    { "band": { "text": "the lanterns" }, "site": { "text": "https://example.com/lanterns" } }
+  ],
+  "problems": [],
+  "broken": [
+    { "at": "column 2" }
+  ]
+}

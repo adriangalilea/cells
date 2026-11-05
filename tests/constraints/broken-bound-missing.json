@@ -1,0 +1,13 @@
+{
+  "columns": [
+    { "name": "seed", "type": "text" },
+    { "name": "packets", "type": "text?" }
+  ],
+  "rows": [
+    { "seed": { "text": "basil" }, "packets": { "text": "12" } }
+  ],
+  "problems": [],
+  "broken": [
+    { "at": "column 2" }
+  ]
+}

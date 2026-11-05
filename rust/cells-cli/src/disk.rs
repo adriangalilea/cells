@@ -28,11 +28,14 @@ pub struct Disk {
     at: PathBuf,
     /// The files importing this one, so a cycle is found.
     stack: Vec<PathBuf>,
+    /// A cycle found under this file: every import on the way to it is refused, since a
+    /// file read inside one opens with its own break and would hide it.
+    cycle: Option<String>,
 }
 
 impl Disk {
     pub fn new(at: &Path) -> Disk {
-        Disk { at: at.to_path_buf(), stack: Vec::new() }
+        Disk { at: at.to_path_buf(), stack: Vec::new(), cycle: None }
     }
 
     fn folder(&self) -> &Path {
@@ -72,8 +75,16 @@ impl Imports for Disk {
         } else {
             let path = self.folder().join(&i.from);
             let path = fs::canonicalize(&path).unwrap_or(path);
-            if path == fs::canonicalize(&self.at).unwrap_or(self.at.clone()) || self.stack.contains(&path) {
-                return Err(format!("{} imports itself", path.display()));
+            let mut chain = self.stack.clone();
+            chain.push(fs::canonicalize(&self.at).unwrap_or(self.at.clone()));
+            if let Some(from) = chain.iter().position(|f| *f == path) {
+                let through: Vec<String> = chain[from + 1..].iter().map(|p| p.display().to_string()).collect();
+                let why = match through.is_empty() {
+                    true => format!("{} imports itself", path.display()),
+                    false => format!("{} imports itself, through {}", path.display(), through.join(", ")),
+                };
+                self.cycle = Some(why.clone());
+                return Err(why);
             }
             let bytes = match rev {
                 Some(r) => match self.at_rev(&path, r)? {
@@ -90,7 +101,12 @@ impl Imports for Disk {
         pinned(&bytes, &i.with)?;
         let mut stack = self.stack.clone();
         stack.push(fs::canonicalize(&self.at).unwrap_or(self.at.clone()));
-        let mut inner = Disk { at: path, stack };
-        cells::read_with(bytes, &mut inner, 1).map(Some).map_err(|e| e.to_string())
+        let mut inner = Disk { at: path, stack, cycle: None };
+        let doc = cells::read_with(bytes, &mut inner, 1).map_err(|e| e.to_string())?;
+        if let Some(why) = inner.cycle {
+            self.cycle = Some(why.clone());
+            return Err(why);
+        }
+        Ok(Some(doc))
     }
 }

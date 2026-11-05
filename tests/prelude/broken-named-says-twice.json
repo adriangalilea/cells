@@ -1,0 +1,14 @@
+{
+  "types": { "Note": "text?" },
+  "columns": [
+    { "name": "title", "type": "text" },
+    { "name": "note", "type": "text?" }
+  ],
+  "rows": [
+    { "title": { "text": "Salt and Sky" }, "note": null }
+  ],
+  "problems": [],
+  "broken": [
+    { "at": "column 2" }
+  ]
+}

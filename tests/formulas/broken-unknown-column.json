@@ -1,0 +1,15 @@
+{
+  "columns": [
+    { "name": "item", "type": "text" },
+    { "name": "cost", "type": "EUR" },
+    { "name": "qty", "type": "int" },
+    { "name": "total", "type": "EUR", "formula": "cost * quantity" }
+  ],
+  "rows": [
+    { "item": { "text": "fuel" }, "cost": { "money": "84.20", "currency": "EUR" }, "qty": { "int": "1" }, "total": { "from": "formula" } }
+  ],
+  "problems": [],
+  "broken": [
+    { "at": "column 4" }
+  ]
+}

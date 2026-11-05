@@ -1,0 +1,13 @@
+{
+  "columns": [
+    { "name": "item", "type": "text?", "inferred": true },
+    { "name": "no\u001bte", "type": "text?" }
+  ],
+  "rows": [
+    { "item": { "text": "fuel" }, "no\u001bte": { "text": "a" } }
+  ],
+  "problems": [],
+  "broken": [
+    { "at": "column 2" }
+  ]
+}

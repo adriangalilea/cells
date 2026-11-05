@@ -1,0 +1,15 @@
+{
+  "types": { "Genre": "novel|poetry" },
+  "columns": [
+    { "name": "title", "type": "text" },
+    { "name": "shelf", "type": "text" },
+    { "name": "genre", "type": "text?" }
+  ],
+  "rows": [
+    { "title": { "text": "Salt and Sky" }, "shelf": { "text": "B2" }, "genre": { "text": "novel" } }
+  ],
+  "problems": [],
+  "broken": [
+    { "at": "column 3" }
+  ]
+}

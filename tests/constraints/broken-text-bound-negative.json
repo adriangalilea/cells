@@ -1,0 +1,13 @@
+{
+  "columns": [
+    { "name": "book", "type": "text" },
+    { "name": "code", "type": "text?" }
+  ],
+  "rows": [
+    { "book": { "text": "salt and sky" }, "code": { "text": "B2" } }
+  ],
+  "problems": [],
+  "broken": [
+    { "at": "column 2" }
+  ]
+}

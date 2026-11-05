@@ -42,7 +42,7 @@ const TAGS = new Set([
   "choice",
   "ref",
 ])
-const KINDS = ["type", "missing", "key", "formula", "reference"]
+const KINDS = ["type", "missing", "key", "ragged", "formula", "reference"]
 const FROM = ["formula", "cell"]
 const AT = /^(the file|the header|the prelude|column [1-9]\d*|prelude line [1-9]\d*|row (0|[1-9]\d*))$/
 const DECIMAL = /^-?(0|[1-9]\d*)(\.\d+)?$/
@@ -127,8 +127,31 @@ function readsCase(path: string, j: { [k: string]: Json }, plain: boolean) {
       if (typeof n.column !== "number" || !Number.isInteger(n.column) || n.column < 0) fault(path, `${what} names no column`)
       if (typeof n.kind !== "string" || !NAMINGS.includes(n.kind)) fault(path, `${what} has no known kind`)
     })
-  } else keysAre(path, "the case", j, ["columns", "rows", "problems"], ["types"])
-  const twice = plain && Array.isArray(j.names) && j.names.some((n) => isObject(n) && n.kind === "twice")
+  } else keysAre(path, "the case", j, ["columns", "rows", "problems"], ["types", "broken"])
+  // A header cell that breaks may name its column as another does, or not at all.
+  const broken = "broken" in j
+  if (broken) {
+    if (!Array.isArray(j.broken) || j.broken.length === 0) fault(path, `"broken" is not a list of places`)
+    let last = [-1, -1]
+    const order = (at: string): number[] => {
+      const n = Number(at.match(/\d+$/)?.[0] ?? 0)
+      if (at.startsWith("prelude line") || at === "the prelude") return [0, n]
+      if (at.startsWith("column") || at === "the header") return [1, n]
+      return [2, n]
+    }
+    ;(Array.isArray(j.broken) ? j.broken : []).forEach((b, i) => {
+      const what = `break ${i + 1}`
+      if (!isObject(b)) return fault(path, `${what} is not an object`)
+      keysAre(path, what, b, ["at"])
+      if (typeof b.at !== "string" || !AT.test(b.at) || b.at === "the file") return fault(path, `${what}: "${String(b.at)}" is no place a file breaks and reads`)
+      const at = order(b.at)
+      if ((at[0] as number) < (last[0] as number) || (at[0] === last[0] && (at[1] as number) < (last[1] as number))) fault(path, `${what} is out of the file's order`)
+      last = at
+    })
+  }
+  const columnNames = (Array.isArray(j.columns) ? j.columns : []).map((c) => (isObject(c) ? c.name : null))
+  const repeated = columnNames.some((n, i) => columnNames.indexOf(n) !== i)
+  const twice = (plain && Array.isArray(j.names) && j.names.some((n) => isObject(n) && n.kind === "twice")) || (broken && repeated)
   if ("types" in j) {
     if (!isObject(j.types) || Object.keys(j.types).length === 0) fault(path, `"types" is not a map of names`)
     else
@@ -145,7 +168,7 @@ function readsCase(path: string, j: { [k: string]: Json }, plain: boolean) {
     if (!isObject(c)) return fault(path, `${what} is not an object`)
     keysAre(path, what, c, ["name", "type"], plain ? ["inferred"] : ["inferred", "formula"])
     if (plain && c.inferred !== true) fault(path, `${what}: a plain file's columns are all inferred`)
-    if (typeof c.name !== "string" || (c.name === "" && !plain)) fault(path, `${what} has no name`)
+    if (typeof c.name !== "string" || (c.name === "" && !plain && !broken)) fault(path, `${what} has no name`)
     else if (names.includes(c.name) && !twice) fault(path, `${what}: the name "${c.name}" is taken`)
     else names.push(c.name)
     if (typeof c.type !== "string" || c.type === "") fault(path, `${what} has no type`)
@@ -153,7 +176,7 @@ function readsCase(path: string, j: { [k: string]: Json }, plain: boolean) {
     if (c.inferred === true && typeof c.type === "string" && !c.type.endsWith("?"))
       fault(path, `${what} is inferred, so optional, but its type is "${c.type}"`)
     if ("formula" in c) {
-      if (typeof c.formula !== "string" || c.formula.trim() !== c.formula || c.formula === "")
+      if (typeof c.formula !== "string" || c.formula.trim() !== c.formula || (c.formula === "" && !broken))
         fault(path, `${what}: "formula" is not a formula`)
       if ("inferred" in c) fault(path, `${what} has a formula, so a type, and is no inferred column`)
     }
@@ -210,8 +233,8 @@ function errorCase(path: string, j: { [k: string]: Json }) {
   keysAre(path, "the case", j, ["error"])
   if (!isObject(j.error)) return fault(path, `"error" is not an object`)
   keysAre(path, "the error", j.error, ["at"])
-  if (typeof j.error.at !== "string" || !AT.test(j.error.at))
-    fault(path, `"${String(j.error.at)}" is no place an error is reported`)
+  // Every other break opens with the file read around it.
+  if (j.error.at !== "the file") fault(path, `"${String(j.error.at)}" is no place a file is refused: only the file, whose bytes are not UTF-8`)
 }
 
 function edits(path: string, j: Json) {
@@ -405,6 +428,9 @@ for (const folder of FOLDERS) {
     const error = "error" in j
     if (error !== stem.startsWith("error-"))
       fault(path, error ? "does not read, so its name opens with error-" : "reads, so its name does not open with error-")
+    const broken = "broken" in j
+    if (broken !== stem.startsWith("broken-"))
+      fault(path, broken ? "breaks, so its name opens with broken-" : "reads whole, so its name does not open with broken-")
     if (error) errorCase(path, j)
     else readsCase(path, j, false)
   }

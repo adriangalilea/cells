@@ -1,0 +1,12 @@
+{
+  "columns": [
+    { "name": "qty", "type": "text?" }
+  ],
+  "rows": [
+    { "qty": { "text": "3" } }
+  ],
+  "problems": [],
+  "broken": [
+    { "at": "column 1" }
+  ]
+}

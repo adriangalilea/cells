@@ -1,0 +1,14 @@
+{
+  "columns": [
+    { "name": "seed", "type": "text?", "inferred": true },
+    { "name": "", "type": "text?" },
+    { "name": "bed", "type": "text?", "inferred": true }
+  ],
+  "rows": [
+    { "seed": { "text": "basil" }, "": { "text": "3" }, "bed": { "text": "north" } }
+  ],
+  "problems": [],
+  "broken": [
+    { "at": "column 2" }
+  ]
+}

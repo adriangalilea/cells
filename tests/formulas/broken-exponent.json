@@ -1,0 +1,14 @@
+{
+  "columns": [
+    { "name": "seed", "type": "text" },
+    { "name": "kilos", "type": "num" },
+    { "name": "grams", "type": "num", "formula": "1e3 * kilos" }
+  ],
+  "rows": [
+    { "seed": { "text": "basil" }, "kilos": { "num": "0.5" }, "grams": { "from": "formula" } }
+  ],
+  "problems": [],
+  "broken": [
+    { "at": "column 3" }
+  ]
+}

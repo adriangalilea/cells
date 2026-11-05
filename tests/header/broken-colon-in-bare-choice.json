@@ -1,0 +1,13 @@
+{
+  "columns": [
+    { "name": "band", "type": "text" },
+    { "name": "slot", "type": "text?" }
+  ],
+  "rows": [
+    { "band": { "text": "the moths" }, "slot": { "text": "later" } }
+  ],
+  "problems": [],
+  "broken": [
+    { "at": "column 2" }
+  ]
+}

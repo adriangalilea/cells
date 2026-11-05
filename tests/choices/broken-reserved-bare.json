@@ -1,0 +1,13 @@
+{
+  "columns": [
+    { "name": "gig", "type": "text" },
+    { "name": "mood", "type": "text?" }
+  ],
+  "rows": [
+    { "gig": { "text": "harbour hall" }, "mood": { "text": "meh" } }
+  ],
+  "problems": [],
+  "broken": [
+    { "at": "column 2" }
+  ]
+}

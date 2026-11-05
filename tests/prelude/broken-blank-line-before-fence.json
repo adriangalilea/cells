@@ -1,0 +1,16 @@
+{
+  "columns": [
+    { "name": "", "type": "text?" }
+  ],
+  "rows": [
+    { "": { "text": "---" } },
+    { "": { "text": "type Kind = a|b" } },
+    { "": { "text": "---" } },
+    { "": { "text": "kind:Kind" } },
+    { "": { "text": "a" } }
+  ],
+  "problems": [],
+  "broken": [
+    { "at": "column 1" }
+  ]
+}

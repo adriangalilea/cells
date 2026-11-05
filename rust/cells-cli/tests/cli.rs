@@ -22,7 +22,7 @@ fn check_and_fmt() {
     assert_eq!(
         lines,
         [
-            format!("{} column 1: no type or currency \"EURO\"", shown("trip/broken.cell")),
+            format!("{} column 1: item: no type or currency \"EURO\"", shown("trip/broken.cell")),
             format!("{} row 0, item: \"fuel\" is the key of row 1 too", shown("trip/money.cell")),
             format!("{} row 0, cost: \"8x.50\" is not a number", shown("trip/money.cell")),
             format!("{} row 1, item: \"fuel\" is the key of row 0 too", shown("trip/money.cell")),

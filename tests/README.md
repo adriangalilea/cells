@@ -4,7 +4,7 @@ The spec's rules as data, read by every implementation. An implementation confor
 
 ## A case
 
-A case is a `.cell` file and a `.json` beside it, under the folder of what it checks: `records/`, `header/`, `types/`, `choices/`, `constraints/`, `formats/`, `marks/`, `explicit/`, `prelude/`, `formulas/`, `tables/` (tables written inline and filled by scripts), `imports/`, `inference/`, `problems/`, `write/`, and `plain/` (below), the one folder whose files are not cells. The file's name says the rule: `constraints/money-at-least-zero.cell`. A case whose file does not read is named `error-…`.
+A case is a `.cell` file and a `.json` beside it, under the folder of what it checks: `records/`, `header/`, `types/`, `choices/`, `constraints/`, `formats/`, `marks/`, `explicit/`, `prelude/`, `formulas/`, `tables/` (tables written inline and filled by scripts), `imports/`, `inference/`, `problems/`, `write/`, and `plain/` (below), the one folder whose files are not cells. The file's name says the rule: `constraints/money-at-least-zero.cell`. A case whose grammar breaks is named `broken-…`, and the one whose file is refused, `error-…`.
 
 The `.cell` is bytes, never text to be normalized: its line endings, its trailing break and its byte order mark are the case. `.gitattributes` here keeps git from touching them.
 
@@ -39,15 +39,36 @@ The `.json` is one of two shapes.
 - `types` is present when the prelude names types, imported ones included: each name and its definition, in the same shorthand.
 - Every row holds every column. A value is tagged with its kind: `text`, `int`, `num`, `pct`, `bool`, `date`, `time`, `datetime`, `url`, `email`, `id`, `money` (with `currency`), `choice`, `ref` (a reference's key, its text). A blank or broken cell is `null`, the JSON literal. A computed value says where it comes from, `"from": "formula"` (its column's) or `"from": "cell"` (its own); a computed cell that gave nothing is `{ "from": "formula" }` (or `"cell"`) alone. A value with no `from` is its cell's text: written, or a column's override.
 - Numbers are decimal strings, `-` or none, digits, then a fraction or none (`"84.20"`, `"-0.5"`, `"300000000"`), compared as decimals (`"84.20"` equals `"84.2"`), never as binary floats. `bool` is `true` or `false`. A `date` is `YYYY-MM-DD`, a `time` `HH:mm:ss`, a `datetime` the instant in UTC, `YYYY-MM-DDTHH:mm:ssZ` with a fraction only when it is not zero and no trailing zero in it (`2026-08-14T12:30:00.25Z`). `text`, `url`, `email`, `id`, `choice` and `ref` are the cell's text.
-- A problem is a row (0-based, from the first record), a column, and a kind: `type` (the cell breaks its type, its bounds included, or holds a control character, in any column, an inferred one too, or a formula gave what the type breaks), `missing` (blank where the type has no `?` and the column no formula), `key` (a duplicate key, one problem per row that holds it), `formula` (a cell's own formula that does not compute), `reference` (a key no table it names holds, or two do). Problems are listed by row, then by column left to right; a cell has at most one. Words are each implementation's own; the suite pins where and what kind, never the sentence. A case's problems are its table's; a table written inline has its own, which the suite does not list.
+- A problem is a row (0-based, from the first record), a column, and a kind: `type` (the cell breaks its type, its bounds included, or holds a control character, in any column, an inferred one too, or a formula gave what the type breaks), `missing` (blank where the type has no `?` and the column no formula), `key` (a duplicate key, one problem per row that holds it), `ragged` (a record with more fields than the header, on its last cell, whose fields are read and those past the header kept), `formula` (a cell's own formula that does not compute), `reference` (a key no table it names holds, or two do). Problems are listed by row, then by column left to right; a cell has at most one. Words are each implementation's own; the suite pins where and what kind, never the sentence. A case's problems are its table's; a table written inline has its own, which the suite does not list.
 
-**The file does not read**: the grammar is broken.
+**The grammar breaks**: the file reads, and `broken` lists where, in the file's order (the prelude, the header, the rows). Each break takes out only what it breaks (SPEC.md, Reading), and the columns, rows and problems are what is left.
 
 ```json
-{ "error": { "at": "prelude line 1" } }
+{
+  "columns": [
+    { "name": "item", "type": "text" },
+    { "name": "to", "type": "text?" }
+  ],
+  "rows": [{ "item": { "text": "rent" }, "to": { "text": "rent" } }],
+  "problems": [],
+  "broken": [{ "at": "column 2" }]
+}
 ```
 
-`at` is one of `the file`, `the header`, `column N` (1-based), `prelude line N` (1-based, inside the fences), `the prelude`, `row N` (0-based). `the file` is bytes that are not UTF-8, the one case whose `.cell` is not text; `the header` and `row N` are a record's own errors (its quoting, its line ending, a row too long); `column N` is a header cell's (its name, its type, its formula); `prelude line N` a statement's, or the line inside a table's fence a table's error is on; `the prelude` a prelude never closed. A case that does not read holds exactly one error, so no order between errors is pinned. An implementation may refuse the file (an exception) or open it with the error on it; either way it reports exactly this place.
+`at` is one of `the header`, `column N` (1-based), `prelude line N` (1-based, inside the fences), `the prelude`, `row N` (0-based):
+
+- `column N`: a header cell that does not read (its name, its type, a reference to no key): its column is `text?`, under the name it spells, which may be blank or another column's (and then the case has no rows, as rows are keyed by name). Its formula, when only that does not compute: the column keeps its type and its cells are blank, `{ "from": "formula" }`.
+- `prelude line N`: a statement that does not settle, left out (a type naming it breaks in turn, at its own place), or the line inside a table's fence its table breaks on. An import refused (its pin, a cycle) still names what it imports, unchecked.
+- `the prelude`: a prelude never closed, which holds the whole file: no statement applies, no columns, no rows.
+- `the header`, `row N`: a record that does not read (its quoting, a lone `\r`): the rows end before it, the bytes from it on kept as written.
+
+The words are each implementation's own, as a problem's are, and name what broke on their own: `to: accounts has no column "a" (its key is account)`.
+
+**The file is refused**: its bytes are not UTF-8, the one case whose `.cell` is not text.
+
+```json
+{ "error": { "at": "the file" } }
+```
 
 ## Writing
 

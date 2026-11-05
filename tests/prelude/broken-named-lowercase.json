@@ -1,0 +1,13 @@
+{
+  "columns": [
+    { "name": "title", "type": "text" },
+    { "name": "genre", "type": "text" }
+  ],
+  "rows": [
+    { "title": { "text": "Salt and Sky" }, "genre": { "text": "novel" } }
+  ],
+  "problems": [],
+  "broken": [
+    { "at": "prelude line 1" }
+  ]
+}

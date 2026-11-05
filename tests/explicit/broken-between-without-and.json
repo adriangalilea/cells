@@ -1,0 +1,12 @@
+{
+  "columns": [
+    { "name": "score", "type": "text?" }
+  ],
+  "rows": [
+    { "score": { "text": "7" } }
+  ],
+  "problems": [],
+  "broken": [
+    { "at": "column 1" }
+  ]
+}

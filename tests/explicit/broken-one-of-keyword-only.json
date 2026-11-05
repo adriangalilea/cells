@@ -1,0 +1,13 @@
+{
+  "columns": [
+    { "name": "door", "type": "text" },
+    { "name": "fastening", "type": "text?" }
+  ],
+  "rows": [
+    { "door": { "text": "shed" }, "fastening": { "text": "key" } }
+  ],
+  "problems": [],
+  "broken": [
+    { "at": "column 2" }
+  ]
+}

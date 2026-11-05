@@ -1,0 +1,14 @@
+{
+  "columns": [
+    { "name": "item", "type": "text" },
+    { "name": "cost", "type": "EUR" },
+    { "name": "square", "type": "EUR", "formula": "cost ^ 2" }
+  ],
+  "rows": [
+    { "item": { "text": "fuel" }, "cost": { "money": "84.20", "currency": "EUR" }, "square": { "from": "formula" } }
+  ],
+  "problems": [],
+  "broken": [
+    { "at": "column 3" }
+  ]
+}

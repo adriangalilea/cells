@@ -563,6 +563,13 @@ fn holder(t: &[Token], i: &mut usize, named: &[NamedType], tables: &[String]) ->
                 Ok(Type::plain(Base::Money(c)))
             } else if let Some(n) = named.iter().find(|n| n.name == *w) {
                 Ok(Type { named: Some(Box::new(n.clone())), ..n.ty.clone() })
+            } else if let Some((table, column)) = w.split_once('.') {
+                // `table.column`, a reference to a table the prelude does not name, or to
+                // no column of one it does.
+                match tables.iter().any(|n| n == table) {
+                    true if column.is_empty() => Err(format!("a reference names {table}'s key: {table}.<key>")),
+                    _ => Err(format!("no table \"{table}\": the prelude names a table by an import or inline")),
+                }
             } else {
                 Err(format!("no type or currency \"{w}\""))
             }
@@ -691,7 +698,9 @@ pub fn parse_type(spelled: &str, named: &[NamedType], tables: &[String]) -> Resu
 fn check(ty: &mut Type, format: Option<&str>) -> Result<(), String> {
     if ty.min.is_some() || ty.max.is_some() {
         if !(ty.base.is_number() || ty.base == Base::Text) {
-            return Err(format!("a {} takes no bounds; only a number or text does", ty.base.tag()));
+            let tag = ty.base.tag();
+            let a = if tag.starts_with(['a', 'e', 'i', 'o', 'u']) { "an" } else { "a" };
+            return Err(format!("{a} {tag} takes no bounds; only a number or text does"));
         }
         if ty.base == Base::Text {
             for b in [ty.min, ty.max].into_iter().flatten() {

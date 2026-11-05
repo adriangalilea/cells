@@ -1,0 +1,12 @@
+{
+  "columns": [
+    { "name": "step", "type": "text" }
+  ],
+  "rows": [
+    { "step": { "text": "dig" } }
+  ],
+  "problems": [],
+  "broken": [
+    { "at": "prelude line 1" }
+  ]
+}

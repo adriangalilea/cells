@@ -135,140 +135,193 @@ fn opening(s: &str) -> Option<(usize, &str, &str)> {
     Some((ticks, lang, label))
 }
 
-/// A prelude that opens at `from` (its first `---` line) read to its closing `---`: its
-/// statements, and where the header starts. An error names its line (1-based inside the
-/// fences), or `0` for a prelude never closed, which is what a statement's error is when
-/// no `---` follows it: the lines it reads are the file's.
-pub fn parse(source: &str, from: usize) -> Result<(Vec<Statement>, usize), (u32, String)> {
-    statements(source, from).map_err(|(n, why)| {
-        let after = source[from..].split_inclusive('\n').skip(n as usize + 1).any(|l| content(l) == "---");
-        if n == 0 || after { (n, why) } else { (0, "opens with --- and never closes".to_owned()) }
-    })
+/// A prelude read: the statements that read, in order, each one that does not by its
+/// line and why (a line holding a control character is one), and where the header starts.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Parsed {
+    pub statements: Vec<Statement>,
+    pub broken: Vec<(u32, String)>,
+    pub body: usize,
 }
 
-fn statements(source: &str, from: usize) -> Result<(Vec<Statement>, usize), (u32, String)> {
+/// A prelude that opens at `from` (its first `---` line) read to its closing `---`. A
+/// statement that does not read is left out and the rest read; lines are 1-based inside
+/// the fences. `Err` is a prelude never closed: every line after its `---` is its own.
+pub fn parse(source: &str, from: usize) -> Result<Parsed, String> {
     let mut lines = Vec::new();
     let mut at = from;
     for l in source[from..].split_inclusive('\n') {
         lines.push((at, l));
         at += l.len();
     }
+    let never = || "opens with --- and never closes".to_owned();
     // The opening `---` and its break, checked by the caller.
     let mut k = 1;
-    let mut out = Vec::new();
-    let line_no = |k: usize| k as u32;
-    // A fence open at line `k`: its content to its closing line, and the line after it.
-    let fence = |k: usize, ticks: usize, lang: &str, label: &str| -> Result<(Fenced, usize), (u32, String)> {
-        let start = lines.get(k + 1).map_or(source.len(), |l| l.0);
-        let mut j = k + 1;
-        while j < lines.len() {
-            let c = content(lines[j].1);
-            if c.trim_end_matches(BLANK).len() == ticks && c.bytes().all(|b| b == b'`' || b == b' ' || b == b'\t') && c.starts_with('`') {
-                let body = Fenced { lang: lang.to_owned(), label: label.to_owned(), line: line_no(k), start, end: lines[j].0 };
-                return Ok((body, j + 1));
-            }
-            j += 1;
-        }
-        Err((line_no(k), format!("a fence of {ticks} backticks is never closed")))
-    };
-    loop {
-        let Some(&(_, raw)) = lines.get(k) else { return Err((0, "opens with --- and never closes".to_owned())) };
-        let n = line_no(k);
-        let text = content(raw);
-        if text == "---" {
-            let end = lines[k].0 + raw.len();
-            return Ok((out, end));
+    let mut read: Vec<(Statement, core::ops::Range<usize>)> = Vec::new();
+    let mut broken = Vec::new();
+    let body = loop {
+        let Some(&(start, raw)) = lines.get(k) else { return Err(never()) };
+        if content(raw) == "---" {
+            break start + raw.len();
         }
         if !raw.ends_with('\n') {
-            return Err((0, "opens with --- and never closes".to_owned()));
+            return Err(never());
         }
-        let said = uncomment(text).trim_matches(BLANK);
-        k += 1;
-        if said.is_empty() {
-            continue;
+        let first = k;
+        match statement(source, &lines, &mut k) {
+            Ok(Some(s)) => read.push((s, first..k)),
+            Ok(None) => {}
+            Err(e) => broken.push(e),
         }
-        let fail = |why: String| Err((n, why));
-        let (exported, said) = match said.strip_prefix("export").filter(|r| r.starts_with(BLANK)) {
-            Some(r) => (true, r.trim_start_matches(BLANK)),
-            None => (false, said),
+    };
+    // A line holding a control character breaks the statement it is in; a ```cells
+    // fence's lines are its table's, whose cells say so themselves.
+    let mut tables: Vec<core::ops::Range<usize>> = Vec::new();
+    for (s, _) in &read {
+        let fences = match s {
+            Statement::Table { body, .. } => [Some(body), None],
+            Statement::Run { stored, runs, .. } => [stored.as_ref(), runs.as_ref()],
+            _ => [None, None],
         };
-        if let Some(rest) = said.strip_prefix("type").filter(|r| r.starts_with(BLANK) && !r.trim_start_matches(BLANK).starts_with('=')) {
-            let rest = rest.trim_start_matches(BLANK);
-            let (name, after) = ident(rest).unwrap_or(("", rest));
-            let Some(spelled) = after.trim_start_matches(BLANK).strip_prefix('=') else {
-                return fail("a named type is `type Name = <type>`".to_owned());
-            };
-            out.push(Statement::Type { line: n, name: name.to_owned(), spelled: spelled.trim_matches(BLANK).to_owned(), exported });
-            continue;
+        for f in fences.into_iter().flatten() {
+            tables.push(f.line as usize + 1..lines.iter().position(|l| l.0 == f.end).unwrap());
         }
-        if let Some(rest) = said.strip_prefix("import").filter(|r| r.starts_with(BLANK) || r.starts_with('{')) {
-            if exported {
-                return fail("an import is the file's own; export what it names instead".to_owned());
-            }
-            out.push(import(n, rest.trim_start_matches(BLANK))?);
-            continue;
-        }
-        let Some((name, after)) = ident(said) else {
-            return fail("is no statement: a type, an import, or name = a table".to_owned());
-        };
-        let Some(value) = after.trim_start_matches(BLANK).strip_prefix('=') else {
-            return fail("is no statement: a type, an import, or name = a table".to_owned());
-        };
-        let value = value.trim_matches(BLANK);
-        if let Some((ticks, lang, label)) = opening(value) {
-            if lang != "cells" || !label.is_empty() {
-                return fail(format!("a table written inline is a ```cells fence, not ```{}", lang));
-            }
-            let (body, next) = fence(n as usize, ticks, lang, label)?;
-            k = next;
-            out.push(Statement::Table { line: n, name: name.to_owned(), exported, body });
-            continue;
-        }
-        if let Some(rest) = value.strip_prefix("run").filter(|r| r.is_empty() || r.starts_with(BLANK)) {
-            let schedule = schedule(rest.trim_matches(BLANK)).map_err(|why| (n, why))?;
-            // The script's fence, then what the engine stored: blank lines may stand between.
-            let mut blocks = Vec::new();
-            loop {
-                while lines.get(k).is_some_and(|l| content(l.1).trim_matches(BLANK).is_empty()) {
-                    k += 1;
-                }
-                let Some(&(_, l)) = lines.get(k) else { break };
-                let Some((ticks, lang, label)) = opening(content(l).trim_matches(BLANK)) else { break };
-                let (body, next) = fence(k, ticks, lang, label)?;
-                blocks.push(body);
-                k = next;
-            }
-            let mut blocks = blocks.into_iter();
-            let Some(code) = blocks.next() else {
-                return fail("run is followed by its script's fence: ```ts".to_owned());
-            };
-            if code.lang.is_empty() {
-                return Err((code.line, "a script's fence names its language: ```ts".to_owned()));
-            }
-            if code.lang != "ts" {
-                return Err((code.line, format!("no runner for ```{}: v0 runs ```ts", code.lang)));
-            }
-            let mut stored = None;
-            let mut runs = None;
-            for b in blocks {
-                match (b.lang.as_str(), b.label.as_str()) {
-                    ("cells", "") if stored.is_none() && runs.is_none() => stored = Some(b),
-                    ("cells", "runs") if runs.is_none() => runs = Some(b),
-                    _ => {
-                        return Err((b.line, "after a script come its rows (```cells) and its runs (```cells runs), once each".to_owned()));
-                    }
-                }
-            }
-            out.push(Statement::Run { line: n, name: name.to_owned(), exported, schedule, code, stored, runs });
-            continue;
-        }
-        if exported {
-            return fail("export names a type or a table".to_owned());
-        }
-        return fail(format!(
-            "{name} = … names a table (```cells) or a script (run): a computed column is a header cell, {name}:type=formula"
-        ));
     }
+    let mut controlled = Vec::new();
+    for (j, &(_, l)) in lines.iter().enumerate().take(k).skip(1) {
+        if tables.iter().any(|t| t.contains(&j)) {
+            continue;
+        }
+        if let Some(point) = crate::column::control(content(l).as_bytes()) {
+            broken.push((j as u32, format!("holds U+{point:04X}, a control character")));
+            controlled.push(j);
+        }
+    }
+    read.retain(|(_, lines)| !controlled.iter().any(|j| lines.contains(j)));
+    broken.sort_by_key(|b| b.0);
+    Ok(Parsed { statements: read.into_iter().map(|(s, _)| s).collect(), broken, body })
+}
+
+/// A fence open at line `k`: its content to its closing line, and the line after it. One
+/// never closed runs to the prelude's `---`, where reading goes on.
+fn fence(source: &str, lines: &[(usize, &str)], k: usize, ticks: usize, lang: &str, label: &str) -> Result<(Fenced, usize), Broken> {
+    let start = lines.get(k + 1).map_or(source.len(), |l| l.0);
+    let mut j = k + 1;
+    while j < lines.len() {
+        let c = content(lines[j].1);
+        if c.trim_end_matches(BLANK).len() == ticks && c.bytes().all(|b| b == b'`' || b == b' ' || b == b'\t') && c.starts_with('`') {
+            let body = Fenced { lang: lang.to_owned(), label: label.to_owned(), line: k as u32, start, end: lines[j].0 };
+            return Ok((body, j + 1));
+        }
+        j += 1;
+    }
+    Err(Broken { line: k as u32, why: format!("a fence of {ticks} backticks is never closed"), resume: closing(lines, k + 1) })
+}
+
+/// The prelude's closing `---` from line `k` on, or past the last line.
+fn closing(lines: &[(usize, &str)], k: usize) -> usize {
+    (k..lines.len()).find(|&j| content(lines[j].1) == "---").unwrap_or(lines.len())
+}
+
+/// A statement that does not read, and the line reading goes on from when it is not the
+/// one after the statement's.
+struct Broken {
+    line: u32,
+    why: String,
+    resume: usize,
+}
+
+/// The statement at line `*k`, `k` moved past it: nothing for a blank line or a comment.
+fn statement(source: &str, lines: &[(usize, &str)], k: &mut usize) -> Result<Option<Statement>, (u32, String)> {
+    let n = *k as u32;
+    let said = uncomment(content(lines[*k].1)).trim_matches(BLANK);
+    *k += 1;
+    if said.is_empty() {
+        return Ok(None);
+    }
+    let fail = |why: String| Err((n, why));
+    let fenced = |at: usize, ticks: usize, lang: &str, label: &str, k: &mut usize| match fence(source, lines, at, ticks, lang, label) {
+        Ok((body, next)) => {
+            *k = next;
+            Ok(body)
+        }
+        Err(b) => {
+            *k = b.resume;
+            Err((b.line, b.why))
+        }
+    };
+    let (exported, said) = match said.strip_prefix("export").filter(|r| r.starts_with(BLANK)) {
+        Some(r) => (true, r.trim_start_matches(BLANK)),
+        None => (false, said),
+    };
+    if let Some(rest) = said.strip_prefix("type").filter(|r| r.starts_with(BLANK) && !r.trim_start_matches(BLANK).starts_with('=')) {
+        let rest = rest.trim_start_matches(BLANK);
+        let (name, after) = ident(rest).unwrap_or(("", rest));
+        let Some(spelled) = after.trim_start_matches(BLANK).strip_prefix('=') else {
+            return fail("a named type is `type Name = <type>`".to_owned());
+        };
+        return Ok(Some(Statement::Type { line: n, name: name.to_owned(), spelled: spelled.trim_matches(BLANK).to_owned(), exported }));
+    }
+    if let Some(rest) = said.strip_prefix("import").filter(|r| r.starts_with(BLANK) || r.starts_with('{')) {
+        if exported {
+            return fail("an import is the file's own; export what it names instead".to_owned());
+        }
+        return import(n, rest.trim_start_matches(BLANK)).map(Some);
+    }
+    let Some((name, after)) = ident(said) else {
+        return fail("is no statement: a type, an import, or name = a table".to_owned());
+    };
+    let Some(value) = after.trim_start_matches(BLANK).strip_prefix('=') else {
+        return fail("is no statement: a type, an import, or name = a table".to_owned());
+    };
+    let value = value.trim_matches(BLANK);
+    if let Some((ticks, lang, label)) = opening(value) {
+        // The fence is read first, so a table that does not read is left out whole.
+        let body = fenced(n as usize, ticks, lang, label, k)?;
+        if lang != "cells" || !label.is_empty() {
+            return fail(format!("a table written inline is a ```cells fence, not ```{lang}"));
+        }
+        return Ok(Some(Statement::Table { line: n, name: name.to_owned(), exported, body }));
+    }
+    if let Some(rest) = value.strip_prefix("run").filter(|r| r.is_empty() || r.starts_with(BLANK)) {
+        // The script's fence, then what the engine stored: blank lines may stand between.
+        let mut blocks = Vec::new();
+        loop {
+            while lines.get(*k).is_some_and(|l| content(l.1).trim_matches(BLANK).is_empty()) {
+                *k += 1;
+            }
+            let Some(&(_, l)) = lines.get(*k) else { break };
+            let Some((ticks, lang, label)) = opening(content(l).trim_matches(BLANK)) else { break };
+            blocks.push(fenced(*k, ticks, lang, label, k)?);
+        }
+        let schedule = schedule(rest.trim_matches(BLANK)).map_err(|why| (n, why))?;
+        let mut blocks = blocks.into_iter();
+        let Some(code) = blocks.next() else {
+            return fail("run is followed by its script's fence: ```ts".to_owned());
+        };
+        if code.lang.is_empty() {
+            return Err((code.line, "a script's fence names its language: ```ts".to_owned()));
+        }
+        if code.lang != "ts" {
+            return Err((code.line, format!("no runner for ```{}: v0 runs ```ts", code.lang)));
+        }
+        let mut stored = None;
+        let mut runs = None;
+        for b in blocks {
+            match (b.lang.as_str(), b.label.as_str()) {
+                ("cells", "") if stored.is_none() && runs.is_none() => stored = Some(b),
+                ("cells", "runs") if runs.is_none() => runs = Some(b),
+                _ => {
+                    return Err((b.line, "after a script come its rows (```cells) and its runs (```cells runs), once each".to_owned()));
+                }
+            }
+        }
+        return Ok(Some(Statement::Run { line: n, name: name.to_owned(), exported, schedule, code, stored, runs }));
+    }
+    if exported {
+        return fail("export names a type or a table".to_owned());
+    }
+    fail(format!("{name} = … names a table (```cells) or a script (run): a computed column is a header cell, {name}:type=formula"))
 }
 
 /// What follows `import`.
@@ -417,7 +470,8 @@ mod tests {
     #[test]
     fn statements() {
         let src = "---\ntype Kind = a|b // the kinds\nimport accounts from \"../accounts.cell\"\nimport { Rate } from \"https://x.example/r.cell\" with { sha256: \"ab\" }\n\nfees = ```cells\nkind:text!\n---\n```\nfx = run every day at 18:00 in Europe/Madrid\n```ts\nexport default () => []\n```\n```cells runs\nrun:int!\n```\n---\nh\n";
-        let (s, body) = parse(src, 0).unwrap();
+        let Parsed { statements: s, broken, body } = parse(src, 0).unwrap();
+        assert!(broken.is_empty());
         assert_eq!(&src[body..], "h\n");
         assert_eq!(s.len(), 5);
         assert!(matches!(&s[1], Statement::Import { default: Some(d), .. } if d == "accounts"));
@@ -427,9 +481,14 @@ mod tests {
         let Statement::Run { schedule: when, stored, runs, .. } = &s[4] else { panic!() };
         assert_eq!(when.triggers, [Trigger::Daily(18 * 60)]);
         assert!(stored.is_none() && runs.is_some());
-        assert_eq!(parse("---\nnonsense\n---\n", 0).unwrap_err().0, 1);
-        assert_eq!(parse("---\n\ntotal = cost * qty\n---\n", 0).unwrap_err().0, 2);
-        assert_eq!(parse("---\nx = ```cells\na\n---\n", 0).unwrap_err().0, 1);
+        let lines = |src: &str| parse(src, 0).unwrap().broken.iter().map(|b| b.0).collect::<Vec<_>>();
+        assert_eq!(lines("---\nnonsense\ntype A = a|b\n---\n"), [1]);
+        assert_eq!(parse("---\nnonsense\ntype A = a|b\n---\n", 0).unwrap().statements.len(), 1);
+        assert_eq!(lines("---\n\ntotal = cost * qty\n---\n"), [2]);
+        // A fence never closed runs to the `---`, which still closes the prelude.
+        let open = parse("---\nx = ```cells\na\n---\nh\n", 0).unwrap();
+        assert_eq!((open.broken[0].0, &"---\nx = ```cells\na\n---\nh\n"[open.body..]), (1, "h\n"));
+        assert!(parse("---\ntype A = a|b\n", 0).is_err());
         assert!(schedule("every day at 18:00").is_err());
         assert_eq!(schedule("every 15m, when ../m.cell changes").unwrap().triggers.len(), 2);
     }

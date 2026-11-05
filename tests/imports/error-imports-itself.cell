@@ -1,5 +1,0 @@
----
-import me from "./error-imports-itself.cell"
----
-amount:EUR
-10

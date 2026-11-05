@@ -52,11 +52,14 @@ pub struct Files<'a> {
     at: String,
     /// The files importing this one, so a cycle is found.
     stack: Vec<String>,
+    /// A cycle found under this file: every import on the way to it is refused, since a
+    /// file read inside one opens with its own break and would hide it.
+    cycle: Option<String>,
 }
 
 impl<'a> Files<'a> {
     pub fn new(files: &'a BTreeMap<String, String>, at: &str) -> Files<'a> {
-        Files { files, at: at.to_owned(), stack: Vec::new() }
+        Files { files, at: at.to_owned(), stack: Vec::new(), cycle: None }
     }
 }
 
@@ -75,13 +78,24 @@ impl Imports for Files<'_> {
         let key = if is_url(&i.from) { i.from.clone() } else { join(dir(&self.at), &i.from) };
         let Some(text) = self.files.get(&key) else { return Ok(None) };
         pinned(text.as_bytes(), &i.with)?;
-        if key == self.at || self.stack.contains(&key) {
-            return Err(format!("{key} imports itself, through {}", self.stack.join(", ")));
+        let mut chain = self.stack.clone();
+        chain.push(self.at.clone());
+        if let Some(from) = chain.iter().position(|f| *f == key) {
+            let through = &chain[from + 1..];
+            let why = match through.is_empty() {
+                true => format!("{key} imports itself"),
+                false => format!("{key} imports itself, through {}", through.join(", ")),
+            };
+            self.cycle = Some(why.clone());
+            return Err(why);
         }
-        let mut stack = self.stack.clone();
-        stack.push(self.at.clone());
-        let mut inner = Files { files: self.files, at: key, stack };
-        read_with(text.as_bytes().to_vec(), &mut inner, 1).map(Some).map_err(|e| format!("{e}"))
+        let mut inner = Files { files: self.files, at: key, stack: chain, cycle: None };
+        let doc = read_with(text.as_bytes().to_vec(), &mut inner, 1).map_err(|e| format!("{e}"))?;
+        if let Some(why) = inner.cycle {
+            self.cycle = Some(why.clone());
+            return Err(why);
+        }
+        Ok(Some(doc))
     }
 }
 
@@ -114,7 +128,7 @@ mod tests {
         // Read alone, the reference is unchecked.
         assert!(crate::read(money).unwrap().problems().is_empty());
         files.insert("loop.cell".to_owned(), "---\nimport me from \"./loop.cell\"\n---\na\n".to_owned());
-        let err = read_with(files["loop.cell"].clone(), &mut Files::new(&files, "loop.cell"), 1).unwrap_err();
-        assert_eq!(err.at, crate::At::PreludeLine(1));
+        let looped = read_with(files["loop.cell"].clone(), &mut Files::new(&files, "loop.cell"), 1).unwrap();
+        assert_eq!(looped.broken().iter().map(|e| e.at).collect::<Vec<_>>(), [crate::At::PreludeLine(1)]);
     }
 }

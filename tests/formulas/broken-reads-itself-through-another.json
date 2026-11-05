@@ -1,0 +1,14 @@
+{
+  "columns": [
+    { "name": "a", "type": "int" },
+    { "name": "b", "type": "int", "formula": "c + 1" },
+    { "name": "c", "type": "int", "formula": "b * 2" }
+  ],
+  "rows": [
+    { "a": { "int": "1" }, "b": { "from": "formula" }, "c": { "from": "formula" } }
+  ],
+  "problems": [],
+  "broken": [
+    { "at": "column 2" }
+  ]
+}

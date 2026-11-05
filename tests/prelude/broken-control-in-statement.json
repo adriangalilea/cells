@@ -1,0 +1,13 @@
+{
+  "columns": [
+    { "name": "k", "type": "text?" }
+  ],
+  "rows": [
+    { "k": { "text": "b" } }
+  ],
+  "problems": [],
+  "broken": [
+    { "at": "prelude line 2" },
+    { "at": "column 1" }
+  ]
+}

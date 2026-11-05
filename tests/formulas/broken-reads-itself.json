@@ -1,0 +1,14 @@
+{
+  "columns": [
+    { "name": "item", "type": "text" },
+    { "name": "qty", "type": "int" },
+    { "name": "total", "type": "int", "formula": "total + 1" }
+  ],
+  "rows": [
+    { "item": { "text": "fuel" }, "qty": { "int": "1" }, "total": { "from": "formula" } }
+  ],
+  "problems": [],
+  "broken": [
+    { "at": "column 3" }
+  ]
+}

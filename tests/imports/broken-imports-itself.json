@@ -1,0 +1,12 @@
+{
+  "columns": [
+    { "name": "amount", "type": "EUR" }
+  ],
+  "rows": [
+    { "amount": { "money": "10", "currency": "EUR" } }
+  ],
+  "problems": [],
+  "broken": [
+    { "at": "prelude line 1" }
+  ]
+}

@@ -1,0 +1,12 @@
+{
+  "columns": [
+    { "name": "seed", "type": "text" }
+  ],
+  "rows": [
+    { "seed": { "text": "basil" } }
+  ],
+  "problems": [],
+  "broken": [
+    { "at": "prelude line 1" }
+  ]
+}

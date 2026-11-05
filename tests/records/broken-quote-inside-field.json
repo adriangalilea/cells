@@ -1,0 +1,13 @@
+{
+  "columns": [
+    { "name": "title", "type": "text" },
+    { "name": "shelf", "type": "text" }
+  ],
+  "rows": [
+    { "title": { "text": "Plain Title" }, "shelf": { "text": "A1" } }
+  ],
+  "problems": [],
+  "broken": [
+    { "at": "row 1" }
+  ]
+}

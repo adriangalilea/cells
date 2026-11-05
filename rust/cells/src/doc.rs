@@ -36,6 +36,20 @@ pub enum At {
     File,
 }
 
+impl At {
+    /// Where the place is in the file's order: the prelude, the header, the rows.
+    pub fn order(self) -> (u8, u32) {
+        match self {
+            At::Prelude => (0, 0),
+            At::PreludeLine(n) => (0, n),
+            At::Header => (1, 0),
+            At::Column(n) => (1, n),
+            At::Row(n) => (2, n),
+            At::File => (3, 0),
+        }
+    }
+}
+
 impl fmt::Display for At {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
@@ -49,7 +63,9 @@ impl fmt::Display for At {
     }
 }
 
-/// A file that does not read: its grammar is broken at `at`.
+/// Where a file's grammar breaks, and why, the words naming what broke: a header cell, a
+/// prelude statement, a record (`Doc::broken`); a file refused whole (bytes that are not
+/// UTF-8); an edit refused.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Error {
     pub at: At,
@@ -86,13 +102,13 @@ fn writable(text: &str, at: At) -> Result<(), Error> {
     }
 }
 
-fn stop_why(s: Stop, header_fields: usize) -> String {
+/// Why a record does not read, the rows ending there.
+fn stop_why(s: Stop) -> &'static str {
     match s {
-        Stop::Unclosed => "a quoted field is never closed".to_owned(),
-        Stop::AfterQuote => "text follows a quoted field's closing quote".to_owned(),
-        Stop::Quote => "a \" inside a field that did not open with one".to_owned(),
-        Stop::Return => "a \\r with no \\n after it".to_owned(),
-        Stop::TooMany => format!("more fields than the header's {header_fields}"),
+        Stop::Unclosed => "a quoted field is never closed",
+        Stop::AfterQuote => "text follows a quoted field's closing quote",
+        Stop::Quote => "a \" inside a field that did not open with one",
+        Stop::Return => "a \\r with no \\n after it",
         Stop::Irregular => unreachable!("an irregular block is read again, never reported"),
     }
 }
@@ -337,8 +353,12 @@ pub struct Doc {
     /// them the same.
     imported: Vec<(Import, Option<Arc<Doc>>)>,
     columns: Vec<Column>,
-    /// Each column's formula, resolved.
+    /// Each column's formula, resolved; nothing for one that does not, whose cells are
+    /// blank.
     formulas: Vec<Option<Ir>>,
+    /// Where the grammar breaks, in the file's order: each break takes out only what it
+    /// breaks, and the rest reads.
+    broken: Vec<Error>,
     problems: Vec<Problem>,
     /// Why a cell's own formula does not compute, by place.
     unwell: BTreeMap<(u32, u32), expr::Fault>,
@@ -353,10 +373,12 @@ pub struct Doc {
     candidates: Vec<u8>,
 }
 
-/// Reads a `.cell` file. A broken cell is a problem and the file still reads; a broken
-/// grammar (an unknown type, a row with more fields than the header, a malformed prelude)
-/// is an `Error` naming where, and so are bytes that are not UTF-8. The bytes are kept,
-/// never copied. One thread: the core starts none unless asked.
+/// Reads a `.cell` file. A broken cell is a problem, and a broken grammar takes out only
+/// what it breaks (`Doc::broken`): a header cell that does not read is a column of text,
+/// a prelude statement that does not is left out, a column formula that does not compute
+/// leaves its cells blank, and a record that does not read ends the rows, those before
+/// it read. Refused, an `Error`, are only bytes that are not UTF-8 and a file past 4 GiB.
+/// The bytes are kept, never copied. One thread: the core starts none unless asked.
 pub fn read(source: impl Into<Vec<u8>>) -> Result<Doc, Error> {
     read_on(source.into(), Dialect::Cells, 1)
 }
@@ -405,8 +427,8 @@ fn read_in(bytes: Vec<u8>, dialect: Dialect, threads: usize, imports: &mut dyn I
         Some((n, t)) => (n.to_vec(), t.to_vec()),
         None => (Vec::new(), Vec::new()),
     };
-    let (body, statements) = if plain || above.is_some() { (bom, Vec::new()) } else { read_prelude(&source, bom)? };
-    let (scripts, imported) = settle_prelude(&source, &statements, imports, &mut named, &mut tables)?;
+    let (body, statements, mut broken) = if plain || above.is_some() { (bom, Vec::new(), Vec::new()) } else { read_prelude(&source, bom) };
+    let (scripts, imported) = settle_prelude(&source, &statements, imports, &mut named, &mut tables, &mut broken);
     let how = dialect.records();
     let src = source.as_bytes();
     let mut doc = Doc {
@@ -423,6 +445,7 @@ fn read_in(bytes: Vec<u8>, dialect: Dialect, threads: usize, imports: &mut dyn I
         imported,
         columns: Vec::new(),
         formulas: Vec::new(),
+        broken: Vec::new(),
         problems: Vec::new(),
         unwell: BTreeMap::new(),
         gave: BTreeMap::new(),
@@ -430,13 +453,20 @@ fn read_in(bytes: Vec<u8>, dialect: Dialect, threads: usize, imports: &mut dyn I
         edits: BTreeMap::new(),
         candidates: Vec::new(),
     };
-    if body == src.len() {
+    let header = match (body == src.len(), scan::record(src, body, how)) {
+        (true, _) => None,
+        (false, Ok(h)) => Some(h),
+        (false, Err(s)) => {
+            broken.push(error(At::Header, stop_why(s)));
+            None
+        }
+    };
+    let Some((fields, first)) = header else {
         doc.source = source;
+        doc.broken = broken;
         return Ok(doc);
-    }
-    let (fields, first) = scan::record(src, body, how).map_err(|s| error(At::Header, stop_why(s, 0)))?;
+    };
     let mut scratch = Vec::new();
-    let names: Vec<String> = doc.tables.iter().map(|t| t.name.clone()).collect();
     let mut heads: Vec<Head> = Vec::with_capacity(fields.len());
     let mut naming = Vec::new();
     for (j, &(s, e)) in fields.iter().enumerate() {
@@ -445,7 +475,9 @@ fn read_in(bytes: Vec<u8>, dialect: Dialect, threads: usize, imports: &mut dyn I
         // Unquoting cuts at ASCII quotes only, so a field of a `str` is one.
         let cell = core::str::from_utf8(cell).unwrap();
         if !plain && let Some(point) = column::control(cell.as_bytes()) {
-            return Err(error(at, format!("holds {}, a control character", code_point(point))));
+            broken.push(error(at, format!("the header cell of column {} holds {}, a control character", j + 1, code_point(point))));
+            heads.push(Head::text(cell));
+            continue;
         }
         if plain {
             // A plain file's header cell is its column's name, whatever it holds.
@@ -458,19 +490,34 @@ fn read_in(bytes: Vec<u8>, dialect: Dialect, threads: usize, imports: &mut dyn I
             heads.push(Head { name: cell.to_owned(), spelled: None, ty: None, formula: None });
             continue;
         }
-        let head = head(cell, &doc.named, &names).map_err(|why| error(at, why))?;
-        if heads.iter().any(|h| h.name == head.name) {
-            return Err(error(at, format!("two columns are named {}", head.name)));
+        match head(cell, j as u32 + 1, &doc.named, &doc.tables) {
+            Ok(h) if heads.iter().any(|x| x.name == h.name) => {
+                broken.push(error(at, format!("two columns are named {}", h.name)));
+                heads.push(Head::text(cell));
+            }
+            Ok(h) => heads.push(h),
+            Err((why, within)) => {
+                broken.push(Error { at, why, within });
+                heads.push(Head::text(cell));
+            }
         }
-        heads.push(head);
     }
+    // A record that does not read ends the rows: those before it read, it and every byte
+    // after it kept as written.
     let quoted = |fields: &[(u32, u32)]| fields.iter().all(|&(s, e)| s < e && src[s as usize] == b'"');
-    doc.quotes_all = plain && quoted(&fields) && (first == src.len() || quoted(&scan::record(src, first, how).unwrap().0));
+    doc.quotes_all = plain && quoted(&fields) && (first == src.len() || scan::record(src, first, how).is_ok_and(|r| quoted(&r.0)));
     doc.naming = naming;
     let decoders = decoders(heads.iter().map(|h| (h.ty.as_ref(), h.formula.is_some())));
-    let parts = read::body(src, first, &decoders, how, threads).map_err(|(row, s)| error(At::Row(row), stop_why(s, heads.len())))?;
-    let mut part = read::join(parts);
-    part.records.push(src.len() as u32);
+    let (mut part, end) = match read::body(src, first, &decoders, how, threads) {
+        Ok(parts) => (read::join(parts), src.len()),
+        Err((row, s, at)) => {
+            broken.push(error(At::Row(row), stop_why(s)));
+            let before =
+                read::body(&src[..at as usize], first, &decoders, how, threads).expect("the records before the one that breaks read");
+            (read::join(before), at as usize)
+        }
+    };
+    part.records.push(end as u32);
     let Part { records, columns: readings, mut problems, .. } = part;
     doc.candidates = readings.iter().map(|r| r.candidates).collect();
     let rows = records.len() - 1;
@@ -482,8 +529,9 @@ fn read_in(bytes: Vec<u8>, dialect: Dialect, threads: usize, imports: &mut dyn I
     doc.records = records;
     doc.problems = problems;
     doc.source = source;
-    doc.check_targets()?;
-    doc.resolve_formulas()?;
+    doc.resolve_formulas(&mut broken);
+    broken.sort_by_key(|e| e.at.order());
+    doc.broken = broken;
     doc.recompute();
     Ok(doc)
 }
@@ -496,20 +544,48 @@ struct Head {
     formula: Option<String>,
 }
 
-/// A `.cell` header cell: `name`, `name:type`, `name:type=formula`.
-fn head(cell: &str, named: &[NamedType], tables: &[String]) -> Result<Head, String> {
+impl Head {
+    /// A header cell that does not read: its column is text, which may be blank, under
+    /// the name it spells, its spelling kept to be written back.
+    fn text(cell: &str) -> Head {
+        let (name, spelled) = types::split_header(cell);
+        let ty = Type { optional: true, ..Type::plain(Base::Text) };
+        Head { name: name.to_owned(), spelled: spelled.map(str::to_owned), ty: Some(ty), formula: None }
+    }
+}
+
+/// A `.cell` header cell, column `n` (1-based): `name`, `name:type`, `name:type=formula`.
+/// Why not in words naming the column, and the part of the cell that does not read.
+fn head(cell: &str, n: u32, named: &[NamedType], tables: &[Table]) -> Result<Head, (String, Option<(u32, u32)>)> {
     let (name, spelled) = types::split_header(cell);
     if name.is_empty() {
-        return Err("a column has a name".to_owned());
+        return Err((format!("column {n} has no name"), None));
     }
     let Some(spelled) = spelled else { return Ok(Head { name: name.to_owned(), spelled: None, ty: None, formula: None }) };
     let (ty, formula) = types::split_formula(spelled);
-    let formula = match formula.map(|f| f.trim_matches([' ', '\t'])) {
-        Some("") => return Err("a formula follows the =".to_owned()),
-        f => f.map(str::to_owned),
-    };
-    let ty = types::parse_type(ty, named, tables)?;
-    Ok(Head { name: name.to_owned(), spelled: Some(spelled.to_owned()), ty: Some(ty), formula })
+    let formula = formula.map(|f| f.trim_matches([' ', '\t']).to_owned());
+    let from = (spelled.as_ptr() as usize - cell.as_ptr() as usize) as u32;
+    let part = |text: &str| Some((from + (text.as_ptr() as usize - spelled.as_ptr() as usize) as u32, text.len() as u32));
+    let names: Vec<String> = tables.iter().map(|t| t.name.clone()).collect();
+    let parsed = types::parse_type(ty, named, &names).map_err(|why| (format!("{name}: {why}"), part(ty)))?;
+    if let Base::Ref(targets) = &parsed.base {
+        for t in targets {
+            let Some(doc) = tables.iter().find(|x| x.name == t.table).unwrap().doc.as_deref() else { continue };
+            let key = doc.columns.iter().find(|c| c.ty.key).map(|c| c.name.as_str());
+            let named = doc.columns.iter().find(|c| c.name == t.column);
+            let why = match (named, key) {
+                (Some(c), _) if c.ty.key => continue,
+                (None, Some(key)) => format!("{name}: {} has no column \"{}\" (its key is {key})", t.table, t.column),
+                (None, None) => format!("{name}: {} has no column \"{}\", and no key", t.table, t.column),
+                (Some(_), Some(key)) => format!("{name}: {} is not the key of {} (its key is {key})", t.column, t.table),
+                (Some(_), None) => format!("{name}: {} has no key, so a reference names none of its rows", t.table),
+            };
+            let written = format!("{}.{}", t.table, t.column);
+            let at = ty.find(&written).map_or(ty, |i| &ty[i..i + written.len()]);
+            return Err((why, part(at)));
+        }
+    }
+    Ok(Head { name: name.to_owned(), spelled: Some(spelled.to_owned()), ty: Some(parsed), formula })
 }
 
 fn decoders<'a>(heads: impl Iterator<Item = (Option<&'a Type>, bool)>) -> Vec<CellRead> {
@@ -537,26 +613,19 @@ fn origins(problems: &mut Vec<Problem>, columns: usize, rows: usize) -> Vec<Vec<
     out
 }
 
-/// The prelude, if the file opens with one after its byte order mark: its statements, and
-/// where the header starts.
-fn read_prelude(source: &str, from: usize) -> Result<(usize, Vec<Statement>), Error> {
+/// The prelude, if the file opens with one after its byte order mark: where the header
+/// starts, the statements that read, and where one does not. A prelude never closed holds
+/// the whole file: none of it applies, and there is no header.
+fn read_prelude(source: &str, from: usize) -> (usize, Vec<Statement>, Vec<Error>) {
     let first = source[from..].split_inclusive('\n').next().unwrap_or("");
+    let never = || (source.len(), Vec::new(), Vec::from([error(At::Prelude, "opens with --- and never closes")]));
     if first.strip_suffix('\n').map(|l| l.strip_suffix('\r').unwrap_or(l)) != Some("---") {
-        if first == "---" {
-            return Err(error(At::Prelude, "opens with --- and never closes"));
-        }
-        return Ok((from, Vec::new()));
+        return if first == "---" { never() } else { (from, Vec::new(), Vec::new()) };
     }
-    let (statements, body) = prelude::parse(source, from).map_err(|(n, why)| match n {
-        0 => error(At::Prelude, why),
-        n => error(At::PreludeLine(n), why),
-    })?;
-    for (n, l) in source[from..body].split_inclusive('\n').enumerate().skip(1) {
-        if let Some(point) = column::control(l.trim_end_matches(['\r', '\n']).as_bytes()) {
-            return Err(error(At::PreludeLine(n as u32), format!("holds {}, a control character", code_point(point))));
-        }
+    match prelude::parse(source, from) {
+        Ok(p) => (p.body, p.statements, p.broken.into_iter().map(|(n, why)| error(At::PreludeLine(n), why)).collect()),
+        Err(why) => (source.len(), Vec::new(), Vec::from([error(At::Prelude, why)])),
     }
-    Ok((body, statements))
 }
 
 fn is_url(from: &str) -> bool {
@@ -568,53 +637,71 @@ fn is_url(from: &str) -> bool {
 type Settled = (Vec<Script>, Vec<(Import, Option<Arc<Doc>>)>);
 
 /// The prelude's statements settled in order: each type parsed, each import followed,
-/// each table read, every name once.
+/// each table read, every name once. A statement that does not settle is left out, why in
+/// `broken`, and a statement naming what it would have named is broken in turn.
 fn settle_prelude(
     source: &str,
     statements: &[Statement],
     imports: &mut dyn Imports,
     named: &mut Vec<NamedType>,
     tables: &mut Vec<Table>,
-) -> Result<Settled, Error> {
+    broken: &mut Vec<Error>,
+) -> Settled {
     let mut scripts = Vec::new();
     let mut imported = Vec::new();
     let taken =
         |named: &[NamedType], tables: &[Table], name: &str| named.iter().any(|t| t.name == name) || tables.iter().any(|t| t.name == name);
     for s in statements {
         let at = At::PreludeLine(s.line());
-        let fail = |why: String| error(at, why);
+        let mut fail = |why: String| broken.push(error(at, why));
         match s {
             Statement::Type { name, spelled, .. } => {
                 if !name.as_bytes().first().is_some_and(|c| c.is_ascii_uppercase()) {
-                    return Err(fail(format!("a type's name starts with a capital letter, not \"{name}\"")));
+                    fail(format!("a type's name starts with a capital letter, not \"{name}\""));
+                    continue;
                 }
                 if types::currency(name).is_some() {
-                    return Err(fail(format!("{name} is a currency")));
+                    fail(format!("{name} is a currency, never a type's name"));
+                    continue;
                 }
                 if taken(named, tables, name) {
-                    return Err(fail(format!("the type {name} is named twice")));
+                    fail(format!("the name {name} is taken"));
+                    continue;
                 }
                 let names: Vec<String> = tables.iter().map(|t| t.name.clone()).collect();
-                let ty = types::parse_type(spelled, named, &names).map_err(fail)?;
-                named.push(NamedType { name: name.clone(), ty });
+                match types::parse_type(spelled, named, &names) {
+                    Ok(ty) => named.push(NamedType { name: name.clone(), ty }),
+                    Err(why) => fail(format!("type {name}: {why}")),
+                }
             }
             Statement::Import { default, names, from, with, .. } => {
-                if is_url(from) && !with.iter().any(|(k, _)| k == "sha256") {
-                    return Err(fail(format!("\"{from}\" is pinned by its hash: with {{ sha256: \"…\" }}, which cells pin writes")));
-                }
+                // An import that is refused names what it would have, unchecked, as one
+                // that cannot be reached does.
                 let import = Import { from: from.clone(), with: with.clone() };
-                let doc = imports.import(&import).map_err(|why| fail(format!("\"{from}\": {why}")))?;
-                let doc = doc.map(Arc::new);
+                let doc = if is_url(from) && !with.iter().any(|(k, _)| k == "sha256") {
+                    fail(format!("\"{from}\" is pinned by its hash: with {{ sha256: \"…\" }}, which cells pin writes"));
+                    None
+                } else {
+                    match imports.import(&import) {
+                        Ok(d) => d.map(Arc::new),
+                        Err(why) => {
+                            fail(format!("\"{from}\": {why}"));
+                            None
+                        }
+                    }
+                };
                 imported.push((import, doc.clone()));
                 if let Some(name) = default {
                     if taken(named, tables, name) {
-                        return Err(fail(format!("the name {name} is taken")));
+                        fail(format!("the name {name} is taken"));
+                    } else {
+                        tables.push(Table { name: name.clone(), exported: false, doc: doc.clone(), line: s.line(), own: false });
                     }
-                    tables.push(Table { name: name.clone(), exported: false, doc: doc.clone(), line: s.line(), own: false });
                 }
                 for name in names {
                     if taken(named, tables, name) {
-                        return Err(fail(format!("the name {name} is taken")));
+                        fail(format!("the name {name} is taken"));
+                        continue;
                     }
                     let Some(d) = &doc else {
                         // Unreachable: a capital names a type, read as unchecked text.
@@ -632,30 +719,37 @@ fn settle_prelude(
                     } else {
                         let all = d.exports();
                         let shown = if all.is_empty() { "nothing".to_owned() } else { all.join(", ") };
-                        return Err(fail(format!("\"{from}\" exports no \"{name}\" (it exports: {shown})")));
+                        fail(format!("\"{from}\" exports no \"{name}\" (it exports: {shown})"));
                     }
                 }
             }
             Statement::Table { name, exported, body, .. } => {
                 if taken(named, tables, name) {
-                    return Err(fail(format!("the name {name} is taken")));
+                    fail(format!("the name {name} is taken"));
+                    continue;
                 }
-                let doc = inline(source, name, body, imports, named, tables)?;
+                let doc = inline(source, name, body, imports, named, tables, broken);
                 tables.push(Table { name: name.clone(), exported: *exported, doc: Some(Arc::new(doc)), line: s.line(), own: true });
             }
             Statement::Run { name, exported, schedule, code, stored, runs, .. } => {
                 if taken(named, tables, name) {
-                    return Err(fail(format!("the name {name} is taken")));
+                    fail(format!("the name {name} is taken"));
+                    continue;
                 }
                 let Some(stored) = stored else {
-                    return Err(fail(format!("{name}'s rows are declared under its script: a ```cells block, its header at least")));
+                    fail(format!("{name}: the rows a script fills are declared under it, a ```cells block holding their header at least"));
+                    continue;
                 };
-                let doc = inline(source, name, stored, imports, named, tables)?;
+                let doc = inline(source, name, stored, imports, named, tables, broken);
                 if doc.columns.is_empty() {
-                    return Err(error(At::PreludeLine(stored.line), format!("{name}'s ```cells block holds its header at least")));
+                    broken.push(error(
+                        At::PreludeLine(stored.line),
+                        format!("{name}: the ```cells block under its script holds the rows' header at least"),
+                    ));
+                    continue;
                 }
                 if let Some(r) = runs {
-                    inline(source, name, r, imports, named, tables)?;
+                    inline(source, name, r, imports, named, tables, broken);
                 }
                 let after = runs.as_ref().unwrap_or(stored).end;
                 let after = after + source[after..].find('\n').map_or(source.len() - after, |n| n + 1);
@@ -673,25 +767,31 @@ fn settle_prelude(
             }
         }
     }
-    Ok((scripts, imported))
+    (scripts, imported)
 }
 
-/// A table fenced in the prelude, read with what the prelude named above it. An error
-/// inside it names the prelude line it is on.
-fn inline(source: &str, name: &str, body: &Fenced, imports: &mut dyn Imports, named: &[NamedType], tables: &[Table]) -> Result<Doc, Error> {
+/// A table fenced in the prelude, read with what the prelude named above it. Where its
+/// grammar breaks is this file's, in `broken`, at the prelude line it is on.
+fn inline(
+    source: &str,
+    name: &str,
+    body: &Fenced,
+    imports: &mut dyn Imports,
+    named: &[NamedType],
+    tables: &[Table],
+    broken: &mut Vec<Error>,
+) -> Doc {
     let text = &source[body.start..body.end];
-    read_in(text.as_bytes().to_vec(), Dialect::Cells, 1, imports, Some((named, tables))).map_err(|e| {
-        let line = |offset: usize| body.line + 1 + text[..offset.min(text.len())].matches('\n').count() as u32;
+    let doc = read_in(text.as_bytes().to_vec(), Dialect::Cells, 1, imports, Some((named, tables))).expect("a prelude's text is a file's");
+    for e in &doc.broken {
         let n = match e.at {
-            At::Header | At::Column(_) | At::File | At::Prelude => body.line + 1,
-            At::PreludeLine(n) => body.line + n,
-            At::Row(r) => {
-                let starts: Vec<usize> = core::iter::once(0).chain(text.match_indices('\n').map(|(i, _)| i + 1)).collect();
-                line(starts.get(r as usize + 1).copied().unwrap_or(text.len()))
-            }
+            At::Header | At::Column(_) | At::File | At::Prelude | At::PreludeLine(_) => body.line + 1,
+            // The rows end where the broken record starts.
+            At::Row(r) => body.line + 1 + text[..doc.records[r as usize] as usize].matches('\n').count() as u32,
         };
-        error(At::PreludeLine(n), format!("{name}: {}", e.why))
-    })
+        broken.push(error(At::PreludeLine(n), format!("{name}: {}", e.why)));
+    }
+    doc
 }
 
 /// A column's reading made final: an untyped column's type inferred from its values and
@@ -816,7 +916,7 @@ impl Error {
         // An error past the prelude comes from a file whose prelude reads.
         let body = || match dialect {
             Dialect::Plain(_) => bom,
-            Dialect::Cells => read_prelude(src, bom).map_or(bom, |(b, _)| b),
+            Dialect::Cells => read_prelude(src, bom).0,
         };
         let how = dialect.records();
         match self.at {
@@ -991,6 +1091,23 @@ impl Doc {
     /// Every problem, by row, then column.
     pub fn problems(&self) -> &[Problem] {
         &self.problems
+    }
+
+    /// Where the grammar breaks, in the file's order: a prelude statement left out, a
+    /// header cell read as text, a column formula whose cells are blank, the record the
+    /// rows end at. Empty for a file that reads whole.
+    pub fn broken(&self) -> &[Error] {
+        &self.broken
+    }
+
+    /// Where each break is in the text `write` gives now, in `broken`'s order: what a
+    /// client marks. Nothing for a break of the file as a whole.
+    pub fn broken_spans(&self) -> Vec<Option<Span>> {
+        if self.broken.is_empty() {
+            return Vec::new();
+        }
+        let text = self.write();
+        self.broken.iter().map(|e| e.span(text.as_bytes(), self.dialect)).collect()
     }
 
     /// The types the prelude names, those it imports included, in order.
@@ -1311,11 +1428,20 @@ impl Doc {
         self.reread(out, threads)
     }
 
-    /// A file being written, its lines broken by `nl`, ends as this one does: in a line
-    /// break when it did, and otherwise never in an empty last line, which is no record:
-    /// its blank is quoted.
+    /// What follows the rows read: from a record that does not read on, kept as written.
+    fn unread(&self) -> &str {
+        &self.source[*self.records.last().unwrap() as usize..]
+    }
+
+    /// A file being written, its lines broken by `nl`, ends as this one does: with what it
+    /// did not read, as written; in a line break when it did; and otherwise never in an
+    /// empty last line, which is no record: its blank is quoted.
     fn close(&self, out: &mut String, rows: bool, nl: &str) {
-        if self.trailing() {
+        let unread = self.unread();
+        if !unread.is_empty() {
+            out.push_str(nl);
+            out.push_str(unread);
+        } else if self.trailing() {
             out.push_str(nl);
         } else if rows && out.ends_with(nl) {
             out.push_str("\"\"");
@@ -1389,7 +1515,7 @@ impl Doc {
             }
         }
         self.close(&mut out, rows > 0, self.newline());
-        self.reread(out, threads)
+        self.unbroken(self.reread(out, threads)?, None)
     }
 
     /// The file written as `to`, another dialect or this one with other header cells: a
@@ -1624,6 +1750,7 @@ impl Doc {
         let alone = !self.computes() && self.formulas.iter().all(Option::is_none) && self.tables.is_empty();
         let appended = !self.changed()
             && alone
+            && self.broken.is_empty()
             && !self.columns.is_empty()
             && bytes.len() > from
             && self.source.ends_with('\n')
@@ -1646,8 +1773,10 @@ impl Doc {
         let source = unsafe { String::from_utf8_unchecked(bytes) };
         let old_rows = self.rows() as u32;
         let decoders = decoders(self.columns.iter().map(|c| ((!c.ty.inferred).then_some(&c.ty), false)));
-        let tail = read::sequential(source.as_bytes(), from, &decoders, self.dialect.records())
-            .map_err(|(row, s)| error(At::Row(old_rows + row), stop_why(s, self.columns.len())))?;
+        // A record that does not read is the whole file's reading to report.
+        let Ok(tail) = read::sequential(source.as_bytes(), from, &decoders, self.dialect.records()) else {
+            return self.reread(source, 1);
+        };
         let Part { records, columns: readings, problems, .. } = tail;
         if problems.iter().any(|p| p.why == Why::Formula) {
             return self.reread(source, 1);
@@ -1697,6 +1826,7 @@ impl Doc {
             }
         }
         self.problems.sort_by_key(|p| p.order());
+        self.problems.dedup_by_key(|p| p.order());
         Ok(self)
     }
 
@@ -1722,12 +1852,15 @@ impl Doc {
         if let Some(point) = column::control(spelled.as_bytes()) {
             return Err(error(at, format!("holds {}, a control character", code_point(point))));
         }
-        let names: Vec<String> = self.tables.iter().map(|t| t.name.clone()).collect();
         let name = self.columns[column].name.clone();
         let cell = match spelled {
             "" => name,
             s => {
-                let h = head(&format!("{name}:{s}"), &self.named, &names).map_err(|why| error(at, why))?;
+                let h = head(&format!("{name}:{s}"), column as u32 + 1, &self.named, &self.tables).map_err(|(why, within)| Error {
+                    at,
+                    why,
+                    within: within.map(|(s, l)| (s - name.len() as u32 - 1, l)),
+                })?;
                 let ty = h.ty.as_ref().unwrap().shorthand();
                 match h.formula {
                     Some(f) => format!("{name}:{ty}={f}"),
@@ -1744,18 +1877,27 @@ impl Doc {
         text.push_str(&header);
         let rest = self.write();
         text.push_str(&rest[self.body as usize + self.header_line().len()..]);
-        let doc = self.reread(text, 1).map_err(|e| match e.at {
-            At::Column(_) => error(at, e.why),
-            _ => e,
-        })?;
-        *self = doc;
+        *self = self.unbroken(self.reread(text, 1)?, Some(at))?;
         Ok(())
     }
 
-    /// The column formulas resolved against the columns and the tables, and refused at
-    /// their column when one does not read, names what is not there, gives what its
-    /// column cannot hold, or reads itself through others.
-    fn resolve_formulas(&mut self) -> Result<(), Error> {
+    /// `again`, this file edited, unless the edit breaks its grammar where it did not
+    /// break: refused at `at`, or where the new break is.
+    fn unbroken(&self, again: Doc, at: Option<At>) -> Result<Doc, Error> {
+        if again.broken.len() <= self.broken.len() {
+            return Ok(again);
+        }
+        let new = again.broken.iter().find(|e| !self.broken.iter().any(|o| o.why == e.why)).unwrap_or(again.broken.last().unwrap());
+        Err(match at {
+            Some(at) if at != new.at => error(at, new.why.clone()),
+            _ => new.clone(),
+        })
+    }
+
+    /// The column formulas resolved against the columns and the tables. One that does not
+    /// read, names what is not there, gives what its column cannot hold, or reads itself
+    /// through others is broken at its column, in `broken`, and leaves its cells blank.
+    fn resolve_formulas(&mut self, broken: &mut Vec<Error>) {
         let scope = DocScope { columns: &self.columns, tables: &self.tables };
         let mut formulas = Vec::with_capacity(self.columns.len());
         let mut aggregates = 0;
@@ -1771,14 +1913,19 @@ impl Doc {
             let (_, written) = types::split_formula(&cell[c.name.len() + 1..]);
             let written = written.expect("a column with a formula has one in its header cell");
             let from = written.as_ptr() as usize - cell.as_ptr() as usize + (written.len() - written.trim_start_matches([' ', '\t']).len());
-            let fail = |fault: expr::Fault| {
-                let (s, l) = fault.at.unwrap_or((0, f.len() as u32));
-                Error { at: At::Column(k as u32 + 1), why: fault.why, within: Some((from as u32 + s, l)) }
-            };
-            let e = expr::parse(f).map_err(fail)?;
-            let (ir, kind) = expr::resolve(&e, &scope, &mut aggregates).map_err(fail)?;
-            holds(&c.ty.base, kind).map_err(|why| fail(expr::Fault::whole(why)))?;
-            formulas.push(Some(ir));
+            let resolved = expr::parse(f).and_then(|e| expr::resolve(&e, &scope, &mut aggregates)).and_then(|(ir, kind)| {
+                holds(&c.ty.base, kind).map_err(expr::Fault::whole)?;
+                Ok(ir)
+            });
+            match resolved {
+                Ok(ir) => formulas.push(Some(ir)),
+                Err(fault) => {
+                    let (s, l) = fault.at.unwrap_or((0, f.len() as u32));
+                    let why = format!("{}: {}", c.name, fault.why);
+                    broken.push(Error { at: At::Column(k as u32 + 1), why, within: Some((from as u32 + s, l)) });
+                    formulas.push(None);
+                }
+            }
         }
         // A formula reading itself, through others or not, never finishes.
         let n = self.columns.len();
@@ -1790,7 +1937,6 @@ impl Doc {
             }
             reads.push(out);
         }
-        let mut state = alloc::vec![0u8; n];
         fn visit(k: usize, reads: &[Vec<usize>], formulas: &[Option<Ir>], state: &mut [u8]) -> Option<usize> {
             if formulas[k].is_none() || state[k] == 2 {
                 return None;
@@ -1807,33 +1953,20 @@ impl Doc {
             state[k] = 2;
             None
         }
-        for k in 0..n {
-            if let Some(c) = visit(k, &reads, &formulas, &mut state) {
-                return Err(error(At::Column(c as u32 + 1), format!("{}'s formula reads itself", self.columns[c].name)));
-            }
-        }
-        self.formulas = formulas;
-        Ok(())
-    }
-
-    /// Every reference column's tables reachable, each naming its key: refused at the
-    /// column when one names a column that is no key of its table.
-    fn check_targets(&self) -> Result<(), Error> {
-        for (k, c) in self.columns.iter().enumerate() {
-            let Base::Ref(targets) = &c.ty.base else { continue };
-            for t in targets {
-                let table = self.tables.iter().find(|x| x.name == t.table).unwrap();
-                let Some(doc) = &table.doc else { continue };
-                let key = doc.columns.iter().find(|x| x.name == t.column);
-                if !key.is_some_and(|x| x.ty.key) {
-                    return Err(error(
-                        At::Column(k as u32 + 1),
-                        format!("{} is no key of {}: its key is written column!", t.column, t.table),
-                    ));
+        // Each cycle found is broken at the column it closes on, which then reads as
+        // blank to the others, until none is left.
+        'cycles: loop {
+            let mut state = alloc::vec![0u8; n];
+            for k in 0..n {
+                if let Some(c) = visit(k, &reads, &formulas, &mut state) {
+                    broken.push(error(At::Column(c as u32 + 1), format!("{}: the formula reads itself", self.columns[c].name)));
+                    formulas[c] = None;
+                    continue 'cycles;
                 }
             }
+            break;
         }
-        Ok(())
+        self.formulas = formulas;
     }
 
     /// Every computed cell computed again, each column holding one decoded with what its
@@ -1847,6 +1980,8 @@ impl Doc {
         }
         self.check_references();
         self.problems.sort_by_key(|p| p.order());
+        // A cell has one problem: a record too long is its last cell's, before the cell's own.
+        self.problems.dedup_by_key(|p| p.order());
     }
 
     fn compute(&mut self) {

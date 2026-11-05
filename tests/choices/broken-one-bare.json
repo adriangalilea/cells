@@ -1,0 +1,13 @@
+{
+  "columns": [
+    { "name": "title", "type": "text" },
+    { "name": "kind", "type": "text?" }
+  ],
+  "rows": [
+    { "title": { "text": "the quiet orchard" }, "kind": { "text": "paperback" } }
+  ],
+  "problems": [],
+  "broken": [
+    { "at": "column 2" }
+  ]
+}

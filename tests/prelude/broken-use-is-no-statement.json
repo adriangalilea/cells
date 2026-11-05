@@ -1,0 +1,12 @@
+{
+  "columns": [
+    { "name": "title", "type": "text" }
+  ],
+  "rows": [
+    { "title": { "text": "Salt and Sky" } }
+  ],
+  "problems": [],
+  "broken": [
+    { "at": "prelude line 1" }
+  ]
+}

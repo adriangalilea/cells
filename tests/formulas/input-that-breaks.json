@@ -1,0 +1,15 @@
+{
+  "columns": [
+    { "name": "item", "type": "text" },
+    { "name": "cost", "type": "EUR" },
+    { "name": "qty", "type": "int" },
+    { "name": "total", "type": "EUR", "formula": "cost * qty" }
+  ],
+  "rows": [
+    { "item": { "text": "fuel" }, "cost": { "money": "84.20", "currency": "EUR" }, "qty": null, "total": { "from": "formula" } },
+    { "item": { "text": "tickets" }, "cost": { "money": "12.50", "currency": "EUR" }, "qty": { "int": "3" }, "total": { "money": "37.50", "currency": "EUR", "from": "formula" } }
+  ],
+  "problems": [
+    { "row": 0, "column": "qty", "kind": "type" }
+  ]
+}

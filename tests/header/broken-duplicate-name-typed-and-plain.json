@@ -1,0 +1,12 @@
+{
+  "columns": [
+    { "name": "qty", "type": "int" },
+    { "name": "note", "type": "text?", "inferred": true },
+    { "name": "qty", "type": "text?" }
+  ],
+  "rows": [],
+  "problems": [],
+  "broken": [
+    { "at": "column 3" }
+  ]
+}

@@ -1,0 +1,13 @@
+{
+  "columns": [
+    { "name": "title", "type": "text" },
+    { "name": "code", "type": "text?" }
+  ],
+  "rows": [
+    { "title": { "text": "the quiet orchard" }, "code": { "text": "A1" } }
+  ],
+  "problems": [],
+  "broken": [
+    { "at": "column 2" }
+  ]
+}

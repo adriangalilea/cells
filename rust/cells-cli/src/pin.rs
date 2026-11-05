@@ -27,7 +27,8 @@ pub fn pin(path: &Path) -> Result<Vec<String>, String> {
     if !text[bom..].starts_with("---") {
         return Ok(Vec::new());
     }
-    let (statements, _) = cells::prelude::parse(&text, bom).map_err(|(n, why)| format!("{} prelude line {n}: {why}", path.display()))?;
+    // The imports that read are pinned; a statement that does not is `cells check`'s to say.
+    let statements = cells::prelude::parse(&text, bom).map_err(|why| format!("{} the prelude: {why}", path.display()))?.statements;
     let mut lines: Vec<String> = text[bom..].split_inclusive('\n').map(str::to_owned).collect();
     let mut said = Vec::new();
     for s in &statements {

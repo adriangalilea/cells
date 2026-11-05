@@ -1,0 +1,13 @@
+{
+  "columns": [
+    { "name": "seed", "type": "text" },
+    { "name": "note", "type": "text?" }
+  ],
+  "rows": [
+    { "seed": { "text": "kale" }, "note": null }
+  ],
+  "problems": [],
+  "broken": [
+    { "at": "column 2" }
+  ]
+}

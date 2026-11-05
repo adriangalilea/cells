@@ -1,0 +1,13 @@
+{
+  "columns": [
+    { "name": "book", "type": "text" },
+    { "name": "due", "type": "text?" }
+  ],
+  "rows": [
+    { "book": { "text": "salt and sky" }, "due": { "text": "D/M/2026" } }
+  ],
+  "problems": [],
+  "broken": [
+    { "at": "column 2" }
+  ]
+}

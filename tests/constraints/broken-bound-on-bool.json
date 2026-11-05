@@ -1,0 +1,13 @@
+{
+  "columns": [
+    { "name": "gig", "type": "text" },
+    { "name": "paid", "type": "text?" }
+  ],
+  "rows": [
+    { "gig": { "text": "the barn" }, "paid": { "text": "true" } }
+  ],
+  "problems": [],
+  "broken": [
+    { "at": "column 2" }
+  ]
+}

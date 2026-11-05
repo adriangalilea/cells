@@ -1,0 +1,13 @@
+{
+  "columns": [
+    { "name": "item", "type": "text" },
+    { "name": "", "type": "text?" }
+  ],
+  "rows": [
+    { "item": { "text": "fuel" }, "": { "text": "70.00" } }
+  ],
+  "problems": [],
+  "broken": [
+    { "at": "column 2" }
+  ]
+}

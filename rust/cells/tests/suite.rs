@@ -303,6 +303,13 @@ fn check_read(doc: &Doc, want: &Json) -> Vec<String> {
     if ours != theirs {
         fails.push(format!("problems {ours:?}, the suite says {theirs:?}"));
     }
+    let ours: Vec<String> = doc.broken().iter().map(|e| e.at.to_string()).collect();
+    let theirs: Vec<String> =
+        want.get("broken").map(|b| b.array()).unwrap_or_default().iter().map(|b| b.get("at").unwrap().str().to_string()).collect();
+    if ours != theirs {
+        let whys: Vec<String> = doc.broken().iter().map(|e| e.to_string()).collect();
+        fails.push(format!("broken at {ours:?}, the suite says {theirs:?} ({})", whys.join("; ")));
+    }
     fails
 }
 

@@ -1,0 +1,13 @@
+{
+  "columns": [
+    { "name": "title", "type": "text" },
+    { "name": "note", "type": "text?" }
+  ],
+  "rows": [
+    { "title": { "text": "the quiet orchard" }, "note": null }
+  ],
+  "problems": [],
+  "broken": [
+    { "at": "column 2" }
+  ]
+}

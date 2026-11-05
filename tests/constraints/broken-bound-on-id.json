@@ -1,0 +1,13 @@
+{
+  "columns": [
+    { "name": "book", "type": "text" },
+    { "name": "id", "type": "text?" }
+  ],
+  "rows": [
+    { "book": { "text": "The Salt Road" }, "id": { "text": "k7m2q9xa" } }
+  ],
+  "problems": [],
+  "broken": [
+    { "at": "column 2" }
+  ]
+}

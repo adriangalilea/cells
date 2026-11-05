@@ -1,0 +1,11 @@
+{
+  "columns": [
+    { "name": "seed", "type": "text" },
+    { "name": "count", "type": "int" }
+  ],
+  "rows": [],
+  "problems": [],
+  "broken": [
+    { "at": "row 0" }
+  ]
+}
