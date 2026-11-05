@@ -47,17 +47,19 @@ export default function Page() {
         </nav>
       </header>
 
-      <section className="hero-camera relative md:-mt-[4.5rem] md:h-[190svh]">
-        <div className="flex flex-col items-center gap-8 px-4 pt-6 md:sticky md:top-0 md:h-svh md:justify-center md:gap-10 md:overflow-hidden md:pt-16">
-          <div className="hero-words max-w-3xl text-center">
-            <h1 className="text-balance text-[clamp(2.25rem,4.6vw,3.75rem)] leading-[1.03] font-medium tracking-[-0.04em]">
+      {/* The hero's stage sticks while its extra height scrolls by: over it the lid shuts,
+          and the file's text leaves the screen for the block below (components/hero). */}
+      <section data-hero-section className="relative md:-mt-[4.5rem] md:h-[170svh]">
+        <div className="flex flex-col items-center gap-8 px-4 pt-6 md:sticky md:top-0 md:h-svh md:justify-center md:gap-10 md:pt-16">
+          <div className="max-w-3xl text-center">
+            <h1 className="text-balance text-[clamp(2.25rem,4.6vw,3.75rem)] leading-[1.03] font-medium tracking-[-0.04em] text-foreground">
               {PRODUCT.tagline}
             </h1>
-            <p className="mx-auto mt-5 max-w-[54ch] text-pretty text-[16px] leading-relaxed text-muted-foreground md:text-[17px]">
-              A <span className="font-mono text-foreground/85">{PRODUCT.extension}</span> file is a table that says what its columns are, computes what it can, and knows the files it points at. Plain text, checked by every reader.
+            <p className="mx-auto mt-5 max-w-[50ch] text-pretty text-[16px] leading-relaxed text-foreground/70 md:text-[17px]">
+              {PRODUCT.subline}
             </p>
           </div>
-          <div className="hero-device relative w-[min(72rem,94vw,calc((100svh-17rem)*1.6))]">
+          <div className="relative w-[min(72rem,94vw,calc((100svh-17rem)*1.6))]">
             <div aria-hidden className="absolute inset-x-[14%] top-[4%] bottom-[22%] -z-10 rounded-[40%] bg-edge/12 blur-[80px]" />
             {/* The engine streams in; the server's HTML of the hero and the story stays on
                 screen until it has (components/use-engine). */}
@@ -68,16 +70,22 @@ export default function Page() {
         </div>
       </section>
 
-      <section id="story" className="mx-auto mt-32 max-w-6xl scroll-mt-20 px-6 md:mt-48">
-        <p className="font-mono text-[11px] tracking-[0.18em] text-muted-foreground/70">THE FILE ON THAT SCREEN</p>
-        <h2 className="mt-4 max-w-[24ch] text-balance text-[clamp(1.75rem,3.2vw,2.5rem)] leading-[1.1] font-medium tracking-[-0.025em]">
-          This is a cell. <span className="text-muted-foreground">Everything it does is in its text.</span>
-        </h2>
-        <div className="mt-10 overflow-hidden rounded-xl border border-border bg-card/70">
-          <Code lang="cell" filename={HERO.file} copy>
-            {HERO.checkpoints.fixed.text.trimEnd()}
+      {/* The file the hero's screen let go of lands here first, so its block leads and its
+          words follow: nothing stands between the screen and where the text lands. */}
+      <section id="story" className="mx-auto mt-24 max-w-6xl scroll-mt-20 px-6 md:mt-32">
+        <div data-hero-landing className="overflow-hidden rounded-xl border border-border bg-card/70">
+          <Code lang="cell" filename={HERO.money} copy>
+            {HERO.checkpoints.fixed.money.trimEnd()}
           </Code>
         </div>
+        <div className="mt-4 max-w-md overflow-hidden rounded-xl border border-border bg-card/70">
+          <Code lang="cell" filename={HERO.accounts} copy>
+            {HERO.checkpoints.fixed.accounts.trimEnd()}
+          </Code>
+        </div>
+        <h2 className="mt-14 max-w-[26ch] text-balance text-[clamp(1.75rem,3.2vw,2.5rem)] leading-[1.1] font-medium tracking-[-0.025em]">
+          The file on that screen. <span className="text-muted-foreground">Everything it does is in its text.</span>
+        </h2>
       </section>
 
       <div className="mt-40 md:mt-56">

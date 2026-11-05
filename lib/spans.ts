@@ -7,6 +7,8 @@
 export interface ProblemAt {
   row: number
   at: number
+  /** The column's name: a message on its own line says which cell it is about. */
+  column: string
   reason: string
   /** The characters that broke, inside the cell's text, when the engine says them. */
   span?: { start: number; length: number }
@@ -92,7 +94,9 @@ export function placeProblems(text: string, problems: readonly ProblemAt[]): Pla
     const [start, end] = field
     const from = p.span ? start + p.span.start : start
     const to = p.span ? from + Math.max(1, p.span.length) : Math.max(end, start + 1)
-    placed.push({ line: lineOf(from), from: columnOf(from), to: columnOf(from) + (to - from), message: p.reason })
+    // The engine's own words without the row (the mark is on it): `to: "coffee" is no
+    // key of accounts`, never a bare `is missing`.
+    placed.push({ line: lineOf(from), from: columnOf(from), to: columnOf(from) + (to - from), message: `${p.column}: ${p.reason}` })
   }
   return placed
 }

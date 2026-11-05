@@ -182,54 +182,15 @@
     }
   }
 
-  /* THE HERO'S CAMERA: as the page scrolls past the hero, the view goes into the screen
-     and the machine falls away. A scroll-driven animation over the hero's own view
-     timeline; where the browser has none, the hero stands still. */
-  .hero-camera {
-    view-timeline: --hero block;
-  }
-  /* Wide screens only: on a phone the windows are stacked and read in the flow. */
-  @supports (animation-timeline: view()) {
-  @media (width >= 48rem) {
-    /* The section is taller than the window and its stage sticks: over the extra
-       scroll (`contain`), the words leave first, then the camera moves into the
-       screen and the machine falls away. */
-    .hero-words {
-      animation: hero-words linear both;
-      animation-timeline: --hero;
-      animation-range: contain 0% contain 28%;
-    }
-    @keyframes hero-words {
-      to {
-        opacity: 0;
-        transform: translateY(-2.5rem);
-      }
-    }
-    .hero-device {
-      animation: hero-into linear both;
-      animation-timeline: --hero;
-      animation-range: contain 8% contain 100%;
-      transform-origin: 50% 36%;
-    }
-    @keyframes hero-into {
-      0% {
-        transform: translateY(0) scale(1);
-      }
-      70% {
-        opacity: 1;
-      }
-      100% {
-        transform: translateY(-14vh) scale(2.3);
-        opacity: 0;
-      }
-    }
-  }
+  /* The Mac's shut-lid status line (macos: the story behind a shut lid, its clock and
+     battery) is another story's; here the lid shuts because the file has left. */
+  /* Important: the status line's own utilities (its `flex`) are in a later layer. */
+  [data-slot="hero"] [data-slot="macos-lid-status"] {
+    display: none !important;
   }
 
   @media (prefers-reduced-motion: reduce) {
-    .edge-light::before,
-    .hero-words,
-    .hero-device {
+    .edge-light::before {
       animation: none;
     }
   }

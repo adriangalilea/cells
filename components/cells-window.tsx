@@ -80,7 +80,18 @@ export function CellsTable({
 const r0Numeric = (rows: ViewCell[][], k: number) => rows.some((r) => r[k]?.numeric)
 
 /** The app's window: a title bar with the file's name, the table under it. */
-export function CellsWindow({ name, text, className }: { name: string; text: string; className?: string }) {
+export function CellsWindow({
+  name,
+  text,
+  others,
+  className,
+}: {
+  name: string
+  text: string
+  /** The files it imports, as they stand. */
+  others?: { name: string; text: string }[]
+  className?: string
+}) {
   return (
     <div
       data-slot="cells-window"
@@ -98,7 +109,7 @@ export function CellsWindow({ name, text, className }: { name: string; text: str
         </span>
       </div>
       <div className="dark min-h-0 flex-1 overflow-hidden text-[11px]">
-        <CellsTable name={name} text={text} label={name} className="h-full" />
+        <CellsTable name={name} text={text} others={others} label={name} className="h-full" />
       </div>
     </div>
   )

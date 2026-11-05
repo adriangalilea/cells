@@ -12,6 +12,7 @@ import { useTerminalPalette } from "@/components/ui/terminal"
 import { useEngine } from "@/components/use-engine"
 import { readFiles } from "@/lib/cells"
 import { type CodeTimeline, codeFrameAt, placeOf } from "@/lib/code-session"
+import { textAt } from "@/lib/hero"
 import { placeProblems } from "@/lib/spans"
 import { LINE_HEIGHT } from "@/lib/terminal-session"
 
@@ -21,13 +22,16 @@ const SCROLL_OFF = 3
 const DIGITS = 3
 const PAD_TOP = 0.5
 
-export function HelixDiagnostics({ timeline, rows }: { timeline: CodeTimeline; rows: number }) {
+/** `others`: the session's other files, read as the front one's imports (as they stand at
+ *  the instant drawn, saved or not: what a language server reads). */
+export function HelixDiagnostics({ timeline, rows, others = [] }: { timeline: CodeTimeline; rows: number; others?: string[] }) {
   const palette = useTerminalPalette()
   const engine = useEngine()
   const ms = usePlayhead(undefined).at * timeline.total
   const f = codeFrameAt(timeline, ms)
   if (!f.active) return null
-  const read = readFiles(engine, [{ name: f.active, text: f.text }])
+  const imports = others.filter((p) => p !== f.active).map((p) => ({ name: p, text: textAt(timeline, p, ms) }))
+  const read = readFiles(engine, [{ name: f.active, text: f.text }, ...imports])
   if (read.error) return null
   const placed = placeProblems(f.text, read.problems)
   const lines = f.text.split("\n")
