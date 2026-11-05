@@ -160,15 +160,22 @@ function edited(start: Doc, edits: Record<string, unknown>[]): string {
       const at = computed(e.recompute)
       change = { at, name: (e.name ?? e.recompute) as string, expression: e.expression as string }
     } else if ("uncompute" in e) change = { at: computed(e.uncompute) }
-    if (change) {
+    /** The edit made, against what the suite says of it: taken, or refused at `refused`. */
+    const taken = (edit: () => void) => {
       try {
-        const next = recompute(doc, change).doc
-        if (e.refused) throw new Error(`taken, the suite says it is refused at ${e.refused}`)
-        doc = next
+        edit()
       } catch (err) {
         if (!(err instanceof TcsvError)) throw err
         if (err.where !== e.refused) throw new Error(`refused at ${err.where} (${err.why}), the suite says ${String(e.refused)}`)
+        return
       }
+      if (e.refused) throw new Error(`taken, the suite says it is refused at ${e.refused}`)
+    }
+    if (change) {
+      const c = change
+      taken(() => {
+        doc = recompute(doc, c).doc
+      })
       continue
     }
     let order: ColumnAt[] | null = null
@@ -186,10 +193,14 @@ function edited(start: Doc, edits: Record<string, unknown>[]): string {
       order = kept()
       order[at(e.rename)] = { kept: at(e.rename), name: e.to as string }
     }
-    if (order) doc = reshape(doc, order).doc
-    else if ("type" in e) setType(doc, e.column as string, e.type as string)
-    else if ("text" in e) setCell(doc, e.row as number, e.column as string, e.text as string)
-    else setValue(doc, e.row as number, e.column as string, value(e.value))
+    const o = order
+    if (o)
+      taken(() => {
+        doc = reshape(doc, o).doc
+      })
+    else if ("type" in e) taken(() => setType(doc, e.column as string, e.type as string))
+    else if ("text" in e) taken(() => setCell(doc, e.row as number, e.column as string, e.text as string))
+    else taken(() => setValue(doc, e.row as number, e.column as string, value(e.value)))
   }
   return write(doc)
 }

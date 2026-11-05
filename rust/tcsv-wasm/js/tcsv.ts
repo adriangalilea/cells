@@ -27,7 +27,7 @@ interface Exports {
   tcsv_why(h: number, i: number): number
   tcsv_cells(h: number): number
   tcsv_cell_ends(h: number): number
-  tcsv_set_cell(h: number, row: number, column: number, ptr: number, len: number, cap: number): void
+  tcsv_set_cell(h: number, row: number, column: number, ptr: number, len: number, cap: number): number
   tcsv_set_type(h: number, column: number, ptr: number, len: number, cap: number): number
   tcsv_read_as(ptr: number, len: number, cap: number, sep: number): number
   tcsv_detect(ptr: number, len: number): number
@@ -520,12 +520,13 @@ function columnOf(doc: Doc, column: string | number): number {
   return k
 }
 
-/** One cell's text changed; every other byte stays as read. Returns `doc`, changed. */
+/** One cell's text changed; every other byte stays as read. Returns `doc`, changed; text
+ *  holding a control character throws `TcsvError` at the row, `doc` untouched. */
 export function setCell(doc: Doc, row: number, column: string | number, text: string): Doc {
   const k = columnOf(doc, column)
   if (row < 0 || row >= doc.rowCount) throw new TcsvError(`row ${row}`, "does not exist")
   const [p, len, cap] = put(text)
-  x.tcsv_set_cell(doc.handle, row, k, p, len, cap)
+  if (x.tcsv_set_cell(doc.handle, row, k, p, len, cap) !== 0) throw thrown()
   doc.refresh()
   return doc
 }

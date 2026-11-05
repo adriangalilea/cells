@@ -531,15 +531,22 @@ unsafe fn take(ptr: *mut u8, len: usize, cap: usize) -> String {
 }
 
 /// One cell's text changed (room from `tcsv_alloc(cap)`, `len` bytes of it written, which
-/// this call takes).
+/// this call takes); 0 when it was, else 1 with the error at `tcsv_error` (text holding a
+/// control character).
 ///
 /// # Safety
 /// `h` is a live handle; `ptr`, `len`, `cap` as for `tcsv_read`.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn tcsv_set_cell(h: *mut Handle, row: usize, column: usize, ptr: *mut u8, len: usize, cap: usize) {
+pub unsafe extern "C" fn tcsv_set_cell(h: *mut Handle, row: usize, column: usize, ptr: *mut u8, len: usize, cap: usize) -> u32 {
     // SAFETY: the caller's promise.
     let (h, text) = unsafe { (handle(h), take(ptr, len, cap)) };
-    h.doc.set_cell(row, column, &text);
+    match h.doc.set_cell(row, column, &text) {
+        Ok(()) => 0,
+        Err(e) => {
+            failed(e);
+            1
+        }
+    }
 }
 
 /// One column's type rewritten in shorthand; 0 when it read, else 1 with the error at
