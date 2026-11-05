@@ -1,6 +1,6 @@
 # Cells
 
-Data and its logic, in one plain-text file. A cell, a `.cell` file, is a table whose header cells carry their column's type, and its formula when it computes, in the file itself: one file, never a sidecar. Files import each other, so a folder of them is typed tables joined by references, and a table can be filled by a script. It is its own format, designed for its own ergonomics, never bent to suit readers that do not know it. [SPEC.md](SPEC.md) is the whole format, and not final yet.
+Programmable data: logic and data in a single file, open in any editor ([cellular.computer](https://cellular.computer)). A cell, a `.cell` file, is a table whose header cells carry their column's type, and its formula when it computes, in the file itself: one file, never a sidecar. Files import each other, so a folder of them is typed tables joined by references, and a table can be filled by a script. It is its own format, designed for its own ergonomics, never bent to suit readers that do not know it. [SPEC.md](SPEC.md) is the whole format, and not final yet.
 
 ````
 ---
@@ -152,6 +152,7 @@ Built: the suite (467 cases, `plain/` the files that are not cells); the engine 
 
 ## Where it is used
 
+- **[cellular.computer](https://cellular.computer)**: the format told live, every example read by the wasm engine in the page.
 - **ui's table** ([ui.adriangalilea.com/table](https://ui.adriangalilea.com/table)): a `.cell` file opens as a table whose columns edit by their types, its broken cells marked, through `useTableDocument` and the `cells` codec (`lib/cells.ts`, this repo's wasm wrapper and module vendored by ui's `mise cells`).
 - **InkTable and Cells for Swift**: the same table on the Apple platforms.
 - **Cells.app**: the Mac app for `.cell`, CSV and TSV files, built on them.
