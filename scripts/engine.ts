@@ -11,7 +11,7 @@
 // that instantiates its module another way stops this script rather than being patched
 // blind.
 //
-//   CELLS=~/Developer/tcsv bun scripts/engine.ts
+//   CELLS=~/Developer/cells bun scripts/engine.ts
 
 import { createHash } from "node:crypto"
 

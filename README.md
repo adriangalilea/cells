@@ -12,7 +12,7 @@ The Cells site: one page, every example live on the real engine (the wasm build,
 ```bash
 pnpm install
 UI=~/Developer/ui pnpm ui                 # the paid @ag items git ignores (macos, player, table)
-CELLS=~/Developer/tcsv pnpm engine        # the engine and grammar, after they change
+CELLS=~/Developer/cells pnpm engine       # the engine and grammar, after they change
 pnpm dev                                  # :3200; ?still=0.5 holds the hero at a moment
 pnpm check                                # types and the story's claims
 pnpm deploy                               # next build, then wrangler (workers.dev)
