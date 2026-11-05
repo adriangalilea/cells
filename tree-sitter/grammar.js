@@ -43,13 +43,10 @@ const FORMAT_FIELDS = ['YYYY', 'MM', 'DD', 'HH', 'mm', 'ss'];
 
 const SCHEDULE_WORDS = ['every', 'at', 'on', 'in', 'cron', 'when', 'changes'];
 
-// A formula's keyword, read in any case (SPEC, Formulas: keywords are read in
-// any case), named by its lower-case spelling. Its precedence over
-// `identifier` makes `and` a keyword before it is a column's name.
-const keyword = word => alias(
-  token(prec(2, new RegExp(word.split('').map(c => `[${c}${c.toUpperCase()}]`).join('')))),
-  word,
-);
+// A formula's keyword, in capitals and only in capitals (SPEC, The language: a
+// word in lower case is always a name), named by its lower-case spelling. Its
+// precedence over `identifier` makes `AND` a keyword before it is a name.
+const keyword = word => alias(token(prec(2, word.toUpperCase())), word);
 
 const commaSep1 = rule => seq(rule, repeat(seq(',', rule)));
 
@@ -188,16 +185,18 @@ module.exports = grammar({
 
     // ── A formula ────────────────────────────────────────────────────────────
     // SQL's scalar expressions (SPEC, Formulas): after a header cell's type,
-    // `total:EUR=cost * qty`, and between a cell's backticks, `` `=96.75 / 3` ``.
+    // `total:EUR=cost * qty`, and after a cell's `=`, `32.25=96.75 / 3`.
 
     _expression: $ => choice(
       alias($._number, $.number),
       $.string_literal,
-      alias(choice(keyword('true'), keyword('false')), $.boolean),
+      alias(token(prec(2, choice('TRUE', 'FALSE'))), $.boolean),
       alias(keyword('null'), $.null),
+      $.table_self,
       $.column_reference,
       $.member_expression,
       $.key_expression,
+      $.row_reference,
       $.call_expression,
       $.binary_expression,
       $.unary_expression,
@@ -217,27 +216,64 @@ module.exports = grammar({
       '\'',
     ),
 
+    // `TABLE`: the file's own table, whatever the file is named.
+    table_self: _ => 'TABLE',
+
     // `to.kind`: the column `kind` of the row the reference `to` names.
     member_expression: $ => prec(9, seq(
-      field('object', choice($.column_reference, $.member_expression, $.key_expression)),
+      field('object', choice($.column_reference, $.member_expression, $.key_expression, $.table_self)),
       token.immediate('.'),
       field('property', alias(token.immediate(/[A-Za-z_][A-Za-z0-9_]*/), $.property)),
     )),
 
     // `fees[kind]`: a table's row by its key.
     key_expression: $ => prec(9, seq(
-      field('table', alias($.identifier, $.table_reference)),
+      field('table', choice(alias($.identifier, $.table_reference), $.table_self)),
       token.immediate('['),
       field('key', $._expression),
       ']',
     )),
 
+    // `running[-1]`, `total[FIRST:THIS]`: the column on a row by where it is
+    // from this one, or on a range of rows (SPEC, Rows by where they are).
+    row_reference: $ => prec(9, seq(
+      field('column', alias($.identifier, $.column_reference)),
+      token.immediate('['),
+      choice(
+        field('offset', $.row_offset),
+        seq(field('from', $._row_end), ':', field('to', $._row_end)),
+      ),
+      ']',
+    )),
+
+    _row_end: $ => choice($.row_offset, $.row_word),
+
+    row_offset: _ => token(prec(3, /[+-]\d+/)),
+
+    row_word: _ => choice('FIRST', 'THIS', 'LAST'),
+
+    // A function is a name in capitals; a call of a name in lower case is the
+    // same node, which the queries colour as the name it is (`sum(` is no
+    // function, SPEC, The language).
     call_expression: $ => prec(9, seq(
       field('function', alias($.identifier, $.function_name)),
       token.immediate('('),
       optional(commaSep1($._expression)),
       ')',
+      optional(field('window', $.over_clause)),
     )),
+
+    // `SUM(amount) OVER (ORDER BY date DESC, id)`: a window.
+    over_clause: $ => seq(
+      keyword('over'),
+      '(',
+      keyword('order'),
+      keyword('by'),
+      commaSep1($.order_key),
+      ')',
+    ),
+
+    order_key: $ => seq($._expression, optional(keyword('desc'))),
 
     binary_expression: $ => choice(
       ...[
@@ -321,10 +357,14 @@ module.exports = grammar({
       $.bool_pair,
       $.bound,
       $.range,
+      $.scale,
       $.format,
       $.key_mark,
       $.optional_mark,
     )),
+
+    // `EUR(6)`: a currency's scale, its digits after the point.
+    scale: $ => seq('(', alias(token(prec(1, /\d+/)), $.number), ')'),
 
     base_type: _ => choice(...BASES),
 
@@ -399,11 +439,11 @@ module.exports = grammar({
 
     _field_with_comma: $ => seq(optional($._value), ','),
 
+    _value: $ => choice($.quoted_field, $._written, $.computed_cell),
+
     // The order is the lexer's tie-break: a cell that reads as a date and as
     // text is a date, `84.20` is a number before it is text.
-    _value: $ => choice(
-      $.cell_formula,
-      $.quoted_field,
+    _written: $ => choice(
       $.datetime,
       $.date,
       $.time,
@@ -412,15 +452,15 @@ module.exports = grammar({
       $.url,
       $.email,
       $.text,
-      alias($._backtick_text, $.text),
     ),
 
-    // `` `=96.75 / 3` ``: a cell's own formula.
-    cell_formula: $ => seq('`=', field('formula', $._expression), '`'),
-
-    // Text that opens with a backtick but is no formula: `` `code` ``, and
-    // the escape of one that would read as a formula, ```` ``=x` ````.
-    _backtick_text: _ => /`([^=,\r\n][^,\r\n]*)?/,
+    // A computed cell (SPEC, A cell): what the file stores, `=`, then its own
+    // formula or none (its column's): `84.20=`, `32.25=96.75 / 3`, `=96.75 / 3`.
+    computed_cell: $ => seq(
+      optional(field('stored', $._written)),
+      '=',
+      optional(field('formula', $._expression)),
+    ),
 
     quoted_field: $ => seq(
       '"',
@@ -438,11 +478,13 @@ module.exports = grammar({
 
     boolean: _ => choice('true', 'false', 'yes', 'no'),
 
-    url: _ => /[A-Za-z][A-Za-z0-9+.-]*:\/\/[^,\s"]+/,
+    // A value never holds a bare `=`, the split of a computed cell; a text
+    // writes one `'=`.
+    url: _ => /[A-Za-z][A-Za-z0-9+.-]*:\/\/([^,\s"=']|'=?)+/,
 
-    email: _ => /[^\s@,"]+@[^\s@,"]+\.[^\s@,"]+/,
+    email: _ => /([^\s@,"=']|'=?)+@([^\s@,"=']|'=?)+\.([^\s@,"=']|'=?)+/,
 
-    text: _ => /[^,\r\n" \t`][^,\r\n]*/,
+    text: _ => /([^,\r\n" \t=']|'=?)([^,\r\n=']|'=?)*/,
 
     // ── Tokens shared by the rules above ─────────────────────────────────────
     // Declared after the rules that use them, before `_word`: on a tie the

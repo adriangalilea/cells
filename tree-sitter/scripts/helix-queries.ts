@@ -41,6 +41,7 @@ const HELIX: Record<string, string | null> = {
   "type.builtin": "type.builtin",
   "type.definition": "type",
   "variable": "variable",
+  "variable.builtin": "variable.builtin",
   "variable.member": "variable.other.member",
   "variable.parameter": "variable.parameter",
 }

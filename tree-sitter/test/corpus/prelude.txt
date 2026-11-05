@@ -290,3 +290,88 @@ kind:fees.kind
         (reference_type
           file: (reference_file)
           column: (reference_column))))))
+
+==================|||
+The language in capitals, rows by where they are, windows and a scale
+==================|||
+fee:EUR(6),running:EUR=running[-1] + total,cum:EUR=SUM(total[FIRST:THIS]),near:num=MAX(cost[-2:+2]),win:EUR=SUM(amount) OVER (ORDER BY on DESC, id),k:text=CASE WHEN a IS NOT NULL AND TRUE THEN TABLE['k7'].x ELSE NULL END,low:num=round(cost)
+---|||
+
+(source_file
+  (header
+    (header_cell
+      name: (column_name)
+      type: (type
+        (currency)
+        (scale
+          (number))))
+    (header_cell
+      name: (column_name)
+      type: (type
+        (currency))
+      formula: (binary_expression
+        left: (row_reference
+          column: (column_reference)
+          offset: (row_offset))
+        right: (column_reference
+          (identifier))))
+    (header_cell
+      name: (column_name)
+      type: (type
+        (currency))
+      formula: (call_expression
+        function: (function_name)
+        (row_reference
+          column: (column_reference)
+          from: (row_word)
+          to: (row_word))))
+    (header_cell
+      name: (column_name)
+      type: (type
+        (base_type))
+      formula: (call_expression
+        function: (function_name)
+        (row_reference
+          column: (column_reference)
+          from: (row_offset)
+          to: (row_offset))))
+    (header_cell
+      name: (column_name)
+      type: (type
+        (currency))
+      formula: (call_expression
+        function: (function_name)
+        (column_reference
+          (identifier))
+        window: (over_clause
+          (order_key
+            (column_reference
+              (identifier)))
+          (order_key
+            (column_reference
+              (identifier))))))
+    (header_cell
+      name: (column_name)
+      type: (type
+        (base_type))
+      formula: (case_expression
+        (when_clause
+          condition: (binary_expression
+            left: (null_test
+              operand: (column_reference
+                (identifier)))
+            right: (boolean))
+          value: (member_expression
+            object: (key_expression
+              table: (table_self)
+              key: (string_literal))
+            property: (property)))
+        else: (null)))
+    (header_cell
+      name: (column_name)
+      type: (type
+        (base_type))
+      formula: (call_expression
+        function: (function_name)
+        (column_reference
+          (identifier))))))

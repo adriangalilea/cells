@@ -109,7 +109,48 @@
 
 (table_reference) @namespace
 
-(function_name) @function
+; The language is in capitals: a function's name, never one in lower case,
+; which is a name the file gave (SPEC, The language).
+((function_name) @function
+  (#match? @function "^[A-Z][A-Z0-9_]*$"))
+
+((function_name) @variable.other.member
+  (#match? @variable.other.member "[a-z]"))
+
+; TABLE, the file's own table; FIRST, THIS, LAST, rows by where they are.
+(table_self) @variable.builtin
+
+(row_word) @variable.builtin
+
+(row_offset) @constant.numeric
+
+(row_reference
+  [
+    "["
+    "]"
+  ] @punctuation.bracket)
+
+(row_reference
+  ":" @operator)
+
+(over_clause
+  [
+    "over"
+    "order"
+    "by"
+  ] @keyword)
+
+(over_clause
+  [
+    "("
+    ")"
+  ] @punctuation.bracket)
+
+(over_clause
+  "," @punctuation.delimiter)
+
+(order_key
+  "desc" @keyword)
 
 (string_literal) @string
 
@@ -173,11 +214,10 @@
 (header_cell
   "=" @operator)
 
-(cell_formula
-  [
-    "`="
-    "`"
-  ] @punctuation.special)
+; A computed cell's `=`: left of it what the file stores, right of it how it
+; is computed (SPEC, A cell).
+(computed_cell
+  "=" @punctuation.special)
 
 ; ── A type ─────────────────────────────────────────────────────────────────
 
@@ -242,6 +282,12 @@
   ] @keyword.operator)
 
 (format
+  [
+    "("
+    ")"
+  ] @punctuation.bracket)
+
+(scale
   [
     "("
     ")"

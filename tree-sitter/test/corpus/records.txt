@@ -244,13 +244,13 @@ a,b
       (url))))
 
 ==================
-A cell's formula, and text that only looks like one
+A computed cell, a cell's own formula, and text that writes its =
 ==================
-total:num
-`=round(96.75 / 3, 1)`
-``=x`
-`code`
-=> see invoice
+total:num,note:text
+84.20=,'=> see invoice
+32.25=96.75 / 3,=x
+=SUM(TABLE.total),`code`
+,
 ---
 
 (source_file
@@ -258,22 +258,37 @@ total:num
     (header_cell
       name: (column_name)
       type: (type
+        (base_type)))
+    (header_cell
+      name: (column_name)
+      type: (type
         (base_type))))
   (row
     (field
-      (cell_formula
+      (computed_cell
+        stored: (number)))
+    (field
+      (text)))
+  (row
+    (field
+      (computed_cell
+        stored: (number)
+        formula: (binary_expression
+          left: (number)
+          right: (number))))
+    (field
+      (computed_cell
+        formula: (column_reference
+          (identifier)))))
+  (row
+    (field
+      (computed_cell
         formula: (call_expression
           function: (function_name)
-          (binary_expression
-            left: (number)
-            right: (number))
-          (number)))))
-  (row
+          (member_expression
+            object: (table_self)
+            property: (property)))))
     (field
       (text)))
   (row
-    (field
-      (text)))
-  (row
-    (field
-      (text))))
+    (field)))

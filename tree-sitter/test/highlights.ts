@@ -25,8 +25,8 @@ rates = run every day at 18:00 in Europe/Madrid
 export default async () => []
 \`\`\`
 ---
-item:text!,category:Category,cost:EUR>=0,paid:yes/no,on:date(DD/MM/YYYY),note:text?,score:0..10,to:accounts.account,x:one of a b key,y:bool si no optional,z:num between 0 and 100,w:num min 1,total:EUR=abs(cost) * (score - 1)
-fuel,travel,\`=84.20 * 2\`,yes,14/08/2026,"a ""b""",7,assets:bank,a,si,2026-08-14T10:00:00Z,https://example.com,
+item:text!,category:Category,cost:EUR>=0,paid:yes/no,on:date(DD/MM/YYYY),note:text?,score:0..10,to:accounts.account,x:one of a b key,y:bool si no optional,z:num between 0 and 100,w:num min 1,total:EUR=ABS(cost) * (score - 1),fee:EUR(6),running:EUR=running[-1] + total,cum:EUR=SUM(total[FIRST:THIS]),low:num=round(cost)
+fuel,travel,32.25=96.75 / 3,yes,14/08/2026,"a ""b""",7,assets:bank,a,si,2026-08-14T10:00:00Z,https://example.com,84.20=,0.001200,84.20=,=SUM(TABLE.total),84=
 `
 
 // [text, canonical capture, Helix scope]
@@ -106,20 +106,41 @@ const EXPECT: [string, string, string][] = [
   ["total", "variable", "variable"],
   ["EUR", "type.builtin", "type.builtin"],
   ["=", "operator", "operator"],
-  ["abs", "function", "function"],
+  ["ABS", "function", "function"],
   ["cost", "variable.member", "variable.other.member"],
   ["*", "operator", "operator"],
   ["(", "punctuation.bracket", "punctuation.bracket"],
   ["score", "variable.member", "variable.other.member"],
   ["-", "operator", "operator"],
   ["1", "number", "constant.numeric"],
+  // a currency's scale
+  ["fee", "variable.parameter", "variable.parameter"],
+  ["(", "punctuation.bracket", "punctuation.bracket"],
+  ["6", "number", "constant.numeric"],
+  [")", "punctuation.bracket", "punctuation.bracket"],
+  // rows by where they are: the line above, and a range
+  ["running", "tag", "tag"],
+  ["running", "variable.member", "variable.other.member"],
+  ["[", "punctuation.bracket", "punctuation.bracket"],
+  ["-1", "number", "constant.numeric"],
+  ["]", "punctuation.bracket", "punctuation.bracket"],
+  ["total", "variable.member", "variable.other.member"],
+  ["cum", "function", "function"],
+  ["SUM", "function", "function"],
+  ["FIRST", "variable.builtin", "variable.builtin"],
+  [":", "operator", "operator"],
+  ["THIS", "variable.builtin", "variable.builtin"],
+  // a word in lower case is a name, called or not
+  ["low", "variable.member", "variable.other.member"],
+  ["round", "variable.member", "variable.other.member"],
   // a row: text in its column's colour, everything else by its spelling
   ["fuel", "variable", "variable"],
   ["travel", "variable.parameter", "variable.parameter"],
-  ["`=", "punctuation.special", "punctuation.special"],
-  ["84.20", "number", "constant.numeric"],
-  ["*", "operator", "operator"],
-  ["`", "punctuation.special", "punctuation.special"],
+  // a value and its own formula: what the file stores, `=`, how it is computed
+  ["32.25", "number", "constant.numeric"],
+  ["=", "punctuation.special", "punctuation.special"],
+  ["96.75", "number", "constant.numeric"],
+  ["/", "operator", "operator"],
   ["yes", "boolean", "constant.builtin.boolean"],
   // a date in the column's own format is text to the grammar; the language
   // server, which reads the header, colours it as the date it is
@@ -130,6 +151,13 @@ const EXPECT: [string, string, string][] = [
   ["assets:bank", "variable.parameter", "variable.parameter"],
   ["2026-08-14T10:00:00Z", "string.special", "string.special"],
   ["https://example.com", "string.special.url", "string.special.url"],
+  // a value its column's formula computed, and a formula not computed yet
+  ["84.20", "number", "constant.numeric"],
+  ["=", "punctuation.special", "punctuation.special"],
+  ["0.001200", "number", "constant.numeric"],
+  ["=", "punctuation.special", "punctuation.special"],
+  ["SUM", "function", "function"],
+  ["TABLE", "variable.builtin", "variable.builtin"],
 ]
 
 type Capture = { name: string; text: string }
