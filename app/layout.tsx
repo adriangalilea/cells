@@ -7,10 +7,14 @@ import "./globals.css"
 const geist = Geist({ subsets: ["latin"], variable: "--font-geist" })
 const mono = Geist_Mono({ subsets: ["latin"], variable: "--font-geist-mono" })
 
+const TITLE = `${PRODUCT.name}: ${PRODUCT.tagline.replace(/\.$/, "")}`
+
 export const metadata: Metadata = {
   metadataBase: new URL(`https://${PRODUCT.domain}`),
-  title: `${PRODUCT.name}: ${PRODUCT.tagline.replace(/\.$/, "")}`,
-  description: `A ${PRODUCT.extension} file is a table whose header carries its types and its formulas, which imports other files and can be filled by a script. Plain text, checked by every reader.`,
+  title: TITLE,
+  description: PRODUCT.subline,
+  openGraph: { title: TITLE, description: PRODUCT.subline, url: "/", siteName: PRODUCT.name, type: "website" },
+  twitter: { card: "summary", title: TITLE, description: PRODUCT.subline },
 }
 
 export const viewport: Viewport = {

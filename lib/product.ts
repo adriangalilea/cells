@@ -10,7 +10,9 @@ export const PRODUCT = {
   extension: ".cell",
   /** The command line. */
   cli: "cells",
-  tagline: "Data and its logic, in one plain-text file.",
+  tagline: "Programmable data.",
+  /** Under the line, and the page's description wherever it is read. */
+  subline: "Logic and data in a single file. Open it in any editor.",
   domain: "cellular.computer",
   repo: "https://github.com/adriangalilea/tcsv",
 } as const
