@@ -128,8 +128,12 @@ function hosted(doc: Doc): string[] {
     }),
   )
   const header = stored.map((c) => (c.spelled ? `${c.name}:${c.spelled}` : c.name))
+  const composed = compose(doc, header, cells)
+  // What did not read is written back as it was, after the rows.
+  if (doc.unread !== "" && !composed.endsWith(doc.unread)) f.push("compose loses what the file did not read")
   if (header.length === 0) return f
-  const again = readAs(compose(doc, header, cells), doc.dialect).doc
+  const again = readAs(composed, doc.dialect).doc
+  if (again.unread !== doc.unread) f.push(`compose of its cells leaves ${JSON.stringify(again.unread)} unread, the file ${JSON.stringify(doc.unread)}`)
   if (JSON.stringify(again.cells()) !== JSON.stringify(cells)) f.push("compose of its cells reads back other cells")
   if (JSON.stringify(again.columns.map((c) => c.type)) !== JSON.stringify(doc.columns.map((c) => c.type)))
     f.push("compose of its cells reads back other types")

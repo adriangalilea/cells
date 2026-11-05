@@ -121,6 +121,7 @@ interface Meta {
   names: { column: number; kind: "blank" | "twice" }[]
   broken: Broken[]
   prelude: string
+  unread: string
   trailing: boolean
   problems: number
   problemCount: number
@@ -400,6 +401,12 @@ export class Doc {
   get prelude(): string {
     return this.meta.prelude
   }
+  /** What follows the rows read, from a record that does not read on (all of it after the
+   *  prelude when the header does not), kept as written: `compose` writes it after the
+   *  rows. Empty for a file that reads whole. */
+  get unread(): string {
+    return this.meta.unread
+  }
   /** The header's line break, the one new lines take (a plain file's may be a lone `\r`). */
   get newline(): "\n" | "\r\n" | "\r" {
     return this.meta.newline
@@ -675,16 +682,27 @@ function quoter(separator: Separator, all: boolean): (text: string) => string {
 /** A file written from cells, for a host that keeps its own rows (a table editing the
  *  file) and hands back the header's cells and the rows' texts: `like`'s byte order
  *  mark and prelude, its separator, its line break and its final break, every field quoted
- *  only where the file needs it (the core's `cells::compose`, here so the rows never cross
- *  into the module). Pure: nothing is read or changed. */
+ *  only where the file needs it, and what it did not read after the rows, as written (the
+ *  core's `cells::compose`, here so the rows never cross into the module). Pure: nothing
+ *  is read or changed. */
 export function compose(
-  like: { prelude: string; newline: "\n" | "\r\n" | "\r"; trailing: boolean; separator: Separator; quotesAll: boolean },
+  like: {
+    prelude: string
+    newline: "\n" | "\r\n" | "\r"
+    trailing: boolean
+    separator: Separator
+    quotesAll: boolean
+    unread: string
+  },
   header: readonly string[],
   rows: readonly (readonly string[])[],
 ): string {
+  // A header that did not read leaves nothing but what follows the prelude.
+  if (header.length === 0 && like.unread !== "") return like.prelude + like.unread
   const quote = quoter(like.separator, like.quotesAll)
   const parts: string[] = new Array(rows.length + 1)
   parts[0] = header.map(quote).join(like.separator)
   for (let r = 0; r < rows.length; r++) parts[r + 1] = (rows[r] as readonly string[]).map(quote).join(like.separator)
-  return like.prelude + parts.join(like.newline) + (like.trailing ? like.newline : "")
+  const end = like.unread !== "" ? like.newline + like.unread : like.trailing ? like.newline : ""
+  return like.prelude + parts.join(like.newline) + end
 }

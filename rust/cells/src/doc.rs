@@ -1428,8 +1428,10 @@ impl Doc {
         self.reread(out, threads)
     }
 
-    /// What follows the rows read: from a record that does not read on, kept as written.
-    fn unread(&self) -> &str {
+    /// What follows the rows read: from a record that does not read on (or the header,
+    /// when it does not), kept as written; empty for a file that reads whole. A host that
+    /// writes the file from its own rows writes it after them (`compose`).
+    pub fn unread(&self) -> &str {
         &self.source[*self.records.last().unwrap() as usize..]
     }
 
@@ -2482,10 +2484,15 @@ fn put(col: &mut Column, row: usize, text: &str) -> Option<Option<Why>> {
 /// A file written from cells, for a host that keeps its own rows: `like`'s byte order
 /// mark and prelude, its separator, its header's line break and its final line break,
 /// every field quoted only where the file needs it (or always, in a plain file that
-/// quotes every field).
+/// quotes every field), and what `like` did not read after the rows, as written (all of
+/// it after the prelude when its header did not read: there is nothing else to write).
 pub fn compose(like: &Doc, header: &[&str], rows: &[Vec<&str>]) -> String {
     let nl = like.newline();
     let mut out = String::from(like.prelude_text());
+    if like.columns.is_empty() && !like.unread().is_empty() {
+        out.push_str(like.unread());
+        return out;
+    }
     let line = |out: &mut String, cells: &[&str]| {
         for (k, c) in cells.iter().enumerate() {
             if k > 0 {
@@ -2499,7 +2506,10 @@ pub fn compose(like: &Doc, header: &[&str], rows: &[Vec<&str>]) -> String {
         out.push_str(nl);
         line(&mut out, r);
     }
-    if like.trailing() {
+    if !like.unread().is_empty() {
+        out.push_str(nl);
+        out.push_str(like.unread());
+    } else if like.trailing() {
         out.push_str(nl);
     }
     out

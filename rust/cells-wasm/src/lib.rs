@@ -360,6 +360,8 @@ pub unsafe extern "C" fn cells_meta(h: *mut Handle) -> *const u8 {
     s.push(']');
     s.push_str(",\"prelude\":");
     json_str(&mut s, doc.prelude_text());
+    s.push_str(",\"unread\":");
+    json_str(&mut s, doc.unread());
     let _ = write!(
         s,
         ",\"trailing\":{},\"problems\":{},\"problemCount\":{},\"named\":{{",
