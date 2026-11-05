@@ -480,6 +480,11 @@ pub fn parse(src: &str) -> Result<Expr, Fault> {
     Ok(e)
 }
 
+/// Every function a formula may call, the aggregates first: what a language server
+/// completes.
+pub const FUNCTIONS: [&str; 15] =
+    ["sum", "avg", "min", "max", "count", "round", "floor", "ceil", "abs", "coalesce", "nullif", "length", "lower", "upper", "trim"];
+
 /// A name a formula reads, each part where it is written: `cost`; `to.kind`, a column
 /// and what its reference leads to; `fees['card'].pct`, a table (`table`) and a column of
 /// the row its key finds.
@@ -487,6 +492,9 @@ pub fn parse(src: &str) -> Result<Expr, Fault> {
 pub struct Named {
     pub parts: Vec<(String, Sp)>,
     pub table: bool,
+    /// A table's row found by a key written as text, `'card'`: the key, and where it is
+    /// written, its quotes included.
+    pub key: Option<(String, Sp)>,
 }
 
 /// Every name a formula reads, in the order written: what a language server finds,
@@ -516,10 +524,14 @@ pub fn names(src: &str) -> Result<Vec<Named>, Fault> {
     let mut stack = Vec::from([&e]);
     while let Some(e) = stack.pop() {
         match e {
-            Expr::Path(segs, s) => out.push(Named { parts: parts(at(*s), segs.len(), true), table: false }),
+            Expr::Path(segs, s) => out.push(Named { parts: parts(at(*s), segs.len(), true), table: false, key: None }),
             Expr::Lookup(name, key, rest, s) => {
                 // The table, then past its `[…]`, the columns.
                 let mut k = at(*s) + 1;
+                let literal = match (&**key, &toks[k + 1]) {
+                    (Expr::Text(t), (Tok::Str(_), sp)) if toks.get(k + 2).is_some_and(|t| t.0 == Tok::Sym("]")) => Some((t.clone(), *sp)),
+                    _ => None,
+                };
                 let mut depth = 0;
                 loop {
                     match toks[k].0 {
@@ -534,7 +546,7 @@ pub fn names(src: &str) -> Result<Vec<Named>, Fault> {
                 }
                 let mut all = Vec::from([(name.clone(), *s)]);
                 all.extend(parts(k, rest.len(), false));
-                out.push(Named { parts: all, table: true });
+                out.push(Named { parts: all, table: true, key: literal });
                 stack.push(key);
             }
             Expr::Neg(a) | Expr::Not(a) | Expr::IsNull(a, _) => stack.push(a),
@@ -1228,12 +1240,27 @@ mod tests {
     }
 
     #[test]
+    fn every_function_named_resolves() {
+        for f in FUNCTIONS {
+            let call = match f {
+                "lower" | "upper" | "trim" | "length" => format!("{f}(item)"),
+                "round" | "nullif" | "coalesce" => format!("{f}(cost, 1)"),
+                _ => format!("{f}(cost)"),
+            };
+            let resolved = parse(&call).and_then(|e| resolve(&e, &One, &mut 0));
+            assert!(resolved.is_ok(), "{call}: {:?}", resolved.err());
+        }
+    }
+
+    #[test]
     fn names_are_where_they_are_written() {
         let src = "cost * \"the qty\" + fees['card'].pct + to.kind";
         let got: Vec<Vec<&str>> =
             names(src).unwrap().iter().map(|n| n.parts.iter().map(|(_, (s, l))| &src[*s as usize..(s + l) as usize]).collect()).collect();
         assert_eq!(got, [Vec::from(["cost"]), Vec::from(["\"the qty\""]), Vec::from(["fees", "pct"]), Vec::from(["to", "kind"])]);
-        assert!(names(src).unwrap()[2].table);
+        let fees = &names(src).unwrap()[2];
+        assert!(fees.table);
+        assert_eq!(fees.key.as_ref().map(|(k, (s, l))| (k.as_str(), &src[*s as usize..(s + l) as usize])), Some(("card", "'card'")));
     }
 
     #[test]
