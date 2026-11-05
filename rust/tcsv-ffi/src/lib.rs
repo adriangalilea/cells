@@ -274,47 +274,9 @@ pub unsafe extern "C" fn tcsv_reshaped(
     doc_or_fail(d.doc.reshaped(&order, threads.max(1)), failure)
 }
 
-/// A change of a computed column: computed column `index` given `name` and `expression`,
-/// a new one, or `index` taken out.
-#[repr(C)]
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
-pub enum TcsvComputing {
-    TcsvComputingSet = 0,
-    TcsvComputingNew = 1,
-    TcsvComputingRemoved = 2,
-}
-
-/// The file with one computed column changed, its prelude line alone rewritten, read again
-/// as a new doc on up to `threads` threads; this one untouched. Null when the prelude no
-/// longer reads (an expression that does not parse, a name taken, a column it reads
-/// missing or no number), `failure` then set at its prelude line.
-///
-/// # Safety
-/// `d` is a live `.tcsv` doc; `index` below its computed columns for Set and Removed;
-/// `name` and `expression` UTF-8 (unread for Removed); `failure` is null or writable.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn tcsv_recomputed(
-    d: *mut TcsvDoc,
-    change: TcsvComputing,
-    index: usize,
-    name: TcsvStr,
-    expression: TcsvStr,
-    threads: usize,
-    failure: *mut TcsvFailure,
-) -> *mut TcsvDoc {
-    // SAFETY: the caller's promise.
-    let (d, name, expression) = unsafe { (doc(d), text_of(name.ptr, name.len), text_of(expression.ptr, expression.len)) };
-    let change = match change {
-        TcsvComputing::TcsvComputingSet => tcsv::Computing::Set(index, name, expression),
-        TcsvComputing::TcsvComputingNew => tcsv::Computing::New(name, expression),
-        TcsvComputing::TcsvComputingRemoved => tcsv::Computing::Removed(index),
-    };
-    doc_or_fail(d.doc.recomputed(change, threads.max(1)), failure)
-}
-
 /// The file written in a dialect (`sep` as for `tcsv_read_as`): a plain file's header the
-/// columns' names, computed ones with their values; a `.tcsv` file's header the `count`
-/// cells of `header` when `count` is not 0 (one a stored column), its prelude kept.
+/// columns' names and every computed cell its value; a `.tcsv` file's header the `count`
+/// cells of `header` when `count` is not 0 (one a column), its prelude kept.
 ///
 /// # Safety
 /// `d` is a live doc; `sep` is 0 or a separator; `header` points at `count` strings of
@@ -357,7 +319,7 @@ pub unsafe extern "C" fn tcsv_rows(d: *mut TcsvDoc) -> usize {
     unsafe { doc(d) }.doc.rows()
 }
 
-/// Every column: the header's, then the computed ones.
+/// Every column, in the header's order.
 ///
 /// # Safety
 /// `d` is a live doc.
@@ -367,14 +329,30 @@ pub unsafe extern "C" fn tcsv_columns(d: *mut TcsvDoc) -> usize {
     unsafe { doc(d) }.doc.columns().len()
 }
 
-/// How many columns are stored in the rows; the rest are computed.
+/// Where a cell's value comes from.
+#[repr(C)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum TcsvOrigin {
+    /// Its text: written, or in a column with a formula, the row's override.
+    TcsvOriginWritten = 0,
+    /// Its column's formula.
+    TcsvOriginFormula = 1,
+    /// Its own formula, `` `=…` ``.
+    TcsvOriginCell = 2,
+}
+
+/// Where the value of `column` at `row` comes from.
 ///
 /// # Safety
-/// `d` is a live doc.
+/// `d` is a live doc; `row` below `tcsv_rows`, `column` below `tcsv_columns`.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn tcsv_stored(d: *mut TcsvDoc) -> usize {
+pub unsafe extern "C" fn tcsv_origin(d: *mut TcsvDoc, row: usize, column: usize) -> TcsvOrigin {
     // SAFETY: the caller's promise.
-    unsafe { doc(d) }.doc.stored()
+    match unsafe { doc(d) }.doc.columns()[column].origin(row) {
+        tcsv::Origin::Written => TcsvOrigin::TcsvOriginWritten,
+        tcsv::Origin::Formula => TcsvOrigin::TcsvOriginFormula,
+        tcsv::Origin::Cell => TcsvOrigin::TcsvOriginCell,
+    }
 }
 
 /// A column's name.
@@ -410,6 +388,10 @@ pub enum TcsvKind {
     TcsvKindKey = 2,
     /// A plain file's row of another width than its header.
     TcsvKindRagged = 3,
+    /// A cell's own formula that does not compute.
+    TcsvKindFormula = 4,
+    /// A reference to no row, or to rows of two tables.
+    TcsvKindReference = 5,
 }
 
 /// A cell that breaks its type, by place.
@@ -443,6 +425,8 @@ pub unsafe extern "C" fn tcsv_problem(d: *mut TcsvDoc, i: usize) -> TcsvProblem 
         tcsv::Kind::Missing => TcsvKind::TcsvKindMissing,
         tcsv::Kind::Key => TcsvKind::TcsvKindKey,
         tcsv::Kind::Ragged => TcsvKind::TcsvKindRagged,
+        tcsv::Kind::Formula => TcsvKind::TcsvKindFormula,
+        tcsv::Kind::Reference => TcsvKind::TcsvKindReference,
     };
     TcsvProblem { row: p.row, column: p.column, kind }
 }
@@ -669,6 +653,8 @@ pub enum TcsvBase {
     TcsvBaseId = 10,
     TcsvBaseMoney = 11,
     TcsvBaseChoice = 12,
+    /// A key of another table; its tables through `tcsv_type_part` Word.
+    TcsvBaseRef = 13,
 }
 
 /// Which type a call reads: a column's, or the prelude's named type at an index.
@@ -687,8 +673,8 @@ pub struct TcsvType {
     pub optional: bool,
     /// Read from the values: the header said nothing.
     pub inferred: bool,
-    /// A computed column's.
-    pub computed: bool,
+    /// A column with a formula (`tcsv_type_part` Formula is it).
+    pub formula: bool,
     /// The type uses a named one (`tcsv_type_part` Named is its name).
     pub named: bool,
     pub has_format: bool,
@@ -710,8 +696,8 @@ pub enum TcsvPart {
     TcsvPartShorthand = 1,
     /// As the header cell spells it after its `:` (empty for a plain column).
     TcsvPartSpelled = 2,
-    /// A computed column's expression, as the prelude writes it.
-    TcsvPartExpression = 3,
+    /// The column's formula, as its header cell writes it after the type's `=`.
+    TcsvPartFormula = 3,
     TcsvPartCurrency = 4,
     TcsvPartFormat = 5,
     /// The bounds, as decimals.
@@ -770,13 +756,14 @@ pub unsafe extern "C" fn tcsv_type(d: *mut TcsvDoc, of: TcsvOf, index: usize) ->
         B::Id => (TcsvBase::TcsvBaseId, 0),
         B::Money(_) => (TcsvBase::TcsvBaseMoney, 0),
         B::Choice(w) => (TcsvBase::TcsvBaseChoice, w.len()),
+        B::Ref(targets) => (TcsvBase::TcsvBaseRef, targets.len()),
     };
     TcsvType {
         base,
         key: t.key,
         optional: t.optional,
         inferred: t.inferred,
-        computed: column.is_some_and(|c| c.computed.is_some()),
+        formula: column.is_some_and(|c| c.formula.is_some()),
         named: t.named.is_some(),
         has_format: t.format.is_some(),
         has_min: t.min.is_some(),
@@ -801,7 +788,7 @@ pub unsafe extern "C" fn tcsv_type_part(d: *mut TcsvDoc, of: TcsvOf, index: usiz
         TcsvPart::TcsvPartName => name.to_owned(),
         TcsvPart::TcsvPartShorthand => t.shorthand(),
         TcsvPart::TcsvPartSpelled => column.and_then(|c| c.spelled.clone()).unwrap_or_default(),
-        TcsvPart::TcsvPartExpression => column.and_then(|c| c.computed.clone()).unwrap_or_default(),
+        TcsvPart::TcsvPartFormula => column.and_then(|c| c.formula.clone()).unwrap_or_default(),
         TcsvPart::TcsvPartCurrency => match &t.base {
             tcsv::Base::Money(c) => c.as_str().to_owned(),
             _ => String::new(),
@@ -811,6 +798,7 @@ pub unsafe extern "C" fn tcsv_type_part(d: *mut TcsvDoc, of: TcsvOf, index: usiz
         TcsvPart::TcsvPartMax => t.max.map(|b| b.value.normal().to_string()).unwrap_or_default(),
         TcsvPart::TcsvPartWord => match &t.base {
             tcsv::Base::Choice(w) => w[word].clone(),
+            tcsv::Base::Ref(targets) => format!("{}.{}", targets[word].table, targets[word].column),
             tcsv::Base::Bool { yes, no } => {
                 if word == 0 {
                     yes.clone()
@@ -877,7 +865,7 @@ pub unsafe extern "C" fn tcsv_set_value(
             B::Time => V::Time(tcsv::value::parse_time(b).unwrap_or_else(|| wrong())),
             B::DateTime => V::DateTime(tcsv::value::parse_datetime(b).unwrap_or_else(|| wrong())),
             B::Choice(_) => V::Choice(t),
-            B::Text | B::Url | B::Email | B::Id => V::Text(t),
+            B::Text | B::Url | B::Email | B::Id | B::Ref(_) => V::Text(t),
         }
     };
     let text = d.doc.columns()[column].form(v);
@@ -997,6 +985,8 @@ pub enum TcsvTokenKind {
     TcsvTokenCellLink = 18,
     TcsvTokenCellId = 19,
     TcsvTokenError = 20,
+    TcsvTokenString = 21,
+    TcsvTokenCode = 22,
 }
 
 /// A span of the text in bytes, what it is, and its column (`UINT32_MAX` for none).
@@ -1053,6 +1043,8 @@ pub unsafe extern "C" fn tcsv_tokens(bytes: *const c_char, len: usize) -> TcsvTo
                 K::CellLink => TcsvTokenKind::TcsvTokenCellLink,
                 K::CellId => TcsvTokenKind::TcsvTokenCellId,
                 K::Error => TcsvTokenKind::TcsvTokenError,
+                K::String => TcsvTokenKind::TcsvTokenString,
+                K::Code => TcsvTokenKind::TcsvTokenCode,
             },
         })
         .collect();
@@ -1151,15 +1143,18 @@ mod tests {
             tcsv_free(r);
             tcsv_free(d);
 
-            let src = b"---\ntotal = cost * qty  // never stored\n---\ncost:EUR,qty:int\n2.50,4\n";
+            let src = b"cost:EUR,qty:int,total:EUR=cost * qty\n2.50,4,\n";
             let d = tcsv_read(src.as_ptr(), src.len(), 1, &mut f);
-            let set = tcsv_recomputed(d, TcsvComputing::TcsvComputingSet, 0, lent("sum"), lent("cost * 2"), 1, &mut f);
-            assert_eq!(text(tcsv_write(set)), "---\nsum = cost * 2  // never stored\n---\ncost:EUR,qty:int\n2.50,4\n");
-            let bad = tcsv_recomputed(d, TcsvComputing::TcsvComputingNew, 0, lent("x"), lent("cost *"), 1, &mut f);
-            assert!(bad.is_null());
-            assert_eq!((f.at, f.number), (TcsvAt::TcsvAtPreludeLine, 2));
+            assert_eq!(tcsv_origin(d, 0, 2), TcsvOrigin::TcsvOriginFormula);
+            assert!(tcsv_type(d, TcsvOf::TcsvOfColumn, 2).formula);
+            assert_eq!(text(tcsv_type_part(d, TcsvOf::TcsvOfColumn, 2, TcsvPart::TcsvPartFormula, 0)), "cost * qty");
+            let spelled = "EUR=cost * 2";
+            assert!(tcsv_set_type(d, 2, spelled.as_ptr() as *const c_char, spelled.len(), &mut f));
+            assert_eq!(text(tcsv_write(d)), "cost:EUR,qty:int,total:EUR=cost * 2\n2.50,4,\n");
+            let bad = "EUR=cost *";
+            assert!(!tcsv_set_type(d, 2, bad.as_ptr() as *const c_char, bad.len(), &mut f));
+            assert_eq!((f.at, f.number), (TcsvAt::TcsvAtColumn, 3));
             tcsv_failure_free(&mut f);
-            tcsv_free(set);
             tcsv_free(d);
         }
     }
