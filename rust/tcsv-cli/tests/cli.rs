@@ -41,3 +41,30 @@ fn check_and_fmt() {
     assert_eq!(missing.status.code(), Some(2));
     fs::remove_dir_all(&dir).unwrap();
 }
+
+#[test]
+fn imports_formulas_and_a_script() {
+    let dir = std::env::temp_dir().join(format!("tcsv-cli-books-{}", std::process::id()));
+    fs::create_dir_all(&dir).unwrap();
+    fs::write(dir.join("accounts.tcsv"), "account:text!\ncard\nhotel\n").unwrap();
+    fs::write(
+        dir.join("money.tcsv"),
+        "---\nimport accounts from \"./accounts.tcsv\"\nrates = run every hour\n```ts\nexport default async ({ last }) => [{ day: \"2026-11-04\", rate: 0.5 }]\n```\n```tcsv\nday:date!,rate:num>0\n2026-11-03,0.25\n```\n---\nday:date,usd:USD,to:accounts.account,eur:EUR=usd * rates[day].rate\n2026-11-03,100,hotel,\n2026-11-04,10,bar,\n",
+    )
+    .unwrap();
+    let tcsv = env!("CARGO_BIN_EXE_tcsv");
+    let money = dir.join("money.tcsv");
+    let shown = money.display().to_string();
+
+    let check = Command::new(tcsv).arg("check").arg(&money).output().unwrap();
+    assert_eq!(String::from_utf8(check.stdout).unwrap(), format!("{shown} row 1, to: \"bar\" is no key of accounts\n"));
+
+    let run = Command::new(tcsv).arg("run").arg(&money).output().unwrap();
+    assert_eq!(String::from_utf8(run.stdout).unwrap(), "rates: run 1 ok, 1 added, 0 changed\n");
+    let text = fs::read_to_string(&money).unwrap();
+    assert!(text.contains("day:date!,rate:num>0,run:int?\n2026-11-03,0.25,\n2026-11-04,0.5,1\n```\n```tcsv runs\n"), "{text}");
+
+    let show = Command::new(tcsv).arg("show").arg(&money).output().unwrap();
+    assert_eq!(String::from_utf8(show.stdout).unwrap(), "day\tusd\tto\teur\n2026-11-03\t100\thotel\t25\n2026-11-04\t10\tbar\t5\n");
+    fs::remove_dir_all(&dir).unwrap();
+}

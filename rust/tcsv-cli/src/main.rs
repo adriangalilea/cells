@@ -1,18 +1,32 @@
 //! `tcsv`, the command line.
 //!
-//!   tcsv check <file|folder>...       every error and problem, `path row N, column: why`
+//!   tcsv check <file|folder>...       every error and problem, `path row N, column: why`,
+//!                                     its imports followed, its own tables checked too
 //!   tcsv fmt --check <file|folder>... every file written back is the same bytes
+//!   tcsv pin <file>...                every import from a URL pinned by its hash now
+//!   tcsv run <file> [script]          its scripts run once, their rows written under them
+//!   tcsv show <file>                  its table as tab-separated text, computed cells
+//!                                     their values
 //!
 //! A folder means every `.tcsv` under it, hidden folders (`.git`, the engine's `.tcsv`)
-//! left out. Exit 0 when nothing is found, 1 when something is, 2 when the command cannot
-//! run (a path that does not exist, a file that cannot be read, a wrong argument).
+//! left out. Exit 0 when nothing is found (or every run succeeds), 1 when something is (or
+//! a run fails), 2 when the command cannot run (a path that does not exist, a file that
+//! cannot be read, a wrong argument).
+
+mod disk;
+mod json;
+mod pin;
+mod run;
 
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
-const USAGE: &str = "tcsv check <file|folder>...\ntcsv fmt --check <file|folder>...";
+use disk::Disk;
+
+const USAGE: &str =
+    "tcsv check <file|folder>...\ntcsv fmt --check <file|folder>...\ntcsv pin <file>...\ntcsv run <file> [script]\ntcsv show <file>";
 
 /// Every `.tcsv` file a path names, sorted.
 fn files(path: &Path, out: &mut Vec<PathBuf>) -> Result<(), String> {
@@ -49,20 +63,24 @@ enum Said {
 fn check(path: &Path, threads: usize) -> Result<Said, String> {
     let bytes = fs::read(path).map_err(|e| format!("{}: {e}", path.display()))?;
     let shown = path.display();
-    let doc = match tcsv::read_parallel(bytes, threads) {
+    let doc = match tcsv::read_with(bytes, &mut Disk::new(path), threads) {
         Ok(doc) => doc,
         Err(e) => return Ok(Said::Found(vec![format!("{shown} {e}")])),
     };
-    if doc.problems().is_empty() {
-        return Ok(Said::Clean);
+    // The file's own tables first, in the prelude's order, then its rows.
+    let mut lines = Vec::new();
+    for t in doc.tables().iter().filter(|t| t.own) {
+        let d = t.doc.as_ref().expect("a table of the file's own is read");
+        lines.extend(d.problems().iter().map(|p| format!("{shown} {} {}", t.name, d.describe(p))));
     }
-    Ok(Said::Found(doc.problems().iter().map(|p| format!("{shown} {}", doc.describe(p))).collect()))
+    lines.extend(doc.problems().iter().map(|p| format!("{shown} {}", doc.describe(p))));
+    if lines.is_empty() { Ok(Said::Clean) } else { Ok(Said::Found(lines)) }
 }
 
 fn round_trip(path: &Path, threads: usize) -> Result<Said, String> {
     let bytes = fs::read(path).map_err(|e| format!("{}: {e}", path.display()))?;
     let shown = path.display();
-    match tcsv::read_parallel(bytes.clone(), threads) {
+    match tcsv::read_with(bytes.clone(), &mut Disk::new(path), threads) {
         Err(e) => Ok(Said::Found(vec![format!("{shown} {e}")])),
         Ok(doc) if doc.write().as_bytes() != bytes => Ok(Said::Found(vec![format!("{shown}: written back, it is not the same bytes")])),
         Ok(_) => Ok(Said::Clean),
@@ -135,6 +153,44 @@ fn main() -> ExitCode {
             eprintln!("tcsv: fmt only checks for now: tcsv fmt --check <file|folder>...");
             ExitCode::from(2)
         }
+        Some("pin") if args.len() > 1 => {
+            for p in &args[1..] {
+                match pin::pin(Path::new(p)) {
+                    Ok(said) => said.iter().for_each(|l| println!("{l}")),
+                    Err(e) => {
+                        eprintln!("tcsv: {e}");
+                        return ExitCode::from(2);
+                    }
+                }
+            }
+            ExitCode::SUCCESS
+        }
+        Some("show") if args.len() == 2 => {
+            let path = Path::new(&args[1]);
+            let shown = fs::read(path)
+                .map_err(|e| format!("{}: {e}", path.display()))
+                .and_then(|b| tcsv::read_with(b, &mut Disk::new(path), 1).map_err(|e| format!("{} {e}", path.display())));
+            match shown {
+                Ok(doc) => {
+                    print!("{}", doc.written_as(tcsv::Dialect::Plain(tcsv::Separator::Tab), None));
+                    ExitCode::SUCCESS
+                }
+                Err(e) => {
+                    eprintln!("tcsv: {e}");
+                    ExitCode::from(2)
+                }
+            }
+        }
+        Some("run") if (2..=3).contains(&args.len()) => match run::run(Path::new(&args[1]), args.get(2).map(String::as_str)) {
+            Ok((said, ok)) => {
+                said.iter().for_each(|l| println!("{l}"));
+                if ok { ExitCode::SUCCESS } else { ExitCode::from(1) }
+            }
+            Err(e) => {
+                eprintln!("tcsv: {e}");
+                ExitCode::from(2)
+            }
+        },
         _ => {
             eprintln!("{USAGE}");
             ExitCode::from(2)
