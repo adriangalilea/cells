@@ -1,0 +1,15 @@
+{
+  "columns": [
+    { "name": "note", "type": "text" }
+  ],
+  "rows": [
+    { "note": null },
+    { "note": { "text": "tab\there" } },
+    { "note": { "text": "two\r\nlines" } },
+    { "note": null }
+  ],
+  "problems": [
+    { "row": 0, "column": "note", "kind": "type" },
+    { "row": 3, "column": "note", "kind": "type" }
+  ]
+}

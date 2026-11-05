@@ -1,0 +1,14 @@
+{
+  "separator": ",",
+  "columns": [
+    { "name": "item", "type": "text?", "inferred": true },
+    { "name": "cost", "type": "num?", "inferred": true }
+  ],
+  "rows": [
+    { "item": null, "cost": { "num": "84.20" } },
+    { "item": { "text": "maps" }, "cost": { "num": "12" } }
+  ],
+  "problems": [
+    { "row": 0, "column": "item", "kind": "type" }
+  ]
+}

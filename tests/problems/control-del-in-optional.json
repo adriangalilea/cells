@@ -1,0 +1,13 @@
+{
+  "columns": [
+    { "name": "name", "type": "text" },
+    { "name": "nick", "type": "text?" }
+  ],
+  "rows": [
+    { "name": { "text": "Ada" }, "nick": null },
+    { "name": { "text": "Grace" }, "nick": null }
+  ],
+  "problems": [
+    { "row": 0, "column": "nick", "kind": "type" }
+  ]
+}

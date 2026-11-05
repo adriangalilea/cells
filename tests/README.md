@@ -37,7 +37,7 @@ The `.json` is one of two shapes.
 - `types` is present when the prelude names types: each name and its definition, in the same shorthand.
 - Every row holds every column, computed ones included. A value is tagged with its kind: `text`, `int`, `num`, `pct`, `bool`, `date`, `time`, `datetime`, `url`, `email`, `id`, `money` (with `currency`), `choice`. A blank or broken cell is `null`, the JSON literal.
 - Numbers are decimal strings, `-` or none, digits, then a fraction or none (`"84.20"`, `"-0.5"`, `"300000000"`), compared as decimals (`"84.20"` equals `"84.2"`), never as binary floats. `bool` is `true` or `false`. A `date` is `YYYY-MM-DD`, a `time` `HH:mm:ss`, a `datetime` the instant in UTC, `YYYY-MM-DDTHH:mm:ssZ` with a fraction only when it is not zero and no trailing zero in it (`2026-08-14T12:30:00.25Z`). `text`, `url`, `email`, `id` and `choice` are the cell's text.
-- A problem is a row (0-based, from the first record), a column, and a kind: `type` (the cell breaks its type, its bounds included), `missing` (blank where the type has no `?`), `key` (a duplicate key, one problem per row that holds it). Problems are listed by row, then by column left to right; a cell has at most one. Words are each implementation's own; the suite pins where and what kind, never the sentence.
+- A problem is a row (0-based, from the first record), a column, and a kind: `type` (the cell breaks its type, its bounds included, or holds a control character, in any column, an inferred one too), `missing` (blank where the type has no `?`), `key` (a duplicate key, one problem per row that holds it). Problems are listed by row, then by column left to right; a cell has at most one. Words are each implementation's own; the suite pins where and what kind, never the sentence.
 
 **The file does not read**: the grammar is broken.
 
@@ -64,6 +64,7 @@ Every case that reads is also a write case: the file read and written with nothi
 - `{ "recompute": "total", "expression": "cost * qty * 2" }`, a `"name"` to rename it: the computed column's prelude line rewritten as `name = expression`, the spacing before its comment and the comment kept, every other byte as it was;
 - `{ "uncompute": "total" }`: the computed column's prelude line taken out, the fences kept;
 - any of these three with `"refused": "prelude line 1"`: the change is refused at that place (an expression that does not parse, a name taken, a column it reads missing or not a number, a `//` that would make the rest of it a comment), the file left as it was;
+- a `text`, a `value` or an `insert` with `"refused": "row 0"`, and a `type` with `"refused": "column 1"`: refused at that place for a control character in the text, a cell or the type (SPEC.md, Writing), the file left as it was;
 - `{ "as": ";" }` or `{ "as": "tcsv", "header": ["item:text!", "cost:EUR"] }`, always last: the file written in another dialect (`tcsv`, or a plain file with that separator, `","` `";"` `"\t"` `"|"`), and that text is the output. A plain file's header is the columns' names, computed ones included with their values a column after the stored ones (in the plain form of a decimal, `10`, never `10.00`); `header` gives a `.tcsv` file's header cells, one a stored column. A record is kept as written when the separator is the same and nothing joins it; otherwise it is written from its cells, quoted where the dialect needs it.
 
 Edits name stored columns only. A column's fields move with it whole: a short row's missing fields are written blank, and a plain file's fields past its header stay after the columns.
@@ -75,10 +76,11 @@ Edits name stored columns only. A column's fields move with it whole: a short ro
 - the header's cells are the columns' names, whatever they hold (`cost:EUR` is a name), so every column is inferred; no prelude is read (a first line `---` is the header);
 - nothing is refused but bytes that are not UTF-8: a quote out of RFC 4180's places is text (`5" long`), a quoted field's text runs on after its closing quote to the separator (`"ab"c` is `abc`), a quote never closed runs to the end of the file, and a lone `\r` ends a line;
 - a row of another width than the header reads as blanks with a problem of kind `ragged`, on the first cell it lacks, or on the last cell of a row too long, whose fields past the header are kept and written back;
+- a cell holding a control character is broken as in a `.tcsv` file (SPEC.md, Reading): a problem of kind `type`, the cell no part of what its column infers;
 - a blank name, or a name another column has already, is a header problem;
 - an edited cell is quoted when it holds the file's separator, `"` or a line break, and in a file whose header and first row quote every field, always.
 
-The `.json` also says `separator` (`","` `";"` `"\t"` `"|"`), and `names`, the header problems, when there are any: `{ "column": 1, "kind": "blank" }` or `"twice"`, columns from 0. A plain file's problems are `ragged` alone. Rows are keyed by name, so a case with two columns of one name has no rows.
+The `.json` also says `separator` (`","` `";"` `"\t"` `"|"`), and `names`, the header problems, when there are any: `{ "column": 1, "kind": "blank" }` or `"twice"`, columns from 0. A plain file's problems are `ragged`, and `type` for a control character. Rows are keyed by name, so a case with two columns of one name has no rows.
 
 ## The checker
 

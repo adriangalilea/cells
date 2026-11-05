@@ -1,0 +1,16 @@
+{
+  "columns": [
+    { "name": "invoice", "type": "text!" },
+    { "name": "amount", "type": "EUR" }
+  ],
+  "rows": [
+    { "invoice": { "text": "INV-0042" }, "amount": { "money": "950.00", "currency": "EUR" } },
+    { "invoice": null, "amount": { "money": "950.00", "currency": "EUR" } },
+    { "invoice": { "text": "INV-0042" }, "amount": { "money": "950.00", "currency": "EUR" } }
+  ],
+  "problems": [
+    { "row": 0, "column": "invoice", "kind": "key" },
+    { "row": 1, "column": "invoice", "kind": "type" },
+    { "row": 2, "column": "invoice", "kind": "key" }
+  ]
+}

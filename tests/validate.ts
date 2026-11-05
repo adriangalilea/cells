@@ -189,8 +189,8 @@ function readsCase(path: string, j: { [k: string]: Json }, plain: boolean) {
       return fault(path, `${what} names no row`)
     if (typeof p.column !== "string" || !stored.includes(p.column))
       return fault(path, `${what} names no stored column`)
-    if (typeof p.kind !== "string" || !(plain ? ["ragged"] : KINDS).includes(p.kind))
-      return fault(path, `${what} has no known kind${plain ? " (a plain file's problems are ragged rows)" : ""}`)
+    if (typeof p.kind !== "string" || !(plain ? ["ragged", "type"] : KINDS).includes(p.kind))
+      return fault(path, `${what} has no known kind${plain ? " (a plain file's problems are ragged rows and control characters)" : ""}`)
     const at: [number, number] = [p.row, stored.indexOf(p.column)]
     if (at[0] < last[0] || (at[0] === last[0] && at[1] <= last[1]))
       fault(path, `${what} is out of order, or a second problem on one cell`)
@@ -252,12 +252,12 @@ function edits(path: string, j: Json) {
       return refused()
     }
     if ("insert" in e) {
-      keysAre(path, what, e, ["insert", "header"], ["cells"])
+      keysAre(path, what, e, ["insert", "header"], ["cells", "refused"])
       place(what, e.insert)
       if (typeof e.header !== "string" || e.header === "") fault(path, `${what}: "header" is not a header cell`)
       if ("cells" in e && (!Array.isArray(e.cells) || !e.cells.every((c) => typeof c === "string")))
         fault(path, `${what}: "cells" is not a list of texts`)
-      return
+      return refused()
     }
     if ("remove" in e) {
       keysAre(path, what, e, ["remove"])
@@ -276,15 +276,16 @@ function edits(path: string, j: Json) {
     }
     if (typeof e.column !== "string" || e.column === "") fault(path, `${what} names no column`)
     if ("type" in e) {
-      keysAre(path, what, e, ["column", "type"])
+      keysAre(path, what, e, ["column", "type"], ["refused"])
       if (typeof e.type !== "string") fault(path, `${what}: "type" is not a spelling`)
     } else if ("text" in e) {
-      keysAre(path, what, e, ["row", "column", "text"])
+      keysAre(path, what, e, ["row", "column", "text"], ["refused"])
       if (typeof e.text !== "string") fault(path, `${what}: "text" is not text`)
     } else if ("value" in e) {
-      keysAre(path, what, e, ["row", "column", "value"])
+      keysAre(path, what, e, ["row", "column", "value"], ["refused"])
       value(path, what, e.value)
     } else fault(path, `${what} sets no text, value or type, and moves no column`)
+    refused()
     if (!("type" in e) && (typeof e.row !== "number" || !Number.isInteger(e.row) || e.row < 0))
       fault(path, `${what} names no row`)
   })

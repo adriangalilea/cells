@@ -1,0 +1,15 @@
+{
+  "columns": [
+    { "name": "n", "type": "int?", "inferred": true },
+    { "name": "label", "type": "text?", "inferred": true }
+  ],
+  "rows": [
+    { "n": { "int": "1" }, "label": { "text": "a" } },
+    { "n": { "int": "2" }, "label": { "text": "b" } },
+    { "n": null, "label": null }
+  ],
+  "problems": [
+    { "row": 2, "column": "n", "kind": "type" },
+    { "row": 2, "column": "label", "kind": "type" }
+  ]
+}

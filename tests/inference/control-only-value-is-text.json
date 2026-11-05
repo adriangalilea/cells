@@ -1,0 +1,13 @@
+{
+  "columns": [
+    { "name": "code", "type": "text?", "inferred": true },
+    { "name": "qty", "type": "int?", "inferred": true }
+  ],
+  "rows": [
+    { "code": null, "qty": { "int": "1" } },
+    { "code": null, "qty": { "int": "2" } }
+  ],
+  "problems": [
+    { "row": 0, "column": "code", "kind": "type" }
+  ]
+}

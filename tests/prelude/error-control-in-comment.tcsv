@@ -1,0 +1,5 @@
+---
+type K = a|b   // a note
+---
+k:K
+a

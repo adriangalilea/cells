@@ -1,0 +1,13 @@
+{
+  "columns": [
+    { "name": "item", "type": "text" },
+    { "name": "qty", "type": "int" }
+  ],
+  "rows": [
+    { "item": null, "qty": { "int": "1" } },
+    { "item": { "text": "maps\tdiesel" }, "qty": { "int": "2" } }
+  ],
+  "problems": [
+    { "row": 0, "column": "item", "kind": "type" }
+  ]
+}

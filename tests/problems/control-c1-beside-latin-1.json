@@ -1,0 +1,13 @@
+{
+  "columns": [
+    { "name": "city", "type": "text" },
+    { "name": "price", "type": "text" }
+  ],
+  "rows": [
+    { "city": null, "price": { "text": "£ 12" } },
+    { "city": { "text": "Café noir" }, "price": { "text": "¡¿" } }
+  ],
+  "problems": [
+    { "row": 0, "column": "city", "kind": "type" }
+  ]
+}

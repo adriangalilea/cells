@@ -1,0 +1,5 @@
+[
+  { "insert": 1, "header": "note:text?", "cells": ["ok", "b\u007f"], "refused": "row 1" },
+  { "column": "item", "type": "'a\u0007'|b", "refused": "column 1" },
+  { "insert": 1, "header": "note:text?", "cells": ["ok", "fine"] }
+]
