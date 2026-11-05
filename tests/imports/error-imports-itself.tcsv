@@ -1,5 +1,0 @@
----
-import me from "./error-imports-itself.tcsv"
----
-amount:EUR
-10

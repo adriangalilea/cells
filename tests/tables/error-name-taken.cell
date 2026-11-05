@@ -1,0 +1,10 @@
+---
+fees = ```cells
+kind:text!
+```
+fees = ```cells
+kind:text!
+```
+---
+amount:EUR
+10

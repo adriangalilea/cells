@@ -1,28 +1,28 @@
-# Books in TCSV
+# Books in Cells
 
-> **A draft.** Plain text accounting done properly is what TCSV is designed against (SPEC.md, "What it is for"). These are the books written with what SPEC.md writes (imports, references, formulas in the header) and the primitives its Open section proposes (`money in`, `unique`, `final`, references to a file's own rows, `check`), which no reader implements yet, so these files do not read today. Every name and amount is invented.
+> **A draft.** Plain text accounting done properly is what Cells is designed against (SPEC.md, "What it is for"). These are the books written with what SPEC.md writes (imports, references, formulas in the header) and the primitives its Open section proposes (`money in`, `unique`, `final`, references to a file's own rows, `check`), which no reader implements yet, so these files do not read today. Every name and amount is invented.
 
 ## What it takes from whom
 
 - **TigerBeetle**: amounts exact at a commodity's scale; one commodity per account, so a balance is one number; movements never edited, corrected by new rows; a pending movement posted or voided by a new row that names it, resolved at most once; limits as properties of an account.
 - **beancount**: pessimism. Accounts are opened before use and refuse movements once closed, every booking is checked, the order of rows means nothing.
 - **hledger**: the variants of a balance assertion, periodic rows for forecasts and budgets, a conversion account for exchanges.
-- **TCSV's own rule, one fact one row**: a movement is one row with both its sides, balanced by construction. Rows that are one transaction share a `group`. The engine derives the postings view (one signed posting per leg) that balances, assertions, lots and valuation are defined over, which is how all three tools define them.
+- **The format's own rule, one fact one row**: a movement is one row with both its sides, balanced by construction. Rows that are one transaction share a `group`. The engine derives the postings view (one signed posting per leg) that balances, assertions, lots and valuation are defined over, which is how all three tools define them.
 
 ## The files
 
 ```
 books/
-├── commodities.tcsv   what money is held in
-├── accounts.tcsv      every account, once
-├── vendors.tcsv
-├── balances.tcsv      what a statement says a balance was
-├── schedules.tcsv     movements that recur, for forecasts
-├── prices.tcsv
-└── home/money.tcsv    the movements
+├── commodities.cell   what money is held in
+├── accounts.cell      every account, once
+├── vendors.cell
+├── balances.cell      what a statement says a balance was
+├── schedules.cell     movements that recur, for forecasts
+├── prices.cell
+└── home/money.cell    the movements
 ```
 
-`commodities.tcsv`:
+`commodities.cell`:
 
 ```
 ---
@@ -34,11 +34,11 @@ USD,currency,2,us dollar
 KITE,stock,0,Kite Works shares
 ```
 
-`accounts.tcsv`:
+`accounts.cell`:
 
 ```
 ---
-import commodities from "./commodities.tcsv"
+import commodities from "./commodities.cell"
 type Kind = assets|liabilities|equity|income|expenses
 type Booking = strict|fifo|lifo|hifo|average
 ---
@@ -57,13 +57,13 @@ equity:conversion,equity,EUR,2026-01-01,,no,
 
 The hierarchy is the name (`assets:bank:main` under `assets:bank`), as in every plain text ledger. `never_negative` is a limit checked before every write; `booking` says which lot a sale draws from when it names none.
 
-`home/money.tcsv`:
+`home/money.cell`:
 
 ```
 ---
-import accounts from "../accounts.tcsv"
-import commodities from "../commodities.tcsv"
-import vendors from "../vendors.tcsv"
+import accounts from "../accounts.cell"
+import commodities from "../commodities.cell"
+import vendors from "../vendors.cell"
 type Phase = single|pending|post|void
 type Code = purchase|refund|transfer|salary|tax|pension|exchange|sale|correction|opening
 ---
@@ -90,11 +90,11 @@ r7s8t9v0,2026-09-21,single,950.00,EUR,expenses:home:rent,assets:bank:main,,,,,,c
 
 ## A balance that must hold
 
-`balances.tcsv`:
+`balances.cell`:
 
 ```
 ---
-import accounts from "./accounts.tcsv"
+import accounts from "./accounts.cell"
 check balance_holds:
   select b.id from balances b
   where b.balance <> (select coalesce(sum(p.amount), 0) from postings p
@@ -123,5 +123,5 @@ The account's posted balance at the end of `date` (a statement's closing balance
 
 ## Recurring and prices
 
-- `schedules.tcsv`, `id:id!,every:monthly|quarterly|yearly,day:1..31,from:date,until:date?,amount:money in commodity,commodity:commodities.commodity,account_from:accounts.account,account_to:accounts.account,description:text`: each due occurrence is shown as a computed row (never stored, as a computed column's field) for forecasts and budgets. When the real movement happens, a real row is written naming the schedule.
-- `prices.tcsv`, `id:id!,date:date,commodity:commodities.commodity,price:num>0,in:commodities.commodity,source:text?`: one price per date, commodity and currency (a `unique` over the three). Valuation (then, at a period's end, now) is a query over it, never data.
+- `schedules.cell`, `id:id!,every:monthly|quarterly|yearly,day:1..31,from:date,until:date?,amount:money in commodity,commodity:commodities.commodity,account_from:accounts.account,account_to:accounts.account,description:text`: each due occurrence is shown as a computed row (never stored, as a computed column's field) for forecasts and budgets. When the real movement happens, a real row is written naming the schedule.
+- `prices.cell`, `id:id!,date:date,commodity:commodities.commodity,price:num>0,in:commodities.commodity,source:text?`: one price per date, commodity and currency (a `unique` over the three). Valuation (then, at a period's end, now) is a query over it, never data.

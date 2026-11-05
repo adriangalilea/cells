@@ -1,4 +1,0 @@
-module TCSVCore {
-  header "tcsv.h"
-  export *
-}

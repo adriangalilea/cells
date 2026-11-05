@@ -1,10 +1,10 @@
 {
-  "name": "tcsv",
+  "name": "cells",
   "version": "0.0.0",
   "private": true,
   "type": "module",
-  "description": "TCSV, typed CSV: the TypeScript reference implementation (../SPEC.md)",
-  "exports": "./src/tcsv.ts",
+  "description": "Cells: the first TypeScript reader, kept as a readable reference (../SPEC.md)",
+  "exports": "./src/cells.ts",
   "scripts": {
     "examples": "bun run examples/run.ts",
     "check": "tsc --noEmit"

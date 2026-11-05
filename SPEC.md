@@ -1,8 +1,8 @@
-# TCSV
+# Cells
 
 > **Not yet final.** This spec is a draft: what follows is what the conformance suite ([`tests/`](tests)) holds every reader to, and [Open](#open) holds what is decided in direction but not written, and what is undecided. Any of it may still change.
 
-Typed CSV. A `.tcsv` file is a table whose header cells carry their column's type, `name:type`, and its formula when it computes, `name:type=formula`; it may open with a prelude, fenced by `---`, that names types, imports other files and holds tables of its own, written inline or filled by a script. One file, never a sidecar: the types travel with the data. MIME type `text/tcsv`.
+Data and its logic, in one plain-text file. A cell, a `.cell` file, is a table whose header cells carry their column's type, `name:type`, and its formula when it computes, `name:type=formula`; it may open with a prelude, fenced by `---`, that names types, imports other files and holds tables of its own, written inline or filled by a script. One file, never a sidecar: the types travel with the data. MIME type `text/vnd.cells`.
 
 ```
 ---
@@ -13,7 +13,7 @@ fuel,travel,84.20,1,,yes,2026-08-14
 groceries,food,`=96.75 / 3`,2,,no,2026-08-15
 ```
 
-TCSV is its own format, read by TCSV readers. Its records borrow RFC 4180's quoting because it is the right rule for cells, never to stay readable by CSV tools; no rule here is bent for a reader that does not know TCSV. Considered: staying readable by them, as Oils' TSV8 does with an empty first column on every row and a row of types an old reader takes for data. That reader still needs the file cleaned by hand, so every file would pay, on every row, for a compatibility nobody gets.
+Cells is its own format, read by Cells readers. Its records borrow RFC 4180's quoting because it is the right rule for cells, never to stay readable by CSV tools; no rule here is bent for a reader that does not know Cells. Considered: staying readable by them, as Oils' TSV8 does with an empty first column on every row and a row of types an old reader takes for data. That reader still needs the file cleaned by hand, so every file would pay, on every row, for a compatibility nobody gets.
 
 ## The file
 
@@ -21,7 +21,7 @@ TCSV is its own format, read by TCSV readers. Its records borrow RFC 4180's quot
 - **Control characters** are Unicode's Cc, U+0000 to U+001F, U+007F and U+0080 to U+009F, but for tab, `\n` and `\r`. They show nothing, so `INV-0042` and `INV-0042` with a NUL after it would be two keys that look one: no part of a file holds one unseen. One in a cell breaks the cell ([Reading](#reading)); one in a header cell, its name or its type, is an error naming the column; one in a prelude line, a comment or a fence's content included, is an error naming the line. A message names the character by its code point, `U+0000`, never by the character.
 - **Records** are RFC 4180: fields separated by `,`, a field holding `,`, `"` or a line break is quoted, `""` is a quote inside one. A quoted field opens with `"` and closes at a lone `"`, which the end of the file, a `,` or a line ending follows; text after the closing quote, a `"` inside a field that did not open with one, and a quoted field never closed are errors naming the record (the header, or the row). Inside quotes every character is the field's, line breaks included; a control character quoted is still one.
 - **Lines** end in `\n` or `\r\n`. Each line's ending is kept as read, so a file may mix them, and so is whether the file ends in a line break: one at the very end closes the last record and opens none. A `\r` that is not followed by `\n`, outside quotes, is an error naming its record.
-- **The prelude** opens when the file's first line is exactly `---` and closes at the next line that is exactly `---` outside a fence ([The prelude](#the-prelude)); between them, TCSV's own language. It is optional; a file with none starts at its header. A prelude that opens and never closes is an error. A `---` on any other line is no fence: after the prelude it is the header (one column named `---`), below the header it is a row.
+- **The prelude** opens when the file's first line is exactly `---` and closes at the next line that is exactly `---` outside a fence ([The prelude](#the-prelude)); between them, the format's own language. It is optional; a file with none starts at its header. A prelude that opens and never closes is an error. A `---` on any other line is no fence: after the prelude it is the header (one column named `---`), below the header it is a row.
 - **The header** is the first line after the prelude. Every other line is a row. A file with no line after its prelude (an empty file, or a prelude alone) has no columns and no rows.
 - **A row** has as many fields as the header, or fewer, the missing ones blank. More is an error naming the row. A blank line among the rows is a row whose every field is blank.
 
@@ -33,7 +33,7 @@ cost:EUR>=0        total:EUR=cost * qty
 ```
 
 1. **The name** is everything before the first `:`, spaces included (` item` and `item` are two names). A name may hold any character but `:`, and is at least one character. No two columns share a name.
-2. **`:`** says a type follows. A cell with no `:` is a plain column, its type inferred from its values (below). So every CSV is a TCSV with no types written.
+2. **`:`** says a type follows. A cell with no `:` is a plain column, its type inferred from its values (below). So every CSV is a cell with no types written.
 3. **The type** is everything after it up to its formula, and never empty. It never holds a `,` or a `"`; a name that holds one quotes the whole cell (`"price, net:EUR"`).
 4. **`=`** says a formula follows: the first `=` outside single quotes that closes no `>=` or `<=`.
 5. **The formula** is everything after it, spaces and tabs at its ends cut, and never empty ([Formulas](#formulas)). A formula that holds a `,` or a `"` (`round(cost, 2)`) quotes the whole cell, as any field that holds one is quoted.
@@ -144,10 +144,10 @@ Inside a type, outside single quotes: `|` `/` `!` `?` `<` `>` `=` `..` `(` `)` `
 
 ````
 ---
-import accounts from "../accounts.tcsv"       // the shared accounts
+import accounts from "../accounts.cell"       // the shared accounts
 type Kind = card|transfer
 
-fees = ```tcsv
+fees = ```cells
 kind:Kind!,pct:pct
 card,1.4
 transfer,0
@@ -157,8 +157,8 @@ transfer,0
 
 The prelude is the work; the header and rows after it are what the file shows, and an app shows the prelude folded. One statement a line, a fence's content apart; a blank line is nothing, and spaces and tabs at a line's ends and between a statement's parts are nothing (a tab counts as a space everywhere in the prelude, outside quotes). A line that is no statement is an error naming it. Statements are read in order: each sees the types and tables named above it, never one below. A name is a type's or a table's, once in the file: one named twice, whatever the two are, is an error naming the second. An error inside a statement (a type that does not read, an import that does not follow, a table's cell grammar) names the statement's line, or the line inside the table's fence it is on.
 
-- **`//`** starts a comment to the line's end, outside single and double quotes and outside fences (`type Path = 'a//b'|c`, `"https://example.com/r.tcsv"`).
-- **A fence** opens with three backticks or more and its language, `` ```tcsv ``, and closes at the first line that is as many backticks and nothing else, spaces and tabs aside. What it holds is its language's, so a `//` or a `---` inside one is no comment and no end of the prelude's. A fence never closed is an error naming the line it opens on.
+- **`//`** starts a comment to the line's end, outside single and double quotes and outside fences (`type Path = 'a//b'|c`, `"https://example.com/r.cell"`).
+- **A fence** opens with three backticks or more and its language, `` ```cells ``, and closes at the first line that is as many backticks and nothing else, spaces and tabs aside. What it holds is its language's, so a `//` or a `---` inside one is no comment and no end of the prelude's. A fence never closed is an error naming the line it opens on.
 - **A computed column** is no statement: `total = cost * qty` is an error naming its line. It is a header cell, `total:EUR=cost * qty` ([Formulas](#formulas)).
 
 ### Named types
@@ -168,25 +168,25 @@ The prelude is the work; the header and rows after it are what the file shows, a
 ### Imports
 
 ```
-import accounts from "../accounts.tcsv"
-import { Kind, fees } from "./rates.tcsv"
-import vat from "https://example.com/es/vat.tcsv" with { sha256: "9c1e7f0a…" }
-import last_year from "./money.tcsv" with { rev: "a1b2c3d" }
+import accounts from "../accounts.cell"
+import { Kind, fees } from "./rates.cell"
+import vat from "https://example.com/es/vat.cell" with { sha256: "9c1e7f0a…" }
+import last_year from "./money.cell" with { rev: "a1b2c3d" }
 ```
 
 - **The default import**, `import accounts from "…"`, names the other file's table: its key a type for a column (`to:accounts.account`), its columns read by a formula through a reference or by key.
 - **A named import**, `import { Kind, fees } from "…"`, takes what the other file exports: a type (`export type Kind = …`) or a table (`export fees = …`). A name it does not export is an error naming the line, the names it does export said. What a file does not export is its own, so `accounts.account` only ever means a column.
-- **Where from** is a quoted path, read from the importing file's folder (`"../accounts.tcsv"`), or a URL. Nothing is copied in: a local import is read again at every read, so it is always current.
-- **A URL is pinned by its content**: `with { sha256: "…" }`, the hash of its bytes in lower-case hexadecimal, is its identity. A URL with no hash is an error naming the line (`tcsv pin` writes it). Bytes that do not match the hash are an error naming the line, the hash they have said; a change at the source is never followed. A reader fetches from wherever the bytes can be had (the URL, a cache of them by their hash).
+- **Where from** is a quoted path, read from the importing file's folder (`"../accounts.cell"`), or a URL. Nothing is copied in: a local import is read again at every read, so it is always current.
+- **A URL is pinned by its content**: `with { sha256: "…" }`, the hash of its bytes in lower-case hexadecimal, is its identity. A URL with no hash is an error naming the line (`cells pin` writes it). Bytes that do not match the hash are an error naming the line, the hash they have said; a change at the source is never followed. A reader fetches from wherever the bytes can be had (the URL, a cache of them by their hash).
 - **`with { rev: "…" }`** reads a local file as its history holds it at that revision (git's, for the command line), so last quarter's report reads last quarter's files. A reader that holds no history reads it as unreachable.
 - **A file that imports itself**, directly or through others, is an error naming the line.
 - **An import that cannot be reached** (a file not there, a URL not fetched) is no error: the file still reads. A reference into the table it names is unchecked, a formula reading it gives null, a type it names (a name with a capital) reads as `text`.
 
-Data has no versions to resolve: no ranges, no resolver, no lockfile. Considered: `use path`, a syntax of our own where one exists that every reader and every highlighter knows, whose import attributes (ES2025) are where a pin goes. npm and Cargo pin in a lockfile beside the manifest, the sidecar TCSV exists to avoid; Zig keeps a URL and its hash together, as here.
+Data has no versions to resolve: no ranges, no resolver, no lockfile. Considered: `use path`, a syntax of our own where one exists that every reader and every highlighter knows, whose import attributes (ES2025) are where a pin goes. npm and Cargo pin in a lockfile beside the manifest, the sidecar Cells exists to avoid; Zig keeps a URL and its hash together, as here.
 
 ### Tables written inline
 
-**`name = ```tcsv`**, its rows on the lines after it and a closing fence: a table of the file's own, a TCSV table (a header and rows, no prelude of its own) whose types may be the prelude's above it and whose references and formulas may read the tables above it. **`export name = ```tcsv`** is one another file may import. It is read as any table is: its problems are its own (`tcsv check` reports them under its name), and the file's formulas read it by name: `fees[kind].pct`, `sum(fees.pct)`. Considered: a store beside the file, or hidden in it, which would make the file no longer all there is. A file of several sheets, as a workbook: a folder is the workbook and a file one table of it, so a table one file alone needs is written inline, and one another file needs moves to its own file, one import changed and no row.
+**`name = ```cells`**, its rows on the lines after it and a closing fence: a table of the file's own, read as a cell's table is (a header and rows, no prelude of its own) whose types may be the prelude's above it and whose references and formulas may read the tables above it. **`export name = ```cells`** is one another file may import. It is read as any table is: its problems are its own (`cells check` reports them under its name), and the file's formulas read it by name: `fees[kind].pct`, `sum(fees.pct)`. Considered: a store beside the file, or hidden in it, which would make the file no longer all there is. A file of several sheets, as a workbook: a folder is the workbook and a file one table of it, so a table one file alone needs is written inline, and one another file needs moves to its own file, one import changed and no row.
 
 ### Tables a script fills
 
@@ -198,12 +198,12 @@ export default async function ({ last }) {
   return (await res.json()).map(d => ({ date: d.day, rate: String(d.close) }))
 }
 ```
-```tcsv
+```cells
 date:date!,rate:num>0,run:int?
 2026-11-03,0.9287,9
 2026-11-04,0.9312,9
 ```
-```tcsv runs
+```cells runs
 run:int!,at:datetime,outcome:ok|failed,error:text?
 9,2026-11-04T17:00:03Z,ok,
 12,2026-11-05T17:00:02Z,failed,HTTP 503
@@ -213,8 +213,8 @@ run:int!,at:datetime,outcome:ok|failed,error:text?
 **`name = run <schedule>`**, then three fences, blank lines between them nothing ([Running](#running) says what runs them):
 
 1. **The script**, a fence naming its language. A fence that names none, or one no runner runs, is an error naming the line it opens on: v0 runs `ts`, TypeScript, with Bun.
-2. **The table**, a `` ```tcsv `` fence: its header the table's, written by its author, at least; its rows what the last run returned. It is read as a table written inline is, and is the table the name names. A script with no table, or a table with no header, is an error naming the line.
-3. **The runs**, a `` ```tcsv runs `` fence, the engine's: each run some row still names, the last one and the last failure, with when it ran, its outcome and its error. A table with none has not run.
+2. **The table**, a `` ```cells `` fence: its header the table's, written by its author, at least; its rows what the last run returned. It is read as a table written inline is, and is the table the name names. A script with no table, or a table with no header, is an error naming the line.
+3. **The runs**, a `` ```cells runs `` fence, the engine's: each run some row still names, the last one and the last failure, with when it ran, its outcome and its error. A table with none has not run.
 
 Any other fence after a script, or one of these twice, is an error naming the line it opens on. **The schedule** is triggers joined by `,`, any of which starts a run, then `in <zone>` (`in Europe/Madrid`, `in UTC`) for their times of day:
 
@@ -226,7 +226,7 @@ Any other fence after a script, or one of these twice, is an error naming the li
 | `every monday at 09:00` | each week, the day named (`monday` to `sunday`) |
 | `every month on 1 at 08:00` | each month, the day of the month named (1 to 31) |
 | `cron 0 9 * * 1-5` | as cron's five fields say |
-| `when ../money.tcsv changes` | each time that file changes |
+| `when ../money.cell changes` | each time that file changes |
 
 A trigger with a time of day (and `cron`) needs the zone: a file moves between machines, and 18:00 must be one moment on all of them. A schedule that says none of these is an error naming the line.
 
@@ -250,7 +250,7 @@ invoice 42,80.00,1,79.99
 
 ### A formula in a cell
 
-- **A field that is a backtick, `=`, a formula and a backtick**, `` `=96.75 / 3` ``, holds its own formula, in any column of a `.tcsv` file (a plain file's cells are text). Its value is what the formula gives on its row, read by the column's type. A field holding a `,` or a `"` (`` "`=round(qty * 2.25, 1)`" ``) is quoted as any field is.
+- **A field that is a backtick, `=`, a formula and a backtick**, `` `=96.75 / 3` ``, holds its own formula, in any column of a `.cell` file (a plain file's cells are text). Its value is what the formula gives on its row, read by the column's type. A field holding a `,` or a `"` (`` "`=round(qty * 2.25, 1)`" ``) is quoted as any field is.
 - **A bare `=` is text**: `=> see invoice` is a note. Text that would itself read as a formula (backticks, `=`, anything, a closing backtick) is written with its first backtick doubled, which reading takes away: ```` ``=x` ```` is the text `` `=x` ``. Considered: a leading `=`, as spreadsheets write one, escaped by a leading `'`. That makes `'` special at the start of every cell and taxes the common case: notes beginning with `=` are common, a single cell's formula rare.
 - **A cell's formula that does not compute** (it does not read, it names what is not there, it gives what its column cannot hold, it reads its own cell through others) is a problem of kind `formula` on its cell, its value null, the problem saying why.
 - **A formula names what it reads, never where it lies**: a column of its own row, a row by its key, a whole column. Considered: coordinates, `=$B$2`. A position survives an inserted row in a spreadsheet only because the program rewrites every reference when it happens; in a file edited by hand or merged by git nothing does, and every `B7` below the new line points at another row without a word. `$` decides how a formula copies when it is filled down, a gesture of a UI; a column's formula is the fill. An app may show letters and numbers, accept `=C2*D2` and write `` `=cost * qty` ``.
@@ -322,7 +322,7 @@ So `cost:EUR min 0 key` is written `cost:EUR>=0!`, and `mood:one of 'so so' meh 
 
 ## Running
 
-**Opening never runs anything.** Reading, querying, charting and sending a file run no script: a file opens with the rows its last run stored, as a spreadsheet opens with its last values. A script runs when it is asked to (`tcsv run <file> [name]`), or on its schedule where something keeps one ([Open](#open)).
+**Opening never runs anything.** Reading, querying, charting and sending a file run no script: a file opens with the rows its last run stored, as a spreadsheet opens with its last values. A script runs when it is asked to (`cells run <file> [name]`), or on its schedule where something keeps one ([Open](#open)).
 
 - **The contract is the process.** The script's module exports a function by default; the runner calls it with the context, `{ rows, last, now }`: the table's rows as the file writes them, by column name (the engine's `run` aside), the last of them or null, and the time of the run, an instant. It returns a list of rows, objects by column name: text as it is, a number, a boolean (written in the column's words), or null (blank). Under the function, the context is JSON on stdin, each row returned a JSON line on stdout, and what the script prints on stderr, kept as the run's words.
 - **What a run writes.** A table with a key gains the keys it did not have and has the rows whose keys it returned replaced; a table without one is replaced whole. Each row names, in the engine's column `run:int?` (added to the header the first time), the run that last wrote it; a row written by hand names none. The runs block gains the run, `ok`, and keeps the runs some row names, the last one and the last failure.
@@ -335,20 +335,20 @@ In v0 a script is a program with the whole access of its runner, its imports res
 
 ### What it is for
 
-The use it is designed against is **plain text accounting done properly**: books kept as plain files (a `money.tcsv` per folder), readable, diffable and the person's own, with what ledgers in plain text never could do: say that an amount is euros, that an account must exist, that VAT is derived from the amount, that an invoice appears once, and answer any question across every file. Every decision below is judged by whether it makes those books better.
+The use it is designed against is **plain text accounting done properly**: books kept as plain files (a `money.cell` per folder), readable, diffable and the person's own, with what ledgers in plain text never could do: say that an amount is euros, that an account must exist, that VAT is derived from the amount, that an invoice appears once, and answer any question across every file. Every decision below is judged by whether it makes those books better.
 
 ### Decided in direction, not yet written
 
-- **The filesystem as a graph database.** A folder of `.tcsv` files is a graph of typed tables, its edges the references: written today, a reference that breaks is a problem naming the file and row. What is not yet: tools that notice before a break lands (the language server warns on a key renamed in the other file, the writer refuses to save a dangling reference without saying so), and a rename followed through every file that references the key.
+- **The filesystem as a graph database.** A folder of `.cell` files is a graph of typed tables, its edges the references: written today, a reference that breaks is a problem naming the file and row. What is not yet: tools that notice before a break lands (the language server warns on a key renamed in the other file, the writer refuses to save a dangling reference without saying so), and a rename followed through every file that references the key.
   ```
   ~/books/
-  ├── accounts.tcsv              account:text!,kind:assets|liabilities|expenses|income
-  ├── vendors.tcsv               vendor:text!,name:text,vat_id:text?
-  ├── home/money.tcsv            account_from/account_to → accounts, vendor → vendors
-  ├── travel/money.tcsv
-  └── studio/money.tcsv
+  ├── accounts.cell              account:text!,kind:assets|liabilities|expenses|income
+  ├── vendors.cell               vendor:text!,name:text,vat_id:text?
+  ├── home/money.cell            account_from/account_to → accounts, vendor → vendors
+  ├── travel/money.cell
+  └── studio/money.cell
   ```
-- **Fixes a reference offers**: `did you mean "rent"?`, `add it to accounts.tcsv`, so a new account never means opening the other file by hand; and for a plain text column, a value seen once beside a near spelling seen often a hint, never a problem.
+- **Fixes a reference offers**: `did you mean "rent"?`, `add it to accounts.cell`, so a new account never means opening the other file by hand; and for a plain text column, a value seen once beside a near spelling seen often a hint, never a problem.
 - **Schedules kept.** A file's schedules are read today, never kept: the daemon (ENGINE.md) runs each script on its schedule. A run missed while the machine slept runs once on waking, never once per miss; retries are the engine's, the same for every file; every run is in the engine's log.
 - **Every row has an identity.** A file's key (`!`) is its rows' identity. A file with none gets an `id` column the first time the engine writes it, eight characters from a base-32 alphabet, unique within the file, assigned only by the engine and never edited through it. Edits address a row by its identity, never by its position, so a line inserted by hand elsewhere never makes an edit land on the wrong row, and two versions of a file merge row by row. A row without one (added by a tool that bypasses the engine) is found by its text until the engine next writes the file, which gives it one; a copied row's repeated id is replaced on the later copy. Apps built on the engine never show the column.
 - **One fact, one row, one file.** A movement is one row holding both its sides (`account_from`, `account_to`), so recording it is one write. A change that must touch several files (an account renamed in every file that references it) is an intent the engine journals before applying file by file, and replays after a crash; every intent is safe to apply twice.
@@ -358,33 +358,33 @@ The use it is designed against is **plain text accounting done properly**: books
   - **`unique`** on a column that is not the key, among its non-blank cells, and over several columns together.
   - **`final`**: a column written once, never changed by an edit. A movement whose money columns are final is corrected by a new row, never edited, as TigerBeetle never edits a transfer.
   - **References to a file's own rows** (`pending:money.id`), for a payment that settles a hold, a row that corrects another, rows that are one transaction.
-  - **`check`**: a rule over many rows or files, a query in the prelude returning the rows that break it, checked before every write and by `tcsv check` (a balance that must hold on a date, an account open on a movement's date). The prelude is where it lives, beside the data it guards; it is SQL, the language formulas are a part of, whole, in DuckDB.
+  - **`check`**: a rule over many rows or files, a query in the prelude returning the rows that break it, checked before every write and by `cells check` (a balance that must hold on a date, an account open on a movement's date). The prelude is where it lives, beside the data it guards; it is SQL, the language formulas are a part of, whole, in DuckDB.
 - **Go's checksum log** for pinned imports, proving everyone got the same bytes and not only you, once files are published widely.
-- **Tooling, so the format is pleasant everywhere.** A tree-sitter grammar (highlighting in every editor that speaks tree-sitter, and in ui's code views), a language server (types checked as typed, a broken reference underlined, a referenced file's keys completed, a rename followed across the folder), native apps (tally, on the Mac) and web components (ui's table) built for it. Like rainbow CSV, but with the types.
-- **Visualisation for free, because it is typed.** A chart needs to know what each column is: a date is a time axis, money is a measure in its currency, a choice is a category, a reference a link to follow. An untyped CSV makes every chart guess or be configured; a TCSV says it, so a table can be charted as it is (spending by month, by account, by vendor), and the graph of files drawn as a graph. Every place that shows TCSV shows its charts: ui's components, the Apple platforms' (Swift Charts over the typed columns), and the Mac app. What a chart needs beyond the types (which columns, which kind of chart) is declared in the prelude, never scripted, so a file sent as a chart is seen without running anything: a spreadsheet's charts are declarations too, and its macros apart.
+- **Tooling, so the format is pleasant everywhere.** A tree-sitter grammar (highlighting in every editor that speaks tree-sitter, and in ui's code views), a language server (types checked as typed, a broken reference underlined, a referenced file's keys completed, a rename followed across the folder), native apps (Cells.app, on the Mac) and web components (ui's table) built for it. Like rainbow CSV, but with the types.
+- **Visualisation for free, because it is typed.** A chart needs to know what each column is: a date is a time axis, money is a measure in its currency, a choice is a category, a reference a link to follow. An untyped CSV makes every chart guess or be configured; a cell says it, so a table can be charted as it is (spending by month, by account, by vendor), and the graph of files drawn as a graph. Every place that shows a cell shows its charts: ui's components, the Apple platforms' (Swift Charts over the typed columns), and the Mac app. What a chart needs beyond the types (which columns, which kind of chart) is declared in the prelude, never scripted, so a file sent as a chart is seen without running anything: a spreadsheet's charts are declarations too, and its macros apart.
 
 ### Undecided
 
 - **The query language.** Never one of ours. The candidates:
-  - **SQL**, which every reader knows and which already runs over files (DuckDB reads a folder of CSV as tables); a folder of `.tcsv` is typed tables, so `amount` is a number and `date` a date:
+  - **SQL**, which every reader knows and which already runs over files (DuckDB reads a folder of CSV as tables); a folder of `.cell` is typed tables, so `amount` is a number and `date` a date:
     ```
-    $ tcsv sql ~/books "
+    $ cells sql ~/books "
       select vendor, sum(amount) from money
       where account_to like 'expenses:home:%' and year(date) = 2026
       group by vendor"
     ```
-    `money` is every `money.tcsv` under the folder, one table.
+    `money` is every `money.cell` under the folder, one table.
   - **GQL** (ISO/IEC 39075, 2024, Cypher's successor), the shape of the graph: following references from a movement to its account, an account to its parent, a vendor to everything it touched; awkward for sums and grouping, which are most of accounting.
   - **SQL/PGQ** (SQL:2023, property graph queries): GQL's `MATCH` inside SQL, so one query walks the graph and then sums and groups; DuckDB has it (`duckpgq`). The likely answer: the two standards, composed, nothing invented.
     ```
-    $ tcsv sql ~/books "
+    $ cells sql ~/books "
       from graph_table(books
         match (m:money)-[:account_to]->(a:accounts)
         where a.account like 'expenses:%'
         columns (a.account, m.amount))
       select account, sum(amount) group by account"
     ```
-- **The command line beyond `check`, `fmt --check`, `pin`, `run` and `show`**: `tcsv sql` (above), and what else a folder-as-database needs (a visualisation of the graph, a rename followed through every file).
+- **The command line beyond `check`, `fmt --check`, `pin`, `run` and `show`**: `cells sql` (above), and what else a folder-as-database needs (a visualisation of the graph, a rename followed through every file).
 - **Words about a column and a title for the table.** A header cell has no room for a description without bloating it; the prelude is the natural place, its syntax for them open.
 - **Strictness.** "A broken cell loads and is reported" is the proposal; whether a reader may also be asked to refuse a file is not decided.
 - **Narrowing a reference** to some of the rows it names (`from` an account of kind `assets` or `income`): in the header cell (`from:accounts.account(kind=assets|income)`), or as a `check`, which keeps the header readable where the rule spans two files.
@@ -392,7 +392,7 @@ The use it is designed against is **plain text accounting done properly**: books
   - **Owners.** A block or a file names who writes it; an edit by anyone else is refused through the engine and found by its hash otherwise. Solves who may write what; does not keep what was known.
   - **Append-only with a hash chain.** `run …, append`: rows never replaced, each with two engine columns, `recorded` and `chain` (BLAKE3 of the previous row's `chain` and the row's bytes), so "as known on" is the latest row of each key recorded by then, and an edit or a removal breaks every later link. Solves what was known and makes tampering evident; does not stop a whole chain written again from scratch, which stays valid unless each link is signed by a device's key, as ENGINE.md's Later plans for the log.
   - **Transitions as a type.** `phase:pending->post|void`: the values a cell may move to from the one it holds, checked on every write, replacing ACCOUNTING.md's `unique` on `pending` if adopted. Solves an illegal change of state; does not keep history or say who wrote it.
-- **A folder sent as one file.** `tcsv pack` writing one file whose prelude carries a frozen copy of each file it imports, every reference resolved, for someone who should open one thing.
+- **A folder sent as one file.** `cells pack` writing one file whose prelude carries a frozen copy of each file it imports, every reference resolved, for someone who should open one thing.
 - **Several values in one cell** (`tags:text[]`, split on `;`): useful (tags on a movement), and where a table starts to stretch; undecided.
 
 ### Brainstorm, not planned

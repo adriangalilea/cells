@@ -2,7 +2,7 @@
 
 > **Not yet final**, as SPEC.md. This is how the engine is designed: [v0](#v0-one-mac) is what is being built, [Later](#later) the direction it is built to grow into. What exists is said in README.md.
 
-The files are the truth. The engine is a typed, current, instant view of them, and the one place a client reads and writes through. It is to a folder of `.tcsv` files what git's index is to a working tree, or Spotlight's to a disk: derived, rebuilt from the text, and never in the way of anyone who edits the text without it.
+The files are the truth. The engine is a typed, current, instant view of them, and the one place a client reads and writes through. It is to a folder of `.cell` files what git's index is to a working tree, or Spotlight's to a disk: derived, rebuilt from the text, and never in the way of anyone who edits the text without it.
 
 The engine is a library: the Rust core, behind a C header on the Apple platforms and as wasm in a page.
 
@@ -10,8 +10,8 @@ The engine is a library: the Rust core, behind a C header on the Apple platforms
 
 ### How it runs
 
-- **The daemon.** One process per user, `tcsv serve`, kept by launchd, hosts the engine for every client on the Mac: tally, the language server, the command line. Each file is parsed once, its references are held as a graph, and every query and chart is served from memory. It runs each file's scripts on their schedules (SPEC.md, "Running"; `tcsv run` runs one by hand today), through Bun, and only there: a page or an app shows what the last run stored.
-- **Standalone.** A page given a `.tcsv` file (the wasm engine), or an app given a file without the daemon: read, render, edit, give it back. Nothing else is needed, and a file is complete on its own.
+- **The daemon.** One process per user, `cells serve`, kept by launchd, hosts the engine for every client on the Mac: Cells.app, the language server, the command line. Each file is parsed once, its references are held as a graph, and every query and chart is served from memory. It runs each file's scripts on their schedules (SPEC.md, "Running"; `cells run` runs one by hand today), through Bun, and only there: a page or an app shows what the last run stored.
+- **Standalone.** A page given a `.cell` file (the wasm engine), or an app given a file without the daemon: read, render, edit, give it back. Nothing else is needed, and a file is complete on its own.
 
 ### The protocol
 
@@ -43,7 +43,7 @@ Intents and queries in, results and changes out. Results are Arrow IPC frames (t
 
 ### The log
 
-`.tcsv/log.jsonl` in the folder, one line per entry: its number, the BLAKE3 hash of the line before (so an edit or a removal breaks every later link), the intent id, its kind (`set`, `add`, `delete`, `rename`, `run`, `external`, `done`), its arguments, for each file the hash it was made against and the hash it produced, its assigned ids and timestamp. Past a size, it continues in a new segment linked to the last.
+`.cells/log.jsonl` in the folder, one line per entry: its number, the BLAKE3 hash of the line before (so an edit or a removal breaks every later link), the intent id, its kind (`set`, `add`, `delete`, `rename`, `run`, `external`, `done`), its arguments, for each file the hash it was made against and the hash it produced, its assigned ids and timestamp. Past a size, it continues in a new segment linked to the last.
 
 ### Editors
 
@@ -78,7 +78,7 @@ The direction v0 is built so it never needs a rewrite to reach. None of it is be
 - **Every device a full replica.** The files sync as files (iCloud Drive, git, Syncthing); each device's engine keeps its own cache from its own files; reads, queries and records work with every other device off. On iOS the app hosts the engine itself (no daemon exists there), watching its folder through `NSFilePresenter`, asking iCloud Drive to download what it opens.
 - **Books owned.** A folder names one device whose engine applies intents to it. Another device records an intent, shows it at once marked pending, and sends it to the owner, which applies it when it is in reach after checking every rule, or refuses it with the reason. The reason is money: an invoice once, a balance that must hold, a limit, a pending payment settled once are rules over many rows, and no merge of cells keeps them (two devices each recording a valid 50 from an available 80 merge into an overdraft with no cell in conflict). This is Turso's embedded replicas, the replica writing ahead of its primary as pending.
 - **The transport** between devices: a mesh where devices dial keys, not addresses, end to end encrypted, paired once, with an outbox holding intents for a device out of reach. tether, the studio's own, is the candidate.
-- **The merge**, for what the engine did not write (two hand edits on two devices, a git merge, a conflict version iCloud Drive or Syncthing kept): three ways by row identity, cells compared by typed value, deletions against edits and additions on both sides as conflicts, row order never one, the result checked against the books' rules. Conflicts are a table beside the file (`.tcsv/conflicts/<file>.tcsv`), never markers in it, so the file always reads; never resolved by guessing. No file sync hands over a common ancestor (only git does), so each device keeps a store of file versions by hash and finds the ancestor through the logs. git calls the engine as its merge driver. This is Dolt's merge of tables by primary key.
+- **The merge**, for what the engine did not write (two hand edits on two devices, a git merge, a conflict version iCloud Drive or Syncthing kept): three ways by row identity, cells compared by typed value, deletions against edits and additions on both sides as conflicts, row order never one, the result checked against the books' rules. Conflicts are a table beside the file (`.cells/conflicts/<file>.cell`), never markers in it, so the file always reads; never resolved by guessing. No file sync hands over a common ancestor (only git does), so each device keeps a store of file versions by hash and finds the ancestor through the logs. git calls the engine as its merge driver. This is Dolt's merge of tables by primary key.
 - **The log per device**: one chain per device per folder, signed by the device's key and anchored in its keychain, so a chain deleted or replaced is found, and a merge's parents are known.
 - **Pages connected**: a page reaching the engine over a WebSocket, paired once, its origin checked, since every page the browser visits can reach `localhost`.
 - **Replicated**: devices agreeing on the order of the intent log (Viewstamped Replication, as TigerBeetle does), for books shared by several people where two writers must never both succeed. It needs an always-on replica: with two devices, consensus needs both awake for every write.

@@ -1,0 +1,6 @@
+---
+type Genre = novel|poetry
+import accounts.cell
+---
+title:text,genre:Genre
+Salt and Sky,novel

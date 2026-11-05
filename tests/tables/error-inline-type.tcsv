@@ -1,9 +1,0 @@
----
-type Kind = card|transfer
-fees = ```tcsv
-kind:Kind!,pct:percent
-card,1.4
-```
----
-amount:EUR
-10

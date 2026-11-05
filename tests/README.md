@@ -4,11 +4,11 @@ The spec's rules as data, read by every implementation. An implementation confor
 
 ## A case
 
-A case is a `.tcsv` file and a `.json` beside it, under the folder of what it checks: `records/`, `header/`, `types/`, `choices/`, `constraints/`, `formats/`, `marks/`, `explicit/`, `prelude/`, `formulas/`, `tables/` (tables written inline and filled by scripts), `imports/`, `inference/`, `problems/`, `write/`, and `plain/` (below), the one folder whose files are not TCSV. The file's name says the rule: `constraints/money-at-least-zero.tcsv`. A case whose file does not read is named `error-…`.
+A case is a `.cell` file and a `.json` beside it, under the folder of what it checks: `records/`, `header/`, `types/`, `choices/`, `constraints/`, `formats/`, `marks/`, `explicit/`, `prelude/`, `formulas/`, `tables/` (tables written inline and filled by scripts), `imports/`, `inference/`, `problems/`, `write/`, and `plain/` (below), the one folder whose files are not cells. The file's name says the rule: `constraints/money-at-least-zero.cell`. A case whose file does not read is named `error-…`.
 
-The `.tcsv` is bytes, never text to be normalized: its line endings, its trailing break and its byte order mark are the case. `.gitattributes` here keeps git from touching them.
+The `.cell` is bytes, never text to be normalized: its line endings, its trailing break and its byte order mark are the case. `.gitattributes` here keeps git from touching them.
 
-**A case's imports** are followed through the suite's own files: a path from the case's folder, as `imports/money.tcsv` reads `"./accounts.tcsv"`, the other case beside it. A file the suite does not hold, a URL and a `rev` read as unreachable (SPEC.md, Imports). An implementation hands its reader every `.tcsv` file of the suite by its path in it (the Rust core's `files::Files`, the wasm build's `read(text, { at, files })`).
+**A case's imports** are followed through the suite's own files: a path from the case's folder, as `imports/money.cell` reads `"./accounts.cell"`, the other case beside it. A file the suite does not hold, a URL and a `rev` read as unreachable (SPEC.md, Imports). An implementation hands its reader every `.cell` file of the suite by its path in it (the Rust core's `files::Files`, the wasm build's `read(text, { at, files })`).
 
 The `.json` is one of two shapes.
 
@@ -47,13 +47,13 @@ The `.json` is one of two shapes.
 { "error": { "at": "prelude line 1" } }
 ```
 
-`at` is one of `the file`, `the header`, `column N` (1-based), `prelude line N` (1-based, inside the fences), `the prelude`, `row N` (0-based). `the file` is bytes that are not UTF-8, the one case whose `.tcsv` is not text; `the header` and `row N` are a record's own errors (its quoting, its line ending, a row too long); `column N` is a header cell's (its name, its type, its formula); `prelude line N` a statement's, or the line inside a table's fence a table's error is on; `the prelude` a prelude never closed. A case that does not read holds exactly one error, so no order between errors is pinned. An implementation may refuse the file (an exception) or open it with the error on it; either way it reports exactly this place.
+`at` is one of `the file`, `the header`, `column N` (1-based), `prelude line N` (1-based, inside the fences), `the prelude`, `row N` (0-based). `the file` is bytes that are not UTF-8, the one case whose `.cell` is not text; `the header` and `row N` are a record's own errors (its quoting, its line ending, a row too long); `column N` is a header cell's (its name, its type, its formula); `prelude line N` a statement's, or the line inside a table's fence a table's error is on; `the prelude` a prelude never closed. A case that does not read holds exactly one error, so no order between errors is pinned. An implementation may refuse the file (an exception) or open it with the error on it; either way it reports exactly this place.
 
 ## Writing
 
 Every case that reads is also a write case: the file read and written with nothing changed is the same bytes.
 
-`write/` holds edits, three files each and no `.json`: `<name>.tcsv` (which reads), `<name>.edit.json`, and `<name>.out.tcsv`, the bytes after the edits. `<name>.edit.json` is a list applied in order, each one of:
+`write/` holds edits, three files each and no `.json`: `<name>.cell` (which reads), `<name>.edit.json`, and `<name>.out.cell`, the bytes after the edits. `<name>.edit.json` is a list applied in order, each one of:
 
 - `{ "row": 0, "column": "item", "text": "fuel, diesel" }`: the cell's text, written quoted only when CSV needs it (`` "`=96.75/3`" `` the cell's own formula);
 - `{ "row": 0, "column": "paid", "value": { "bool": false } }`: a value tagged as in a read, or `null`, written in the column's form (its pair's words, its format, text that would read as a formula escaped);
@@ -63,18 +63,18 @@ Every case that reads is also a write case: the file read and written with nothi
 - `{ "move": "qty", "to": 0 }`: the column taken out and put back at that place;
 - `{ "rename": "qty", "to": "count" }`: the column under a new name, its type and formula kept as spelled;
 - a `text`, a `value` or an `insert` with `"refused": "row 0"`: refused at that place for a control character in the text or a cell (SPEC.md, Writing), the file left as it was; a `type` with `"refused": "column 1"`: refused at the column changed, for a control character, a type or a formula that does not read, or a formula of another column that then cannot read; an `insert` with `"refused": "column N"`: the new header cell refused at its place;
-- `{ "as": ";" }` or `{ "as": "tcsv", "header": ["item:text!", "cost:EUR"] }`, always last: the file written in another dialect (`tcsv`, or a plain file with that separator, `","` `";"` `"\t"` `"|"`), and that text is the output. A plain file's header is the columns' names and its computed cells their values (in the plain form of a decimal, `10`, never `10.00`); `header` gives a `.tcsv` file's header cells, one a column. A record is kept as written when the separator is the same and nothing joins it; otherwise it is written from its cells, quoted where the dialect needs it.
+- `{ "as": ";" }` or `{ "as": "cells", "header": ["item:text!", "cost:EUR"] }`, always last: the file written in another dialect (`cells`, or a plain file with that separator, `","` `";"` `"\t"` `"|"`), and that text is the output. A plain file's header is the columns' names and its computed cells their values (in the plain form of a decimal, `10`, never `10.00`); `header` gives a `.cell` file's header cells, one a column. A record is kept as written when the separator is the same and nothing joins it; otherwise it is written from its cells, quoted where the dialect needs it.
 
 A column's fields move with it whole: a short row's missing fields are written blank, and a plain file's fields past its header stay after the columns.
 
 ## Plain files
 
-`plain/` holds what a TCSV reader reads when a file is not TCSV: a `.csv`, a `.tsv`, plain text. Its cases are `.csv`, `.tsv` or `.txt` files, each with a `.json` of the same shape as a case that reads, or with an `.edit.json` and its output, `<name>.out.csv` (the case's own extension). An implementation reads them with the separator it finds in the first lines (the one splitting each into as many fields as the first, the most fields winning, a tie to the comma, then the tab, the semicolon, the pipe) and the plain reading:
+`plain/` holds what a reader reads when a file is not a cell: a `.csv`, a `.tsv`, plain text. Its cases are `.csv`, `.tsv` or `.txt` files, each with a `.json` of the same shape as a case that reads, or with an `.edit.json` and its output, `<name>.out.csv` (the case's own extension). An implementation reads them with the separator it finds in the first lines (the one splitting each into as many fields as the first, the most fields winning, a tie to the comma, then the tab, the semicolon, the pipe) and the plain reading:
 
 - the header's cells are the columns' names, whatever they hold (`cost:EUR` is a name), so every column is inferred; no prelude is read (a first line `---` is the header);
 - nothing is refused but bytes that are not UTF-8: a quote out of RFC 4180's places is text (`5" long`), a quoted field's text runs on after its closing quote to the separator (`"ab"c` is `abc`), a quote never closed runs to the end of the file, and a lone `\r` ends a line;
 - a row of another width than the header reads as blanks with a problem of kind `ragged`, on the first cell it lacks, or on the last cell of a row too long, whose fields past the header are kept and written back;
-- a cell holding a control character is broken as in a `.tcsv` file (SPEC.md, Reading): a problem of kind `type`, the cell no part of what its column infers;
+- a cell holding a control character is broken as in a `.cell` file (SPEC.md, Reading): a problem of kind `type`, the cell no part of what its column infers;
 - a blank name, or a name another column has already, is a header problem;
 - an edited cell is quoted when it holds the file's separator, `"` or a line break, and in a file whose header and first row quote every field, always.
 
@@ -82,7 +82,7 @@ The `.json` also says `separator` (`","` `";"` `"\t"` `"|"`), and `names`, the h
 
 ## The checker
 
-`bun tests/validate.ts` checks that every case is well-formed by this contract: every `.tcsv` has its `.json` (or, in `write/`, its `.edit.json` and `.out.tcsv`; in `plain/`, every file one or the other), every `.json` has one of the two shapes, every tag and kind is known, every value names a column and every row holds every column. No implementation is involved.
+`bun tests/validate.ts` checks that every case is well-formed by this contract: every `.cell` has its `.json` (or, in `write/`, its `.edit.json` and `.out.cell`; in `plain/`, every file one or the other), every `.json` has one of the two shapes, every tag and kind is known, every value names a column and every row holds every column. No implementation is involved.
 
 ## Running it
 

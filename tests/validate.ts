@@ -227,8 +227,8 @@ function edits(path: string, j: Json) {
     if (!isObject(e)) return fault(path, `${what} is not an object`)
     if ("as" in e) {
       keysAre(path, what, e, ["as"], ["header"])
-      if (typeof e.as !== "string" || ![...SEPARATORS, "tcsv"].includes(e.as))
-        fault(path, `${what}: "as" is a separator or "tcsv"`)
+      if (typeof e.as !== "string" || ![...SEPARATORS, "cells"].includes(e.as))
+        fault(path, `${what}: "as" is a separator or "cells"`)
       if ("header" in e && (!Array.isArray(e.header) || !e.header.every((h) => typeof h === "string")))
         fault(path, `${what}: "header" is not a list of header cells`)
       if (i !== j.length - 1) fault(path, `${what}: "as" writes the file, so it is the last edit`)
@@ -357,33 +357,33 @@ for (const folder of FOLDERS) {
       plainFile(dir, file, has)
       continue
     }
-    if (!/^[a-z0-9]+(-[a-z0-9]+)*(\.edit\.json|\.out\.tcsv|\.tcsv|\.json)$/.test(file)) {
+    if (!/^[a-z0-9]+(-[a-z0-9]+)*(\.edit\.json|\.out\.cell|\.cell|\.json)$/.test(file)) {
       fault(path, "is not named as a case (lowercase words joined by -)")
       continue
     }
-    const stem = file.replace(/(\.edit\.json|\.out\.tcsv|\.tcsv|\.json)$/, "")
+    const stem = file.replace(/(\.edit\.json|\.out\.cell|\.cell|\.json)$/, "")
     if (folder === "write") {
       if (file.endsWith(".json") && !file.endsWith(".edit.json")) fault(path, "a write case has no .json")
-      else if (!has.has(`${stem}.tcsv`)) fault(path, `has no ${stem}.tcsv`)
-      if (file === `${stem}.tcsv`) {
+      else if (!has.has(`${stem}.cell`)) fault(path, `has no ${stem}.cell`)
+      if (file === `${stem}.cell`) {
         cases++
         bytes(path)
         if (!has.has(`${stem}.edit.json`)) fault(path, `has no ${stem}.edit.json`)
-        if (!has.has(`${stem}.out.tcsv`)) fault(path, `has no ${stem}.out.tcsv`)
+        if (!has.has(`${stem}.out.cell`)) fault(path, `has no ${stem}.out.cell`)
         if (stem.startsWith("error-")) fault(path, "a write case reads")
       }
-      if (file.endsWith(".out.tcsv")) bytes(path)
+      if (file.endsWith(".out.cell")) bytes(path)
       if (file.endsWith(".edit.json")) {
         const j = json(path)
         if (j !== undefined) edits(path, j)
       }
       continue
     }
-    if (file.endsWith(".edit.json") || file.endsWith(".out.tcsv")) {
+    if (file.endsWith(".edit.json") || file.endsWith(".out.cell")) {
       fault(path, "edits belong in write/")
       continue
     }
-    if (file.endsWith(".tcsv")) {
+    if (file.endsWith(".cell")) {
       cases++
       if (!has.has(`${stem}.json`)) fault(path, `has no ${stem}.json`)
       else {
@@ -395,7 +395,7 @@ for (const folder of FOLDERS) {
       }
       continue
     }
-    if (!has.has(`${stem}.tcsv`)) fault(path, `has no ${stem}.tcsv`)
+    if (!has.has(`${stem}.cell`)) fault(path, `has no ${stem}.cell`)
     const j = json(path)
     if (j === undefined) continue
     if (!isObject(j)) {

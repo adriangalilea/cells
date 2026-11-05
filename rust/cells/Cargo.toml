@@ -1,0 +1,18 @@
+[package]
+name = "cells-engine"
+version = "0.1.0"
+description = "Cells, data and its logic in one plain-text file: the one reader and writer (SPEC.md is the law)"
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[lib]
+name = "cells"
+
+[features]
+default = ["std"]
+# Threads: a large input is read in parallel, split at record boundaries.
+std = []
+
+[dependencies]

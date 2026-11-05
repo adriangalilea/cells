@@ -1,12 +1,12 @@
 [workspace]
 resolver = "3"
-members = ["tcsv", "tcsv-cli", "tcsv-wasm", "tcsv-ffi", "tcsv-bench"]
-default-members = ["tcsv", "tcsv-cli", "tcsv-ffi"]
+members = ["cells", "cells-cli", "cells-wasm", "cells-ffi", "cells-bench"]
+default-members = ["cells", "cells-cli", "cells-ffi"]
 
 [workspace.package]
 edition = "2024"
 license = "MIT"
-repository = "https://github.com/adriangalilea/tcsv"
+repository = "https://github.com/adriangalilea/cells"
 rust-version = "1.89"
 
 [profile.release]

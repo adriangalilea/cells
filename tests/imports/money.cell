@@ -1,0 +1,8 @@
+---
+import accounts from "./accounts.cell"
+import { Kind } from "./accounts.cell"
+---
+date:date,amount:EUR>0,from:accounts.account,to:accounts.account,spending:bool=to.kind = 'expenses',kind:Kind?
+2026-11-01,950.00,bank,rent,,
+2026-11-03,2400.00,salary,bank,,income
+2026-11-05,30.00,bank,coffee,,

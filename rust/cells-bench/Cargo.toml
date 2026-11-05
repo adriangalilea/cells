@@ -1,0 +1,16 @@
+[package]
+name = "cells-bench"
+version = "0.0.0"
+description = "Benchmarks of the Cells engine: generated budgets, read typed, against the csv crate's untyped ceiling"
+publish = false
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[[bin]]
+name = "cells-bench"
+path = "src/main.rs"
+
+[dependencies]
+cells = { package = "cells-engine", path = "../cells" }
+csv = "=1.4.0"

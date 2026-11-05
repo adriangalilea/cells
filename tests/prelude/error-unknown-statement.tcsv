@@ -1,6 +1,0 @@
----
-type Genre = novel|poetry
-import accounts.tcsv
----
-title:text,genre:Genre
-Salt and Sky,novel

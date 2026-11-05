@@ -1,7 +1,0 @@
----
-fees = ```tcsv
-kind:text!
-card
----
-amount:EUR
-10

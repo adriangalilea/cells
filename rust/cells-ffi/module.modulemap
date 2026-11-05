@@ -1,0 +1,4 @@
+module CellsCore {
+  header "cells.h"
+  export *
+}

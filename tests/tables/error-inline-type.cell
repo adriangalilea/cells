@@ -1,0 +1,9 @@
+---
+type Kind = card|transfer
+fees = ```cells
+kind:Kind!,pct:percent
+card,1.4
+```
+---
+amount:EUR
+10

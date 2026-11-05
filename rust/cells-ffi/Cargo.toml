@@ -1,0 +1,14 @@
+[package]
+name = "cells-ffi"
+version = "0.1.0"
+description = "The Cells engine's C ABI: a header for Swift and any C caller, columns through the Arrow C Data Interface"
+publish = false
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[lib]
+crate-type = ["staticlib", "rlib"]
+
+[dependencies]
+cells = { package = "cells-engine", path = "../cells" }

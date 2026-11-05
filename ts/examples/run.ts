@@ -8,9 +8,9 @@ import {
   read,
   setCell,
   setType,
-  TcsvError,
+  CellsError,
   write,
-} from "../src/tcsv"
+} from "../src/cells"
 
 let count = 0
 function example(name: string, run: () => void) {
@@ -31,7 +31,7 @@ function throws(run: () => unknown, message: string) {
   try {
     run()
   } catch (e) {
-    if (!(e instanceof TcsvError)) throw e
+    if (!(e instanceof CellsError)) throw e
     if (!e.message.includes(message))
       throw new Error(`threw "${e.message}", want it to say "${message}"`)
     return

@@ -1,0 +1,7 @@
+---
+fees = ```cells
+kind:text!
+card
+---
+amount:EUR
+10

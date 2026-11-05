@@ -1,0 +1,7 @@
+---
+import vendors from "./nowhere.cell"
+import { Region } from "./nowhere.cell"
+import rates from "https://rates.example/eurusd.cell" with { sha256: "9c1e7f0a5d" }
+---
+vendor:vendors.vendor,region:Region,amount:EUR,rate:num=rates[vendor].rate
+fuel-stop,north,10,

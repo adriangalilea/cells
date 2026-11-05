@@ -3,6 +3,39 @@
 version = 4
 
 [[package]]
+name = "cells-bench"
+version = "0.0.0"
+dependencies = [
+ "cells-engine",
+ "csv",
+]
+
+[[package]]
+name = "cells-cli"
+version = "0.1.0"
+dependencies = [
+ "cells-engine",
+]
+
+[[package]]
+name = "cells-engine"
+version = "0.1.0"
+
+[[package]]
+name = "cells-ffi"
+version = "0.1.0"
+dependencies = [
+ "cells-engine",
+]
+
+[[package]]
+name = "cells-wasm"
+version = "0.1.0"
+dependencies = [
+ "cells-engine",
+]
+
+[[package]]
 name = "csv"
 version = "1.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -88,39 +121,6 @@ dependencies = [
  "proc-macro2",
  "quote",
  "unicode-ident",
-]
-
-[[package]]
-name = "tcsv"
-version = "0.1.0"
-
-[[package]]
-name = "tcsv-bench"
-version = "0.0.0"
-dependencies = [
- "csv",
- "tcsv",
-]
-
-[[package]]
-name = "tcsv-cli"
-version = "0.1.0"
-dependencies = [
- "tcsv",
-]
-
-[[package]]
-name = "tcsv-ffi"
-version = "0.1.0"
-dependencies = [
- "tcsv",
-]
-
-[[package]]
-name = "tcsv-wasm"
-version = "0.1.0"
-dependencies = [
- "tcsv",
 ]
 
 [[package]]

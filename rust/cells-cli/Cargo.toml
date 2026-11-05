@@ -1,0 +1,15 @@
+[package]
+name = "cells-cli"
+version = "0.1.0"
+description = "cells, the command line: check, show, pin and run a folder of .cell files"
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[[bin]]
+name = "cells"
+path = "src/main.rs"
+
+[dependencies]
+cells = { package = "cells-engine", path = "../cells" }

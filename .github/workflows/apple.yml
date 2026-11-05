@@ -1,12 +1,12 @@
-# The core for the Apple platforms, released: rust/tcsv-ffi/build-apple.sh builds
-# TCSVCore.xcframework (macOS, iOS, tvOS and their simulators), and its zip becomes the
+# The core for the Apple platforms, released: rust/cells-ffi/build-apple.sh builds
+# CellsCore.xcframework (macOS, iOS, tvOS and their simulators), and its zip becomes the
 # asset of a release `apple-<version>`, its SwiftPM checksum in the release's body. Run by
 # hand when a consumer needs a new core:
 #
-#   gh workflow run apple -R adriangalilea/tcsv -f version=0.1.0
+#   gh workflow run apple -R adriangalilea/cells -f version=0.1.0
 #
 # swift-utils then pins the asset by its URL and that checksum (its Package.swift, `core`),
-# and `mise run tcsv-core <version>` there checks the pin against the release.
+# and `mise run cells-core <version>` there checks the pin against the release.
 name: apple
 
 on:
@@ -28,7 +28,7 @@ jobs:
       - name: build
         run: |
           brew install cbindgen
-          bash rust/tcsv-ffi/build-apple.sh
+          bash rust/cells-ffi/build-apple.sh
       - name: release
         env:
           GH_TOKEN: ${{ github.token }}
@@ -36,10 +36,10 @@ jobs:
         run: |
           set -euo pipefail
           out=rust/target/apple
-          sum=$(swift package compute-checksum "$out/TCSVCore.xcframework.zip")
-          [ "$sum" = "$(cat "$out/TCSVCore.xcframework.zip.sha256")" ]
-          gh release create "apple-$VERSION" "$out/TCSVCore.xcframework.zip" \
-            --target "$GITHUB_SHA" --title "TCSVCore $VERSION" \
-            --notes "TCSVCore.xcframework for macOS, iOS, tvOS and their simulators, built from $GITHUB_SHA.
+          sum=$(swift package compute-checksum "$out/CellsCore.xcframework.zip")
+          [ "$sum" = "$(cat "$out/CellsCore.xcframework.zip.sha256")" ]
+          gh release create "apple-$VERSION" "$out/CellsCore.xcframework.zip" \
+            --target "$GITHUB_SHA" --title "CellsCore $VERSION" \
+            --notes "CellsCore.xcframework for macOS, iOS, tvOS and their simulators, built from $GITHUB_SHA.
 
           SwiftPM checksum: \`$sum\`"

@@ -1,5 +1,0 @@
----
-import { private } from "./exports.tcsv"
----
-amount:EUR
-10
