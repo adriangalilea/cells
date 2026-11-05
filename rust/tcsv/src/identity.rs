@@ -47,6 +47,8 @@ pub enum Refused {
     Changed { now: String },
     /// The type does not read.
     Type(Error),
+    /// The text holds a control character, which no cell holds.
+    Control(Error),
 }
 
 /// What a file's text is now: its length and a 64-bit hash of its bytes. Equal versions,
@@ -108,8 +110,7 @@ impl Doc {
                 if was.as_ref().is_some_and(|w| *w != now) {
                     return Err(Refused::Changed { now: now.into_owned() });
                 }
-                self.set_cell(r, c, text);
-                Ok(())
+                self.set_cell(r, c, text).map_err(Refused::Control)
             }
             Change::Type { column, spelled } => {
                 let c = self.stored_column(column)?;
@@ -154,7 +155,8 @@ impl Doc {
                 }
                 for r in needs {
                     let id = fresh(&mut seen, &mut bits);
-                    doc.set_cell(r, c, &id);
+                    // Crockford's alphabet holds no control character.
+                    doc.set_cell(r, c, &id).unwrap();
                 }
                 Ok(doc)
             }

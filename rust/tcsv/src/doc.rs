@@ -68,6 +68,19 @@ fn error(at: At, why: impl Into<String>) -> Error {
     Error { at, why: why.into() }
 }
 
+/// A character by its code point, as a message shows one that renders as nothing: `U+0000`.
+fn code_point(point: u32) -> String {
+    format!("U+{point:04X}")
+}
+
+/// Text for a cell a writer writes, refused at `at` when it holds a control character.
+fn writable(text: &str, at: At) -> Result<(), Error> {
+    match column::control(text.as_bytes()) {
+        Some(point) => Err(error(at, format!("{} is a control character, which no cell holds", code_point(point)))),
+        None => Ok(()),
+    }
+}
+
 fn stop_why(s: Stop, header_fields: usize) -> String {
     match s {
         Stop::Unclosed => "a quoted field is never closed".to_owned(),
@@ -296,6 +309,9 @@ fn read_on(bytes: Vec<u8>, dialect: Dialect, threads: usize) -> Result<Doc, Erro
         let cell = scan::text(src, s, e, &mut scratch);
         // Unquoting cuts at ASCII quotes only, so a field of a `str` is one.
         let cell = core::str::from_utf8(cell).unwrap();
+        if !plain && let Some(point) = column::control(cell.as_bytes()) {
+            return Err(error(at, format!("holds {}, a control character", code_point(point))));
+        }
         if plain {
             // A plain file's header cell is its column's name, whatever it holds.
             let column = j as u32;
@@ -381,6 +397,10 @@ fn read_prelude(source: &str, from: usize) -> Result<(usize, Prelude), Error> {
             let p = prelude::parse(&inside).map_err(|(n, why)| error(At::PreludeLine(n), why))?;
             return Ok((at, p));
         }
+        if let Some(point) = column::control(line_of(l).as_bytes()) {
+            let n = inside.len() as u32 + 1;
+            return Err(error(At::PreludeLine(n), format!("holds {}, a control character", code_point(point))));
+        }
         inside.push(line_of(l));
     }
     Err(error(At::Prelude, "opens with --- and never closes"))
@@ -398,7 +418,7 @@ fn settle(ty: Option<Type>, r: Reading, column: u32, threads: usize, problems: &
             let base = if blank { Base::Text } else { inferred_base(candidates) };
             match redecode(&base, &offsets, &bytes, &valid) {
                 Some((b, v)) => (Type::inferred(base), b, v),
-                // Inferred columns are never reported: values the base cannot hold together
+                // An inferred type is never reported: values the base cannot hold together
                 // (38 digits at one scale) keep the column text.
                 None => (Type::inferred(Base::Text), Building::Text { offsets, bytes }, valid),
             }
@@ -633,6 +653,15 @@ impl Doc {
         let length = matches!(c.ty.base, Base::Text);
         let why = match p.why {
             Why::Missing => return "is missing".to_owned(),
+            Why::Control { point } => {
+                // The text up to the character, never the character itself, which shows nothing.
+                let (at, _) = column::control_at(text.as_bytes()).unwrap();
+                let what = format!("{}, a control character", code_point(point));
+                return match at {
+                    0 => format!("starts with {what}"),
+                    _ => format!("holds {what}, after \"{}\"", &text[..at]),
+                };
+            }
             Why::Ragged { fields } => {
                 let n = self.stored;
                 return match (fields as usize) < n {
@@ -835,19 +864,21 @@ impl Doc {
     /// threads: a kept row is its record as the file has it now, edits included; a new
     /// one is written from its cells, each quoted only where CSV needs it. The prelude and
     /// the header stay as they are, records are joined by the header's line break, and the
-    /// file ends in one when it did. What moving, adding and taking out rows is.
+    /// file ends in one when it did. What moving, adding and taking out rows is. A new
+    /// cell holding a control character is refused at its row.
     pub fn rearranged(&self, rows: &[Row], threads: usize) -> Result<Doc, Error> {
         assert!(self.stored > 0, "a file with no header has no rows to arrange");
         let nl = self.newline();
         let mut out = String::with_capacity(self.source.len() + 64);
         out.push_str(&self.source[..self.body as usize]);
         out.push_str(self.header_line());
-        for r in rows {
+        for (n, r) in rows.iter().enumerate() {
             out.push_str(nl);
             match r {
                 Row::Kept(k) => out.push_str(&self.sound_line(*k)),
                 Row::New(cells) => {
                     for (k, c) in cells.iter().enumerate() {
+                        writable(c, At::Row(n as u32))?;
                         if k > 0 {
                             out.push_str(self.sep());
                         }
@@ -878,7 +909,8 @@ impl Doc {
     /// written blank, and a ragged row's fields past the header are kept after the
     /// columns. What inserting, removing, moving and renaming columns is. A `.tcsv` file
     /// whose columns no longer read (two of one name, a computed column reading one taken
-    /// out) is refused, this one untouched.
+    /// out) is refused, this one untouched, and so is a new cell holding a control
+    /// character, at its row.
     pub fn reshaped(&self, columns: &[ColumnAt], threads: usize) -> Result<Doc, Error> {
         assert!(!columns.is_empty(), "a file keeps one column at least");
         let rows = self.rows();
@@ -924,7 +956,11 @@ impl Doc {
                 }
                 match *c {
                     ColumnAt::Kept(j) | ColumnAt::Renamed(j, _) => out.push_str(&fields.get(j).map_or(blank.clone(), |f| self.sound(f))),
-                    ColumnAt::New(_, cells) => out.push_str(&cells.get(r).map_or(blank.clone(), |t| self.quote(t))),
+                    ColumnAt::New(_, cells) => {
+                        let t = cells.get(r).copied().unwrap_or("");
+                        writable(t, At::Row(r as u32))?;
+                        out.push_str(&self.quote(t));
+                    }
                 }
             }
             for extra in fields.iter().skip(self.stored) {
@@ -1009,10 +1045,12 @@ impl Doc {
     /// One cell's text changed; every other byte stays as read. The cell is written in
     /// its file form (quoted only where CSV needs it, the blank fields before it in a
     /// short row) and decoded again, with its problems, its key's duplicates and the
-    /// computed columns.
-    pub fn set_cell(&mut self, row: usize, column: usize, text: &str) {
+    /// computed columns. Text holding a control character is refused at the row, the doc
+    /// untouched.
+    pub fn set_cell(&mut self, row: usize, column: usize, text: &str) -> Result<(), Error> {
         assert!(column < self.stored, "column {column} is not stored");
         assert!(row < self.rows(), "row {row} does not exist");
+        writable(text, At::Row(row as u32))?;
         let was = self.text(row, column).into_owned();
         let blank = self.quote("");
         let mut fields: Vec<Cow<'_, str>> = self.raw_fields(self.line(row)).into_iter().map(|f| self.sound(f)).collect();
@@ -1037,12 +1075,14 @@ impl Doc {
                 self.problems.insert(at, p);
             }
         }
+        Ok(())
     }
 
-    /// One cell set to a value, written in its column's form.
-    pub fn set_value(&mut self, row: usize, column: usize, v: Value) {
+    /// One cell set to a value, written in its column's form; refused as `set_cell`
+    /// refuses its text.
+    pub fn set_value(&mut self, row: usize, column: usize, v: Value) -> Result<(), Error> {
         let text = self.columns[column].form(v);
-        self.set_cell(row, column, &text);
+        self.set_cell(row, column, &text)
     }
 
     fn decode_cell(&mut self, row: usize, column: usize, text: &str, was: &str) {
@@ -1050,10 +1090,11 @@ impl Doc {
         if col.ty.inferred {
             // What the column's values could be is the meet of what each could be, so a
             // value that could be exactly what the one it replaces could be changes nothing
-            // the column infers: it is decoded in place. Anything else is the column read
-            // again, as a fresh read would infer it.
+            // the column infers: it is decoded in place. Anything else, a cell broken by a
+            // control character among it, is the column read again, as a fresh read would
+            // infer it.
             let could = |t: &str| (!t.is_empty()).then(|| infer::narrow(infer::ALL, t.as_bytes()));
-            if could(text) == could(was) && put(col, row, text) == Some(None) {
+            if col.valid.get(row) && could(text) == could(was) && put(col, row, text) == Some(None) {
                 return self.compute_values();
             }
             return self.rebuild(column);
@@ -1202,6 +1243,9 @@ impl Doc {
         assert!(column < self.stored, "column {column} is not stored");
         assert_eq!(self.dialect, Dialect::Tcsv, "a plain file holds no types: written as TCSV (`written_as`), it does");
         let at = At::Column(column as u32 + 1);
+        if let Some(point) = column::control(spelled.as_bytes()) {
+            return Err(error(at, format!("holds {}, a control character", code_point(point))));
+        }
         let ty =
             if spelled.is_empty() { None } else { Some(types::parse_type(spelled, &self.prelude.named).map_err(|why| error(at, why))?) };
         for c in &self.prelude.computed {

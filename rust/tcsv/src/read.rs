@@ -33,6 +33,8 @@ pub(crate) struct Part<'a> {
     pub problems: Vec<Problem>,
     pub rows: u32,
     scratch: Vec<u8>,
+    /// Where each control character of the batch being decoded starts in `src`.
+    controls: Vec<u32>,
     /// Where the part starts and ends in `src`: the first batch's bytes against the
     /// part's say how many rows to make room for.
     from: usize,
@@ -67,6 +69,7 @@ impl<'a> Part<'a> {
             problems: Vec::new(),
             rows: 0,
             scratch: Vec::new(),
+            controls: Vec::new(),
             from,
             to,
         }
@@ -76,9 +79,18 @@ impl<'a> Part<'a> {
     fn flush(&mut self) {
         let n = self.batched;
         let base = self.rows - n as u32;
+        // The batch's records as one stretch of bytes, searched for control characters once:
+        // a cell is looked into only when one starts inside it.
+        let from = self.records[self.records.len() - n] as usize;
+        self.controls.clear();
+        scan::controls(self.src, from, self.start as usize, &mut self.controls);
         for (c, col) in self.columns.iter_mut().enumerate() {
             let cells = &self.cells[c * BATCH..c * BATCH + n];
-            decode_run(self.src, cells, col, c as u32, base, &mut self.problems, &mut self.scratch);
+            let (src, controls, problems, scratch) = (self.src, &self.controls[..], &mut self.problems, &mut self.scratch);
+            match controls.is_empty() {
+                true => decode_run::<false>(src, cells, controls, col, c as u32, base, problems, scratch),
+                false => decode_run::<true>(src, cells, controls, col, c as u32, base, problems, scratch),
+            }
         }
         if base == 0 && n == BATCH {
             // The first batch read `start - from` bytes: the rest of the part holds about
@@ -103,12 +115,16 @@ impl<'a> Part<'a> {
 }
 
 /// A run of one column's cells, rows `base..`: `put(Some(text), run)` decodes a cell or
-/// says why not, `put(None, run)` pushes the null under a blank or broken one.
+/// says why not, `put(None, run)` pushes the null under a blank or broken one. A cell
+/// holding a control character is broken before its type is read: one whose span holds
+/// a start in `controls` (sorted, as the cells are), looked for only in a run whose batch
+/// has any (`CONTROLS`), so every other run's loop is as it would be without the rule.
 #[allow(clippy::too_many_arguments)]
 #[inline(always)]
-fn each(
+fn each<const CONTROLS: bool>(
     src: &[u8],
     cells: &[(u32, u32)],
+    controls: &[u32],
     valid: &mut BitsBuilder,
     problems: &mut Vec<Problem>,
     c: u32,
@@ -117,6 +133,7 @@ fn each(
     scratch: &mut Vec<u8>,
     mut put: impl FnMut(Option<&[u8]>, &mut Run) -> Result<(), Why>,
 ) {
+    let mut next = 0;
     for (k, &(s, e)) in cells.iter().enumerate() {
         let row = base + k as u32;
         let text = scan::text(src, s, e, scratch);
@@ -129,6 +146,19 @@ fn each(
                 problems.push(Problem { row, column: c, why: Why::Missing });
             }
             continue;
+        }
+        if CONTROLS {
+            while next < controls.len() && controls[next] < s {
+                next += 1;
+            }
+            if next < controls.len() && controls[next] < e {
+                // The span may be quoted: the text says which character it is.
+                let point = column::control(text).unwrap();
+                let _ = put(None, &mut run);
+                valid.push(false);
+                problems.push(Problem { row, column: c, why: Why::Control { point } });
+                continue;
+            }
         }
         match put(Some(text), &mut run) {
             Ok(()) => valid.push(true),
@@ -143,23 +173,36 @@ fn each(
 }
 
 /// Decodes a run of one column's cells, rows `base..`, in a loop chosen once for the
-/// column's kind; the kinds rarely seen share `column::decode`'s.
-fn decode_run(src: &[u8], cells: &[(u32, u32)], col: &mut Reading, c: u32, base: u32, problems: &mut Vec<Problem>, scratch: &mut Vec<u8>) {
+/// column's kind; the kinds rarely seen share `column::decode`'s. `controls` is where the
+/// control characters of the run's batch start, `CONTROLS` whether there are any.
+#[allow(clippy::too_many_arguments)]
+fn decode_run<const CONTROLS: bool>(
+    src: &[u8],
+    cells: &[(u32, u32)],
+    controls: &[u32],
+    col: &mut Reading,
+    c: u32,
+    base: u32,
+    problems: &mut Vec<Problem>,
+    scratch: &mut Vec<u8>,
+) {
     let Reading { decoder, optional, building, valid, candidates } = col;
     let missing = !*optional && !matches!(decoder, Decoder::Untyped);
     match (&*decoder, &mut *building) {
-        (Decoder::Untyped, Building::Text { offsets, bytes }) => each(src, cells, valid, problems, c, base, missing, scratch, |t, _| {
-            match t {
-                None => offsets.push(bytes.len() as i32),
-                Some(t) => {
-                    *candidates = infer::narrow(*candidates, t);
-                    column::push_text(offsets, bytes, t);
+        (Decoder::Untyped, Building::Text { offsets, bytes }) => {
+            each::<CONTROLS>(src, cells, controls, valid, problems, c, base, missing, scratch, |t, _| {
+                match t {
+                    None => offsets.push(bytes.len() as i32),
+                    Some(t) => {
+                        *candidates = infer::narrow(*candidates, t);
+                        column::push_text(offsets, bytes, t);
+                    }
                 }
-            }
-            Ok(())
-        }),
+                Ok(())
+            })
+        }
         (Decoder::Text { min: None, max: None }, Building::Text { offsets, bytes }) => {
-            each(src, cells, valid, problems, c, base, missing, scratch, |t, _| {
+            each::<CONTROLS>(src, cells, controls, valid, problems, c, base, missing, scratch, |t, _| {
                 match t {
                     None => offsets.push(bytes.len() as i32),
                     Some(t) => column::push_text(offsets, bytes, t),
@@ -167,24 +210,28 @@ fn decode_run(src: &[u8], cells: &[(u32, u32)], col: &mut Reading, c: u32, base:
                 Ok(())
             })
         }
-        (Decoder::Choice(words), Building::Choice(v)) => each(src, cells, valid, problems, c, base, missing, scratch, |t, _| {
-            let Some(t) = t else {
-                v.push(0);
-                return Ok(());
-            };
-            let k = words.iter().position(|w| column::same(t, w)).ok_or(Why::NotChoice)?;
-            v.push(k as i16);
-            Ok(())
-        }),
-        (Decoder::Date(None), Building::Date(v)) => each(src, cells, valid, problems, c, base, missing, scratch, |t, _| {
-            let Some(t) = t else {
-                v.push(0);
-                return Ok(());
-            };
-            v.push(crate::value::parse_date(t).ok_or(Why::NotDate)?);
-            Ok(())
-        }),
-        (d, b) => each(src, cells, valid, problems, c, base, missing, scratch, |t, run| match t {
+        (Decoder::Choice(words), Building::Choice(v)) => {
+            each::<CONTROLS>(src, cells, controls, valid, problems, c, base, missing, scratch, |t, _| {
+                let Some(t) = t else {
+                    v.push(0);
+                    return Ok(());
+                };
+                let k = words.iter().position(|w| column::same(t, w)).ok_or(Why::NotChoice)?;
+                v.push(k as i16);
+                Ok(())
+            })
+        }
+        (Decoder::Date(None), Building::Date(v)) => {
+            each::<CONTROLS>(src, cells, controls, valid, problems, c, base, missing, scratch, |t, _| {
+                let Some(t) = t else {
+                    v.push(0);
+                    return Ok(());
+                };
+                v.push(crate::value::parse_date(t).ok_or(Why::NotDate)?);
+                Ok(())
+            })
+        }
+        (d, b) => each::<CONTROLS>(src, cells, controls, valid, problems, c, base, missing, scratch, |t, run| match t {
             None => {
                 column::push_null(b);
                 Ok(())

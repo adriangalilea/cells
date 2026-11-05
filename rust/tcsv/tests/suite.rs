@@ -329,11 +329,8 @@ fn apply(doc: &mut Doc, edits: &Json) -> Result<String, String> {
             None
         };
         if let Some(r) = changed {
-            match (r, e.get("refused").map(Json::str)) {
-                (Ok(d), None) => *doc = d,
-                (Err(err), Some(at)) if err.at.to_string() == at => {}
-                (Err(err), want) => return Err(format!("refused at {} ({err}), the suite says {want:?}", err.at)),
-                (Ok(_), Some(at)) => return Err(format!("taken, the suite says it is refused at {at}")),
+            if let Some(d) = taken(r, e)? {
+                *doc = d;
             }
             continue;
         }
@@ -364,19 +361,21 @@ fn apply(doc: &mut Doc, edits: &Json) -> Result<String, String> {
             None
         };
         if let Some(r) = reshaped {
-            *doc = r.map_err(|e| e.to_string())?;
+            if let Some(d) = taken(r, e)? {
+                *doc = d;
+            }
             continue;
         }
         let name = e.get("column").unwrap().str();
         let col = doc.column(name).ok_or_else(|| format!("no column {name}"))?;
         if let Some(ty) = e.get("type") {
-            doc.set_type(col, ty.str()).map_err(|e| e.to_string())?;
+            taken(doc.set_type(col, ty.str()), e)?;
             continue;
         }
         let Json::Number(row) = e.get("row").unwrap() else { panic!("a row") };
         let row: usize = row.parse().unwrap();
-        if let Some(t) = e.get("text") {
-            doc.set_cell(row, col, t.str());
+        let set = if let Some(t) = e.get("text") {
+            doc.set_cell(row, col, t.str())
         } else {
             let v = e.get("value").unwrap();
             let held;
@@ -397,10 +396,22 @@ fn apply(doc: &mut Doc, edits: &Json) -> Result<String, String> {
                     }
                 }
             };
-            doc.set_value(row, col, value);
-        }
+            doc.set_value(row, col, value)
+        };
+        taken(set, e)?;
     }
     Ok(doc.write())
+}
+
+/// An edit's result against what the suite says of it: what it gave when taken, nothing
+/// when refused where the edit's `refused` says.
+fn taken<T>(r: Result<T, tcsv::Error>, e: &Json) -> Result<Option<T>, String> {
+    match (r, e.get("refused").map(Json::str)) {
+        (Ok(d), None) => Ok(Some(d)),
+        (Err(err), Some(at)) if err.at.to_string() == at => Ok(None),
+        (Err(err), want) => Err(format!("refused at {} ({err}), the suite says {want:?}", err.at)),
+        (Ok(_), Some(at)) => Err(format!("taken, the suite says it is refused at {at}")),
+    }
 }
 
 /// A case's file: a `.tcsv`, or under `plain/` a `.csv`, `.tsv` or `.txt`; never an

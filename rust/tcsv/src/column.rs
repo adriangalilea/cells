@@ -191,6 +191,11 @@ pub enum Why {
     Below,
     /// Over its upper bound.
     Above,
+    /// A control character in the cell, by its code point (`control`), whatever the
+    /// column's type: an inferred column's too.
+    Control {
+        point: u32,
+    },
     /// The key of another row too.
     Duplicate {
         other: u32,
@@ -504,6 +509,27 @@ pub(crate) fn push_text(offsets: &mut Vec<i32>, bytes: &mut Vec<u8>, t: &[u8]) {
         bytes.set_len(at + n);
     }
     offsets.push(bytes.len() as i32);
+}
+
+/// Whether a byte begins a control character, `next` the byte after it: a C0 byte but
+/// tab, `\n` and `\r`, DEL, or the 0xC2 of a C1 (0xC2 0x80..=0x9F).
+#[inline(always)]
+fn begins_control(c: u8, next: u8) -> bool {
+    ((c < 0x20) & (c != b'\t') & (c != b'\n') & (c != b'\r')) | (c == 0x7F) | ((c == 0xC2) & (next & 0xE0 == 0x80))
+}
+
+/// The code point of the first control character in a text (Unicode's Cc but tab, `\n`
+/// and `\r`), which no cell, header cell or prelude line holds.
+#[inline]
+pub(crate) fn control(t: &[u8]) -> Option<u32> {
+    control_at(t).map(|(_, point)| point)
+}
+
+/// `control`, with where the character starts in the text.
+pub(crate) fn control_at(t: &[u8]) -> Option<(usize, u32)> {
+    let k = (0..t.len()).find(|&k| begins_control(t[k], t.get(k + 1).copied().unwrap_or(0)))?;
+    // A C1's code point is its second byte; C0 and DEL are their byte.
+    Some((k, if t[k] == 0xC2 { t[k + 1] as u32 } else { t[k] as u32 }))
 }
 
 /// Decodes one non-blank cell's text into `b`, or says why it cannot be. A refused cell

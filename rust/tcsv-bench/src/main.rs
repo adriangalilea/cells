@@ -155,7 +155,7 @@ fn main() {
                 let row = doc.rows() / 2;
                 let text = doc.text(row, c).into_owned();
                 let t = Instant::now();
-                d.set_cell(row, c, &text);
+                d.set_cell(row, c, &text).unwrap();
                 println!("{:<20} {:>8.2} ms", doc.columns()[c].name, t.elapsed().as_secs_f64() * 1e3);
             }
         }

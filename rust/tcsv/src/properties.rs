@@ -56,6 +56,10 @@ fn cell(rng: &mut Rng) -> String {
         "café",
         "2026-08-14T14:30:00.25+02:00",
         "k7m2q9xa",
+        "tab\there",
+        "nul\u{0}",
+        "\u{1b}[1m",
+        "c1\u{85}",
     ];
     String::from(*rng.pick(&pool))
 }
@@ -123,7 +127,9 @@ fn an_edit_reads_back_as_written() {
         for _ in 0..edits {
             let r = rng.below(doc.rows() as u64) as usize;
             let c = rng.below(doc.stored() as u64) as usize;
-            doc.set_cell(r, c, &cell(&mut rng));
+            let t = cell(&mut rng);
+            // Text holding a control character is refused, the doc untouched.
+            assert_eq!(doc.set_cell(r, c, &t).is_err(), crate::column::control(t.as_bytes()).is_some());
         }
         let again = crate::read(doc.write()).unwrap_or_else(|e| panic!("{:?}: {e}", doc.write()));
         assert_eq!(again.rows(), doc.rows(), "{src:?} became {:?}", doc.write());
@@ -269,7 +275,9 @@ fn a_plain_file_reads_and_is_written_back() {
             let ragged = doc.problems().iter().any(|p| p.row as usize == r && p.kind() == crate::Kind::Ragged);
             assert_eq!(ragged, doc.width(r) != doc.stored(), "row {r} of {src:?}");
         }
-        assert!(doc.problems().iter().all(|p| p.kind() == crate::Kind::Ragged), "{src:?}");
+        // A plain file's columns are inferred: a cell is broken only by a control character.
+        let only = |p: &crate::Problem| p.kind() == crate::Kind::Ragged || matches!(p.why, crate::Why::Control { .. });
+        assert!(doc.problems().iter().all(only), "{src:?}");
     }
 }
 
@@ -285,7 +293,9 @@ fn a_plain_edit_reads_back_as_written() {
         for _ in 0..1 + rng.below(4) {
             let r = rng.below(doc.rows() as u64) as usize;
             let c = rng.below(doc.stored() as u64) as usize;
-            doc.set_cell(r, c, &cell(&mut rng));
+            let t = cell(&mut rng);
+            // Text holding a control character is refused, the doc untouched.
+            assert_eq!(doc.set_cell(r, c, &t).is_err(), crate::column::control(t.as_bytes()).is_some());
         }
         let again = crate::read_as(doc.write(), dialect, 1).unwrap();
         assert_eq!(again.rows(), doc.rows(), "{src:?} became {:?}", doc.write());

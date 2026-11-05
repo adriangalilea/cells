@@ -143,6 +143,107 @@ fn masks(b: &[u8; 64], sep: u8) -> (u64, u64) {
     (qm, sm)
 }
 
+/// Whether 64 bytes may hold a control character: a byte below 0x20 but tab, `\n` and
+/// `\r`, DEL, or 0xC2, which begins a C1 and also `¡`, `£` and a no-break space, so a block
+/// it flags is read exactly (`any_control`).
+#[cfg(target_arch = "aarch64")]
+#[inline(always)]
+fn suspects(b: &[u8; 64]) -> bool {
+    use core::arch::aarch64::*;
+    // 0xFF at every byte below 0x20 but tab, `\n` and `\r`.
+    const C0: [u8; 32] = {
+        let mut t = [0xFF; 32];
+        t[b'\t' as usize] = 0;
+        t[b'\n' as usize] = 0;
+        t[b'\r' as usize] = 0;
+        t
+    };
+    // SAFETY: NEON is part of every aarch64 target; the loads read the 64 bytes of `b` and
+    // the 32 of `C0`.
+    unsafe {
+        let table = uint8x16x2_t(vld1q_u8(C0.as_ptr()), vld1q_u8(C0.as_ptr().add(16)));
+        let (del, c2) = (vdupq_n_u8(0x7F), vdupq_n_u8(0xC2));
+        let p = b.as_ptr();
+        let mut any = vdupq_n_u8(0);
+        for k in 0..4 {
+            let v = vld1q_u8(p.add(16 * k));
+            // A lookup past the table's 32 bytes is 0.
+            any = vorrq_u8(any, vorrq_u8(vqtbl2q_u8(table, v), vorrq_u8(vceqq_u8(v, del), vceqq_u8(v, c2))));
+        }
+        vmaxvq_u8(any) != 0
+    }
+}
+
+#[cfg(target_arch = "x86_64")]
+#[inline(always)]
+fn suspects(b: &[u8; 64]) -> bool {
+    use core::arch::x86_64::*;
+    // SAFETY: SSE2 is part of every x86_64 target; the loads read the 64 bytes of `b`.
+    unsafe {
+        let p = b.as_ptr() as *const __m128i;
+        let (top, tab, lf, cr) = (_mm_set1_epi8(0x1F), _mm_set1_epi8(b'\t' as i8), _mm_set1_epi8(b'\n' as i8), _mm_set1_epi8(b'\r' as i8));
+        let (del, c2) = (_mm_set1_epi8(0x7F), _mm_set1_epi8(0xC2u8 as i8));
+        let mut any = _mm_setzero_si128();
+        for k in 0..4 {
+            let v = _mm_loadu_si128(p.add(k));
+            // Unsigned `v <= 0x1F`: the minimum of the two is `v`.
+            let low = _mm_cmpeq_epi8(_mm_min_epu8(v, top), v);
+            let line = _mm_or_si128(_mm_or_si128(_mm_cmpeq_epi8(v, tab), _mm_cmpeq_epi8(v, lf)), _mm_cmpeq_epi8(v, cr));
+            let rest = _mm_or_si128(_mm_cmpeq_epi8(v, del), _mm_cmpeq_epi8(v, c2));
+            any = _mm_or_si128(any, _mm_or_si128(_mm_andnot_si128(line, low), rest));
+        }
+        _mm_movemask_epi8(any) != 0
+    }
+}
+
+#[cfg(all(target_arch = "wasm32", target_feature = "simd128"))]
+#[inline(always)]
+fn suspects(b: &[u8; 64]) -> bool {
+    use core::arch::wasm32::*;
+    let (top, tab, lf, cr) = (u8x16_splat(0x20), u8x16_splat(b'\t'), u8x16_splat(b'\n'), u8x16_splat(b'\r'));
+    let (del, c2) = (u8x16_splat(0x7F), u8x16_splat(0xC2));
+    let mut any = u8x16_splat(0);
+    for k in 0..4 {
+        // SAFETY: reads 16 of the 64 bytes of `b`; v128_load takes any alignment.
+        let v = unsafe { v128_load(b.as_ptr().add(16 * k) as *const v128) };
+        let line = v128_or(v128_or(u8x16_eq(v, tab), u8x16_eq(v, lf)), u8x16_eq(v, cr));
+        let rest = v128_or(u8x16_eq(v, del), u8x16_eq(v, c2));
+        any = v128_or(any, v128_or(v128_andnot(u8x16_lt(v, top), line), rest));
+    }
+    v128_any_true(any)
+}
+
+#[cfg(not(any(target_arch = "aarch64", target_arch = "x86_64", all(target_arch = "wasm32", target_feature = "simd128"))))]
+#[inline(always)]
+fn suspects(b: &[u8; 64]) -> bool {
+    b.iter().any(|&c| (c < 0x20 && !matches!(c, b'\t' | b'\n' | b'\r')) || c == 0x7F || c == 0xC2)
+}
+
+/// Where each control character of `src[from..to]` starts, in order, into `out`: 64 bytes
+/// a step flagged by `suspects`, a flagged block read exactly. What lets a batch's cells
+/// skip `column::control` one by one.
+pub(crate) fn controls(src: &[u8], from: usize, to: usize, out: &mut alloc::vec::Vec<u32>) {
+    let exact = |a: usize, b: usize, out: &mut alloc::vec::Vec<u32>| {
+        // The byte after the stretch too, the second of a C1 begun at its end.
+        let mut k = a;
+        while let Some((at, _)) = crate::column::control_at(&src[k..to.min(b + 1)]) {
+            if k + at >= b {
+                break;
+            }
+            out.push((k + at) as u32);
+            k += at + 1;
+        }
+    };
+    let mut i = from;
+    while i + 64 <= to {
+        if suspects(src[i..i + 64].try_into().unwrap()) {
+            exact(i, i + 64, out);
+        }
+        i += 64;
+    }
+    exact(i, to, out);
+}
+
 /// Reads the records of `src[from..to]`, `from` a record's start, fields separated by
 /// `sep`. `to` is a record's start too, or the input's end, where a record without a line
 /// break ends.
@@ -553,6 +654,28 @@ mod tests {
         }
         let (f, s) = both(&big);
         assert_eq!(texts(&big, &f.unwrap()), texts(&big, &s.unwrap()));
+    }
+
+    #[test]
+    fn controls_found_anywhere() {
+        let found = |s: &str| {
+            let mut out = Vec::new();
+            controls(s.as_bytes(), 0, s.len(), &mut out);
+            out
+        };
+        let filler = "a,b\t1\r\n£ ¡x".repeat(40);
+        assert_eq!(found(&filler), []);
+        assert_eq!(found(&"\u{a0}\u{a3}\u{bf}".repeat(30)), []);
+        for ch in ['\u{0}', '\u{7}', '\u{1b}', '\u{7f}', '\u{80}', '\u{85}', '\u{9f}'] {
+            for at in [0, 62, 63, 64, 127, filler.len()] {
+                let at = (0..=at).rev().find(|&k| filler.is_char_boundary(k)).unwrap();
+                let mut s = alloc::string::String::from(&filler[..at]);
+                s.push(ch);
+                s.push_str(&filler[at..]);
+                s.push(ch);
+                assert_eq!(found(&s), [at as u32, (s.len() - ch.len_utf8()) as u32], "{ch:?} at {at}");
+            }
+        }
     }
 
     #[test]
