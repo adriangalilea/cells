@@ -12,7 +12,7 @@
     "engine": "bun scripts/engine.ts",
     "ui": "bun scripts/ui.ts",
     "examples": "bun scripts/examples.ts",
-    "check": "tsc --noEmit && bun scripts/examples.ts",
+    "check": "bun scripts/ui-fresh.ts && tsc --noEmit && bun scripts/examples.ts",
     "deploy": "next build && wrangler deploy"
   },
   "dependencies": {

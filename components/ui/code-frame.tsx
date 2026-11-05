@@ -28,6 +28,11 @@ export interface CodeFrameProps {
   material?: "plain" | "glass"
   /** No frame, bar or copy of its own: for a frame that holds it. */
   bare?: boolean
+  /** Lines drawn by the caller in place of `html` (a `<pre><code>` of `.line`s, as
+   *  Shiki's): a view whose lines move (walkthrough). */
+  children?: React.ReactNode
+  /** The scroller, for a view that keeps lines in sight itself. */
+  scroller?: React.Ref<HTMLDivElement>
   className?: string
 }
 
@@ -41,19 +46,26 @@ export function CodeFrame({
   lines = false,
   material = "plain",
   bare = false,
+  children,
+  scroller,
   className,
 }: CodeFrameProps) {
   // Shiki's own <pre><code>, styled by code.css. A long line scrolls sideways, and a
   // block given less height than it needs scrolls down, inside the frame, with the
   // scrims' edge fade: never a scrollbar drawn over the code, never a hard cut.
-  const scroll = html ? (
+  const scroll = children ? (
+    <div ref={scroller} className="ag-code-scroll ag-edge-fade-xy">
+      {children}
+    </div>
+  ) : html ? (
     <div
+      ref={scroller}
       className="ag-code-scroll ag-edge-fade-xy"
       // biome-ignore lint/security/noDangerouslySetInnerHtml: Shiki's own escaped markup of the source (lib/code-highlight)
       dangerouslySetInnerHTML={{ __html: html }}
     />
   ) : (
-    <div className="ag-code-scroll ag-edge-fade-xy">
+    <div ref={scroller} className="ag-code-scroll ag-edge-fade-xy">
       <pre>
         <code>{source}</code>
       </pre>

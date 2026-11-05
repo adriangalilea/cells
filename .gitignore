@@ -14,6 +14,6 @@ components/ui/shimmer.tsx
 components/ui/macos.tsx
 components/ui/player.tsx
 components/ui/table.tsx
-components/ui/table-tcsv.ts
+components/ui/table-cells.ts
 lib/player-input.ts
 lib/table-data.ts

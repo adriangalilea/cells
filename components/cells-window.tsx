@@ -9,7 +9,7 @@
 import * as React from "react"
 import { Table, type TableColumn } from "@/components/ui/table"
 import { useEngine } from "@/components/use-engine"
-import { readFiles, type ViewCell, type ViewTable } from "@/lib/cells"
+import { readFiles, type ViewCell, type ViewTable } from "@/lib/view"
 import { PRODUCT } from "@/lib/product"
 import { revealX } from "@/lib/reveal"
 import { cn } from "@/lib/utils"

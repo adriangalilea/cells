@@ -14,7 +14,7 @@ import {
 } from "@/lib/code-tokens"
 
 export type CodeHtmlOptions = {
-  /** A Shiki language id or one of code's own (`tcsv`); `text` when it is not code,
+  /** A Shiki language id or one of code's own (`cells`); `text` when it is not code,
    *  which skips the grammar. One neither knows throws (`knownLanguage` asks first). */
   lang: BundledLanguage | OwnLanguage | "text" | (string & {})
   /** Lines to mark, `"2"` or `"1,4-6"`. */

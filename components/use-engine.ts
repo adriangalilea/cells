@@ -8,7 +8,7 @@
 // At build the engine is reached through `use`, inside the page's Suspense boundaries.
 
 import * as React from "react"
-import type { Engine } from "@/lib/cells"
+import type { Engine } from "@/lib/view"
 import { loadEngine } from "@/lib/engine-module"
 
 const ready: Engine | null = typeof window === "undefined" ? null : await loadEngine()

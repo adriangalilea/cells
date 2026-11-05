@@ -37,3 +37,32 @@ export function useCodeColours(
   if (given) return given
   return colours?.key === key ? colours.colours : null
 }
+
+const NONE: readonly (CodeColours | null)[] = []
+
+/** Many texts' colours at once (every state an edit passes through), read once in
+ *  the browser, so a view moving from one to the next never waits for one: none
+ *  until all have loaded, then each at its index. `texts` keeps its identity while
+ *  it holds the same texts. */
+export function useCodeColoursOf(
+  texts: readonly { text: string; lang: string }[],
+  themes: CodeThemes = CODE_THEMES,
+): readonly (CodeColours | null)[] {
+  const [read, setRead] = React.useState<{
+    texts: readonly { text: string; lang: string }[]
+    colours: CodeColours[]
+  } | null>(null)
+  const { light, dark } = themes
+  React.useEffect(() => {
+    let live = true
+    void Promise.all(
+      texts.map((t) => codeColours(t.text, t.lang, { light, dark })),
+    ).then((colours) => {
+      if (live) setRead({ texts, colours })
+    })
+    return () => {
+      live = false
+    }
+  }, [texts, light, dark])
+  return read?.texts === texts ? read.colours : NONE
+}

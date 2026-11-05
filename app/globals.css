@@ -9,6 +9,7 @@
 @source "../components/ui/player.tsx";
 @source "../components/ui/table.tsx";
 @source "../lib/table-data.ts";
+@source "../components/ui/table-cells.ts";
 @source "../lib/player-input.ts";
 
 @custom-variant dark (&:is(.dark *));

@@ -24,7 +24,7 @@ export interface CodeProps {
   /** A highlighted command row without a filename bar. Copy stays on the right;
    *  a command too long for the row scrolls on one line, its hidden side fading. */
   compact?: boolean
-  /** A Shiki language id, or one of code's own (`tcsv`). `text` when it is not code,
+  /** A Shiki language id, or one of code's own (`cells`). `text` when it is not code,
    *  which skips the grammar. */
   lang?: BundledLanguage | OwnLanguage | "text"
   /** A path or a name for the tab. Without one the bar names the language. */

@@ -63,19 +63,20 @@ export function langOf(path: string): string {
 }
 
 /** Languages code colours beyond Shiki's bundle, by id, each grammar loaded the first
- *  time it is asked for: `tcsv`, TCSV's own grammar (lib/tcsv-grammar, vendored from
- *  github.com/adriangalilea/tcsv), its columns in rainbow and its types by scope. */
+ *  time it is asked for: `cells`, the Cells grammar (lib/cells-grammar, vendored from
+ *  github.com/adriangalilea/cells), its columns in rainbow and its types by scope. */
 const OWN_LANGUAGES = {
-  tcsv: () =>
-    import("@/lib/tcsv-grammar").then((m) => m.tcsvGrammar),
-  // Site addition (for ui: a way to register a language instead of editing this
-  // table): Cells' own grammar, the one every editor gets (lib/engine, copied from the
-  // Cells repository's syntaxes/), its scripts' fences in TypeScript.
+  cells: () =>
+    import("@/lib/cells-grammar").then(
+      (m) => m.cellsGrammar,
+    ),
+  // site-patch: a `.cell` path is `cells` (being built in ui; delete this block when it lands)
   cell: () =>
-    Promise.all([import("shiki/langs/typescript.mjs"), import("@/lib/engine/cells.tmLanguage.json")]).then(([ts, g]) => [
+    Promise.all([import("shiki/langs/typescript.mjs"), import("@/lib/cells-grammar")]).then(([ts, g]) => [
       ...ts.default,
-      { ...(g.default as object), name: "cell", aliases: ["cells"] } as never,
+      { ...g.cellsGrammar, name: "cell", aliases: ["cells"] } as never,
     ]),
+  // end site-patch
 } as const
 
 /** A language code knows that Shiki does not bundle. */
@@ -177,6 +178,50 @@ export async function codeColours(
 export interface CodeRun {
   text: string
   ink: CodeInk | null
+}
+
+/** A run with what lies over it: the marks of every range it falls in. */
+export interface CodePaint<M> extends CodeRun {
+  marks: M[]
+}
+
+/** A line's runs cut again where `ranges` begin and end (offsets of the whole text;
+ *  the line begins at `start`), each piece carrying the marks of the ranges over it:
+ *  a diagnostic's squiggle, a selection, a flash. */
+export function paintRuns<M>(
+  runs: readonly CodeRun[],
+  start: number,
+  ranges: readonly { from: number; to: number; mark: M }[],
+): CodePaint<M>[] {
+  const end = start + runs.reduce((n, r) => n + r.text.length, 0)
+  const here = ranges.filter((r) => r.from < end && r.to > start)
+  if (!here.length) return runs.map((r) => ({ ...r, marks: [] }))
+  const cuts = new Set<number>()
+  for (const r of here) {
+    cuts.add(Math.max(start, r.from))
+    cuts.add(Math.min(end, r.to))
+  }
+  const out: CodePaint<M>[] = []
+  let at = start
+  for (const run of runs) {
+    const runEnd = at + run.text.length
+    const points = [
+      at,
+      ...[...cuts].filter((c) => c > at && c < runEnd).sort((a, b) => a - b),
+      runEnd,
+    ]
+    for (let i = 0; i + 1 < points.length; i++) {
+      const a = points[i] as number
+      const b = points[i + 1] as number
+      out.push({
+        text: run.text.slice(a - at, b - at),
+        ink: run.ink,
+        marks: here.filter((r) => r.from <= a && b <= r.to).map((r) => r.mark),
+      })
+    }
+    at = runEnd
+  }
+  return out
 }
 
 /** `text` cut into lines of runs, each character inked by `colours` at its offset

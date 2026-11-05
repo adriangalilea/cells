@@ -2,22 +2,23 @@
 
 // HELIX'S DIAGNOSTICS over ui's terminal-editor: the engine's problems at the frame drawn,
 // placed on their cells as helix draws a language server's (a mark in the gutter, the
-// span undercurled, the message at the line's end). ui's terminal-editor has no
-// diagnostics layer (for ui: `diagnostics` on TerminalEditor, these three marks drawn in
-// its own rows); this lies over it with the same metrics, the same frame and the same
-// scroll, so a mark is exactly on its characters.
+// span undercurled, the message at the line's end). ui's terminal-editor diagnoses a
+// file from its own text alone, and money.cell's problem lives in accounts.cell (for ui:
+// `diagnose` given every file's text at the instant, being built); until then this lies
+// over it with the same metrics, the same frame and the same scroll, so a mark is exactly
+// on its characters.
 
 import { usePlayhead } from "@/components/ui/playback"
 import { useTerminalPalette } from "@/components/ui/terminal"
 import { useEngine } from "@/components/use-engine"
-import { readFiles } from "@/lib/cells"
+import { readFiles } from "@/lib/view"
 import { type CodeTimeline, codeFrameAt, placeOf } from "@/lib/code-session"
 import { textAt } from "@/lib/hero"
 import { placeBroken, placeProblems } from "@/lib/spans"
 import { LINE_HEIGHT } from "@/lib/terminal-session"
 
 /** terminal-editor's own: rows kept between the caret and the foot, the gutter's least
- *  digits, the text's top padding. */
+ *  digits (then its diagnostics column and two spaces), the text's top padding. */
 const SCROLL_OFF = 3
 const DIGITS = 3
 const PAD_TOP = 0.5
@@ -35,7 +36,7 @@ export function HelixDiagnostics({ timeline, rows, others = [] }: { timeline: Co
   const placed = [...placeBroken(f.text, read.broken), ...placeProblems(f.text, read.problems)]
   const lines = f.text.split("\n")
   const top = Math.max(0, placeOf(f.text, f.caret).line - rows + SCROLL_OFF)
-  const gutter = Math.max(DIGITS, String(lines.length).length) + 2
+  const gutter = Math.max(DIGITS, String(lines.length).length) + 3
   return (
     <div data-slot="helix-diagnostics" aria-hidden className="pointer-events-none absolute inset-0 overflow-hidden whitespace-pre">
       {placed.map((p, i) => {

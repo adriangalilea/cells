@@ -14,5 +14,5 @@ export const PRODUCT = {
   /** Under the line, and the page's description wherever it is read. */
   subline: "Logic and data in a single file. Open it in any editor.",
   domain: "cellular.computer",
-  repo: "https://github.com/adriangalilea/tcsv",
+  repo: "https://github.com/adriangalilea/cells",
 } as const

@@ -502,6 +502,9 @@ export interface TerminalLine {
 
 export interface Frame {
   world: WorldState
+  /** Midnights the world's clock has run past since the story began: a clock that
+   *  lands earlier than it was is the next day, so the date beside it turns too. */
+  days: number
   /** When the lid last moved (ms): its fold and the panel's fade run from here. */
   lidSince: number
   /** When the lock screen last came up or went (ms): its fade runs from here. */
@@ -615,6 +618,7 @@ export function frameAt(
 ): Frame {
   const f: Frame = {
     world: NIGHT,
+    days: 0,
     lidSince: Number.NEGATIVE_INFINITY,
     lockSince: Number.NEGATIVE_INFINITY,
     surface: null,
@@ -672,6 +676,13 @@ export function frameAt(
           f.menu = null
           f.surface = null
         }
+        // "HH:MM" sorts as the time it says.
+        if (
+          w.clock !== undefined &&
+          f.world.clock !== undefined &&
+          w.clock < f.world.clock
+        )
+          f.days += 1
         f.world = w
         break
       }
