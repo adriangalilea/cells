@@ -38,6 +38,10 @@ export interface StoryStep {
   why: string
   files: StoryFile[]
   view: StoryView
+  /** Ways of writing the step's idea, each with what it means: shown as a short list. */
+  reads?: { formula: string; says: string }[]
+  /** What the engine does not do yet, said as coming; never shown as working. */
+  soon?: string
   /** What the reader can try, said as an action. */
   try?: string
   /** What the engine must find in the first file as the page ships it: each problem's
@@ -122,18 +126,38 @@ coffee,2.10,3,
     lead: "A cell can hold its own.",
     rest: "By name, never by coordinate.",
     why: "There is no B7 to point at the wrong row after a line is inserted by hand: a formula names what it reads.",
-    try: "Write `=96.75 / 4` instead.",
+    reads: [
+      { formula: "`=cost * qty`", says: "a column of its own row" },
+      { formula: "`=to.kind`", says: "through a reference, a column of the row it names" },
+      { formula: "`=fees['card'].pct`", says: "another table's row, by its key" },
+      { formula: "`=sum(cost)`", says: "a whole column" },
+    ],
+    soon: "`=this['k7m2q9xa'].amount`, a row of the file's own by its key, comes next. An app will take `this[#3]` as you type it and write the row's key.",
+    try: "Write `=cost / qty` in a cell of reads.",
     files: [
       {
         name: `groceries${ext}`,
-        text: `item:text!,cost:EUR>=0,qty:int>=1,total:EUR=cost * qty
-fuel,84.20,1,
-dinner for three,\`=96.75 / 3\`,3,
+        text: `---
+accounts = \`\`\`cells
+account:text!,kind:assets|expenses
+bank,assets
+food,expenses
+\`\`\`
+fees = \`\`\`cells
+pay:text!,pct:pct
+card,1.4
+\`\`\`
+---
+item:text!,cost:EUR>=0,qty:int>=1,to:accounts.account,reads:text?
+fuel,84.20,1,bank,\`=cost * qty\`
+dinner,96.75,3,food,\`=to.kind\`
+card fee,2.40,1,bank,\`=fees['card'].pct\`
+coffee,2.10,3,food,\`=sum(cost)\`
 `,
       },
     ],
     view: { kind: "table" },
-    expect: { problems: [], values: { cost: [84.2, 32.25], total: [84.2, 96.75] } },
+    expect: { problems: [], values: { reads: ["84.2", "expenses", "1.4", "185.45"] } },
   },
   {
     id: "references",

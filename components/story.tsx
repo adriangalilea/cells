@@ -42,10 +42,26 @@ function Step({ step, index }: { step: StoryStep; index: number }) {
           {step.lead} <span className="text-muted-foreground">{step.rest}</span>
         </h2>
         <p className="mt-6 max-w-[42ch] text-pretty text-[15px] leading-relaxed text-muted-foreground">{step.why}</p>
+        {step.reads && (
+          <dl className="mt-6 max-w-[44ch] space-y-2 text-[14px]">
+            {step.reads.map((r) => (
+              <div key={r.formula} className="grid grid-cols-[minmax(0,11rem)_1fr] gap-3">
+                <dt className="font-mono text-[12.5px] text-foreground/90">{r.formula.replaceAll("`", "")}</dt>
+                <dd className="text-muted-foreground">{r.says}</dd>
+              </div>
+            ))}
+          </dl>
+        )}
+        {step.soon && (
+          <p className="mt-5 max-w-[44ch] text-pretty text-[13px] leading-relaxed text-muted-foreground/80">
+            <span className="font-mono text-[11px] tracking-[0.14em] text-haze/80">COMING </span>
+            <Ticks text={step.soon} />
+          </p>
+        )}
         {step.try && (
           <p className="mt-6 font-mono text-[12px] text-edge/90">
             <span className="text-muted-foreground/60">try </span>
-            {step.try}
+            {step.try.replaceAll("`", "")}
           </p>
         )}
       </div>
@@ -76,6 +92,20 @@ function Step({ step, index }: { step: StoryStep; index: number }) {
         <View step={step} files={files} read={read} />
       </div>
     </section>
+  )
+}
+
+/** Prose whose `backticked` parts are code, set in the mono face. */
+function Ticks({ text }: { text: string }) {
+  return text.split(/(`[^`]+`)/).map((part, i) =>
+    part.startsWith("`") ? (
+      // biome-ignore lint/suspicious/noArrayIndexKey: the parts of one fixed string, in order
+      <code key={i} className="font-mono text-[12px] text-foreground/80">
+        {part.slice(1, -1)}
+      </code>
+    ) : (
+      part
+    ),
   )
 }
 
