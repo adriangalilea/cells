@@ -16,11 +16,11 @@
 import * as React from "react"
 import { createPortal } from "react-dom"
 import { CellsWindow } from "@/components/cells-window"
-import { HelixDiagnostics } from "@/components/helix-diagnostics"
 import { Macos } from "@/components/ui/macos"
 import { Playback, Playhead, usePlayhead } from "@/components/ui/playback"
-import { Terminal, useTerminalPalette } from "@/components/ui/terminal"
+import { Terminal } from "@/components/ui/terminal"
 import { TerminalEditor } from "@/components/ui/terminal-editor"
+import { useCellsDiagnose } from "@/components/use-cells-diagnose"
 import { codeFrameAt, codeTimeline } from "@/lib/code-session"
 import { HERO, savedAt } from "@/lib/hero"
 import { type Art, LID_MS, sceneClock, type Timeline } from "@/lib/macos-session"
@@ -81,65 +81,27 @@ function useFiles(ms: number) {
   }
 }
 
-/** Helix's bufferline: the open files as tabs, the one in front lit; with `choose`, a press
- *  on a tab brings its file to the front. A site-side stand-in until ui's terminal-editor
- *  draws its own (for ui: `bufferline` on TerminalEditor). */
-function Bufferline({ choose }: { choose?: (path: string) => void }) {
-  const palette = useTerminalPalette()
-  const ms = usePlayhead(undefined).at * EDIT.total
-  const f = codeFrameAt(EDIT, ms)
-  return (
-    <div className="flex whitespace-pre" style={{ background: palette.bar, color: palette.muted }}>
-      {f.open.map((path) => {
-        const front = path === f.active
-        const style = front ? { background: palette.bg, color: palette.command } : undefined
-        const label = `${path}${f.dirty.includes(path) ? " [+]" : ""}`
-        return choose ? (
-          <button key={path} type="button" aria-pressed={front} onClick={() => choose(path)} className="cursor-pointer px-[1ch] hover:text-white" style={style}>
-            {label}
-          </button>
-        ) : (
-          <span key={path} className="px-[1ch]" style={style}>
-            {label}
-          </span>
-        )
-      })}
-      {f.open.length === 0 && <span className="px-[1ch]"> </span>}
-    </div>
-  )
-}
-
-function Editor({ size, rows = ROWS, choose, className }: { size: string; rows?: number; choose?: (path: string) => void; className?: string }) {
+/** Helix in its window: ui's terminal-editor with its bufferline (always there, so the
+ *  rows never move) and the engine as its language server, every file's text at the
+ *  instant read together (components/use-cells-diagnose). `rows` counts the bufferline's. */
+function Editor({ size, rows = ROWS + 1, className }: { size: string; rows?: number; className?: string }) {
+  const diagnose = useCellsDiagnose()
   return (
     <Terminal alt="" accent={ACCENT} size={size} className={className}>
-      <Bufferline choose={choose} />
-      <div className="relative" data-slot="hero-editor">
-        {/* The site's bufferline above, whose tabs a reader can press (ui's is drawn only). */}
-        <TerminalEditor files={HERO.files} steps={HERO.steps} rows={rows} bufferline="never" />
-        <HelixDiagnostics timeline={EDIT} rows={rows} others={HERO.files.map((f) => f.path)} />
-      </div>
+      <TerminalEditor files={HERO.files} steps={HERO.steps} rows={rows} bufferline="always" diagnose={diagnose} />
     </Terminal>
   )
 }
 
-/** The edit's instant each file is in front and whole: money.cell at the end, accounts.cell
- *  just after its save. */
-const FRONT: Record<string, number> = {
-  [HERO.money]: 1,
-  [HERO.accounts]: ((EDIT.ends[12] as number) + 1) / EDIT.total,
-}
-
 /** The editor window the Mac's screen lets go of, as the page keeps it: the very window
  *  (its stage size, its type, its rows), scaled to `width` as a whole, so the flight
- *  between the two is a move and a scale and nothing else. Both files as the edit left
- *  them; with `choose`, its tabs pressable. */
-export function EditorWindow({ width, choose = true }: { width: number; choose?: boolean }) {
-  const [front, setFront] = React.useState(HERO.money)
+ *  between the two is a move and a scale and nothing else. money.cell as the edit left it. */
+export function EditorWindow({ width }: { width: number }) {
   return (
     <div style={{ width, height: (width * WINDOW_H) / WINDOW_W }}>
       <div style={{ width: WINDOW_W, height: WINDOW_H, transform: `scale(${width / WINDOW_W})`, transformOrigin: "0 0" }}>
-        <Playhead progress={FRONT[front] as number}>
-          <Editor size={EDITOR_SIZE} choose={choose ? setFront : undefined} className="h-full" />
+        <Playhead progress={1}>
+          <Editor size={EDITOR_SIZE} className="h-full" />
         </Playhead>
       </div>
     </div>
@@ -220,7 +182,7 @@ function Stacked() {
     >
       <Playhead progress={files.editAt}>
         {/* The longest file is 8 lines: the phone's editor is no taller than it needs. */}
-        <Editor size="clamp(7px,2.35vw,10px)" rows={10} />
+        <Editor size="clamp(7px,2.35vw,10px)" rows={11} />
       </Playhead>
       <CellsWindow name={files.name} text={files.text} others={files.others} className="h-[188px]" />
       <Playhead progress={share(ms, HERO.terminal.from, HERO.terminal.duration)}>
@@ -269,7 +231,7 @@ export function Hero() {
           // Hidden by visibility, never display: laid out while it waits, so the editor in it
           // has measured its columns before it is first seen.
           <div ref={flight} aria-hidden className="pointer-events-none fixed top-0 left-0 z-30 origin-top-left rounded-[10px] will-change-transform" style={{ visibility: "hidden" }}>
-            <EditorWindow width={WINDOW_W} choose={false} />
+            <EditorWindow width={WINDOW_W} />
           </div>,
           document.body,
         )}

@@ -8,15 +8,25 @@
 import type { BundledLanguage, ShikiTransformer } from "shiki"
 import {
   CODE_THEMES,
+  languageOf,
   linesOf,
-  type OwnLanguage,
-  ownLanguage,
+  ownGrammar,
+  registeredLanguage,
 } from "@/lib/code-tokens"
 
+/** A language as code is told it: a Shiki id or alias, a registered language's id or
+ *  alias (`cells`, `cell`; lib/code-tokens `registerLanguage`), or `text`. */
+export type CodeLang =
+  | BundledLanguage
+  | "cells"
+  | "cell"
+  | "text"
+  | (string & {})
+
 export type CodeHtmlOptions = {
-  /** A Shiki language id or one of code's own (`cells`); `text` when it is not code,
-   *  which skips the grammar. One neither knows throws (`knownLanguage` asks first). */
-  lang: BundledLanguage | OwnLanguage | "text" | (string & {})
+  /** `text` when it is not code, which skips the grammar. One neither Shiki nor
+   *  `registerLanguage` knows throws (`knownLanguage` asks first). */
+  lang: CodeLang
   /** Lines to mark, `"2"` or `"1,4-6"`. */
   highlight?: string
   /** Read `[!code …]` comments: off where the source is shown as itself. */
@@ -64,10 +74,11 @@ const unwrapPlainTokens: ShikiTransformer = {
   },
 }
 
-/** Whether code knows `lang` (Shiki's, its own, or `text`): a block in any other is
- *  drawn plain. */
-export async function knownLanguage(lang: string): Promise<boolean> {
-  if (lang === "text" || ownLanguage(lang)) return true
+/** Whether code knows `name` (Shiki's, a registered one, or `text`): a block in any
+ *  other is drawn plain. */
+export async function knownLanguage(name: string): Promise<boolean> {
+  const lang = languageOf(name)
+  if (lang === "text" || registeredLanguage(lang)) return true
   const { bundledLanguages } = await import("shiki")
   return lang in bundledLanguages
 }
@@ -75,13 +86,15 @@ export async function knownLanguage(lang: string): Promise<boolean> {
 /** `source` as Shiki's markup, in code's two themes. */
 export async function codeHtml(
   source: string,
-  { lang, highlight, notations = false }: CodeHtmlOptions,
+  { lang: name, highlight, notations = false }: CodeHtmlOptions,
 ): Promise<string> {
+  const lang = languageOf(name)
   const { getSingletonHighlighter } = await import("shiki")
-  // Shiki's own languages by id, code's own by their grammar, into one highlighter.
-  const own = ownLanguage(lang)
+  // Shiki's own languages by id, registered ones by their grammar, into one
+  // highlighter.
+  const own = ownGrammar(lang)
   const h = await getSingletonHighlighter({
-    langs: [own ?? lang],
+    langs: own ? await own : [lang],
     themes: [CODE_THEMES.light, CODE_THEMES.dark],
   })
   const marked = highlight ? linesOf(highlight) : null

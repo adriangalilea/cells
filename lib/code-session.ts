@@ -16,10 +16,11 @@
 // wears its colour, a removal never leaves a stale one, and a scrubbed edit is the
 // played one.
 //
-// Diagnostics are COMPUTED, never scripted: `diagnose(path, text)` runs on each
-// file's text at the instant (memoised per text), so what the editor underlines is
-// what the tool says of that text; `diagnoseWords` is the engine for a demo without
-// one. Hovers, completions, signatures, a goto and a rename are steps.
+// Diagnostics are COMPUTED, never scripted: `diagnose(path, workspace)` runs on each
+// file with every file's text at the instant (memoised per workspace), so what the
+// editor underlines is what the tool says of the project as it stands, one file's
+// problem caused by another included; `diagnoseWords` is the engine for a demo
+// without one. Hovers, completions, signatures, a goto and a rename are steps.
 //
 // The pacing is one table (TYPE_MS, OPEN_MS, ...): a step's time is decided here and
 // nowhere else, so a played edit and a scrubbed one are the same frames.
@@ -164,10 +165,17 @@ export interface CodeDiagnostic {
   source?: string
 }
 
-/** A language server's diagnostics of a file's text, computed. */
+/** Every file of the project at an instant: its text as it stands then, saved or
+ *  not (what a language server reads), by path. */
+export type CodeWorkspace = Readonly<Record<string, string>>
+
+/** A language server's diagnostics of the file at `path`, computed from the whole
+ *  workspace (its own text is `workspace[path]`), so a problem in one file that
+ *  another causes (an import, a reference to another file's key) shows, and goes
+ *  when that other file is fixed. Offsets into `workspace[path]`. */
 export type CodeDiagnose = (
   path: string,
-  text: string,
+  workspace: CodeWorkspace,
 ) => readonly CodeDiagnostic[]
 
 /** A popup open over the code, anchored at an offset of the front file's text. */
@@ -320,16 +328,42 @@ export interface CodeTimeline {
   /** Each state's characters at their offsets in it. */
   order: Map<Char, number>[]
   plans: Plan[]
-  /** The diagnostics engine, memoised per text; null without one. */
-  diagnose: CodeDiagnose | null
+  /** Every file's diagnostics in a workspace, memoised per workspace (its texts in
+   *  `files`' order); null without an engine. */
+  diagnose: ((workspace: CodeWorkspace) => CodeProblems) | null
 }
+
+/** Every file's diagnostics, those with any, in `files`' order. */
+export type CodeProblems = { path: string; diagnostics: CodeDiagnostic[] }[]
 
 export interface CodeTimelineOptions {
   /** The clock's length when longer than the edit (a clock shared with a browser
    *  that loads the result after it), ms: the last frame holds to it. */
   duration?: number
-  /** The language server's diagnostics, run on each file's text at the instant. */
+  /** The language server's diagnostics, run on each file with the workspace at the
+   *  instant. */
   diagnose?: CodeDiagnose
+}
+
+/** Every file's diagnostics in `workspace`, by `diagnose`, each checked to lie in its
+ *  file's text. THROWS on one that does not. */
+export function problemsOf(
+  paths: readonly string[],
+  workspace: CodeWorkspace,
+  diagnose: CodeDiagnose,
+): CodeProblems {
+  return paths.flatMap((path) => {
+    const text = workspace[path]
+    if (text === undefined)
+      throw new Error(`code-session: ${path} is not in the workspace`)
+    const d = diagnose(path, workspace)
+    for (const x of d)
+      if (!(x.from >= 0 && x.from <= x.to && x.to <= text.length))
+        throw new Error(
+          `code-session: a diagnostic of ${path} at ${x.from}..${x.to}, past its ${text.length} characters`,
+        )
+    return d.length ? [{ path, diagnostics: [...d] }] : []
+  })
 }
 
 const stands = (c: Char, ms: number) => c.born <= ms && ms < c.died
@@ -391,10 +425,12 @@ export interface CodeWordRule {
 }
 
 /** An engine for a demo without one: every whole-word occurrence of a rule's word
- *  is flagged, in whatever text it is run on, so a typo fixed is a diagnostic gone. */
+ *  is flagged, in whatever file it is run on, so a typo fixed is a diagnostic gone.
+ *  It reads the file alone, never the rest of the workspace. */
 export function diagnoseWords(rules: readonly CodeWordRule[]): CodeDiagnose {
-  return (_path, text) =>
-    rules.flatMap((r) => {
+  return (path, workspace) => {
+    const text = workspace[path] as string
+    return rules.flatMap((r) => {
       const out: CodeDiagnostic[] = []
       const escaped = r.word.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
       for (const m of text.matchAll(
@@ -409,6 +445,7 @@ export function diagnoseWords(rules: readonly CodeWordRule[]): CodeDiagnose {
         })
       return out
     })
+  }
 }
 
 /** Times an edit of `files`. THROWS on a step that cannot happen: a path not in
@@ -717,7 +754,8 @@ export function codeTimeline(
   const final: Record<string, string> = {}
   for (const [path, doc] of Object.entries(chars))
     final[path] = textOf(standing(doc))
-  const memo = new Map<string, readonly CodeDiagnostic[]>()
+  const paths = files.map((f) => f.path)
+  const memo = new Map<string, CodeProblems>()
   return {
     files,
     steps,
@@ -731,16 +769,14 @@ export function codeTimeline(
     order,
     plans,
     diagnose: diagnose
-      ? (path, text) => {
-          const key = `${path}\n${text}`
+      ? (workspace) => {
+          // Each text after its length, so no text can read as two.
+          const key = paths
+            .map((p) => `${workspace[p]?.length}:${workspace[p]}`)
+            .join("")
           let d = memo.get(key)
           if (!d) {
-            d = diagnose(path, text)
-            for (const x of d)
-              if (!(x.from >= 0 && x.from <= x.to && x.to <= text.length))
-                throw new Error(
-                  `code-session: a diagnostic of ${path} at ${x.from}..${x.to}, past its ${text.length} characters`,
-                )
+            d = problemsOf(paths, workspace, diagnose)
             memo.set(key, d)
           }
           return d
@@ -756,6 +792,16 @@ function placeIn(doc: readonly Char[], c: Char | null, ms: number): number {
   let n = 0
   for (let i = 0; i < end; i++) if (stands(doc[i] as Char, ms)) n++
   return n
+}
+
+/** Every file's text at `ms`, by path: what `diagnose` is given. */
+export function workspaceAt(timeline: CodeTimeline, ms: number): CodeWorkspace {
+  return Object.fromEntries(
+    timeline.files.map((f) => [
+      f.path,
+      textOf((timeline.chars[f.path] as Char[]).filter((c) => stands(c, ms))),
+    ]),
+  )
 }
 
 /** The frame at `ms`: every step done so far applied, the one under way partly. */
@@ -892,7 +938,6 @@ export function codeFrameAt(timeline: CodeTimeline, ms: number): CodeFrame {
     }
   }
 
-  const files = timeline.files.map((f) => f.path)
   const doc = active ? (timeline.chars[active] as Char[]) : []
   const shown = doc.filter((c) => stands(c, ms))
   const text = textOf(shown)
@@ -928,15 +973,8 @@ export function codeFrameAt(timeline: CodeTimeline, ms: number): CodeFrame {
       )
     }),
   )
-  const diagnose = timeline.diagnose
-  const problems = diagnose
-    ? files.flatMap((p) => {
-        const d = diagnose(
-          p,
-          textOf((timeline.chars[p] as Char[]).filter((c) => stands(c, ms))),
-        )
-        return d.length ? [{ path: p, diagnostics: [...d] }] : []
-      })
+  const problems = timeline.diagnose
+    ? timeline.diagnose(workspaceAt(timeline, ms))
     : []
   const diagnostics = problems.find((p) => p.path === active)?.diagnostics ?? []
   const ranges = (groups: Char[][]) =>

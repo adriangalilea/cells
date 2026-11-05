@@ -53,8 +53,9 @@ export interface TerminalEditorProps {
   /** The clock's length when the edit shares it with something longer, ms: the
    *  last frame holds to it (lib/code-session `codeTimeline`). */
   duration?: number
-  /** The language server's diagnostics, run on each file's text at the instant
-   *  (lib/code-session `CodeDiagnose`). */
+  /** The language server's diagnostics, run on each file with every file's text at
+   *  the instant (lib/code-session `CodeDiagnose`): a problem one file causes in
+   *  another shows, and goes when it is fixed there. */
   diagnose?: CodeDiagnose
   /** Rows of the screen above the status and command lines: the text's, and the
    *  bufferline's when it shows. The view follows the caret, a few rows short of

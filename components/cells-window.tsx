@@ -2,11 +2,10 @@
 
 // THE CELLS APP'S WINDOW on the hero's Mac: a file read by the engine at the moment drawn,
 // as the app shows it (ui's table: typed columns, computed cells lit by the edge light,
-// every broken cell marked with the engine's reason). The window frame is the site's:
-// ui draws menu-bar apps and editors, no plain app window (for ui: a `window` item, a
-// title bar and traffic lights around any content, would replace this).
+// every broken cell marked with the engine's reason), in ui's AppWindow.
 
 import * as React from "react"
+import { AppWindow } from "@/components/ui/app-window"
 import { Table, type TableColumn } from "@/components/ui/table"
 import { useEngine } from "@/components/use-engine"
 import { readFiles, type ViewCell, type ViewTable } from "@/lib/view"
@@ -140,34 +139,27 @@ export function CellsWindow({
   // A break in the grammar first (it names its column), then the cells' problems.
   const said = [...now.broken.map((b) => b.why), ...now.problems.map((p) => p.why)]
   return (
-    <div
+    <AppWindow
       data-slot="cells-window"
-      className={cn(
-        "flex flex-col overflow-hidden rounded-[10px] border border-white/10 bg-[#101318] text-white shadow-[0_24px_60px_-12px_rgb(0_0_0/0.7)] [--ag-table-ground:#101318]",
-        className,
-      )}
+      title={`${name} · ${PRODUCT.name}`}
+      scheme="dark"
+      className={cn("rounded-[10px] [--ag-table-ground:var(--ag-app-window-ground)]", className)}
     >
-      <div className="relative flex h-7 shrink-0 items-center gap-1.5 border-b border-white/8 px-3">
-        <span className="size-[11px] rounded-full bg-[#ff5f57]" />
-        <span className="size-[11px] rounded-full bg-[#febc2e]" />
-        <span className="size-[11px] rounded-full bg-[#28c840]" />
-        <span className="absolute inset-x-0 text-center font-sans text-[11px] text-white/55">
-          {name} · {PRODUCT.name}
-        </span>
+      <div className="flex h-full flex-col">
+        <div className="min-h-0 flex-1 overflow-hidden text-[11px]">
+          <CellsTable name={name} text={text} others={others} label={name} className="h-full" />
+        </div>
+        <div
+          data-slot="cells-window-problems"
+          className="flex h-6 shrink-0 items-center gap-2 overflow-hidden border-t border-white/8 px-3 font-mono text-[10px] whitespace-nowrap"
+        >
+          {/* The count in a slot of its own width, whatever it says: nothing beside it moves. */}
+          <span className={cn("w-[10ch] shrink-0 tabular-nums", said.length ? "text-haze" : "text-edge/80")}>
+            {said.length ? `${said.length} ${said.length === 1 ? "problem" : "problems"}` : "no problems"}
+          </span>
+          <span className="min-w-0 truncate text-white/60">{said.join(" · ")}</span>
+        </div>
       </div>
-      <div className="dark min-h-0 flex-1 overflow-hidden text-[11px]">
-        <CellsTable name={name} text={text} others={others} label={name} className="h-full" />
-      </div>
-      <div
-        data-slot="cells-window-problems"
-        className="flex h-6 shrink-0 items-center gap-2 overflow-hidden border-t border-white/8 px-3 font-mono text-[10px] whitespace-nowrap"
-      >
-        {/* The count in a slot of its own width, whatever it says: nothing beside it moves. */}
-        <span className={cn("w-[10ch] shrink-0 tabular-nums", said.length ? "text-haze" : "text-edge/80")}>
-          {said.length ? `${said.length} ${said.length === 1 ? "problem" : "problems"}` : "no problems"}
-        </span>
-        <span className="min-w-0 truncate text-white/60">{said.join(" · ")}</span>
-      </div>
-    </div>
+    </AppWindow>
   )
 }

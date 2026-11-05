@@ -30,12 +30,15 @@
      (or elliptical) corners through a mask of its own, and inside one a glass's
      masked blur loses its mask and blurs everything under it (a panel's spill
      blurred the whole page on the display). `clip-path` cuts the same corners and
-     keeps it. */
+     keeps it. Its top corners are the lid's, concentric: the lid's 2.7cqw less the
+     bezel round them (0.15cqw of border and 1.2cqw of padding, a share of the
+     frame's width on every side), so the bezel is as thick round a corner as along
+     its edges. */
   .device-desktop .device-display {
     position: relative;
-    clip-path: inset(0 round 1cqw 1cqw 0.2cqw 0.2cqw);
+    clip-path: inset(0 round 1.35cqw 1.35cqw 0.2cqw 0.2cqw);
     aspect-ratio: 16 / 10;
-    border-radius: 1cqw 1cqw 0.2cqw 0.2cqw;
+    border-radius: 1.35cqw 1.35cqw 0.2cqw 0.2cqw;
     background: #15191d;
     color: #eee;
   }
@@ -91,16 +94,30 @@
     );
     --lid-band: max(0, calc(var(--lid-back) - var(--lid-top)));
     --lid-ry: calc(2.7 * var(--lid-cos) * var(--lid-scale));
+    /* How far the corner still has height to lean on, 1 down to 0 in its last
+       0.45cqw: shut, the face is edge-on and there is no slope to follow. */
+    --lid-tall: clamp(0, var(--lid-ry) / 0.45, 1);
+    --lid-foot: calc(
+      42 *
+      (var(--lid-scale) - 1) *
+      2.7 / 55.1125 *
+      var(--lid-tall)
+    );
+    --lid-corner: calc(
+      (0.45 + (2.7 * var(--lid-scale) - 0.45) * var(--lid-tall)) *
+      1cqw
+    );
   }
   /* The lid's face turns in true perspective: the eye at the hinge (perspective()
      in the lid's own transform puts it at the transform origin), at distance P. */
-  /* Open, the lid stands BEHIND the base, as the flat frame's does: the base's
-     top edge covers the lid's foot and the shadow it casts, so an open hinged
-     MacBook and a flat one are the same drawing. The moment it starts to close
-     it comes in front, where a lid swinging toward the eye belongs (z 1 at
-     --device-lid 0, z 3 above it). */
+  /* The lid stands BEHIND the base at every angle, as the flat frame's does: the
+     base's top edge covers the lid's foot and the shadow it casts. With the eye
+     at the hinge's height every point of a closing lid projects at or above the
+     hinge line, so the lid never reaches down over the base's front: brought in
+     front, its foot and bezel drew over the base's lip and its notch. The rim,
+     painted after the base, still lies on it once shut. */
   .device-desktop[data-hinged] .device-lid {
-    z-index: calc(1 + 2 * round(up, var(--device-lid, 0), 1));
+    z-index: 1;
     transform-origin: 50% 100%;
     transform: perspective(344.45cqw)
       rotateX(calc(var(--device-lid, 0) * -90deg));
@@ -114,21 +131,24 @@
      Its paint is the base's own: the same end shading, the same aluminium. */
   .device-lid-rim {
     position: absolute;
-    z-index: 2;
+    /* Behind the face (z 1) and the base (z 2) at every angle. Shut, its foot
+       meets the base's top exactly, so the base's lip draws the seam; a rim
+       brought in front at the last moment covered the base's top and jumped. */
+    z-index: 0;
     left: 50%;
     bottom: calc((3.55 + var(--lid-top) - var(--lid-ry)) * 1cqw);
     width: calc(84cqw * var(--lid-scale));
     height: calc((var(--lid-band) + var(--lid-ry)) * 1cqw);
     translate: -50% 0;
-    /* The lid's projected top corners, unchanged: the rim is the outline shifted
-       up, not grown. As the lid comes down the corner's height (ry) flattens and a
-       corner that wide and that flat is visually square, so its width follows it
-       down; both floor at the edge's own rounding (0.45cqw), which is all a shut
-       lid's corner shows from the front: its plan-view curve lies flat in depth. */
+    /* The lid's projected top corners exactly: the rim is the face's outline
+       shifted up, so its corners are the face's (2.7cqw wide at the lid's scale, ry
+       high), and the two never part while the corner has height. In the last
+       0.45cqw of ry the face goes edge-on and its corner lies flat in depth, so
+       both radii ease to the edge's own rounding (0.45cqw), all a shut lid's
+       corner shows from the front. */
     border-radius:
-      calc(min(2.7 * var(--lid-scale), max(0.45, 4 * var(--lid-ry))) * 1cqw)
-      calc(min(2.7 * var(--lid-scale), max(0.45, 4 * var(--lid-ry))) * 1cqw) 0 0
-      / calc(max(0.45, var(--lid-ry)) * 1cqw)
+      var(--lid-corner) var(--lid-corner) 0 0 /
+      calc(max(0.45, var(--lid-ry)) * 1cqw)
       calc(max(0.45, var(--lid-ry)) * 1cqw) 0 0;
     background:
       linear-gradient(
@@ -144,6 +164,24 @@
       ),
       linear-gradient(#5a5a5f, #2e2e32 22%, #36363a 72%, #1a1a1d 90%, #0b0b0c);
     box-shadow: 0 0.14cqw 0 #060607;
+    /* Its sides follow the face's. Leaning toward the eye, the face is a trapezoid,
+       its top (84 scale) wider than lower down, so a rectangle as wide as the top
+       stands out past the face's sides at its foot, a notch under each corner. The
+       face's width falls by 84 (scale - 1) over its projected height `top`; over the
+       rim's ry below the top edge that is 84 (scale - 1) ry / top, and ry / top is
+       the lid's own 2.7 / 55.1125 at every angle: each foot comes in by half. Only
+       that last ry slants; above the face's top the rim stands straight, so a shut
+       lid's front (ry 0) keeps its square ends. */
+    clip-path: polygon(
+      0 0,
+      100% 0,
+      100% calc(100% - var(--lid-ry) * 1cqw),
+      calc(100% - var(--lid-foot) * 1cqw) 100%,
+      calc(100% - var(--lid-foot) * 1cqw) calc(100% + 0.2cqw),
+      calc(var(--lid-foot) * 1cqw) calc(100% + 0.2cqw),
+      calc(var(--lid-foot) * 1cqw) 100%,
+      0 calc(100% - var(--lid-ry) * 1cqw)
+    );
     /* Below a tenth of a cqw of band there is nothing to see, and the rim's
        antialiased corners would fringe the face's. */
     opacity: clamp(0, var(--lid-band) * 10, 1);

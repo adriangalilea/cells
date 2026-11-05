@@ -12,9 +12,11 @@
 // block in a page of markdown and one written here are the same block.
 
 import "server-only"
-import type { BundledLanguage } from "shiki"
-import { codeHtml } from "@/lib/code-highlight"
-import type { OwnLanguage } from "@/lib/code-tokens"
+import {
+  type CodeLang,
+  codeHtml,
+} from "@/lib/code-highlight"
+import { langOf } from "@/lib/code-tokens"
 import { CodeFrame } from "@/components/ui/code-frame"
 
 export interface CodeProps {
@@ -24,9 +26,10 @@ export interface CodeProps {
   /** A highlighted command row without a filename bar. Copy stays on the right;
    *  a command too long for the row scrolls on one line, its hidden side fading. */
   compact?: boolean
-  /** A Shiki language id, or one of code's own (`cells`). `text` when it is not code,
-   *  which skips the grammar. */
-  lang?: BundledLanguage | OwnLanguage | "text"
+  /** A Shiki language id, or a registered one (`cells`, or its alias `cell`; lib/
+   *  code-tokens `registerLanguage`). `text` when it is not code, which skips the
+   *  grammar. Absent: the `filename`'s extension's, else `tsx`. */
+  lang?: CodeLang
   /** A path or a name for the tab. Without one the bar names the language. */
   filename?: string
   /** Hide the copy control, for a snippet nobody would want in their clipboard. */
@@ -71,11 +74,13 @@ function dedent(src: string): string {
 
 export async function Code({
   children,
-  lang = "tsx",
+  lang: given,
   highlight,
   notations = true,
   ...frame
 }: CodeProps) {
+  const named = frame.filename ? langOf(frame.filename) : "text"
+  const lang = given ?? (named === "text" ? "tsx" : named)
   const source = dedent(children)
   const html = await codeHtml(source, { lang, highlight, notations })
   return <CodeFrame source={source} html={html} lang={lang} {...frame} />

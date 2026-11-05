@@ -4,6 +4,7 @@
 
 export const UI_ITEMS = [
   "ambient-light",
+  "app-window",
   "code",
   "code-session",
   "macos",
