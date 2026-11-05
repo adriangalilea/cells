@@ -38,6 +38,12 @@ for (const [name, frame] of Object.entries(HERO.checkpoints)) {
   else console.log(`✓ hero ${name}: ${got.length} problems`)
 }
 
+// The terminal's failing check is the CLI's line for the typo: the file's name, then the
+// engine's problem.
+const typo = readFiles([{ name: HERO.file, text: HERO.checkpoints.typo.text }]).problems.map((p) => `${HERO.file} ${p.why}`)
+if (JSON.stringify(typo) !== JSON.stringify([HERO.failing])) fail("hero terminal", `prints ${JSON.stringify([HERO.failing])}, the engine says ${JSON.stringify(typo)}`)
+else console.log("✓ hero terminal: the check's line is the engine's")
+
 if (failed) {
   console.error(`${failed} claim(s) the engine does not back`)
   process.exit(1)

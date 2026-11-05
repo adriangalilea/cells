@@ -36,11 +36,13 @@ export interface ViewTable {
 
 const NUMERIC = new Set(["int", "num", "pct", "money"])
 
-/** A value as the table shows it: money at its scale, everything else as written. */
+/** A value as the table shows it: a decimal at its scale, a boolean in the file's own
+ *  words, a broken cell as it is written (its problem says why), the rest as the column
+ *  writes it. */
 function shown(c: Column, r: number, v: Value): string {
-  if (v === null) return ""
+  if (v === null) return c.origin(r) === "written" ? c.text(r) : ""
   if (c.kind === "decimal") return c.decimal(r) ?? ""
-  return String(v)
+  return c.form(v)
 }
 
 /** The first file of `files`, read as the reader would open it. */
