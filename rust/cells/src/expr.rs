@@ -111,6 +111,9 @@ pub enum Expr {
     Case(Vec<(Expr, Expr)>, Option<Box<Expr>>),
     /// A function, its name where it is written.
     Call(String, Vec<Expr>, Sp),
+    /// A window: an aggregate or `lag` over the file's rows in an order (each key, and
+    /// whether it descends), `over` where it is written.
+    Over(Box<Expr>, Vec<(Expr, bool)>, Sp),
 }
 
 /// Where a part of a formula is in its text: its first byte and its length.
@@ -440,7 +443,29 @@ impl Parser {
                             self.expect_sym(",")?;
                         }
                     }
-                    return Ok(Expr::Call(first.to_ascii_lowercase(), args, named));
+                    let call = Expr::Call(first.to_ascii_lowercase(), args, named);
+                    let over = self.here();
+                    if !self.eat_word("over") {
+                        return Ok(call);
+                    }
+                    self.expect_sym("(")?;
+                    if !(self.eat_word("order") && self.eat_word("by")) {
+                        return Err(self.fail(format!("over takes order by: over (order by date), not {}", self.shown())));
+                    }
+                    let mut order = Vec::new();
+                    loop {
+                        let key = self.or()?;
+                        let descending = self.eat_word("desc");
+                        if !descending {
+                            self.eat_word("asc");
+                        }
+                        order.push((key, descending));
+                        if !self.eat_sym(",") {
+                            break;
+                        }
+                    }
+                    self.expect_sym(")")?;
+                    return Ok(Expr::Over(Box::new(call), order, over));
                 }
                 if self.eat_sym("[") {
                     let key = self.or()?;
@@ -558,6 +583,10 @@ pub fn names(src: &str) -> Result<Vec<Named>, Fault> {
                 }
             }
             Expr::Call(_, args, _) => stack.extend(args.iter().rev()),
+            Expr::Over(call, order, _) => {
+                stack.extend(order.iter().rev().map(|(k, _)| k));
+                stack.push(call);
+            }
             Expr::Num(_) | Expr::Text(_) | Expr::Bool(_) | Expr::Null => {}
         }
     }
@@ -605,6 +634,9 @@ pub enum Ir {
     /// read on the row found).
     Follow(Box<Ir>, Vec<(Table, usize, usize)>),
     Agg(Agg, Table, Box<Ir>, usize),
+    /// A window over the file's own rows in an order: what it computes, of what, the
+    /// order's keys (each descending or not), its slot.
+    Window(Win, Box<Ir>, Vec<(Ir, bool)>, usize),
     Neg(Box<Ir>),
     Not(Box<Ir>),
     Bin(Bin, Box<Ir>, Box<Ir>),
@@ -630,12 +662,28 @@ pub trait Scope {
 /// Resolves a parsed formula; `aggregates` counts the aggregates resolved so far, each one
 /// a slot its value is remembered in.
 pub fn resolve(e: &Expr, scope: &dyn Scope, aggregates: &mut usize) -> Result<(Ir, K), Fault> {
-    Resolver { scope, aggregates }.at(e, None, false)
+    Resolver { scope, aggregates, windows: false }.at(e, None, false)
+}
+
+/// `resolve` for a column's formula, which may hold a window: one over the column's rows
+/// in order.
+pub fn resolve_column(e: &Expr, scope: &dyn Scope, aggregates: &mut usize) -> Result<(Ir, K), Fault> {
+    Resolver { scope, aggregates, windows: true }.at(e, None, false)
+}
+
+/// What a window computes at each row: an aggregate of the rows up to it, or the value
+/// on the row before it.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Win {
+    Agg(Agg),
+    Lag,
 }
 
 struct Resolver<'a, 'b> {
     scope: &'a dyn Scope,
     aggregates: &'b mut usize,
+    /// A column's formula, where a window may stand.
+    windows: bool,
 }
 
 impl Resolver<'_, '_> {
@@ -655,8 +703,7 @@ impl Resolver<'_, '_> {
                 let t = self.named(name).ok_or_else(|| fail(format!("no table \"{name}\"")))?;
                 let k = self.scope.key(t).ok_or_else(|| fail(format!("{name} has no key, so no row is found by one")))?;
                 let (key, _) = self.at(key, table, inside)?;
-                let (col, kind) =
-                    self.scope.column(t, &rest[0]).ok_or_else(|| fail(format!("{name} has no column \"{}\"", rest[0])))?;
+                let (col, kind) = self.scope.column(t, &rest[0]).ok_or_else(|| fail(format!("{name} has no column \"{}\"", rest[0])))?;
                 let ir = Ir::Follow(Box::new(key), Vec::from([(t, k, col)]));
                 self.follow(ir, t, col, kind, &rest[1..], &rest[0], *at)?
             }
@@ -725,7 +772,48 @@ impl Resolver<'_, '_> {
                 (Ir::Case(out, Box::new(otherwise)), kind)
             }
             Expr::Call(name, args, at) => self.call(name, *at, args, table, inside)?,
+            Expr::Over(call, order, at) => self.window(call, order, *at, table, inside)?,
         })
+    }
+
+    fn window(&mut self, call: &Expr, order: &[(Expr, bool)], at: Sp, table: Table, inside: bool) -> Result<(Ir, K), Fault> {
+        let fail = |why: String| Fault::at(at, why);
+        let Expr::Call(name, args, named) = call else { unreachable!("over follows a call") };
+        if !self.windows {
+            return Err(fail("a window is a column's formula's: over (order by …) reads the column's rows in order".to_owned()));
+        }
+        if inside || table.is_some() {
+            return Err(fail("a window inside an aggregate or another table".to_owned()));
+        }
+        let win = match name.as_str() {
+            "sum" => Win::Agg(Agg::Sum),
+            "avg" => Win::Agg(Agg::Avg),
+            "min" => Win::Agg(Agg::Min),
+            "max" => Win::Agg(Agg::Max),
+            "count" => Win::Agg(Agg::Count),
+            "lag" => Win::Lag,
+            _ => return Err(Fault::at(*named, format!("{name} is no window: sum, avg, min, max, count, lag"))),
+        };
+        if args.len() != 1 {
+            return Err(Fault::at(*named, format!("{name} takes one value")));
+        }
+        let (arg, k) = self.at(&args[0], None, true)?;
+        let kind = match win {
+            Win::Agg(Agg::Sum | Agg::Avg) => {
+                number(k, name).map_err(|why| Fault::at(*named, why))?;
+                K::Num
+            }
+            Win::Agg(Agg::Count) => K::Num,
+            Win::Agg(Agg::Min | Agg::Max) | Win::Lag => k,
+        };
+        let mut keys = Vec::with_capacity(order.len());
+        for (key, descending) in order {
+            let (ir, _) = self.at(key, None, true)?;
+            keys.push((ir, *descending));
+        }
+        let slot = *self.aggregates;
+        *self.aggregates += 1;
+        Ok((Ir::Window(win, Box::new(arg), keys, slot), kind))
     }
 
     /// A table by the name a formula reads it by: `this`, the file's own, or one the
@@ -930,6 +1018,55 @@ pub trait Source {
     /// An aggregate's value, when it was evaluated already.
     fn recall(&mut self, slot: usize) -> Option<V>;
     fn remember(&mut self, slot: usize, v: V);
+    /// A window's value on a row, when it was evaluated already, or that it is being.
+    fn window(&mut self, slot: usize, row: usize) -> Windowed;
+    /// A window being evaluated, or its values, one a row, and the rows its order does not
+    /// tell apart, each with one it ties with.
+    fn remember_window(&mut self, slot: usize, values: Option<Evaluated>);
+}
+
+/// A window evaluated: its value on each row, and each row its order does not place,
+/// with one it ties with.
+pub type Evaluated = (Vec<V>, Vec<(usize, usize)>);
+
+/// Where a window's evaluation is.
+#[derive(Clone, Debug, PartialEq)]
+pub enum Windowed {
+    Unknown,
+    Busy,
+    Done(V),
+}
+
+/// The file's rows in a window's order, each key ascending or descending, a null after
+/// every value; and each row the order does not tell from its neighbour, with it.
+fn ordered(keys: &[Vec<V>], descending: &[bool]) -> (Vec<usize>, Vec<(usize, usize)>) {
+    let cmp = |a: &[V], b: &[V]| {
+        for ((x, y), d) in a.iter().zip(b).zip(descending) {
+            let o = match (x, y) {
+                (V::Null, V::Null) => Ordering::Equal,
+                (V::Null, _) => Ordering::Greater,
+                (_, V::Null) => Ordering::Less,
+                _ => {
+                    let o = order(x, y).unwrap_or(Ordering::Equal);
+                    if *d { o.reverse() } else { o }
+                }
+            };
+            if o != Ordering::Equal {
+                return o;
+            }
+        }
+        Ordering::Equal
+    };
+    let mut rows: Vec<usize> = (0..keys.len()).collect();
+    rows.sort_by(|&a, &b| cmp(&keys[a], &keys[b]));
+    let mut ties = Vec::new();
+    for w in rows.windows(2) {
+        if cmp(&keys[w[0]], &keys[w[1]]) == Ordering::Equal {
+            ties.push((w[0], w[1]));
+            ties.push((w[1], w[0]));
+        }
+    }
+    (rows, ties)
 }
 
 /// `ir` on row `row` of `table`.
@@ -995,6 +1132,80 @@ pub fn eval(ir: &Ir, table: Table, row: usize, src: &mut dyn Source) -> V {
                 Agg::Min | Agg::Max => acc.unwrap_or(V::Null),
             };
             src.remember(*slot, v.clone());
+            v
+        }
+        Ir::Window(win, arg, by, slot) => {
+            match src.window(*slot, row) {
+                Windowed::Done(v) => return v,
+                // The window reads itself: a cycle, as a cell reading itself is.
+                Windowed::Busy => return V::Null,
+                Windowed::Unknown => {}
+            }
+            src.remember_window(*slot, None);
+            let n = src.rows(None);
+            let keys: Vec<Vec<V>> = (0..n).map(|r| by.iter().map(|(k, _)| eval(k, None, r, src)).collect()).collect();
+            let descending: Vec<bool> = by.iter().map(|(_, d)| *d).collect();
+            let (rows, mut ties) = ordered(&keys, &descending);
+            if *win == Win::Lag {
+                // The row after rows that tie has no one row before it.
+                let tied: Vec<usize> = ties.iter().map(|t| t.0).collect();
+                for w in rows.windows(2) {
+                    if tied.contains(&w[0]) && !tied.contains(&w[1]) {
+                        ties.push((w[1], w[0]));
+                    }
+                }
+            }
+            let mut values = alloc::vec![V::Null; n];
+            let (mut acc, mut count): (Option<V>, i64) = (None, 0);
+            let mut before = V::Null;
+            for &r in &rows {
+                let v = eval(arg, None, r, src);
+                values[r] = match win {
+                    Win::Lag => core::mem::replace(&mut before, v),
+                    Win::Agg(agg) => {
+                        if v != V::Null {
+                            count += 1;
+                            acc = Some(match (agg, acc.take()) {
+                                (_, None) => v,
+                                (Agg::Sum | Agg::Avg, Some(V::Num(a))) => match v {
+                                    V::Num(b) => V::Num(a.add(&b)),
+                                    _ => unreachable!("a sum of numbers"),
+                                },
+                                (Agg::Min, Some(a)) => {
+                                    if order(&v, &a) == Some(Ordering::Less) {
+                                        v
+                                    } else {
+                                        a
+                                    }
+                                }
+                                (Agg::Max, Some(a)) => {
+                                    if order(&v, &a) == Some(Ordering::Greater) {
+                                        v
+                                    } else {
+                                        a
+                                    }
+                                }
+                                (_, Some(a)) => a,
+                            });
+                        }
+                        match agg {
+                            Agg::Count => V::Num(Exact::from_int(count)),
+                            Agg::Avg => match &acc {
+                                Some(V::Num(s)) => s.div(&Exact::from_int(count)).map_or(V::Null, V::Num),
+                                _ => V::Null,
+                            },
+                            _ => acc.clone().unwrap_or(V::Null),
+                        }
+                    }
+                };
+            }
+            // A row the order does not place has no value: which comes first is never
+            // decided by where a row is written.
+            for &(r, _) in &ties {
+                values[r] = V::Null;
+            }
+            let v = values[row].clone();
+            src.remember_window(*slot, Some((values, ties)));
             v
         }
         Ir::Neg(a) => match eval(a, table, row, src) {
@@ -1158,6 +1369,10 @@ pub fn reads(ir: &Ir, table: Table, out: &mut Vec<usize>) {
         }
         Ir::Follow(key, _) => reads(key, table, out),
         Ir::Agg(_, over, arg, _) => reads(arg, *over, out),
+        Ir::Window(_, arg, order, _) => {
+            reads(arg, None, out);
+            order.iter().for_each(|(k, _)| reads(k, None, out));
+        }
         Ir::Neg(a) | Ir::Not(a) | Ir::IsNull(a, _) => reads(a, table, out),
         Ir::Bin(_, a, b) => {
             reads(a, table, out);
@@ -1200,7 +1415,7 @@ mod tests {
         }
     }
 
-    struct Rows(Vec<[V; 3]>, Vec<Option<V>>);
+    struct Rows(Vec<[V; 3]>, Vec<Option<V>>, Vec<Option<Option<Vec<V>>>>);
 
     impl Source for Rows {
         fn cell(&mut self, _: Table, row: usize, column: usize) -> V {
@@ -1219,6 +1434,17 @@ mod tests {
             self.1.resize(slot + 1, None);
             self.1[slot] = Some(v);
         }
+        fn window(&mut self, slot: usize, row: usize) -> Windowed {
+            match self.2.get(slot) {
+                Some(Some(Some(v))) => Windowed::Done(v[row].clone()),
+                Some(Some(None)) => Windowed::Busy,
+                _ => Windowed::Unknown,
+            }
+        }
+        fn remember_window(&mut self, slot: usize, values: Option<Evaluated>) {
+            self.2.resize(slot + 1, None);
+            self.2[slot] = Some(values.map(|(v, _)| v));
+        }
     }
 
     fn run(src: &str) -> String {
@@ -1230,6 +1456,7 @@ mod tests {
                 [V::Num(Exact::parse("84.20")), V::Num(Exact::parse("2")), V::Text("fuel".into())],
                 [V::Num(Exact::parse("10")), V::Null, V::Text("maps".into())],
             ]),
+            Vec::new(),
             Vec::new(),
         );
         match eval(&ir, None, 0, &mut rows) {
@@ -1262,6 +1489,42 @@ mod tests {
             let refused = parse(bad).and_then(|e| resolve(&e, &One, &mut 0).map(|_| ()));
             assert!(refused.is_err(), "{bad} should not resolve");
         }
+    }
+
+    #[test]
+    fn a_window_runs_over_the_rows_in_order() {
+        // Each row's value, a window in a column's formula over three rows.
+        let column = |src: &str, rows: Vec<[V; 3]>| -> Vec<V> {
+            let (ir, _) = parse(src).and_then(|e| resolve_column(&e, &One, &mut 0)).unwrap_or_else(|f| panic!("{src}: {}", f.why));
+            let n = rows.len();
+            let mut r = Rows(rows, Vec::new(), Vec::new());
+            (0..n).map(|row| eval(&ir, None, row, &mut r)).collect()
+        };
+        let num = |s: &str| V::Num(Exact::parse(s));
+        let rows = || {
+            Vec::from([
+                [num("10"), num("3"), V::Text("c".into())],
+                [num("20"), num("1"), V::Text("a".into())],
+                [num("30"), num("2"), V::Text("b".into())],
+            ])
+        };
+        assert_eq!(column("sum(cost) over (order by qty)", rows()), [num("60"), num("20"), num("50")]);
+        assert_eq!(column("sum(cost) over (order by item desc)", rows()), [num("10"), num("60"), num("40")]);
+        assert_eq!(column("lag(cost) over (order by qty)", rows()), [num("30"), V::Null, num("20")]);
+        assert_eq!(column("count(cost) over (order by qty)", rows()), [num("3"), num("1"), num("2")]);
+        // A tie the order does not break: neither row has a value, nor the one after them
+        // for lag.
+        let tied = || {
+            Vec::from([
+                [num("10"), num("1"), V::Text("a".into())],
+                [num("20"), num("1"), V::Text("b".into())],
+                [num("5"), num("2"), V::Text("c".into())],
+            ])
+        };
+        assert_eq!(column("sum(cost) over (order by qty)", tied()), [V::Null, V::Null, num("35")]);
+        assert_eq!(column("lag(cost) over (order by qty)", tied()), [V::Null, V::Null, V::Null]);
+        // Only a column's formula holds one.
+        assert!(parse("sum(cost) over (order by qty)").and_then(|e| resolve(&e, &One, &mut 0)).is_err());
     }
 
     #[test]

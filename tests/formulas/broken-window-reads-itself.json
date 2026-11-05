@@ -1,0 +1,13 @@
+{
+  "columns": [
+    { "name": "id", "type": "text!" },
+    { "name": "balance", "type": "EUR", "formula": "sum(balance) over (order by id)" }
+  ],
+  "rows": [
+    { "id": { "text": "a" }, "balance": { "from": "formula" } }
+  ],
+  "problems": [],
+  "broken": [
+    { "at": "column 2", "span": [9, 43] }
+  ]
+}

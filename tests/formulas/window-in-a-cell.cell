@@ -1,0 +1,2 @@
+id:text!,amount:EUR,note:text?
+a,10.00,`=sum(amount) over (order by id)`

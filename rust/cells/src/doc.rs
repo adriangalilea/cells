@@ -1345,7 +1345,9 @@ impl Doc {
         let why = match p.why {
             Why::Missing => return "is missing".to_owned(),
             Why::Formula | Why::Computed => {
-                return format!("{}: {}", text, self.unwell.get(&at).map_or("the formula does not compute", |f| f.why.as_str()));
+                let why = self.unwell.get(&at).map_or("the formula does not compute", |f| f.why.as_str());
+                // A cell its column's formula computes has no text of its own to show.
+                return if text.is_empty() { why.to_owned() } else { format!("{text}: {why}") };
             }
             Why::Absent => format!("is no key of {}", tables()),
             Why::Ambiguous => format!("is a key of more than one of {}, so it names no one row", tables()),
@@ -2007,7 +2009,7 @@ impl Doc {
             let (_, written) = types::split_formula(&cell[c.name.len() + 1..]);
             let written = written.expect("a column with a formula has one in its header cell");
             let from = written.as_ptr() as usize - cell.as_ptr() as usize + (written.len() - written.trim_start_matches([' ', '\t']).len());
-            let resolved = expr::parse(f).and_then(|e| expr::resolve(&e, &scope, &mut aggregates)).and_then(|(ir, kind)| {
+            let resolved = expr::parse(f).and_then(|e| expr::resolve_column(&e, &scope, &mut aggregates)).and_then(|(ir, kind)| {
                 holds(&c.ty.base, kind).map_err(expr::Fault::whole)?;
                 Ok(ir)
             });
@@ -2112,6 +2114,7 @@ impl Doc {
             aggregates: alloc::vec![None; aggregates],
             indexes: (0..=self.tables.len()).map(|_| None).collect(),
             cycles: Vec::new(),
+            windows: alloc::vec![None; aggregates],
         };
         let mut results: Vec<Vec<(usize, V)>> = Vec::with_capacity(self.columns.len());
         for (k, c) in self.columns.iter().enumerate() {
@@ -2125,6 +2128,21 @@ impl Doc {
             results.push(out);
         }
         let cycles = core::mem::take(&mut eval.cycles);
+        // A row its column's window does not place: a problem on its computed cell.
+        for (k, f) in self.formulas.iter().enumerate() {
+            let Some(ir) = f else { continue };
+            let mut slots = Vec::new();
+            windows_in(ir, &mut slots);
+            for slot in slots {
+                let Some(Some((_, ties))) = &eval.windows[slot] else { continue };
+                for &(r, other) in ties {
+                    if self.columns[k].origin(r) == Origin::Formula {
+                        let why = format!("ties with row {other} in its window's order, which says neither comes first");
+                        self.unwell.entry((r as u32, k as u32)).or_insert_with(|| expr::Fault::whole(why));
+                    }
+                }
+            }
+        }
         for (k, out) in results.into_iter().enumerate() {
             if self.columns[k].origin.is_empty() {
                 continue;
@@ -2205,10 +2223,36 @@ fn slots(ir: &Ir) -> usize {
     match ir {
         Ir::Const(_) | Ir::Col(_) => 0,
         Ir::Agg(_, _, a, slot) => slots(a).max(slot + 1),
+        Ir::Window(_, a, order, slot) => order.iter().map(|(k, _)| slots(k)).max().unwrap_or(0).max(slots(a)).max(slot + 1),
         Ir::Follow(a, _) | Ir::Neg(a) | Ir::Not(a) | Ir::IsNull(a, _) => slots(a),
         Ir::Bin(_, a, b) => slots(a).max(slots(b)),
         Ir::Case(arms, o) => arms.iter().map(|(w, t)| slots(w).max(slots(t))).max().unwrap_or(0).max(slots(o)),
         Ir::Call(_, args) => args.iter().map(slots).max().unwrap_or(0),
+    }
+}
+
+/// The slots of every window an `Ir` holds.
+fn windows_in(ir: &Ir, out: &mut Vec<usize>) {
+    match ir {
+        Ir::Const(_) | Ir::Col(_) => {}
+        Ir::Window(_, a, order, slot) => {
+            out.push(*slot);
+            windows_in(a, out);
+            order.iter().for_each(|(k, _)| windows_in(k, out));
+        }
+        Ir::Agg(_, _, a, _) | Ir::Follow(a, _) | Ir::Neg(a) | Ir::Not(a) | Ir::IsNull(a, _) => windows_in(a, out),
+        Ir::Bin(_, a, b) => {
+            windows_in(a, out);
+            windows_in(b, out);
+        }
+        Ir::Case(arms, o) => {
+            for (w, t) in arms {
+                windows_in(w, out);
+                windows_in(t, out);
+            }
+            windows_in(o, out);
+        }
+        Ir::Call(_, args) => args.iter().for_each(|a| windows_in(a, out)),
     }
 }
 
@@ -2371,6 +2415,8 @@ struct Eval<'a> {
     indexes: Vec<Option<BTreeMap<String, usize>>>,
     /// The computed cells found reading themselves.
     cycles: Vec<(usize, usize)>,
+    /// Each window's values and ties, once evaluated; `Some(None)` while it is being.
+    windows: Vec<Option<Option<expr::Evaluated>>>,
 }
 
 impl expr::Source for Eval<'_> {
@@ -2445,6 +2491,18 @@ impl expr::Source for Eval<'_> {
 
     fn recall(&mut self, slot: usize) -> Option<V> {
         self.aggregates.get(slot).cloned().flatten()
+    }
+
+    fn window(&mut self, slot: usize, row: usize) -> expr::Windowed {
+        match &self.windows[slot] {
+            Some(Some((values, _))) => expr::Windowed::Done(values[row].clone()),
+            Some(None) => expr::Windowed::Busy,
+            None => expr::Windowed::Unknown,
+        }
+    }
+
+    fn remember_window(&mut self, slot: usize, values: Option<expr::Evaluated>) {
+        self.windows[slot] = Some(values);
     }
 
     fn remember(&mut self, slot: usize, v: V) {

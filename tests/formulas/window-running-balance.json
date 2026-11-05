@@ -1,0 +1,15 @@
+{
+  "columns": [
+    { "name": "id", "type": "text!" },
+    { "name": "date", "type": "date" },
+    { "name": "amount", "type": "EUR" },
+    { "name": "balance", "type": "EUR", "formula": "sum(amount) over (order by date)" },
+    { "name": "before", "type": "EUR", "formula": "lag(balance) over (order by date)" }
+  ],
+  "rows": [
+    { "id": { "text": "c" }, "date": { "date": "2026-07-03" }, "amount": { "money": "-20.00", "currency": "EUR" }, "balance": { "money": "130.00", "currency": "EUR", "from": "formula" }, "before": { "money": "150.00", "currency": "EUR", "from": "formula" } },
+    { "id": { "text": "a" }, "date": { "date": "2026-07-01" }, "amount": { "money": "100.00", "currency": "EUR" }, "balance": { "money": "100.00", "currency": "EUR", "from": "formula" }, "before": { "from": "formula" } },
+    { "id": { "text": "b" }, "date": { "date": "2026-07-02" }, "amount": { "money": "50.00", "currency": "EUR" }, "balance": { "money": "150.00", "currency": "EUR", "from": "formula" }, "before": { "money": "100.00", "currency": "EUR", "from": "formula" } }
+  ],
+  "problems": []
+}

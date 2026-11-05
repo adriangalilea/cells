@@ -1,0 +1,2 @@
+id:text!,balance:EUR=sum(balance) over (order by id)
+a,

@@ -1,0 +1,13 @@
+{
+  "columns": [
+    { "name": "id", "type": "text!" },
+    { "name": "amount", "type": "EUR" },
+    { "name": "note", "type": "text?" }
+  ],
+  "rows": [
+    { "id": { "text": "a" }, "amount": { "money": "10.00", "currency": "EUR" }, "note": { "from": "cell" } }
+  ],
+  "problems": [
+    { "row": 0, "column": "note", "kind": "formula", "span": [53, 4] }
+  ]
+}
