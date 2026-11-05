@@ -9,7 +9,7 @@
     { "seed": { "text": "dill" }, "sown": null }
   ],
   "problems": [
-    { "row": 1, "column": "sown", "kind": "type" },
-    { "row": 2, "column": "sown", "kind": "type" }
+    { "row": 1, "column": "sown", "kind": "type", "span": [52, 10] },
+    { "row": 2, "column": "sown", "kind": "type", "span": [68, 8] }
   ]
 }

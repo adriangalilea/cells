@@ -7,6 +7,6 @@
   ],
   "problems": [],
   "broken": [
-    { "at": "prelude line 1" }
+    { "at": "prelude line 1", "span": [4, 40] }
   ]
 }

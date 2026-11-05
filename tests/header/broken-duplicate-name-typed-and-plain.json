@@ -7,6 +7,6 @@
   "rows": [],
   "problems": [],
   "broken": [
-    { "at": "column 3" }
+    { "at": "column 3", "span": [13, 3] }
   ]
 }

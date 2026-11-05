@@ -12,11 +12,11 @@
     { "letter": { "text": "accent" }, "id": null }
   ],
   "problems": [
-    { "row": 0, "column": "id", "kind": "type" },
-    { "row": 1, "column": "id", "kind": "type" },
-    { "row": 2, "column": "id", "kind": "type" },
-    { "row": 3, "column": "id", "kind": "type" },
-    { "row": 4, "column": "id", "kind": "type" },
-    { "row": 5, "column": "id", "kind": "type" }
+    { "row": 0, "column": "id", "kind": "type", "span": [21, 8] },
+    { "row": 1, "column": "id", "kind": "type", "span": [32, 8] },
+    { "row": 2, "column": "id", "kind": "type", "span": [43, 8] },
+    { "row": 3, "column": "id", "kind": "type", "span": [54, 8] },
+    { "row": 4, "column": "id", "kind": "type", "span": [70, 8] },
+    { "row": 5, "column": "id", "kind": "type", "span": [86, 9] }
   ]
 }

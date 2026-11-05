@@ -291,26 +291,51 @@ fn check_read(doc: &Doc, want: &Json) -> Vec<String> {
         }
     }
     let problems = want.get("problems").unwrap().array();
-    let ours: Vec<(u32, String, &str)> =
-        doc.problems().iter().map(|p| (p.row, doc.columns()[p.column as usize].name.clone(), p.kind().as_str())).collect();
-    let theirs: Vec<(u32, String, &str)> = problems
+    let spans = doc.spans();
+    let ours: Vec<(u32, String, &str, (u32, u32))> = doc
+        .problems()
+        .iter()
+        .zip(&spans)
+        .map(|(p, s)| (p.row, doc.columns()[p.column as usize].name.clone(), p.kind().as_str(), (s.start, s.len)))
+        .collect();
+    let theirs: Vec<(u32, String, &str, (u32, u32))> = problems
         .iter()
         .map(|p| {
             let Json::Number(n) = p.get("row").unwrap() else { panic!("a row") };
-            (n.parse().unwrap(), p.get("column").unwrap().str().to_string(), p.get("kind").unwrap().str())
+            (n.parse().unwrap(), p.get("column").unwrap().str().to_string(), p.get("kind").unwrap().str(), span(p))
         })
         .collect();
     if ours != theirs {
         fails.push(format!("problems {ours:?}, the suite says {theirs:?}"));
     }
-    let ours: Vec<String> = doc.broken().iter().map(|e| e.at.to_string()).collect();
-    let theirs: Vec<String> =
-        want.get("broken").map(|b| b.array()).unwrap_or_default().iter().map(|b| b.get("at").unwrap().str().to_string()).collect();
+    let ours: Vec<(String, (u32, u32))> = doc
+        .broken()
+        .iter()
+        .zip(doc.broken_spans())
+        .map(|(e, s)| (e.at.to_string(), s.map_or((u32::MAX, 0), |s| (s.start, s.len))))
+        .collect();
+    let theirs: Vec<(String, (u32, u32))> = want
+        .get("broken")
+        .map(|b| b.array())
+        .unwrap_or_default()
+        .iter()
+        .map(|b| (b.get("at").unwrap().str().to_string(), span(b)))
+        .collect();
     if ours != theirs {
         let whys: Vec<String> = doc.broken().iter().map(|e| e.to_string()).collect();
         fails.push(format!("broken at {ours:?}, the suite says {theirs:?} ({})", whys.join("; ")));
     }
     fails
+}
+
+/// A problem's or a break's `span`, `[start, length]` in bytes.
+fn span(p: &Json) -> (u32, u32) {
+    let s = p.get("span").expect("a span").array();
+    let n = |j: &Json| match j {
+        Json::Number(n) => n.parse().unwrap(),
+        other => panic!("a span's number, not {other:?}"),
+    };
+    (n(&s[0]), n(&s[1]))
 }
 
 /// The edits applied in order, and the file's text after them: as written, or after a last

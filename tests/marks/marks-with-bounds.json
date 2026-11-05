@@ -9,7 +9,7 @@
     { "slot": null, "encores": { "int": "3" } }
   ],
   "problems": [
-    { "row": 1, "column": "encores", "kind": "type" },
-    { "row": 2, "column": "slot", "kind": "type" }
+    { "row": 1, "column": "encores", "kind": "type", "span": [34, 1] },
+    { "row": 2, "column": "slot", "kind": "type", "span": [36, 1] }
   ]
 }

@@ -9,6 +9,6 @@
     { "seed": { "text": "dill" }, "note": null }
   ],
   "problems": [
-    { "row": 1, "column": "seed", "kind": "missing" }
+    { "row": 1, "column": "seed", "kind": "missing", "span": [37, 0] }
   ]
 }

@@ -10,7 +10,7 @@
     { "id": { "id": "h4t6w2zd" }, "book": { "text": "Lanterns" } }
   ],
   "problems": [
-    { "row": 0, "column": "id", "kind": "key" },
-    { "row": 2, "column": "id", "kind": "key" }
+    { "row": 0, "column": "id", "kind": "key", "span": [17, 8] },
+    { "row": 2, "column": "id", "kind": "key", "span": [64, 8] }
   ]
 }

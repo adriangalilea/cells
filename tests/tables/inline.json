@@ -12,6 +12,6 @@
     { "date": { "date": "2026-11-05" }, "amount": { "money": "10.00", "currency": "EUR" }, "kind": { "ref": "cash" }, "fee": { "from": "formula" }, "card_rate": { "pct": "1.4", "from": "formula" } }
   ],
   "problems": [
-    { "row": 2, "column": "kind", "kind": "reference" }
+    { "row": 2, "column": "kind", "kind": "reference", "span": [244, 4] }
   ]
 }

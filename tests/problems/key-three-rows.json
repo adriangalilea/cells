@@ -10,8 +10,8 @@
     { "seed": { "text": "basil" } }
   ],
   "problems": [
-    { "row": 0, "column": "seed", "kind": "key" },
-    { "row": 2, "column": "seed", "kind": "key" },
-    { "row": 4, "column": "seed", "kind": "key" }
+    { "row": 0, "column": "seed", "kind": "key", "span": [11, 5] },
+    { "row": 2, "column": "seed", "kind": "key", "span": [22, 5] },
+    { "row": 4, "column": "seed", "kind": "key", "span": [35, 5] }
   ]
 }

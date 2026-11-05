@@ -9,6 +9,6 @@
     { "shelf": null, "books": { "int": "2" } }
   ],
   "problems": [
-    { "row": 2, "column": "shelf", "kind": "type" }
+    { "row": 2, "column": "shelf", "kind": "type", "span": [36, 4] }
   ]
 }

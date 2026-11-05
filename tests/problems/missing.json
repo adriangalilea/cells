@@ -8,6 +8,6 @@
     { "title": { "text": "The Long Road" }, "shelf": null }
   ],
   "problems": [
-    { "row": 1, "column": "shelf", "kind": "missing" }
+    { "row": 1, "column": "shelf", "kind": "missing", "span": [54, 0] }
   ]
 }

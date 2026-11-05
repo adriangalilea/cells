@@ -10,7 +10,7 @@
     { "venue": { "text": "Harbour Hall" }, "on": null, "fee": null, "note": null }
   ],
   "problems": [
-    { "row": 1, "column": "on", "kind": "missing" },
-    { "row": 1, "column": "fee", "kind": "missing" }
+    { "row": 1, "column": "on", "kind": "missing", "span": [78, 0] },
+    { "row": 1, "column": "fee", "kind": "missing", "span": [78, 0] }
   ]
 }

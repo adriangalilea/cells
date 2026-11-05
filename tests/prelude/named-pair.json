@@ -10,6 +10,6 @@
     { "seed": { "text": "leek" }, "sown": null }
   ],
   "problems": [
-    { "row": 2, "column": "sown", "kind": "type" }
+    { "row": 2, "column": "sown", "kind": "type", "span": [72, 4] }
   ]
 }

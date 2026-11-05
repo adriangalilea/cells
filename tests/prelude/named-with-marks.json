@@ -10,6 +10,6 @@
     { "item": { "text": "tip" }, "category": null, "cost": null }
   ],
   "problems": [
-    { "row": 1, "column": "cost", "kind": "type" }
+    { "row": 1, "column": "cost", "kind": "type", "span": [124, 5] }
   ]
 }

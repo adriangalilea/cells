@@ -12,9 +12,9 @@
     { "set": { "text": "fraction after minutes" }, "at": { "time": "21:15:05" }, "door": null }
   ],
   "problems": [
-    { "row": 1, "column": "at", "kind": "type" },
-    { "row": 2, "column": "at", "kind": "type" },
-    { "row": 3, "column": "at", "kind": "type" },
-    { "row": 4, "column": "door", "kind": "type" }
+    { "row": 1, "column": "at", "kind": "type", "span": [85, 10] },
+    { "row": 2, "column": "at", "kind": "type", "span": [120, 10] },
+    { "row": 3, "column": "at", "kind": "type", "span": [151, 9] },
+    { "row": 4, "column": "door", "kind": "type", "span": [199, 7] }
   ]
 }

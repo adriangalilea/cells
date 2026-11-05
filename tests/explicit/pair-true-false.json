@@ -10,8 +10,8 @@
     { "plain": null, "word": null, "pair": null }
   ],
   "problems": [
-    { "row": 2, "column": "plain", "kind": "type" },
-    { "row": 2, "column": "word", "kind": "type" },
-    { "row": 2, "column": "pair", "kind": "type" }
+    { "row": 2, "column": "plain", "kind": "type", "span": [81, 3] },
+    { "row": 2, "column": "word", "kind": "type", "span": [85, 3] },
+    { "row": 2, "column": "pair", "kind": "type", "span": [89, 3] }
   ]
 }

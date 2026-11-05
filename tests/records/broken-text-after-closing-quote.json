@@ -8,6 +8,6 @@
   ],
   "problems": [],
   "broken": [
-    { "at": "row 1" }
+    { "at": "row 1", "span": [30, 13] }
   ]
 }

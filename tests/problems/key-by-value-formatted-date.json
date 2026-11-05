@@ -9,7 +9,7 @@
     { "on": { "date": "2026-08-14" }, "venue": { "text": "Old Mill" } }
   ],
   "problems": [
-    { "row": 0, "column": "on", "kind": "key" },
-    { "row": 2, "column": "on", "kind": "key" }
+    { "row": 0, "column": "on", "kind": "key", "span": [32, 10] },
+    { "row": 2, "column": "on", "kind": "key", "span": [79, 10] }
   ]
 }

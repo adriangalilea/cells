@@ -17,16 +17,16 @@
     { "label": { "text": "backslash" }, "link": null }
   ],
   "problems": [
-    { "row": 0, "column": "link", "kind": "type" },
-    { "row": 1, "column": "link", "kind": "type" },
-    { "row": 2, "column": "link", "kind": "type" },
-    { "row": 3, "column": "link", "kind": "type" },
-    { "row": 4, "column": "link", "kind": "type" },
-    { "row": 5, "column": "link", "kind": "type" },
-    { "row": 6, "column": "link", "kind": "type" },
-    { "row": 7, "column": "link", "kind": "type" },
-    { "row": 8, "column": "link", "kind": "type" },
-    { "row": 9, "column": "link", "kind": "type" },
-    { "row": 10, "column": "link", "kind": "type" }
+    { "row": 0, "column": "link", "kind": "type", "span": [31, 11] },
+    { "row": 1, "column": "link", "kind": "type", "span": [50, 4] },
+    { "row": 2, "column": "link", "kind": "type", "span": [71, 15] },
+    { "row": 3, "column": "link", "kind": "type", "span": [95, 23] },
+    { "row": 4, "column": "link", "kind": "type", "span": [131, 23] },
+    { "row": 5, "column": "link", "kind": "type", "span": [165, 18] },
+    { "row": 6, "column": "link", "kind": "type", "span": [210, 9] },
+    { "row": 7, "column": "link", "kind": "type", "span": [243, 4] },
+    { "row": 8, "column": "link", "kind": "type", "span": [268, 5] },
+    { "row": 9, "column": "link", "kind": "type", "span": [289, 23] },
+    { "row": 10, "column": "link", "kind": "type", "span": [323, 8] }
   ]
 }

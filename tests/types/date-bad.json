@@ -16,15 +16,15 @@
     { "label": { "text": "slashes" }, "on": null }
   ],
   "problems": [
-    { "row": 0, "column": "on", "kind": "type" },
-    { "row": 1, "column": "on", "kind": "type" },
-    { "row": 2, "column": "on", "kind": "type" },
-    { "row": 3, "column": "on", "kind": "type" },
-    { "row": 4, "column": "on", "kind": "type" },
-    { "row": 5, "column": "on", "kind": "type" },
-    { "row": 6, "column": "on", "kind": "type" },
-    { "row": 7, "column": "on", "kind": "type" },
-    { "row": 8, "column": "on", "kind": "type" },
-    { "row": 9, "column": "on", "kind": "type" }
+    { "row": 0, "column": "on", "kind": "type", "span": [32, 10] },
+    { "row": 1, "column": "on", "kind": "type", "span": [60, 10] },
+    { "row": 2, "column": "on", "kind": "type", "span": [80, 10] },
+    { "row": 3, "column": "on", "kind": "type", "span": [99, 10] },
+    { "row": 4, "column": "on", "kind": "type", "span": [119, 10] },
+    { "row": 5, "column": "on", "kind": "type", "span": [146, 9] },
+    { "row": 6, "column": "on", "kind": "type", "span": [166, 10] },
+    { "row": 7, "column": "on", "kind": "type", "span": [188, 20] },
+    { "row": 8, "column": "on", "kind": "type", "span": [219, 8] },
+    { "row": 9, "column": "on", "kind": "type", "span": [236, 10] }
   ]
 }

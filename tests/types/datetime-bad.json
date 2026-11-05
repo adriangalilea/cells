@@ -17,16 +17,16 @@
     { "label": { "text": "offset of 24 hours" }, "at": null }
   ],
   "problems": [
-    { "row": 0, "column": "at", "kind": "type" },
-    { "row": 1, "column": "at", "kind": "type" },
-    { "row": 2, "column": "at", "kind": "type" },
-    { "row": 3, "column": "at", "kind": "type" },
-    { "row": 4, "column": "at", "kind": "type" },
-    { "row": 5, "column": "at", "kind": "type" },
-    { "row": 6, "column": "at", "kind": "type" },
-    { "row": 7, "column": "at", "kind": "type" },
-    { "row": 8, "column": "at", "kind": "type" },
-    { "row": 9, "column": "at", "kind": "type" },
-    { "row": 10, "column": "at", "kind": "type" }
+    { "row": 0, "column": "at", "kind": "type", "span": [34, 19] },
+    { "row": 1, "column": "at", "kind": "type", "span": [65, 17] },
+    { "row": 2, "column": "at", "kind": "type", "span": [95, 20] },
+    { "row": 3, "column": "at", "kind": "type", "span": [134, 20] },
+    { "row": 4, "column": "at", "kind": "type", "span": [176, 24] },
+    { "row": 5, "column": "at", "kind": "type", "span": [220, 22] },
+    { "row": 6, "column": "at", "kind": "type", "span": [251, 20] },
+    { "row": 7, "column": "at", "kind": "type", "span": [284, 20] },
+    { "row": 8, "column": "at", "kind": "type", "span": [325, 31] },
+    { "row": 9, "column": "at", "kind": "type", "span": [369, 10] },
+    { "row": 10, "column": "at", "kind": "type", "span": [399, 25] }
   ]
 }

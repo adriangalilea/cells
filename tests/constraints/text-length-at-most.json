@@ -8,6 +8,6 @@
     { "seed": null, "bed": { "text": "south" } }
   ],
   "problems": [
-    { "row": 1, "column": "seed", "kind": "type" }
+    { "row": 1, "column": "seed", "kind": "type", "span": [34, 6] }
   ]
 }

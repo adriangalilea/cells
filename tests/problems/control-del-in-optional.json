@@ -8,6 +8,6 @@
     { "name": { "text": "Grace" }, "nick": null }
   ],
   "problems": [
-    { "row": 0, "column": "nick", "kind": "type" }
+    { "row": 0, "column": "nick", "kind": "type", "span": [26, 1] }
   ]
 }

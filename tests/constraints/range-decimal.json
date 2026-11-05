@@ -10,7 +10,7 @@
     { "seed": { "text": "squash" }, "depth": null }
   ],
   "problems": [
-    { "row": 2, "column": "depth", "kind": "type" },
-    { "row": 3, "column": "depth", "kind": "type" }
+    { "row": 2, "column": "depth", "kind": "type", "span": [49, 4] },
+    { "row": 3, "column": "depth", "kind": "type", "span": [61, 4] }
   ]
 }

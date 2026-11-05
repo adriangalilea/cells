@@ -11,10 +11,10 @@
     { "label": { "text": "sign alone" }, "germination": null }
   ],
   "problems": [
-    { "row": 0, "column": "germination", "kind": "type" },
-    { "row": 1, "column": "germination", "kind": "type" },
-    { "row": 2, "column": "germination", "kind": "type" },
-    { "row": 3, "column": "germination", "kind": "type" },
-    { "row": 4, "column": "germination", "kind": "type" }
+    { "row": 0, "column": "germination", "kind": "type", "span": [46, 4] },
+    { "row": 1, "column": "germination", "kind": "type", "span": [62, 3] },
+    { "row": 2, "column": "germination", "kind": "type", "span": [76, 4] },
+    { "row": 3, "column": "germination", "kind": "type", "span": [88, 6] },
+    { "row": 4, "column": "germination", "kind": "type", "span": [106, 1] }
   ]
 }

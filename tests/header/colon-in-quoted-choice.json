@@ -9,6 +9,6 @@
     { "band": { "text": "the owls" }, "slot": null }
   ],
   "problems": [
-    { "row": 2, "column": "slot", "kind": "type" }
+    { "row": 2, "column": "slot", "kind": "type", "span": [70, 5] }
   ]
 }

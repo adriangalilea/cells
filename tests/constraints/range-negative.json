@@ -10,7 +10,7 @@
     { "day": { "text": "four" }, "drift": null }
   ],
   "problems": [
-    { "row": 2, "column": "drift", "kind": "type" },
-    { "row": 3, "column": "drift", "kind": "type" }
+    { "row": 2, "column": "drift", "kind": "type", "span": [40, 4] },
+    { "row": 3, "column": "drift", "kind": "type", "span": [50, 3] }
   ]
 }

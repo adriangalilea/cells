@@ -9,7 +9,7 @@
     { "bed": { "text": "south" }, "depth": null, "spacing": null }
   ],
   "problems": [
-    { "row": 1, "column": "depth", "kind": "type" },
-    { "row": 1, "column": "spacing", "kind": "type" }
+    { "row": 1, "column": "depth", "kind": "type", "span": [61, 4] },
+    { "row": 1, "column": "spacing", "kind": "type", "span": [66, 3] }
   ]
 }

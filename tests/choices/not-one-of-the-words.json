@@ -10,8 +10,8 @@
     { "item": { "text": "crisps" }, "category": null }
   ],
   "problems": [
-    { "row": 1, "column": "category", "kind": "type" },
-    { "row": 2, "column": "category", "kind": "type" },
-    { "row": 3, "column": "category", "kind": "type" }
+    { "row": 1, "column": "category", "kind": "type", "span": [52, 6] },
+    { "row": 2, "column": "category", "kind": "type", "span": [66, 7] },
+    { "row": 3, "column": "category", "kind": "type", "span": [82, 6] }
   ]
 }

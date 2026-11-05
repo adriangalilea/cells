@@ -7,7 +7,7 @@
   ],
   "problems": [],
   "broken": [
-    { "at": "prelude line 2" },
-    { "at": "column 1" }
+    { "at": "prelude line 2", "span": [14, 15] },
+    { "at": "column 1", "span": [36, 1] }
   ]
 }

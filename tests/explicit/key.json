@@ -10,11 +10,11 @@
     { "short": { "text": "A1" }, "word": { "text": "A1" } }
   ],
   "problems": [
-    { "row": 0, "column": "short", "kind": "key" },
-    { "row": 0, "column": "word", "kind": "key" },
-    { "row": 2, "column": "short", "kind": "missing" },
-    { "row": 2, "column": "word", "kind": "missing" },
-    { "row": 3, "column": "short", "kind": "key" },
-    { "row": 3, "column": "word", "kind": "key" }
+    { "row": 0, "column": "short", "kind": "key", "span": [26, 2] },
+    { "row": 0, "column": "word", "kind": "key", "span": [29, 2] },
+    { "row": 2, "column": "short", "kind": "missing", "span": [38, 0] },
+    { "row": 2, "column": "word", "kind": "missing", "span": [39, 0] },
+    { "row": 3, "column": "short", "kind": "key", "span": [40, 2] },
+    { "row": 3, "column": "word", "kind": "key", "span": [43, 2] }
   ]
 }

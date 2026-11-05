@@ -8,6 +8,6 @@
     { "track": { "text": "closer" }, "length": null }
   ],
   "problems": [
-    { "row": 1, "column": "length", "kind": "type" }
+    { "row": 1, "column": "length", "kind": "type", "span": [56, 5] }
   ]
 }

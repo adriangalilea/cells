@@ -11,6 +11,6 @@
     { "item": { "text": "boots" }, "paid": { "money": "60.00", "currency": "EUR" }, "refund": { "money": "90.00", "currency": "EUR" }, "net": { "from": "formula" }, "units": { "int": "15", "from": "formula" } }
   ],
   "problems": [
-    { "row": 1, "column": "net", "kind": "type" }
+    { "row": 1, "column": "net", "kind": "type", "span": [112, 0] }
   ]
 }

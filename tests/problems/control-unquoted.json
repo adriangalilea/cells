@@ -9,7 +9,7 @@
     { "item": { "text": "maps" }, "cost": null, "qty": null }
   ],
   "problems": [
-    { "row": 0, "column": "item", "kind": "type" },
-    { "row": 1, "column": "cost", "kind": "type" }
+    { "row": 0, "column": "item", "kind": "type", "span": [32, 1] },
+    { "row": 1, "column": "cost", "kind": "type", "span": [51, 1] }
   ]
 }

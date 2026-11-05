@@ -39,7 +39,7 @@ The `.json` is one of two shapes.
 - `types` is present when the prelude names types, imported ones included: each name and its definition, in the same shorthand.
 - Every row holds every column. A value is tagged with its kind: `text`, `int`, `num`, `pct`, `bool`, `date`, `time`, `datetime`, `url`, `email`, `id`, `money` (with `currency`), `choice`, `ref` (a reference's key, its text). A blank or broken cell is `null`, the JSON literal. A computed value says where it comes from, `"from": "formula"` (its column's) or `"from": "cell"` (its own); a computed cell that gave nothing is `{ "from": "formula" }` (or `"cell"`) alone. A value with no `from` is its cell's text: written, or a column's override.
 - Numbers are decimal strings, `-` or none, digits, then a fraction or none (`"84.20"`, `"-0.5"`, `"300000000"`), compared as decimals (`"84.20"` equals `"84.2"`), never as binary floats. `bool` is `true` or `false`. A `date` is `YYYY-MM-DD`, a `time` `HH:mm:ss`, a `datetime` the instant in UTC, `YYYY-MM-DDTHH:mm:ssZ` with a fraction only when it is not zero and no trailing zero in it (`2026-08-14T12:30:00.25Z`). `text`, `url`, `email`, `id`, `choice` and `ref` are the cell's text.
-- A problem is a row (0-based, from the first record), a column, and a kind: `type` (the cell breaks its type, its bounds included, or holds a control character, in any column, an inferred one too, or a formula gave what the type breaks), `missing` (blank where the type has no `?` and the column no formula), `key` (a duplicate key, one problem per row that holds it), `ragged` (a record with more fields than the header, on its last cell, whose fields are read and those past the header kept), `formula` (a cell's own formula that does not compute), `reference` (a key no table it names holds, or two do). Problems are listed by row, then by column left to right; a cell has at most one. Words are each implementation's own; the suite pins where and what kind, never the sentence. A case's problems are its table's; a table written inline has its own, which the suite does not list.
+- A problem is a row (0-based, from the first record), a column, and a kind: `type` (the cell breaks its type, its bounds included, or holds a control character, in any column, an inferred one too, or a formula gave what the type breaks), `missing` (blank where the type has no `?` and the column no formula), `key` (a duplicate key, one problem per row that holds it), `ragged` (a record with more fields than the header, on its last cell, whose fields are read and those past the header kept), `formula` (a cell's own formula that does not compute), `reference` (a key no table it names holds, or two do). Problems are listed by row, then by column left to right; a cell has at most one. Its `span` is where it is in the file, `[start, length]` in bytes: the cell's text inside its quotes, narrowed to the control character a cell holds (`type`) or to the part of a cell's own formula that does not read (`formula`, after its `` `= ``, when the fault has a part), and an empty span where a missing cell stands, at the end of a short row. Words are each implementation's own; the suite pins where and what kind, never the sentence. A case's problems are its table's; a table written inline has its own, which the suite does not list.
 
 **The grammar breaks**: the file reads, and `broken` lists where, in the file's order (the prelude, the header, the rows). Each break takes out only what it breaks (SPEC.md, Reading), and the columns, rows and problems are what is left.
 
@@ -51,9 +51,11 @@ The `.json` is one of two shapes.
   ],
   "rows": [{ "item": { "text": "rent" }, "to": { "text": "rent" } }],
   "problems": [],
-  "broken": [{ "at": "column 2" }]
+  "broken": [{ "at": "column 2", "span": [13, 10] }]
 }
 ```
+
+A break's `span` is where it is in the file, `[start, length]` in bytes, as a problem's: a header cell's type (or its whole text, for a name), narrowed to the reference that names no key or the part of a column formula that does not read (empty, at its end, for a formula that ends early); a prelude statement's first line; the record the rows end at, its first line when it never closes.
 
 `at` is one of `the header`, `column N` (1-based), `prelude line N` (1-based, inside the fences), `the prelude`, `row N` (0-based):
 

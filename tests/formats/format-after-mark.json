@@ -9,6 +9,6 @@
     { "book": { "text": "the long road" }, "returned": null }
   ],
   "problems": [
-    { "row": 2, "column": "returned", "kind": "type" }
+    { "row": 2, "column": "returned", "kind": "type", "span": [86, 10] }
   ]
 }

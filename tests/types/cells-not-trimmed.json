@@ -11,7 +11,7 @@
     { "label": { "text": "padded text" }, "done": { "bool": true }, "note": { "text": " by the gate " }, "qty": { "int": "12" } }
   ],
   "problems": [
-    { "row": 0, "column": "qty", "kind": "type" },
-    { "row": 1, "column": "done", "kind": "type" }
+    { "row": 0, "column": "qty", "kind": "type", "span": [62, 3] },
+    { "row": 1, "column": "done", "kind": "type", "span": [78, 5] }
   ]
 }

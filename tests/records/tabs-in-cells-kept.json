@@ -10,7 +10,7 @@
     { "seed": { "text": "dill" }, "count": { "int": "3" }, "kind": null }
   ],
   "problems": [
-    { "row": 1, "column": "count", "kind": "type" },
-    { "row": 2, "column": "kind", "kind": "type" }
+    { "row": 1, "column": "count", "kind": "type", "span": [58, 2] },
+    { "row": 2, "column": "kind", "kind": "type", "span": [73, 5] }
   ]
 }

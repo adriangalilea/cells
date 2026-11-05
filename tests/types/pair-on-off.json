@@ -9,6 +9,6 @@
     { "bed": { "text": "east" }, "watering": null }
   ],
   "problems": [
-    { "row": 2, "column": "watering", "kind": "type" }
+    { "row": 2, "column": "watering", "kind": "type", "span": [50, 2] }
   ]
 }

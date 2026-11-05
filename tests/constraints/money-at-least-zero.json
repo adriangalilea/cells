@@ -9,6 +9,6 @@
     { "item": { "text": "refund" }, "cost": null }
   ],
   "problems": [
-    { "row": 2, "column": "cost", "kind": "type" }
+    { "row": 2, "column": "cost", "kind": "type", "span": [48, 6] }
   ]
 }

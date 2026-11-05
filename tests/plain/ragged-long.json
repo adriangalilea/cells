@@ -9,6 +9,6 @@
     { "a": { "int": "4" }, "b": { "int": "5" } }
   ],
   "problems": [
-    { "row": 0, "column": "b", "kind": "ragged" }
+    { "row": 0, "column": "b", "kind": "ragged", "span": [6, 1] }
   ]
 }

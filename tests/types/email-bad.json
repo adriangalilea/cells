@@ -21,20 +21,20 @@
     { "label": { "text": "no at sign" }, "contact": null }
   ],
   "problems": [
-    { "row": 0, "column": "contact", "kind": "type" },
-    { "row": 1, "column": "contact", "kind": "type" },
-    { "row": 2, "column": "contact", "kind": "type" },
-    { "row": 3, "column": "contact", "kind": "type" },
-    { "row": 4, "column": "contact", "kind": "type" },
-    { "row": 5, "column": "contact", "kind": "type" },
-    { "row": 6, "column": "contact", "kind": "type" },
-    { "row": 7, "column": "contact", "kind": "type" },
-    { "row": 8, "column": "contact", "kind": "type" },
-    { "row": 9, "column": "contact", "kind": "type" },
-    { "row": 10, "column": "contact", "kind": "type" },
-    { "row": 11, "column": "contact", "kind": "type" },
-    { "row": 12, "column": "contact", "kind": "type" },
-    { "row": 13, "column": "contact", "kind": "type" },
-    { "row": 14, "column": "contact", "kind": "type" }
+    { "row": 0, "column": "contact", "kind": "type", "span": [36, 13] },
+    { "row": 1, "column": "contact", "kind": "type", "span": [63, 16] },
+    { "row": 2, "column": "contact", "kind": "type", "span": [94, 12] },
+    { "row": 3, "column": "contact", "kind": "type", "span": [117, 4] },
+    { "row": 4, "column": "contact", "kind": "type", "span": [129, 11] },
+    { "row": 5, "column": "contact", "kind": "type", "span": [165, 10] },
+    { "row": 6, "column": "contact", "kind": "type", "span": [199, 10] },
+    { "row": 7, "column": "contact", "kind": "type", "span": [222, 16] },
+    { "row": 8, "column": "contact", "kind": "type", "span": [259, 16] },
+    { "row": 9, "column": "contact", "kind": "type", "span": [292, 16] },
+    { "row": 10, "column": "contact", "kind": "type", "span": [319, 18] },
+    { "row": 11, "column": "contact", "kind": "type", "span": [351, 16] },
+    { "row": 12, "column": "contact", "kind": "type", "span": [380, 16] },
+    { "row": 13, "column": "contact", "kind": "type", "span": [418, 16] },
+    { "row": 14, "column": "contact", "kind": "type", "span": [446, 3] }
   ]
 }

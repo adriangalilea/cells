@@ -9,7 +9,7 @@
     { "shelf": { "int": "7" }, "title": { "text": "Salt and Sky" } }
   ],
   "problems": [
-    { "row": 0, "column": "shelf", "kind": "key" },
-    { "row": 2, "column": "shelf", "kind": "key" }
+    { "row": 0, "column": "shelf", "kind": "key", "span": [22, 1] },
+    { "row": 2, "column": "shelf", "kind": "key", "span": [56, 3] }
   ]
 }

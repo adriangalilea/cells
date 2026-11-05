@@ -3,6 +3,6 @@
   "rows": [],
   "problems": [],
   "broken": [
-    { "at": "the header" }
+    { "at": "the header", "span": [0, 22] }
   ]
 }

@@ -8,6 +8,6 @@
     { "isbn": null, "title": { "text": "salt and stone" } }
   ],
   "problems": [
-    { "row": 1, "column": "isbn", "kind": "missing" }
+    { "row": 1, "column": "isbn", "kind": "missing", "span": [54, 0] }
   ]
 }

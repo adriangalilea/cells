@@ -11,8 +11,8 @@
     { "gig": { "text": "the roof" }, "doors": null }
   ],
   "problems": [
-    { "row": 2, "column": "doors", "kind": "type" },
-    { "row": 3, "column": "doors", "kind": "type" },
-    { "row": 4, "column": "doors", "kind": "type" }
+    { "row": 2, "column": "doors", "kind": "type", "span": [66, 8] },
+    { "row": 3, "column": "doors", "kind": "type", "span": [86, 5] },
+    { "row": 4, "column": "doors", "kind": "type", "span": [101, 4] }
   ]
 }

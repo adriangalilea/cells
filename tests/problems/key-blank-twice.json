@@ -9,7 +9,7 @@
     { "seed": null, "count": { "int": "5" } }
   ],
   "problems": [
-    { "row": 1, "column": "seed", "kind": "missing" },
-    { "row": 2, "column": "seed", "kind": "missing" }
+    { "row": 1, "column": "seed", "kind": "missing", "span": [30, 0] },
+    { "row": 2, "column": "seed", "kind": "missing", "span": [33, 0] }
   ]
 }

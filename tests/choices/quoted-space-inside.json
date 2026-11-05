@@ -9,6 +9,6 @@
     { "seed": { "text": "pea" }, "bed": null }
   ],
   "problems": [
-    { "row": 2, "column": "bed", "kind": "type" }
+    { "row": 2, "column": "bed", "kind": "type", "span": [74, 5] }
   ]
 }

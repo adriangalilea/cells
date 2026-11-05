@@ -9,7 +9,7 @@
     { "price": { "money": "1.50", "currency": "EUR" }, "item": { "text": "label stakes" } }
   ],
   "problems": [
-    { "row": 0, "column": "price", "kind": "key" },
-    { "row": 2, "column": "price", "kind": "key" }
+    { "row": 0, "column": "price", "kind": "key", "span": [21, 3] },
+    { "row": 2, "column": "price", "kind": "key", "span": [46, 4] }
   ]
 }

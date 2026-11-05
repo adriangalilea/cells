@@ -8,6 +8,6 @@
     { "seed": { "text": "basil" }, "note": null }
   ],
   "problems": [
-    { "row": 0, "column": "seed", "kind": "missing" }
+    { "row": 0, "column": "seed", "kind": "missing", "span": [22, 0] }
   ]
 }

@@ -10,7 +10,7 @@
     { "bed": { "text": "west" }, "germinated": null }
   ],
   "problems": [
-    { "row": 2, "column": "germinated", "kind": "type" },
-    { "row": 3, "column": "germinated", "kind": "type" }
+    { "row": 2, "column": "germinated", "kind": "type", "span": [55, 4] },
+    { "row": 3, "column": "germinated", "kind": "type", "span": [65, 5] }
   ]
 }

@@ -8,6 +8,6 @@
     { "code": null, "qty": { "int": "2" } }
   ],
   "problems": [
-    { "row": 0, "column": "code", "kind": "type" }
+    { "row": 0, "column": "code", "kind": "type", "span": [9, 1] }
   ]
 }

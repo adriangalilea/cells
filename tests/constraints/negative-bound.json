@@ -9,6 +9,6 @@
     { "night": { "text": "third" }, "low": null }
   ],
   "problems": [
-    { "row": 2, "column": "low", "kind": "type" }
+    { "row": 2, "column": "low", "kind": "type", "span": [49, 3] }
   ]
 }

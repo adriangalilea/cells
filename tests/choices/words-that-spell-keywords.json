@@ -10,6 +10,6 @@
     { "door": { "text": "porch" }, "fastening": null }
   ],
   "problems": [
-    { "row": 3, "column": "fastening", "kind": "type" }
+    { "row": 3, "column": "fastening", "kind": "type", "span": [68, 3] }
   ]
 }

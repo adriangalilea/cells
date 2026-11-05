@@ -9,6 +9,6 @@
     { "label": { "text": "third" }, "shelf": null }
   ],
   "problems": [
-    { "row": 2, "column": "shelf", "kind": "type" }
+    { "row": 2, "column": "shelf", "kind": "type", "span": [51, 3] }
   ]
 }

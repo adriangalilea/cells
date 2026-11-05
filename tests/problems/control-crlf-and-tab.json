@@ -8,6 +8,6 @@
     { "item": { "text": "maps\tdiesel" }, "qty": { "int": "2" } }
   ],
   "problems": [
-    { "row": 0, "column": "item", "kind": "type" }
+    { "row": 0, "column": "item", "kind": "type", "span": [23, 1] }
   ]
 }

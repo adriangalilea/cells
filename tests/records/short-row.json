@@ -11,7 +11,7 @@
     { "item": { "text": "snacks" }, "qty": null, "cost": null, "note": null }
   ],
   "problems": [
-    { "row": 1, "column": "cost", "kind": "missing" },
-    { "row": 2, "column": "cost", "kind": "missing" }
+    { "row": 1, "column": "cost", "kind": "missing", "span": [68, 0] },
+    { "row": 2, "column": "cost", "kind": "missing", "span": [75, 0] }
   ]
 }

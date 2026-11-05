@@ -9,6 +9,6 @@
     { "seed": { "text": "dill" }, "packets": null }
   ],
   "problems": [
-    { "row": 2, "column": "packets", "kind": "type" }
+    { "row": 2, "column": "packets", "kind": "type", "span": [47, 1] }
   ]
 }

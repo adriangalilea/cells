@@ -10,7 +10,7 @@
     { "stall": { "text": "fourth" }, "sign": null }
   ],
   "problems": [
-    { "row": 1, "column": "sign", "kind": "type" },
-    { "row": 3, "column": "sign", "kind": "type" }
+    { "row": 1, "column": "sign", "kind": "type", "span": [43, 6] },
+    { "row": 3, "column": "sign", "kind": "type", "span": [80, 20] }
   ]
 }

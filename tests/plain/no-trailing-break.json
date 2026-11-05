@@ -9,6 +9,6 @@
     { "item": { "text": "maps" }, "note": null }
   ],
   "problems": [
-    { "row": 1, "column": "note", "kind": "ragged" }
+    { "row": 1, "column": "note", "kind": "ragged", "span": [20, 0] }
   ]
 }

@@ -12,10 +12,10 @@
     { "a": null, "b": null, "c": null, "d": null, "e": null }
   ],
   "problems": [
-    { "row": 2, "column": "a", "kind": "type" },
-    { "row": 2, "column": "b", "kind": "type" },
-    { "row": 2, "column": "c", "kind": "type" },
-    { "row": 2, "column": "d", "kind": "type" },
-    { "row": 2, "column": "e", "kind": "type" }
+    { "row": 2, "column": "a", "kind": "type", "span": [112, 2] },
+    { "row": 2, "column": "b", "kind": "type", "span": [115, 2] },
+    { "row": 2, "column": "c", "kind": "type", "span": [118, 2] },
+    { "row": 2, "column": "d", "kind": "type", "span": [121, 4] },
+    { "row": 2, "column": "e", "kind": "type", "span": [126, 4] }
   ]
 }

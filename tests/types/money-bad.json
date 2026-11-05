@@ -12,11 +12,11 @@
     { "label": { "text": "thousands points" }, "cost": null }
   ],
   "problems": [
-    { "row": 0, "column": "cost", "kind": "type" },
-    { "row": 1, "column": "cost", "kind": "type" },
-    { "row": 2, "column": "cost", "kind": "type" },
-    { "row": 3, "column": "cost", "kind": "type" },
-    { "row": 4, "column": "cost", "kind": "type" },
-    { "row": 5, "column": "cost", "kind": "type" }
+    { "row": 0, "column": "cost", "kind": "type", "span": [34, 5] },
+    { "row": 1, "column": "cost", "kind": "type", "span": [51, 9] },
+    { "row": 2, "column": "cost", "kind": "type", "span": [76, 5] },
+    { "row": 3, "column": "cost", "kind": "type", "span": [94, 5] },
+    { "row": 4, "column": "cost", "kind": "type", "span": [112, 2] },
+    { "row": 5, "column": "cost", "kind": "type", "span": [133, 8] }
   ]
 }

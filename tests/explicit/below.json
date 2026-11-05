@@ -8,7 +8,7 @@
     { "short": null, "word": null }
   ],
   "problems": [
-    { "row": 1, "column": "short", "kind": "type" },
-    { "row": 1, "column": "word", "kind": "type" }
+    { "row": 1, "column": "short", "kind": "type", "span": [39, 3] },
+    { "row": 1, "column": "word", "kind": "type", "span": [43, 3] }
   ]
 }

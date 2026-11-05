@@ -18,18 +18,18 @@
     { "a": null, "b": null, "c": null, "d": null, "e": null, "f": null, "g": null, "h": null, "i": null, "j": null, "k": null, "l": null, "m": null }
   ],
   "problems": [
-    { "row": 0, "column": "a", "kind": "missing" },
-    { "row": 0, "column": "b", "kind": "missing" },
-    { "row": 0, "column": "c", "kind": "missing" },
-    { "row": 0, "column": "d", "kind": "missing" },
-    { "row": 0, "column": "e", "kind": "missing" },
-    { "row": 0, "column": "f", "kind": "missing" },
-    { "row": 0, "column": "g", "kind": "missing" },
-    { "row": 0, "column": "h", "kind": "missing" },
-    { "row": 0, "column": "i", "kind": "missing" },
-    { "row": 0, "column": "j", "kind": "missing" },
-    { "row": 0, "column": "k", "kind": "missing" },
-    { "row": 0, "column": "l", "kind": "missing" },
-    { "row": 0, "column": "m", "kind": "missing" }
+    { "row": 0, "column": "a", "kind": "missing", "span": [95, 0] },
+    { "row": 0, "column": "b", "kind": "missing", "span": [96, 0] },
+    { "row": 0, "column": "c", "kind": "missing", "span": [97, 0] },
+    { "row": 0, "column": "d", "kind": "missing", "span": [98, 0] },
+    { "row": 0, "column": "e", "kind": "missing", "span": [99, 0] },
+    { "row": 0, "column": "f", "kind": "missing", "span": [100, 0] },
+    { "row": 0, "column": "g", "kind": "missing", "span": [101, 0] },
+    { "row": 0, "column": "h", "kind": "missing", "span": [102, 0] },
+    { "row": 0, "column": "i", "kind": "missing", "span": [103, 0] },
+    { "row": 0, "column": "j", "kind": "missing", "span": [104, 0] },
+    { "row": 0, "column": "k", "kind": "missing", "span": [105, 0] },
+    { "row": 0, "column": "l", "kind": "missing", "span": [106, 0] },
+    { "row": 0, "column": "m", "kind": "missing", "span": [107, 0] }
   ]
 }

@@ -15,14 +15,14 @@
     { "label": { "text": "an offset" }, "at": null }
   ],
   "problems": [
-    { "row": 0, "column": "at", "kind": "type" },
-    { "row": 1, "column": "at", "kind": "type" },
-    { "row": 2, "column": "at", "kind": "type" },
-    { "row": 3, "column": "at", "kind": "type" },
-    { "row": 4, "column": "at", "kind": "type" },
-    { "row": 5, "column": "at", "kind": "type" },
-    { "row": 6, "column": "at", "kind": "type" },
-    { "row": 7, "column": "at", "kind": "type" },
-    { "row": 8, "column": "at", "kind": "type" }
+    { "row": 0, "column": "at", "kind": "type", "span": [28, 5] },
+    { "row": 1, "column": "at", "kind": "type", "span": [49, 4] },
+    { "row": 2, "column": "at", "kind": "type", "span": [64, 5] },
+    { "row": 3, "column": "at", "kind": "type", "span": [80, 8] },
+    { "row": 4, "column": "at", "kind": "type", "span": [106, 7] },
+    { "row": 5, "column": "at", "kind": "type", "span": [118, 5] },
+    { "row": 6, "column": "at", "kind": "type", "span": [133, 10] },
+    { "row": 7, "column": "at", "kind": "type", "span": [151, 3] },
+    { "row": 8, "column": "at", "kind": "type", "span": [165, 6] }
   ]
 }

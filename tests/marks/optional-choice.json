@@ -9,6 +9,6 @@
     { "item": { "text": "gift" }, "category": null }
   ],
   "problems": [
-    { "row": 2, "column": "category", "kind": "type" }
+    { "row": 2, "column": "category", "kind": "type", "span": [59, 4] }
   ]
 }

@@ -10,9 +10,9 @@
     { "venue": { "text": "Old Mill" } }
   ],
   "problems": [
-    { "row": 0, "column": "venue", "kind": "key" },
-    { "row": 1, "column": "venue", "kind": "key" },
-    { "row": 2, "column": "venue", "kind": "key" },
-    { "row": 3, "column": "venue", "kind": "key" }
+    { "row": 0, "column": "venue", "kind": "key", "span": [12, 11] },
+    { "row": 1, "column": "venue", "kind": "key", "span": [24, 12] },
+    { "row": 2, "column": "venue", "kind": "key", "span": [37, 11] },
+    { "row": 3, "column": "venue", "kind": "key", "span": [49, 12] }
   ]
 }

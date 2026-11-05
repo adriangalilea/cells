@@ -10,6 +10,6 @@
     { "title": { "text": "The Long Field" }, "genre": null }
   ],
   "problems": [
-    { "row": 2, "column": "genre", "kind": "type" }
+    { "row": 2, "column": "genre", "kind": "type", "span": [117, 6] }
   ]
 }

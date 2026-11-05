@@ -9,7 +9,7 @@
     { "spelling": { "text": "one capital" }, "id": null }
   ],
   "problems": [
-    { "row": 1, "column": "id", "kind": "type" },
-    { "row": 2, "column": "id", "kind": "type" }
+    { "row": 1, "column": "id", "kind": "type", "span": [42, 8] },
+    { "row": 2, "column": "id", "kind": "type", "span": [63, 8] }
   ]
 }

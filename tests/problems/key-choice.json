@@ -9,7 +9,7 @@
     { "bed": { "choice": "north" }, "crop": { "text": "leeks" } }
   ],
   "problems": [
-    { "row": 0, "column": "bed", "kind": "key" },
-    { "row": 2, "column": "bed", "kind": "key" }
+    { "row": 0, "column": "bed", "kind": "key", "span": [32, 5] },
+    { "row": 2, "column": "bed", "kind": "key", "span": [57, 5] }
   ]
 }

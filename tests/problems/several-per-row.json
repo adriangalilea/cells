@@ -11,9 +11,9 @@
     { "venue": null, "on": null, "fee": null, "paid": null, "note": { "text": "late start" } }
   ],
   "problems": [
-    { "row": 1, "column": "venue", "kind": "missing" },
-    { "row": 1, "column": "on", "kind": "type" },
-    { "row": 1, "column": "fee", "kind": "type" },
-    { "row": 1, "column": "paid", "kind": "type" }
+    { "row": 1, "column": "venue", "kind": "missing", "span": [85, 0] },
+    { "row": 1, "column": "on", "kind": "type", "span": [86, 10] },
+    { "row": 1, "column": "fee", "kind": "type", "span": [97, 2] },
+    { "row": 1, "column": "paid", "kind": "type", "span": [100, 5] }
   ]
 }

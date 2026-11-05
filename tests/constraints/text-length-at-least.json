@@ -8,6 +8,6 @@
     { "book": { "text": "lost maps" }, "code": null }
   ],
   "problems": [
-    { "row": 1, "column": "code", "kind": "type" }
+    { "row": 1, "column": "code", "kind": "type", "span": [49, 1] }
   ]
 }

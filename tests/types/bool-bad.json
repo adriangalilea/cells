@@ -12,11 +12,11 @@
     { "label": { "text": "letter" }, "returned": null }
   ],
   "problems": [
-    { "row": 0, "column": "returned", "kind": "type" },
-    { "row": 1, "column": "returned", "kind": "type" },
-    { "row": 2, "column": "returned", "kind": "type" },
-    { "row": 3, "column": "returned", "kind": "type" },
-    { "row": 4, "column": "returned", "kind": "type" },
-    { "row": 5, "column": "returned", "kind": "type" }
+    { "row": 0, "column": "returned", "kind": "type", "span": [35, 4] },
+    { "row": 1, "column": "returned", "kind": "type", "span": [54, 4] },
+    { "row": 2, "column": "returned", "kind": "type", "span": [63, 3] },
+    { "row": 3, "column": "returned", "kind": "type", "span": [71, 1] },
+    { "row": 4, "column": "returned", "kind": "type", "span": [78, 1] },
+    { "row": 5, "column": "returned", "kind": "type", "span": [87, 1] }
   ]
 }

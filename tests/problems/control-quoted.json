@@ -9,7 +9,7 @@
     { "note": null }
   ],
   "problems": [
-    { "row": 0, "column": "note", "kind": "type" },
-    { "row": 3, "column": "note", "kind": "type" }
+    { "row": 0, "column": "note", "kind": "type", "span": [12, 1] },
+    { "row": 3, "column": "note", "kind": "type", "span": [45, 2] }
   ]
 }

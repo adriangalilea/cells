@@ -9,7 +9,7 @@
     { "n": null, "label": null }
   ],
   "problems": [
-    { "row": 2, "column": "n", "kind": "type" },
-    { "row": 2, "column": "label", "kind": "type" }
+    { "row": 2, "column": "n", "kind": "type", "span": [17, 1] },
+    { "row": 2, "column": "label", "kind": "type", "span": [20, 1] }
   ]
 }

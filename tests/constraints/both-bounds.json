@@ -10,7 +10,7 @@
     { "book": { "text": "the long road" }, "stars": null }
   ],
   "problems": [
-    { "row": 2, "column": "stars", "kind": "type" },
-    { "row": 3, "column": "stars", "kind": "type" }
+    { "row": 2, "column": "stars", "kind": "type", "span": [71, 1] },
+    { "row": 3, "column": "stars", "kind": "type", "span": [87, 1] }
   ]
 }

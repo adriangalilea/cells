@@ -10,6 +10,6 @@
     { "gig": { "text": "rooftop" }, "paid": null }
   ],
   "problems": [
-    { "row": 3, "column": "paid", "kind": "type" }
+    { "row": 3, "column": "paid", "kind": "type", "span": [71, 5] }
   ]
 }

@@ -11,11 +11,11 @@
     { "item": { "text": "tent" }, "qty": { "int": "2" }, "cost": null }
   ],
   "problems": [
-    { "row": 0, "column": "item", "kind": "key" },
-    { "row": 1, "column": "qty", "kind": "type" },
-    { "row": 1, "column": "cost", "kind": "missing" },
-    { "row": 2, "column": "item", "kind": "key" },
-    { "row": 2, "column": "qty", "kind": "missing" },
-    { "row": 3, "column": "cost", "kind": "type" }
+    { "row": 0, "column": "item", "kind": "key", "span": [31, 4] },
+    { "row": 1, "column": "qty", "kind": "type", "span": [49, 1] },
+    { "row": 1, "column": "cost", "kind": "missing", "span": [51, 0] },
+    { "row": 2, "column": "item", "kind": "key", "span": [52, 4] },
+    { "row": 2, "column": "qty", "kind": "missing", "span": [57, 0] },
+    { "row": 3, "column": "cost", "kind": "type", "span": [71, 4] }
   ]
 }

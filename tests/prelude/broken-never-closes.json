@@ -3,6 +3,6 @@
   "rows": [],
   "problems": [],
   "broken": [
-    { "at": "the prelude" }
+    { "at": "the prelude", "span": [0, 3] }
   ]
 }

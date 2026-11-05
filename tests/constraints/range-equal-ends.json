@@ -9,6 +9,6 @@
     { "string": { "text": "high" }, "gauge": null }
   ],
   "problems": [
-    { "row": 2, "column": "gauge", "kind": "type" }
+    { "row": 2, "column": "gauge", "kind": "type", "span": [42, 4] }
   ]
 }

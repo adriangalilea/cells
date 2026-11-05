@@ -12,11 +12,11 @@
     { "short": null, "words": null, "between": null }
   ],
   "problems": [
-    { "row": 3, "column": "short", "kind": "type" },
-    { "row": 3, "column": "words", "kind": "type" },
-    { "row": 3, "column": "between", "kind": "type" },
-    { "row": 4, "column": "short", "kind": "type" },
-    { "row": 4, "column": "words", "kind": "type" },
-    { "row": 4, "column": "between", "kind": "type" }
+    { "row": 3, "column": "short", "kind": "type", "span": [100, 1] },
+    { "row": 3, "column": "words", "kind": "type", "span": [102, 1] },
+    { "row": 3, "column": "between", "kind": "type", "span": [104, 1] },
+    { "row": 4, "column": "short", "kind": "type", "span": [106, 3] },
+    { "row": 4, "column": "words", "kind": "type", "span": [110, 3] },
+    { "row": 4, "column": "between", "kind": "type", "span": [114, 3] }
   ]
 }

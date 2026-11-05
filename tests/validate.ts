@@ -61,6 +61,9 @@ type Json = null | boolean | number | string | Json[] | { [k: string]: Json }
 const isObject = (v: Json | undefined): v is { [k: string]: Json } =>
   typeof v === "object" && v !== null && !Array.isArray(v)
 
+const isSpan = (v: Json | undefined): boolean =>
+  Array.isArray(v) && v.length === 2 && v.every((n) => typeof n === "number" && Number.isInteger(n) && n >= 0)
+
 function keysAre(path: string, what: string, o: { [k: string]: Json }, required: string[], optional: string[] = []) {
   for (const k of required) if (!(k in o)) fault(path, `${what} has no "${k}"`)
   for (const k of Object.keys(o))
@@ -142,7 +145,8 @@ function readsCase(path: string, j: { [k: string]: Json }, plain: boolean) {
     ;(Array.isArray(j.broken) ? j.broken : []).forEach((b, i) => {
       const what = `break ${i + 1}`
       if (!isObject(b)) return fault(path, `${what} is not an object`)
-      keysAre(path, what, b, ["at"])
+      keysAre(path, what, b, ["at", "span"])
+      if (!isSpan(b.span)) fault(path, `${what}: "span" is not [start, length] in bytes`)
       if (typeof b.at !== "string" || !AT.test(b.at) || b.at === "the file") return fault(path, `${what}: "${String(b.at)}" is no place a file breaks and reads`)
       const at = order(b.at)
       if ((at[0] as number) < (last[0] as number) || (at[0] === last[0] && (at[1] as number) < (last[1] as number))) fault(path, `${what} is out of the file's order`)
@@ -210,7 +214,8 @@ function readsCase(path: string, j: { [k: string]: Json }, plain: boolean) {
   problems.forEach((p, i) => {
     const what = `problem ${i + 1}`
     if (!isObject(p)) return fault(path, `${what} is not an object`)
-    keysAre(path, what, p, ["row", "column", "kind"])
+    keysAre(path, what, p, ["row", "column", "kind", "span"])
+    if (!isSpan(p.span)) fault(path, `${what}: "span" is not [start, length] in bytes`)
     if (typeof p.row !== "number" || !Number.isInteger(p.row) || p.row < 0 || p.row >= rows.length)
       return fault(path, `${what} names no row`)
     if (typeof p.column !== "string" || !stored.includes(p.column))

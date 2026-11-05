@@ -8,7 +8,7 @@
     { "short": { "text": "salt and sea" }, "word": { "text": "salt and sea" } }
   ],
   "problems": [
-    { "row": 0, "column": "short", "kind": "type" },
-    { "row": 0, "column": "word", "kind": "type" }
+    { "row": 0, "column": "short", "kind": "type", "span": [32, 13] },
+    { "row": 0, "column": "word", "kind": "type", "span": [46, 13] }
   ]
 }

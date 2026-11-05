@@ -10,7 +10,7 @@
     { "band": { "text": "fourth" }, "tag": null }
   ],
   "problems": [
-    { "row": 2, "column": "tag", "kind": "type" },
-    { "row": 3, "column": "tag", "kind": "type" }
+    { "row": 2, "column": "tag", "kind": "type", "span": [52, 2] },
+    { "row": 3, "column": "tag", "kind": "type", "span": [62, 6] }
   ]
 }

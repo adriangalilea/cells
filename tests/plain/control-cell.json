@@ -9,6 +9,6 @@
     { "item": { "text": "maps" }, "cost": { "num": "12" } }
   ],
   "problems": [
-    { "row": 0, "column": "item", "kind": "type" }
+    { "row": 0, "column": "item", "kind": "type", "span": [14, 1] }
   ]
 }

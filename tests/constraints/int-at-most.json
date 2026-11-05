@@ -9,6 +9,6 @@
     { "gig": { "text": "the cellar" }, "encores": null }
   ],
   "problems": [
-    { "row": 2, "column": "encores", "kind": "type" }
+    { "row": 2, "column": "encores", "kind": "type", "span": [60, 2] }
   ]
 }

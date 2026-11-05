@@ -8,6 +8,6 @@
     { "gig": { "text": "the pier" }, "doors": null }
   ],
   "problems": [
-    { "row": 1, "column": "doors", "kind": "type" }
+    { "row": 1, "column": "doors", "kind": "type", "span": [51, 5] }
   ]
 }

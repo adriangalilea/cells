@@ -8,6 +8,6 @@
     { "seed": { "text": "pea" }, "depth": null }
   ],
   "problems": [
-    { "row": 1, "column": "depth", "kind": "type" }
+    { "row": 1, "column": "depth", "kind": "type", "span": [41, 3] }
   ]
 }

@@ -9,6 +9,6 @@
     { "leg": { "text": "third" }, "metres": null }
   ],
   "problems": [
-    { "row": 2, "column": "metres", "kind": "type" }
+    { "row": 2, "column": "metres", "kind": "type", "span": [53, 4] }
   ]
 }

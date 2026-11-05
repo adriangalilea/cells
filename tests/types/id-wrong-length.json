@@ -11,10 +11,10 @@
     { "gig": { "text": "sixteen" }, "id": null }
   ],
   "problems": [
-    { "row": 0, "column": "id", "kind": "type" },
-    { "row": 1, "column": "id", "kind": "type" },
-    { "row": 2, "column": "id", "kind": "type" },
-    { "row": 3, "column": "id", "kind": "type" },
-    { "row": 4, "column": "id", "kind": "type" }
+    { "row": 0, "column": "id", "kind": "type", "span": [22, 7] },
+    { "row": 1, "column": "id", "kind": "type", "span": [35, 9] },
+    { "row": 2, "column": "id", "kind": "type", "span": [51, 8] },
+    { "row": 3, "column": "id", "kind": "type", "span": [65, 1] },
+    { "row": 4, "column": "id", "kind": "type", "span": [75, 16] }
   ]
 }

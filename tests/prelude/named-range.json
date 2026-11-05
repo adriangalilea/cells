@@ -9,6 +9,6 @@
     { "title": { "text": "Small Hours" }, "score": null }
   ],
   "problems": [
-    { "row": 1, "column": "score", "kind": "type" }
+    { "row": 1, "column": "score", "kind": "type", "span": [79, 2] }
   ]
 }

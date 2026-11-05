@@ -8,6 +8,6 @@
     { "city": { "text": "Café noir" }, "price": { "text": "¡¿" } }
   ],
   "problems": [
-    { "row": 0, "column": "city", "kind": "type" }
+    { "row": 0, "column": "city", "kind": "type", "span": [21, 2] }
   ]
 }

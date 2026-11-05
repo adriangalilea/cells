@@ -9,6 +9,6 @@
     { "book": { "text": "winter roads" }, "stock": null }
   ],
   "problems": [
-    { "row": 2, "column": "stock", "kind": "type" }
+    { "row": 2, "column": "stock", "kind": "type", "span": [103, 9] }
   ]
 }

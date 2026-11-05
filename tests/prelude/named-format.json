@@ -9,6 +9,6 @@
     { "gig": { "text": "second" }, "on": null }
   ],
   "problems": [
-    { "row": 1, "column": "on", "kind": "type" }
+    { "row": 1, "column": "on", "kind": "type", "span": [76, 10] }
   ]
 }

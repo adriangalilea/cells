@@ -9,7 +9,7 @@
     { "item": { "text": "fuel" }, "cost": { "money": "40.00", "currency": "EUR" } }
   ],
   "problems": [
-    { "row": 0, "column": "item", "kind": "key" },
-    { "row": 2, "column": "item", "kind": "key" }
+    { "row": 0, "column": "item", "kind": "key", "span": [20, 4] },
+    { "row": 2, "column": "item", "kind": "key", "span": [42, 4] }
   ]
 }

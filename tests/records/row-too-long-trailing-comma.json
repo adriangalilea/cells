@@ -7,6 +7,6 @@
     { "item": { "text": "fuel" }, "cost": { "money": "84.20", "currency": "EUR" } }
   ],
   "problems": [
-    { "row": 0, "column": "cost", "kind": "ragged" }
+    { "row": 0, "column": "cost", "kind": "ragged", "span": [24, 5] }
   ]
 }

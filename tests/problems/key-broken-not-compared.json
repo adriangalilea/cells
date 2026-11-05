@@ -9,7 +9,7 @@
     { "id": null, "title": { "text": "Salt and Sky" } }
   ],
   "problems": [
-    { "row": 1, "column": "id", "kind": "type" },
-    { "row": 2, "column": "id", "kind": "type" }
+    { "row": 1, "column": "id", "kind": "type", "span": [36, 1] },
+    { "row": 2, "column": "id", "kind": "type", "span": [52, 1] }
   ]
 }

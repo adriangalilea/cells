@@ -8,6 +8,6 @@
     { "title": { "text": "salt and stone" }, "kind": null }
   ],
   "problems": [
-    { "row": 1, "column": "kind", "kind": "type" }
+    { "row": 1, "column": "kind", "kind": "type", "span": [71, 8] }
   ]
 }
