@@ -2,12 +2,13 @@
 // :4111, where components.json's `@ag` points, and that checkout's own shadcn, whose
 // installer keeps every file whole (ui's patch: stock shadcn drops a file's opening
 // comments, the licence line of a paid item among them). With no items named, the paid
-// ones this site uses, which git ignores here (Adrian holds their licence; their source
-// never enters this repository): run it before a build on a fresh clone.
+// and studio ones this site uses, which git ignores here (Adrian holds the paid ones'
+// licence; studio items are his own projects' alone; neither's source enters this
+// repository): run it before a build on a fresh clone.
 //
 //   UI=~/Developer/ui bun scripts/ui.ts [item...]
 
-const PAID = ["macos", "player", "table"]
+const PAID = ["macos", "player", "table", "shimmer"]
 
 const ui = process.env.UI
 if (!ui) throw new Error("UI must name a ui checkout (its public/r is served, its shadcn runs)")
@@ -28,10 +29,14 @@ const server = Bun.serve({
 
 const items = process.argv.slice(2)
 const named = (items.length ? items : PAID).map((i) => `@ag/${i}`)
-const run = Bun.spawnSync([shadcn, "add", ...named, "--yes", "--overwrite"], {
+// Spawned, never spawnSync: the registry is served from this process, and a synchronous
+// spawn would hold its event loop while shadcn waits on it.
+const run = Bun.spawn([shadcn, "add", ...named, "--yes", "--overwrite"], {
   cwd: `${import.meta.dir}/..`,
   stdout: "inherit",
   stderr: "inherit",
+  stdin: "ignore",
 })
+const code = await run.exited
 server.stop()
-if (run.exitCode !== 0) throw new Error(`shadcn add exited ${run.exitCode}`)
+if (code !== 0) throw new Error(`shadcn add exited ${code}`)
