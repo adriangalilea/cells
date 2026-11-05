@@ -1,0 +1,17 @@
+node_modules/
+.next/
+out/
+.wrangler/
+next-env.d.ts
+*.tsbuildinfo
+
+# Paid @ag items (components.json's registry, Adrian's licence): their source never enters
+# a repository that may become public. `pnpm ui` installs them from a ui checkout before a
+# build; app/globals.css names them to Tailwind with @source, since Tailwind skips what git
+# ignores.
+components/ui/macos.tsx
+components/ui/player.tsx
+components/ui/table.tsx
+components/ui/table-tcsv.ts
+lib/player-input.ts
+lib/table-data.ts
