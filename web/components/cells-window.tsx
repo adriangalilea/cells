@@ -24,13 +24,11 @@ function useRead(name: string, text: string, others: { name: string; text: strin
   return React.useMemo(() => readFiles(engine, [{ name, text }, ...others]), [engine, name, text, others])
 }
 
-/** What a scene lights in the table: a column, or one cell of it, and how far (0..1);
- *  everything else is dimmed as far as `dim`. */
+/** What a scene shows in the table: a column by its name, or one cell of it (the data
+ *  row, from 0), lit as ui's table lights what a column's menu acts on. */
 export interface TableLight {
   column: string
   row?: number
-  amount: number
-  dim: number
 }
 
 /** A file as a table: its columns, its rows, its problems by cell. */
@@ -67,25 +65,12 @@ export function CellsTable({
           const cell = r.cells[k]
           if (!cell) return null
           const computed = cell.origin !== "written"
-          const target = light && c.name === light.column && (light.row === undefined || String(light.row) === r.id)
-          const broken = problems.has(`${r.id}:${k}`)
           return (
             <span
-              data-lit-cell={target || undefined}
               className={cn(
-                "truncate rounded-[3px] px-1 -mx-1 font-mono slashed-zero",
+                "truncate font-mono slashed-zero",
                 computed && "text-edge [text-shadow:0_0_12px_color-mix(in_oklch,var(--edge)_45%,transparent)]",
               )}
-              style={
-                light
-                  ? target
-                    ? {
-                        background: `color-mix(in oklch, var(${broken ? "--haze" : "--edge"}) ${Math.round(22 * light.amount)}%, transparent)`,
-                        boxShadow: `0 0 0 1px color-mix(in oklch, var(${broken ? "--haze" : "--edge"}) ${Math.round(55 * light.amount)}%, transparent)`,
-                      }
-                    : { opacity: 1 - 0.6 * light.dim }
-                  : undefined
-              }
               title={computed ? (cell.origin === "formula" ? `${c.name} = ${c.formula}` : cell.text) : undefined}
             >
               {cell.shown}
@@ -93,27 +78,33 @@ export function CellsTable({
           )
         },
       })),
-    [read, light, problems],
+    [read],
   )
+  // The table's own light, its columns named by their place; a cell with a problem is
+  // already marked (the table's own mark), so a light on it alone is none.
+  const k = light ? read.columns.findIndex((c) => c.name === light.column) : -1
+  if (light && k < 0) throw new Error(`cells-window: no column ${light.column} to light`)
+  const marked = light?.row !== undefined && problems.has(`${light.row}:${k}`)
+  const lit = light && !marked ? { column: String(k), row: light.row === undefined ? undefined : String(light.row) } : undefined
   // The lit column kept in sight when the table is wider than its box.
   const root = React.useRef<HTMLDivElement>(null)
-  const lit = light && light.amount > 0
   React.useLayoutEffect(() => {
-    if (lit) revealX(root.current?.querySelector<HTMLElement>("[data-lit-cell]") ?? null)
-  }, [lit])
+    if (lit) revealX(root.current?.querySelector<HTMLElement>(`[data-slot=table-cell][data-column="${lit.column}"]`) ?? null)
+  }, [lit?.column, lit?.row, lit])
   return (
     <div ref={root} className="contents">
-    <Table
-      rows={rows}
-      rowId={(r) => r.id}
-      columns={columns}
-      label={label}
-      problem={(r, column) => problems.get(`${r.id}:${column}`)}
-      density="compact"
-      lines="rows"
-      interactive={false}
-      className={className}
-    />
+      <Table
+        rows={rows}
+        rowId={(r) => r.id}
+        columns={columns}
+        label={label}
+        problem={(r, column) => problems.get(`${r.id}:${column}`)}
+        density="compact"
+        lines="rows"
+        interactive={false}
+        lit={lit}
+        className={className}
+      />
     </div>
   )
 }
@@ -127,12 +118,15 @@ export function CellsWindow({
   name,
   text,
   others = NONE,
+  light,
   className,
 }: {
   name: string
   text: string
   /** The files it imports, as they stand. */
   others?: { name: string; text: string }[]
+  /** A column or a cell lit, the rest dimmed. */
+  light?: TableLight
   className?: string
 }) {
   const now = useRead(name, text, others)
@@ -147,7 +141,7 @@ export function CellsWindow({
     >
       <div className="flex h-full flex-col">
         <div className="min-h-0 flex-1 overflow-hidden text-[11px]">
-          <CellsTable name={name} text={text} others={others} label={name} className="h-full" />
+          <CellsTable name={name} text={text} others={others} label={name} light={light} className="h-full" />
         </div>
         <div
           data-slot="cells-window-problems"

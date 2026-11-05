@@ -9,10 +9,12 @@ export const UI_ITEMS = [
   "code-session",
   "macos",
   "macos-session",
+  "material",
   "playback",
   "shimmer",
   "table",
   "terminal",
   "terminal-editor",
   "terminal-session",
+  "walkthrough",
 ]

@@ -7,10 +7,10 @@
 import { readFiles as readWith } from "@/lib/view"
 import { loadEngine } from "@/lib/engine-module"
 import { codeTimeline } from "@/lib/code-session"
-import { HERO, savedAt, textAt } from "@/lib/hero"
+import { HERO } from "@/lib/hero"
+import { savedAt, textAt } from "@/lib/written"
 import { placeBroken } from "@/lib/spans"
-import { actFrameAt, actTimeline } from "@/lib/scene"
-import { STORY } from "@/lib/story"
+import { edited, editOf, STORY } from "@/lib/story"
 
 const engine = await loadEngine()
 const readFiles = (files: Parameters<typeof readWith>[1]) => readWith(engine, files)
@@ -26,18 +26,9 @@ for (const act of STORY) {
   const t = readFiles([act.end, ...act.others])
   if (t.broken.length) fail(act.id, `its grammar breaks: ${t.broken.map((b) => b.why).join("; ")}`)
   // The file as the act finds it reads whole too.
-  const was = readFiles([{ name: act.name, text: act.text }, ...act.others])
+  const was = readFiles([act.from, ...act.others])
   if (was.broken.length) fail(act.id, `before the act its grammar breaks: ${was.broken.map((b) => b.why).join("; ")}`)
-  for (const b of act.beats)
-    if ("light" in b && !t.columns.some((c) => c.name === b.light.column)) fail(act.id, `no column ${b.light.column} to light`)
-  // Played frame by frame (every mark found where its beat marks it), the act ends on
-  // the file it claims, told last.
-  const timeline = actTimeline(act)
-  let last = actFrameAt(timeline, 0)
-  if (last.tell !== 0) fail(act.id, "told before it is shown")
-  for (let ms = 0; ms <= timeline.total; ms += 5) last = actFrameAt(timeline, ms)
-  if (last.text !== act.end.text || last.name !== act.end.name || last.tell !== 1)
-    fail(act.id, `played, it ends on ${last.name} "${last.text.slice(0, 40)}…", told ${last.tell}`)
+  if (act.light && !t.columns.some((c) => c.name === act.light?.column)) fail(act.id, `no column ${act.light.column} to light`)
   const got = t.problems.map((p) => p.why)
   const want = act.expect.problems
   if (JSON.stringify(got) !== JSON.stringify(want)) fail(act.id, `problems ${JSON.stringify(got)}, expected ${JSON.stringify(want)}`)
@@ -45,7 +36,28 @@ for (const act of STORY) {
     const have = t.values[column]
     if (JSON.stringify(have) !== JSON.stringify(values)) fail(act.id, `${column} is ${JSON.stringify(have)}, expected ${JSON.stringify(values)}`)
   }
-  console.log(`${failed > before ? "✗" : "✓"} ${act.id}: ${t.rows.length} rows, ${got.length} problems, ${(timeline.total / 1000).toFixed(1)}s`)
+  // As written between its edits, what the act shows on the way.
+  const between = act.edits.slice(0, -1).map((_, k) => {
+    const r = readFiles([{ name: act.end.name, text: edited(act.from.text, act.edits.slice(0, k + 1)) }, ...act.others])
+    return [...r.broken.map((b) => b.why), ...r.problems.map((p) => p.why)]
+  })
+  if (JSON.stringify(between) !== JSON.stringify(act.expect.between ?? between.map(() => [])))
+    fail(act.id, `between its edits ${JSON.stringify(between)}, expected ${JSON.stringify(act.expect.between ?? [])}`)
+  console.log(`${failed > before ? "✗" : "✓"} ${act.id}: ${t.rows.length} rows, ${got.length} problems`)
+}
+
+// Played in the editor, every act's edit leaves its file as the act says, as typed and as
+// written (the keys landed where they were meant to, and the last change was saved).
+{
+  let total = 0
+  for (const act of STORY) {
+    const edit = editOf(act)
+    const t = codeTimeline(edit.files, edit.steps)
+    total += t.total
+    if (textAt(t, edit.path, t.total) !== act.end.text) fail(act.id, `played, the editor holds ${JSON.stringify(textAt(t, edit.path, t.total).slice(0, 80))}…`)
+    if (savedAt(t, edit.path, t.total) !== act.end.text) fail(act.id, "played, its last change is never written")
+  }
+  console.log(`✓ the edits: ${STORY.length} acts, ${(total / 1000).toFixed(1)}s in the editor`)
 }
 
 const heroFiles = (f: { money: string; accounts: string }) => [

@@ -8,7 +8,7 @@
 // same frames.
 
 import type { Playable } from "@/lib/playable"
-import { type CodeFile, type CodeStep, type CodeTimeline, codeTimeline, TYPE_MS } from "@/lib/code-session"
+import { type CodeFile, type CodeStep, codeTimeline, TYPE_MS } from "@/lib/code-session"
 import { PRODUCT } from "@/lib/product"
 import { parseSession, sessionTimeline } from "@/lib/terminal-session"
 
@@ -94,31 +94,6 @@ const pause = savedFixed + TO_TERMINAL - (terminalFrom + firstCheck)
 const SESSION = `${FIRST}\n@${Math.round(pause)} ${SECOND}`
 const session = sessionTimeline(parseSession(SESSION))
 const total = Math.max(terminalFrom + session.total, OPENING + edit.total) + HOLD_MS
-
-/** A file's text at an instant of the edit (ms on the edit's own clock): the characters
- *  typed by then, whether or not the file is in front. */
-export function textAt(timeline: CodeTimeline, path: string, ms: number): string {
-  const chars = timeline.chars[path]
-  if (!chars) throw new Error(`hero: no file ${path} in the edit`)
-  let out = ""
-  for (const c of chars) if (c.born <= ms) out += c.ch
-  return out
-}
-
-/** A file as it was last written by an instant of the edit (ms on its own clock): what an
- *  app watching the folder reads, never the editor's unsaved buffer. Before any save, the
- *  file as the session found it. */
-export function savedAt(timeline: CodeTimeline, path: string, ms: number): string {
-  let front: string | null = null
-  let written = -1
-  for (const [i, s] of timeline.steps.entries()) {
-    if (s.kind === "open") front = s.path
-    if (s.kind === "save" && front === path && (timeline.ends[i] as number) <= ms) written = timeline.ends[i] as number
-  }
-  const initial = timeline.files.find((f) => f.path === path)
-  if (!initial) throw new Error(`hero: no file ${path} in the edit`)
-  return written < 0 ? initial.text : textAt(timeline, path, written)
-}
 
 const typo = MONEY.replace("date,amount,to", `date,amount${AMOUNT_TYPE},to${TO_TYPE}${FORMULA}`).replace(/\n$/, `\n${ROW}\n`)
 

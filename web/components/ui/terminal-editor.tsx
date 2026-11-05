@@ -16,7 +16,8 @@
 // It wears the terminal's phosphor (`useTerminalPalette`) for everything but the
 // code, which takes code's dark theme (lib/code-tokens), and the severities, which
 // take the terminal's own red, yellow, blue and grey: a terminal is dark whatever
-// the page is. Display-only, like the terminal around it.
+// the page is. Display-only, like the terminal around it, but for the bufferline's
+// files when `onOpen` makes them pressable.
 
 import * as React from "react"
 import {
@@ -68,6 +69,10 @@ export interface TerminalEditorProps {
    *  it needs, each row after the first behind helix's `↪ `, numbered once. The file
    *  is never changed: a line that must stay one line (a header) stays one. */
   softWrap?: boolean
+  /** The bufferline's files pressable: a press asks for that file in front, and the
+   *  page answers with the edit's next step (`{ kind: "open", path }` appended to
+   *  `steps`), so what is drawn stays the edit's frame. Absent, display-only. */
+  onOpen?: (path: string) => void
 }
 
 /** How the status line names each mode, helix's three letters: a selection made
@@ -170,6 +175,9 @@ function useColumns(): [React.RefObject<HTMLSpanElement | null>, number] {
     const room = el?.parentElement
     if (!el || !room) return
     const read = () => {
+      // Not laid out (inside `display: none`, a layout kept for a narrow window): no
+      // width to count yet. The observer reads again once it is.
+      if (el.getClientRects().length === 0) return
       const ch = el.getBoundingClientRect().width / 10
       if (!(ch > 0))
         throw new Error("terminal-editor: a character with no width")
@@ -196,6 +204,7 @@ export function TerminalEditor({
   rows = 14,
   bufferline = "multiple",
   softWrap = false,
+  onOpen,
 }: TerminalEditorProps) {
   const palette = useTerminalPalette()
   const timeline = React.useMemo(
@@ -296,20 +305,36 @@ export function TerminalEditor({
         >
           {f.open.map((p) => {
             const front = p === f.active
-            return (
+            const name = `${nameOf(p)}${f.dirty.includes(p) ? "[+]" : ""}`
+            const look = {
+              className: "shrink-0 px-[1ch]",
+              style: front
+                ? { background: palette.dot, color: palette.command }
+                : { color: palette.muted },
+            }
+            return onOpen ? (
+              <button
+                key={p}
+                type="button"
+                data-slot="terminal-editor-buffer"
+                data-active={front || undefined}
+                // The terminal is one picture to assistive tech (role img, its
+                // screen hidden): a tab is for the pointer, never a focus stop.
+                tabIndex={-1}
+                onClick={() => front || onOpen(p)}
+                {...look}
+                className={`${look.className} cursor-pointer whitespace-pre transition-colors hover:brightness-150`}
+              >
+                {name}
+              </button>
+            ) : (
               <span
                 key={p}
                 data-slot="terminal-editor-buffer"
                 data-active={front || undefined}
-                className="shrink-0 px-[1ch]"
-                style={
-                  front
-                    ? { background: palette.dot, color: palette.command }
-                    : { color: palette.muted }
-                }
+                {...look}
               >
-                {nameOf(p)}
-                {f.dirty.includes(p) ? "[+]" : ""}
+                {name}
               </span>
             )
           })}

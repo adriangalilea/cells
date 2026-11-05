@@ -1,6 +1,6 @@
 import { Suspense } from "react"
-import { HeroShimmer } from "@/components/ground"
 import { Hero, Landing } from "@/components/hero"
+import { Glass } from "@/components/ui/material-glass"
 import { Story } from "@/components/story"
 import { PRODUCT } from "@/lib/product"
 
@@ -50,7 +50,6 @@ export default function Page() {
           and the file's text leaves the screen for the block below (components/hero). */}
       <section data-hero-section className="relative md:-mt-[4.5rem] md:h-[170svh]">
         <div className="relative isolate flex flex-col items-center gap-8 px-4 pt-6 md:sticky md:top-0 md:h-svh md:justify-center md:gap-10 md:pt-16">
-          <HeroShimmer />
           <div className="max-w-3xl text-center">
             <h1 className="text-balance text-[clamp(2.25rem,4.6vw,3.75rem)] leading-[1.03] font-medium tracking-[-0.04em] text-foreground">
               {PRODUCT.tagline}
@@ -73,14 +72,35 @@ export default function Page() {
 
       {/* The file the hero's screen let go of lands here first, so its block leads and its
           words follow: nothing stands between the screen and where the text lands. */}
-      <section id="story" className="mx-auto max-w-6xl scroll-mt-20 px-6 md:mt-8">
-        {/* The editor window the Mac let go of, the same window: its two files a tab each. */}
+      <section id="story" className="mx-auto grid max-w-6xl scroll-mt-20 items-center gap-10 px-6 md:mt-8 md:grid-cols-[auto_minmax(0,1fr)] md:gap-16">
+        {/* The editor window the Mac let go of, the same window: its two files a tab each;
+            beside it, what it showed. */}
         <Suspense>
           <Landing />
         </Suspense>
+        {/* Glass, as the shimmer's own demo sets words over it: its blur frosts the
+            facets behind, the words in front stay sharp. */}
+        <Glass shape="surface" className="max-w-[52ch] p-8 [--glass-radius:1.25rem]">
+          <p className="font-mono text-[11px] tracking-[0.18em] text-muted-foreground/70">PRESS EITHER TAB</p>
+          <h2 className="mt-4 text-balance text-[clamp(1.5rem,2.6vw,2.125rem)] leading-[1.15] font-medium tracking-[-0.02em]">
+            Two files, checked as one.
+          </h2>
+          <div className="mt-6 space-y-4 text-[16px] leading-relaxed text-muted-foreground">
+            <p>
+              <code className="font-mono text-foreground/85">accounts{PRODUCT.extension}</code> lists the accounts.{" "}
+              <code className="font-mono text-foreground/85">money{PRODUCT.extension}</code> imports it, and its header says the rest: <code className="font-mono text-foreground/85">amount</code> is
+              euros above 0, <code className="font-mono text-foreground/85">to</code> names an account, <code className="font-mono text-foreground/85">vat</code> is computed for every row.
+            </p>
+            <p>
+              <code className="font-mono text-foreground/85">coffee</code> was caught as it was typed, in the editor and by <code className="font-mono text-foreground/85">{PRODUCT.cli} check</code>: accounts had no
+              coffee. Added there, both went quiet.
+            </p>
+            <p className="text-foreground/80">Below, one idea at a time, starting from a plain CSV.</p>
+          </div>
+        </Glass>
       </section>
 
-      <div className="mt-16 md:mt-24">
+      <div className="mt-24 md:mt-32">
         <Suspense>
           <Story />
         </Suspense>

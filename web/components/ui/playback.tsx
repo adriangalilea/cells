@@ -642,7 +642,7 @@ export interface PlaybackOptions {
   /** A span to be in, heading to its end: what a scroll stage's act asks for
    *  (`chapterSpan`). Behind it, the playhead jumps to `from` (the act's story, not a
    *  replay of everything before it); inside, it plays on to `to` and waits; past it,
-   *  it rewinds to `to`. A new cue wins over the bar, and the bar over the last cue.
+   *  it stands at `to` at once, never played backwards. A new cue wins over the bar, and the bar over the last cue.
    *  A scrub that follows scroll exactly is no cue: it passes `progress`. */
   cue?: Span
   /** Whether it plays, when the page decides (a card under the pointer): true plays
@@ -873,7 +873,10 @@ export function usePlayback(
     const c = cueRef.current
     if (!c) return
     const at = store.get().at
-    if (armed.current) go(Math.max(at, c.from), c.to)
+    // Past the span it lands on the span's end, at rest: a story is never played
+    // backwards.
+    if (at > c.to) go(c.to, c.to)
+    else if (armed.current) go(Math.max(at, c.from), c.to)
     else go(Math.max(at, c.from), Math.max(at, c.from))
   }, [cueKey, go, store])
 

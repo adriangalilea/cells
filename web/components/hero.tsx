@@ -21,8 +21,9 @@ import { Playback, Playhead, usePlayhead } from "@/components/ui/playback"
 import { Terminal } from "@/components/ui/terminal"
 import { TerminalEditor } from "@/components/ui/terminal-editor"
 import { useCellsDiagnose } from "@/components/use-cells-diagnose"
-import { codeFrameAt, codeTimeline } from "@/lib/code-session"
-import { HERO, savedAt } from "@/lib/hero"
+import { type CodeStep, codeFrameAt, codeTimeline } from "@/lib/code-session"
+import { HERO } from "@/lib/hero"
+import { savedAt } from "@/lib/written"
 import { type Art, LID_MS, sceneClock, type Timeline } from "@/lib/macos-session"
 import { PRODUCT } from "@/lib/product"
 import { LINE_HEIGHT } from "@/lib/terminal-session"
@@ -46,7 +47,7 @@ const NO_ART: Art = { icon: "", glyphs: {} }
 const EDIT = codeTimeline(HERO.files, HERO.steps)
 
 /** The editor's accent, the terminal's phosphor: the site's cold edge light. */
-const ACCENT = "#7fdcf0"
+export const ACCENT = "#7fdcf0"
 /** The editor's window on the Mac's stage (960 by 600, ui macos): 36 from the top (under
  *  the menu bar), 12 from the foot, the three windows' one inset. */
 const INSET = 12
@@ -84,24 +85,39 @@ function useFiles(ms: number) {
 /** Helix in its window: ui's terminal-editor with its bufferline (always there, so the
  *  rows never move) and the engine as its language server, every file's text at the
  *  instant read together (components/use-cells-diagnose). `rows` counts the bufferline's. */
-function Editor({ size, rows = ROWS + 1, className }: { size: string; rows?: number; className?: string }) {
+function Editor({
+  size,
+  rows = ROWS + 1,
+  steps = HERO.steps,
+  onOpen,
+  className,
+}: {
+  size: string
+  rows?: number
+  steps?: CodeStep[]
+  onOpen?: (path: string) => void
+  className?: string
+}) {
   const diagnose = useCellsDiagnose()
   return (
     <Terminal alt="" accent={ACCENT} size={size} className={className}>
-      <TerminalEditor files={HERO.files} steps={HERO.steps} rows={rows} bufferline="always" diagnose={diagnose} />
+      <TerminalEditor files={HERO.files} steps={steps} rows={rows} bufferline="always" diagnose={diagnose} onOpen={onOpen} />
     </Terminal>
   )
 }
 
 /** The editor window the Mac's screen lets go of, as the page keeps it: the very window
  *  (its stage size, its type, its rows), scaled to `width` as a whole, so the flight
- *  between the two is a move and a scale and nothing else. money.cell as the edit left it. */
-export function EditorWindow({ width }: { width: number }) {
+ *  between the two is a move and a scale and nothing else. money.cell as the edit left it,
+ *  or the file `front` names, its tab pressed (`onOpen`). */
+export function EditorWindow({ width, front, onOpen }: { width: number; front?: string; onOpen?: (path: string) => void }) {
+  // A file pressed is the edit's next step: the frame drawn is still the edit's.
+  const steps = React.useMemo(() => (front ? [...HERO.steps, { kind: "open" as const, path: front }] : HERO.steps), [front])
   return (
     <div style={{ width, height: (width * WINDOW_H) / WINDOW_W }}>
       <div style={{ width: WINDOW_W, height: WINDOW_H, transform: `scale(${width / WINDOW_W})`, transformOrigin: "0 0" }}>
         <Playhead progress={1}>
-          <Editor size={EDITOR_SIZE} className="h-full" />
+          <Editor size={EDITOR_SIZE} steps={steps} onOpen={onOpen} className="h-full" />
         </Playhead>
       </div>
     </div>
@@ -115,12 +131,13 @@ const LANDING_W = 600
  *  already shows the editor, stacked, and nothing flies, so there is none. */
 export function Landing() {
   const narrow = useNarrow()
+  const [front, setFront] = React.useState<string | undefined>(undefined)
   if (narrow) return null
   return (
     // Before it knows the width (the server's HTML) a phone collapses it rather than
     // `display: none`, so the editor in it can still measure its columns.
     <div data-hero-landing className="overflow-hidden rounded-[10px] max-md:invisible max-md:h-0" style={{ width: LANDING_W }}>
-      <EditorWindow width={LANDING_W} />
+      <EditorWindow width={LANDING_W} front={front} onOpen={setFront} />
     </div>
   )
 }
