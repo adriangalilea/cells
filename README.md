@@ -52,8 +52,10 @@ The prelude, between two `---` lines, names types (`type Category = …`) and co
 
 Decided in direction, not yet in the spec ([SPEC.md, Open](SPEC.md#open)):
 
-- **Files that point at each other.** A column typed by another file's key (`account_to:accounts.account`) is a reference, brought in by the prelude (`use ../accounts.tcsv`). A folder of `.tcsv` files is typed tables joined by references: **your filesystem can be a graph database.** A reference that breaks names the file and row that broke it, and tools say so before the break lands. A local file is followed live, a remote one pinned by its hash.
+- **Files that point at each other.** A column typed by another file's key (`account_to:accounts.account`) is a reference, brought in by the prelude (`import accounts from "../accounts.tcsv"`). A folder of `.tcsv` files is typed tables joined by references: **your filesystem can be a graph database.** A reference that breaks names the file and row that broke it, and tools say so before the break lands. A local file is followed live, a remote one pinned by its hash.
 - **Every row has an identity**, its key or an `id` the engine assigns, so an edit always lands on the row it meant and two versions of a file merge row by row.
+- **Formulas where they are read**: a computed column in its header cell (`total:EUR=cost*qty`), a formula in a cell (`=96.75/3`), naming columns and keys, never coordinates, in SQL's expressions.
+- **Tables from scripts.** A prelude names tables, written inline or produced by a TypeScript function on a schedule (`eurusd = run every day at 18:00 in Europe/Madrid`), its last results and runs stored in the file. Opening a file never runs one.
 - **One engine every app reads and writes through**: first a daemon on one Mac, standalone in a page; files parsed once, changes heard as they happen, nobody's write ever lost, even an editor's that bypasses it. Later every device a full replica, books owned by one of them. [ENGINE.md](ENGINE.md) is the design.
 - **Queries in standards, never our own language**: SQL, and SQL/PGQ to walk references.
 - **Charts with no setup**, because the columns are typed: a date is a time axis, money a measure, a choice a category, a reference a link to follow.
@@ -83,12 +85,11 @@ expenses:home:power,expenses
 
 home/money.tcsv
 ---
-use ../accounts.tcsv
-vat = amount * tax_rate / (100 + tax_rate)
+import accounts from "../accounts.tcsv"
 ---
-id:id!,date:date,amount:EUR>0,account_from:accounts.account,account_to:accounts.account,description:text,tax_rate:pct
-k7m2q9xa,2026-07-01,950.00,assets:bank:main,expenses:home:rent,rent july,0
-p3w8c2nd,2026-07-12,64.30,assets:bank:main,expenses:home:power,power july,21
+id:id!,date:date,amount:EUR>0,account_from:accounts.account,account_to:accounts.account,description:text,tax_rate:pct,vat:EUR=amount*tax_rate/(100+tax_rate)
+k7m2q9xa,2026-07-01,950.00,assets:bank:main,expenses:home:rent,rent july,0,
+p3w8c2nd,2026-07-12,64.30,assets:bank:main,expenses:home:power,power july,21,
 ```
 
 ```
@@ -121,7 +122,7 @@ One law and one engine. Every surface binds the same Rust core, so there is one 
 | Highlighting in Helix, Neovim, Zed | `tree-sitter/` | tree-sitter |
 | Highlighting in VS Code, GitHub, Shiki | `syntaxes/` | TextMate |
 
-Rust because it is as fast as C and reaches everything else: a C ABI, wasm, PyO3, `tower-lsp`, DuckDB's bindings. Arrow because typed columns are what it is: DuckDB, Python, the browser and Swift take them as they lie, and a chart reads a column, never a row. DuckDB ships with the command line, the daemon and the apps, never in a page.
+Rust because it is as fast as C and reaches everything else: a C ABI, wasm, PyO3, `tower-lsp`, DuckDB's bindings. Arrow because typed columns are what it is: DuckDB, Python, the browser and Swift take them as they lie, and a chart reads a column, never a row. DuckDB ships with the command line, the daemon and the apps, never in a page. Bun runs a file's scripts, never the core: it is a program, and no page or app can link it. Parquet is an export of the same columns, never the source: in memory both are Arrow, and what text costs at load the daemon's cache pays once, while Parquet can never be read, diffed in git or fixed by hand.
 
 Built: the suite (430 cases, `plain/` the files that are not TCSV); the engine passing all of them in Rust and through its wasm build (`tcsv check`, `tcsv fmt --check`, a 61 KB brotli wasm with a synchronous `read`, the Apple XCFramework, released as `apple-<version>`; 1M rows read in 14 ms on 18 threads, rust/README.md); the engine reading what people's files are (a `.csv` or `.tsv` by the separator its first lines agree on, never refused for its records, a ragged row read as blanks with its problem), columns inserted, removed, moved and renamed, and a file written in another dialect; ui's table and TCSV on the wasm build; swift-utils' `TCSV` a binding over it on macOS, iOS and tvOS, passing every case through Swift. Next, in order: the Apple apps on the engine with nothing lost; a problem carrying the span of the cell that broke (its start and length in the cell's text), so every client marks the exact characters without parsing anything itself; `tcsv sql` and the daemon; charts from the types; the language server. [`ts/`](ts) is the first TypeScript reader, kept as a readable reference: `read`, `write`, `setCell`, `setType`, `parseHeader`, `compose`, and `Infer<"header">`, the row type from a header line at compile time; it predates the suite and fails 95 of its cases, the engine passes them all.
 

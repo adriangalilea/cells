@@ -10,7 +10,7 @@ The engine is a library: the Rust core, behind a C header on the Apple platforms
 
 ### How it runs
 
-- **The daemon.** One process per user, `tcsv serve`, kept by launchd, hosts the engine for every client on the Mac: tally, the language server, the command line. Each file is parsed once, its references are held as a graph, and every query and chart is served from memory.
+- **The daemon.** One process per user, `tcsv serve`, kept by launchd, hosts the engine for every client on the Mac: tally, the language server, the command line. Each file is parsed once, its references are held as a graph, and every query and chart is served from memory. It runs each file's scripts on their schedules (SPEC.md, "A table can come from a script"), through Bun, and only there: a page or an app shows what the last run stored.
 - **Standalone.** A page given a `.tcsv` file (the wasm engine), or an app given a file without the daemon: read, render, edit, give it back. Nothing else is needed, and a file is complete on its own.
 
 ### The protocol
@@ -39,10 +39,11 @@ Intents and queries in, results and changes out. Results are Arrow IPC frames (t
 - **An edit the engine did not make is logged too.** When the engine finds a file whose hash is not the last result it logged, it records an `external` entry (the old hash, the new one, which rows changed), so the log explains every version of every file, an editor's included.
 - **Typing is not an intent.** An editor's unsaved text is presence, sent to the daemon but never logged; saves and app actions are intents.
 - **Rules are checked before a write**: keys, `unique` columns, every `check` (SPEC.md, Open). An intent that would break one is refused with the reason.
+- **A run is an intent.** What a script returned is checked against its table's header, then written as one intent (its rows, its entry in `runs`), journalled and applied like any edit, so a crash mid-run leaves the last run's rows whole. A run that fails writes only its failure. The script's stdout and stderr, its duration and outcome go in the log with the intent.
 
 ### The log
 
-`.tcsv/log.jsonl` in the folder, one line per entry: its number, the BLAKE3 hash of the line before (so an edit or a removal breaks every later link), the intent id, its kind (`set`, `add`, `delete`, `rename`, `external`, `done`), its arguments, for each file the hash it was made against and the hash it produced, its assigned ids and timestamp. Past a size, it continues in a new segment linked to the last.
+`.tcsv/log.jsonl` in the folder, one line per entry: its number, the BLAKE3 hash of the line before (so an edit or a removal breaks every later link), the intent id, its kind (`set`, `add`, `delete`, `rename`, `run`, `external`, `done`), its arguments, for each file the hash it was made against and the hash it produced, its assigned ids and timestamp. Past a size, it continues in a new segment linked to the last.
 
 ### Editors
 
