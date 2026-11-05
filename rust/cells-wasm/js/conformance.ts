@@ -72,8 +72,8 @@ interface Want {
   names?: { column: number; kind: string }[]
   columns: { name: string; type: string; inferred?: boolean; formula?: string }[]
   rows: Record<string, unknown>[]
-  problems: { row: number; column: string; kind: string }[]
-  broken?: { at: string }[]
+  problems: { row: number; column: string; kind: string; span: [number, number] }[]
+  broken?: { at: string; span: [number, number] }[]
 }
 
 function check(doc: Doc, want: Want): string[] {
@@ -114,6 +114,16 @@ function check(doc: Doc, want: Want): string[] {
   }
   f.push(...hosted(doc))
   return f
+}
+
+/** Every problem's and break's span, the suite's in bytes of the file, ours in UTF-16
+ *  units of its text. */
+function spanned(doc: Doc, want: Want, bytes: Uint8Array): string[] {
+  const units = (b: number) => text(bytes.subarray(0, b)).length
+  const of = ([s, l]: [number, number]) => [units(s), units(s + l) - units(s)]
+  const a = JSON.stringify([...doc.problems().map((p) => p.span), ...doc.broken.map((b) => b.span)])
+  const b = JSON.stringify([...want.problems, ...(want.broken ?? [])].map((p) => of(p.span)))
+  return a === b ? [] : [`spans ${a}, the suite says ${b}`]
 }
 
 /** What a host that keeps its own rows gets: `cells` is every cell's `text`, and the
@@ -233,7 +243,7 @@ for (const path of all) {
       else if (got.where !== want.error.at) fails.push(`refused at ${got.where}, the suite says ${want.error.at}`)
     } else if (want.error) fails.push(`reads, the suite says it breaks at ${want.error.at}`)
     else {
-      fails.push(...check(got.doc, want))
+      fails.push(...check(got.doc, want), ...spanned(got.doc, want, bytes))
       if (write(got.doc) !== text(bytes)) fails.push("does not round-trip")
     }
   }

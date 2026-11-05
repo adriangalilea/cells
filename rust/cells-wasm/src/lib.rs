@@ -18,6 +18,8 @@ pub struct Handle {
     problems: Vec<u32>,
     /// Where each cell `cells_cells` wrote ends, in UTF-16 units.
     ends: Vec<u32>,
+    /// What `cells_spans` gave.
+    spans: Vec<u32>,
 }
 
 /// The module's one piece of state: the length of the last bytes returned, and the last
@@ -101,7 +103,7 @@ fn dialect(sep: u32) -> Dialect {
 
 fn handled(read: Result<Doc, cells::Error>) -> *mut Handle {
     match read {
-        Ok(doc) => Box::into_raw(Box::new(Handle { doc, out: Vec::new(), problems: Vec::new(), ends: Vec::new() })),
+        Ok(doc) => Box::into_raw(Box::new(Handle { doc, out: Vec::new(), problems: Vec::new(), ends: Vec::new(), spans: Vec::new() })),
         Err(e) => {
             failed(e);
             std::ptr::null_mut()
@@ -308,8 +310,7 @@ fn addr<T>(v: &[T]) -> usize {
 /// Where everything is: the rows, the dialect (`"cells"`, or a plain file's separator), the
 /// named types, every column's type, formula, kind and buffers (its cells' origins too,
 /// bytes 0 written, 1 its formula's, 2 their own, when any is computed), the header
-/// problems, where the grammar breaks (`{at, why, span}`, the span in the text written
-/// now), the problems as `u32` triples (row, column, kind: 0 type, 1 missing, 2 key,
+/// problems, where the grammar breaks (`{at, why}`), the problems as `u32` triples (row, column, kind: 0 type, 1 missing, 2 key,
 /// 3 ragged, 4 formula, 5 reference). Read again after every edit: an edit may move a
 /// column's buffers.
 ///
@@ -344,7 +345,7 @@ pub unsafe extern "C" fn cells_meta(h: *mut Handle) -> *const u8 {
         let _ = write!(s, "{{\"column\":{},\"kind\":\"{kind}\"}}", n.column());
     }
     s.push_str("],\"broken\":[");
-    for (k, (e, span)) in doc.broken().iter().zip(doc.broken_spans()).enumerate() {
+    for (k, e) in doc.broken().iter().enumerate() {
         if k > 0 {
             s.push(',');
         }
@@ -352,9 +353,6 @@ pub unsafe extern "C" fn cells_meta(h: *mut Handle) -> *const u8 {
         json_str(&mut s, &e.at.to_string());
         s.push_str(",\"why\":");
         json_str(&mut s, &e.why);
-        if let Some(span) = span {
-            let _ = write!(s, ",\"span\":[{},{}]", span.start, span.len);
-        }
         s.push('}');
     }
     s.push(']');
@@ -558,6 +556,53 @@ pub unsafe extern "C" fn cells_cell_ends(h: *mut Handle) -> *const u32 {
     // SAFETY: the caller's promise.
     let h = unsafe { handle(h) };
     h.ends.as_ptr()
+}
+
+/// Where every problem, then every break, is in the text the doc writes now: `u32` pairs,
+/// its start and its length in UTF-16 units, what a page's strings and a language
+/// client index by; a break of the file as a whole is `u32::MAX` and 0. Made when asked,
+/// never by `cells_meta`, since it reads the whole text.
+///
+/// # Safety
+/// `h` is a live handle from `cells_read`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn cells_spans(h: *mut Handle) -> *const u32 {
+    // SAFETY: the caller's promise.
+    let h = unsafe { handle(h) };
+    let text = h.doc.write();
+    let bytes: Vec<(u32, u32)> = h
+        .doc
+        .spans()
+        .into_iter()
+        .map(|s| (s.start, s.len))
+        .chain(h.doc.broken_spans().into_iter().map(|s| s.map_or((u32::MAX, 0), |s| (s.start, s.len))))
+        .collect();
+    // Every offset, in order, walked to once.
+    let mut wanted: Vec<u32> = bytes.iter().filter(|b| b.0 != u32::MAX).flat_map(|&(s, l)| [s, s + l]).collect();
+    wanted.sort_unstable();
+    wanted.dedup();
+    let mut units = Vec::with_capacity(wanted.len());
+    let (mut byte, mut unit) = (0usize, 0u32);
+    let mut chars = text.chars();
+    for &w in &wanted {
+        while byte < w as usize {
+            let c = chars.next().expect("a span inside the text");
+            byte += c.len_utf8();
+            unit += c.len_utf16() as u32;
+        }
+        units.push(unit);
+    }
+    let at = |b: u32| units[wanted.binary_search(&b).unwrap()];
+    h.spans.clear();
+    for (s, l) in bytes {
+        if s == u32::MAX {
+            h.spans.extend([u32::MAX, 0]);
+        } else {
+            let from = at(s);
+            h.spans.extend([from, at(s + l) - from]);
+        }
+    }
+    h.spans.as_ptr()
 }
 
 /// Takes the text a page wrote into room from `cells_alloc`.

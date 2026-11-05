@@ -12,10 +12,25 @@ use std::ptr;
 use cells::arrow::{ArrowArray, ArrowSchema};
 use cells::{At, ColumnAt, Dialect, Doc, Separator};
 
-/// A file read, with the text its last call returned.
+/// A file read, with the text and the spans its last calls returned.
 pub struct CellsDoc {
     doc: Doc,
     out: String,
+    spans: Vec<CellsSpan>,
+}
+
+impl CellsDoc {
+    fn of(doc: Doc) -> *mut CellsDoc {
+        Box::into_raw(Box::new(CellsDoc { doc, out: String::new(), spans: Vec::new() }))
+    }
+}
+
+/// Where something is in a file's text: its first byte and its length, in bytes.
+#[repr(C)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub struct CellsSpan {
+    pub start: u32,
+    pub len: u32,
 }
 
 /// UTF-8 bytes, borrowed: valid until the next call on the doc that returned them.
@@ -125,7 +140,7 @@ fn dialect(sep: u8) -> Dialect {
 
 fn doc_or_fail(read: Result<Doc, cells::Error>, failure: *mut CellsFailure) -> *mut CellsDoc {
     match read {
-        Ok(doc) => Box::into_raw(Box::new(CellsDoc { doc, out: String::new() })),
+        Ok(doc) => CellsDoc::of(doc),
         Err(e) => {
             fail(failure, e);
             ptr::null_mut()
@@ -530,15 +545,13 @@ pub unsafe extern "C" fn cells_problem(d: *mut CellsDoc, i: usize) -> CellsProbl
 }
 
 /// Where a file's grammar breaks, the rest read (`cells::Doc::broken`): the place, and
-/// where it is in the text `cells_write` gives now, `start` and `len` in bytes, when
-/// `spanned`.
+/// where it is in the text `cells_write` gives now, when `spanned`.
 #[repr(C)]
 pub struct CellsBreak {
     pub at: CellsAt,
     pub number: u32,
     pub spanned: bool,
-    pub start: u32,
-    pub len: u32,
+    pub span: CellsSpan,
 }
 
 /// How many breaks, in the file's order: a prelude statement left out, a header cell read
@@ -562,7 +575,12 @@ pub unsafe extern "C" fn cells_broken(d: *mut CellsDoc, i: usize) -> CellsBreak 
     let d = &unsafe { doc(d) }.doc;
     let (at, number) = place(d.broken()[i].at);
     let span = d.broken_spans()[i];
-    CellsBreak { at, number, spanned: span.is_some(), start: span.map_or(0, |s| s.start), len: span.map_or(0, |s| s.len) }
+    CellsBreak {
+        at,
+        number,
+        spanned: span.is_some(),
+        span: span.map_or(CellsSpan { start: 0, len: 0 }, |s| CellsSpan { start: s.start, len: s.len }),
+    }
 }
 
 /// Break `i`'s words, which name what broke: `to: accounts has no column "a" (its key is
@@ -576,6 +594,21 @@ pub unsafe extern "C" fn cells_broken_why(d: *mut CellsDoc, i: usize) -> CellsSt
     let d = unsafe { doc(d) };
     d.out = d.doc.broken()[i].why.clone();
     CellsStr::of(&d.out)
+}
+
+/// Where every problem is in the text `cells_write` gives now, in `cells_problem`'s order,
+/// `cells_problem_count` of them: the cell's text inside its quotes, the control character
+/// it holds, the part of its own formula that does not read, an empty span where a
+/// missing cell stands. Borrowed until the next call on the doc.
+///
+/// # Safety
+/// `d` is a live doc.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn cells_problem_spans(d: *mut CellsDoc) -> *const CellsSpan {
+    // SAFETY: the caller's promise.
+    let d = unsafe { doc(d) };
+    d.spans = d.doc.spans().into_iter().map(|s| CellsSpan { start: s.start, len: s.len }).collect();
+    d.spans.as_ptr()
 }
 
 /// Problem `i` in words: `row 3, cost: "8x.50" is not a number`.
@@ -718,7 +751,7 @@ pub unsafe extern "C" fn cells_export_column(d: *mut CellsDoc, column: usize, sc
 pub unsafe extern "C" fn cells_clone(d: *mut CellsDoc) -> *mut CellsDoc {
     // SAFETY: the caller's promise.
     let d = unsafe { doc(d) };
-    Box::into_raw(Box::new(CellsDoc { doc: d.doc.clone(), out: String::new() }))
+    CellsDoc::of(d.doc.clone())
 }
 
 /// A new file in a dialect (`sep` as for `cells_read_as`) written from cells: its header's,
@@ -1225,6 +1258,8 @@ mod tests {
             assert_eq!(cells_problem_count(d), 1);
             let p = cells_problem(d, 0);
             assert_eq!((p.row, p.column, p.kind), (1, 1, CellsKind::CellsKindType));
+            // `8x`, at bytes 36 and 37 of the text.
+            assert_eq!(*cells_problem_spans(d), CellsSpan { start: 36, len: 2 });
             let t = cells_column_type(d, 1);
             assert_eq!(std::slice::from_raw_parts(t.ptr as *const u8, t.len), b"EUR");
             assert!(cells_set_cell(d, 1, 1, c"12.00".as_ptr(), 5, ptr::null_mut()));
@@ -1247,7 +1282,7 @@ mod tests {
             let d = cells_read(bad.as_ptr(), bad.len(), 1, &mut f);
             assert_eq!((cells_rows(d), cells_broken_count(d)), (1, 1));
             let b = cells_broken(d, 0);
-            assert_eq!((b.at, b.number, b.spanned, b.start, b.len), (CellsAt::CellsAtColumn, 1, true, 5, 4));
+            assert_eq!((b.at, b.number, b.spanned, b.span), (CellsAt::CellsAtColumn, 1, true, CellsSpan { start: 5, len: 4 }));
             assert_eq!(text(cells_broken_why(d, 0)), "item: no type or currency \"EURO\"");
             cells_free(d);
             let bad = b"\xff";
