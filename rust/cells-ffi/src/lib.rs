@@ -61,18 +61,22 @@ pub struct CellsFailure {
     pub why_len: usize,
 }
 
-fn fail(out: *mut CellsFailure, e: cells::Error) {
-    if out.is_null() {
-        return;
-    }
-    let (at, number) = match e.at {
+fn place(at: At) -> (CellsAt, u32) {
+    match at {
         At::Header => (CellsAt::CellsAtHeader, 0),
         At::Column(n) => (CellsAt::CellsAtColumn, n),
         At::PreludeLine(n) => (CellsAt::CellsAtPreludeLine, n),
         At::Prelude => (CellsAt::CellsAtPrelude, 0),
         At::Row(n) => (CellsAt::CellsAtRow, n),
         At::File => (CellsAt::CellsAtFile, 0),
-    };
+    }
+}
+
+fn fail(out: *mut CellsFailure, e: cells::Error) {
+    if out.is_null() {
+        return;
+    }
+    let (at, number) = place(e.at);
     let why = e.why.into_bytes().into_boxed_slice();
     let why_len = why.len();
     // SAFETY: the caller hands a writable CellsFailure.
@@ -100,7 +104,8 @@ pub unsafe extern "C" fn cells_failure_free(f: *mut CellsFailure) {
 }
 
 /// Reads `len` bytes (copied: the caller keeps its buffer) on up to `threads` threads (1
-/// starts none). Null when the file does not read, `failure` then set.
+/// starts none). A file whose grammar breaks reads, its breaks on it (`cells_broken`);
+/// null only for bytes that are not UTF-8 or past 4 GiB, `failure` then set.
 ///
 /// # Safety
 /// `bytes` points at `len` readable bytes; `failure` is null or writable.
@@ -335,7 +340,8 @@ pub struct CellsColumnAt {
 
 /// The file with exactly `columns`, in their order, read again on up to `threads` threads
 /// (a column inserted, removed, moved, renamed): a new doc, this one untouched. Null when
-/// it does not read, `failure` then set.
+/// it breaks the grammar where it did not break (two columns of one name, a formula
+/// reading one taken out), `failure` then set.
 ///
 /// # Safety
 /// `d` is a live doc; `columns` points at `count` columns, at least one, each kept one
@@ -523,6 +529,55 @@ pub unsafe extern "C" fn cells_problem(d: *mut CellsDoc, i: usize) -> CellsProbl
     CellsProblem { row: p.row, column: p.column, kind }
 }
 
+/// Where a file's grammar breaks, the rest read (`cells::Doc::broken`): the place, and
+/// where it is in the text `cells_write` gives now, `start` and `len` in bytes, when
+/// `spanned`.
+#[repr(C)]
+pub struct CellsBreak {
+    pub at: CellsAt,
+    pub number: u32,
+    pub spanned: bool,
+    pub start: u32,
+    pub len: u32,
+}
+
+/// How many breaks, in the file's order: a prelude statement left out, a header cell read
+/// as text, a column formula whose cells are blank, the record the rows end at.
+///
+/// # Safety
+/// `d` is a live doc.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn cells_broken_count(d: *mut CellsDoc) -> usize {
+    // SAFETY: the caller's promise.
+    unsafe { doc(d) }.doc.broken().len()
+}
+
+/// Break `i`.
+///
+/// # Safety
+/// `d` is a live doc; `i < cells_broken_count(d)`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn cells_broken(d: *mut CellsDoc, i: usize) -> CellsBreak {
+    // SAFETY: the caller's promise.
+    let d = &unsafe { doc(d) }.doc;
+    let (at, number) = place(d.broken()[i].at);
+    let span = d.broken_spans()[i];
+    CellsBreak { at, number, spanned: span.is_some(), start: span.map_or(0, |s| s.start), len: span.map_or(0, |s| s.len) }
+}
+
+/// Break `i`'s words, which name what broke: `to: accounts has no column "a" (its key is
+/// account)`.
+///
+/// # Safety
+/// `d` is a live doc; `i < cells_broken_count(d)`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn cells_broken_why(d: *mut CellsDoc, i: usize) -> CellsStr {
+    // SAFETY: the caller's promise.
+    let d = unsafe { doc(d) };
+    d.out = d.doc.broken()[i].why.clone();
+    CellsStr::of(&d.out)
+}
+
 /// Problem `i` in words: `row 3, cost: "8x.50" is not a number`.
 ///
 /// # Safety
@@ -596,7 +651,7 @@ pub unsafe extern "C" fn cells_set_cell(
 }
 
 /// One column's type rewritten in shorthand (`""` makes it plain). False when the type
-/// does not read, `failure` then set.
+/// does not read or breaks another column's formula, `failure` then set.
 ///
 /// # Safety
 /// `d` is a live doc; `column < cells_stored(d)`; `spelled` points at `len` bytes of UTF-8;
@@ -1187,9 +1242,17 @@ mod tests {
             (s.release.unwrap())(&mut s);
             (a.release.unwrap())(&mut a);
 
-            let bad = b"item:EURO\n";
+            // A header cell that does not read is a column of text, its break marked.
+            let bad = b"item:EURO\nfuel\n";
+            let d = cells_read(bad.as_ptr(), bad.len(), 1, &mut f);
+            assert_eq!((cells_rows(d), cells_broken_count(d)), (1, 1));
+            let b = cells_broken(d, 0);
+            assert_eq!((b.at, b.number, b.spanned, b.start, b.len), (CellsAt::CellsAtColumn, 1, true, 5, 4));
+            assert_eq!(text(cells_broken_why(d, 0)), "item: no type or currency \"EURO\"");
+            cells_free(d);
+            let bad = b"\xff";
             assert!(cells_read(bad.as_ptr(), bad.len(), 1, &mut f).is_null());
-            assert_eq!((f.at, f.number), (CellsAt::CellsAtColumn, 1));
+            assert_eq!(f.at, CellsAt::CellsAtFile);
             cells_failure_free(&mut f);
         }
     }

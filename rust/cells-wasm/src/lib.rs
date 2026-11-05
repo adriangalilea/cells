@@ -80,7 +80,8 @@ unsafe fn took(ptr: *mut u8, len: usize, cap: usize) -> Vec<u8> {
 }
 
 /// Reads the `len` bytes written at `ptr` (room from `cells_alloc(cap)`, which this call
-/// takes). Null when the file does not read; `cells_error` says where and why.
+/// takes). Null only for bytes that are not UTF-8 or past 4 GiB, `cells_error` saying why;
+/// a broken grammar reads, its breaks in `cells_meta`.
 ///
 /// # Safety
 /// `ptr` and `cap` are what `cells_alloc(cap)` gave, `len` bytes of it written.
@@ -307,7 +308,8 @@ fn addr<T>(v: &[T]) -> usize {
 /// Where everything is: the rows, the dialect (`"cells"`, or a plain file's separator), the
 /// named types, every column's type, formula, kind and buffers (its cells' origins too,
 /// bytes 0 written, 1 its formula's, 2 their own, when any is computed), the header
-/// problems, the problems as `u32` triples (row, column, kind: 0 type, 1 missing, 2 key,
+/// problems, where the grammar breaks (`{at, why, span}`, the span in the text written
+/// now), the problems as `u32` triples (row, column, kind: 0 type, 1 missing, 2 key,
 /// 3 ragged, 4 formula, 5 reference). Read again after every edit: an edit may move a
 /// column's buffers.
 ///
@@ -340,6 +342,20 @@ pub unsafe extern "C" fn cells_meta(h: *mut Handle) -> *const u8 {
             Naming::Twice { .. } => "twice",
         };
         let _ = write!(s, "{{\"column\":{},\"kind\":\"{kind}\"}}", n.column());
+    }
+    s.push_str("],\"broken\":[");
+    for (k, (e, span)) in doc.broken().iter().zip(doc.broken_spans()).enumerate() {
+        if k > 0 {
+            s.push(',');
+        }
+        s.push_str("{\"at\":");
+        json_str(&mut s, &e.at.to_string());
+        s.push_str(",\"why\":");
+        json_str(&mut s, &e.why);
+        if let Some(span) = span {
+            let _ = write!(s, ",\"span\":[{},{}]", span.start, span.len);
+        }
+        s.push('}');
     }
     s.push(']');
     s.push_str(",\"prelude\":");
