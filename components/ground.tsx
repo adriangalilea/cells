@@ -7,10 +7,10 @@
 //    computed, the haze on what is broken). Never flat black.
 // 2. the table: a faint grid of a sheet's cells, wider than tall, noticed on a second
 //    look (globals.css `.ground-grid`).
-// 3. the cells: ui's shimmer at a whisper, facets flashing at rest and gathering under
-//    the hand, fading at its own edges, across the window and fainter than round the
-//    hero (components/hero-shimmer). It draws only while seen and stands still under
-//    reduced motion (the item's own rules).
+// 3. ui's shimmer at a whisper, facets flashing at rest and gathering under the hand,
+//    fading at its own edges, across the window and a little stronger round the hero
+//    (HeroShimmer). It draws only while seen and stands still under reduced motion (the
+//    item's own rules).
 // What the page holds lies above all three.
 
 import { AmbientLight } from "@/components/ui/ambient-light"
@@ -19,6 +19,7 @@ import { Shimmer } from "@/components/ui/shimmer"
 /** e-id's surface of facets, the same tuning: sparse, barely frosted, each speck a hard
  *  pixel, white with a trace of fire, at one canvas pixel per CSS pixel. */
 export const FACETS = { density: 0.3, frost: 0.01, colour: 0.1, resolution: 1 } as const
+
 
 export function Ground() {
   return (
@@ -42,8 +43,11 @@ export function Ground() {
         />
       </div>
       <div className="ground-grid absolute inset-0" />
+      {/* Faint and on its own, never cut to the grid: a shimmer that follows the grid's
+          lines is for ui to draw (for ui: a `lines` option on shimmer, the facets laid on a
+          given grid). */}
       <div className="absolute inset-0 hidden dark:block">
-        <Shimmer {...FACETS} strength={0.1} fade={{ x: 0.5, y: 0.45, rx: 0.75, ry: 0.7, inner: 0.35 }} />
+        <Shimmer {...FACETS} strength={0.3} fade={{ x: 0.5, y: 0.45, rx: 0.75, ry: 0.7, inner: 0.35 }} />
       </div>
     </div>
   )
@@ -54,7 +58,7 @@ export function Ground() {
 export function HeroShimmer() {
   return (
     <div aria-hidden className="pointer-events-none absolute inset-0 -z-10 hidden dark:block">
-      <Shimmer {...FACETS} strength={0.18} fade={{ x: 0.5, y: 0.42, rx: 0.7, ry: 0.75, inner: 0.3, foot: 0.6 }} />
+      <Shimmer {...FACETS} strength={0.5} fade={{ x: 0.5, y: 0.42, rx: 0.7, ry: 0.75, inner: 0.3, foot: 0.6 }} />
     </div>
   )
 }
