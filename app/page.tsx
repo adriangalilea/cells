@@ -1,6 +1,6 @@
 import { Suspense } from "react"
 import { HeroShimmer } from "@/components/ground"
-import { EditorWindow, Hero } from "@/components/hero"
+import { Hero, Landing } from "@/components/hero"
 import { Story } from "@/components/story"
 import { PRODUCT } from "@/lib/product"
 
@@ -73,19 +73,14 @@ export default function Page() {
 
       {/* The file the hero's screen let go of lands here first, so its block leads and its
           words follow: nothing stands between the screen and where the text lands. */}
-      <section id="story" className="mx-auto mt-24 max-w-6xl scroll-mt-20 px-6 md:mt-32">
+      <section id="story" className="mx-auto max-w-6xl scroll-mt-20 px-6 md:mt-8">
         {/* The editor window the Mac let go of, the same window: its two files a tab each. */}
-        <div data-hero-landing className="overflow-hidden rounded-[10px] shadow-[0_24px_60px_-24px_rgb(0_0_0/0.6)]">
-          <Suspense>
-            <EditorWindow />
-          </Suspense>
-        </div>
-        <h2 className="mt-14 max-w-[28ch] text-balance text-[clamp(1.75rem,3.2vw,2.5rem)] leading-[1.1] font-medium tracking-[-0.025em]">
-          Types, a formula, an import. <span className="text-muted-foreground">No schema file beside it, no database behind it.</span>
-        </h2>
+        <Suspense>
+          <Landing />
+        </Suspense>
       </section>
 
-      <div className="mt-40 md:mt-56">
+      <div className="mt-16 md:mt-24">
         <Suspense>
           <Story />
         </Suspense>

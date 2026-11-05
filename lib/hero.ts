@@ -42,8 +42,8 @@ const FAILING = `${money} row 3, to: "${ACCOUNT}" is no key of accounts`
 const FIRST = `$ ${PRODUCT.cli} check ${money}\n${FAILING}`
 const SECOND = `$ ${PRODUCT.cli} check ${money} && echo ok\nok`
 
-/** The lid opens over this, ms; the edit starts once it has. */
-const OPENING = 1600
+/** The screen as it is found, ms, before the edit starts: a beat to see the three windows. */
+const OPENING = 600
 /** From a save to the terminal's command starting to type. */
 const TO_TERMINAL = 150
 /** The failure on screen, read, before the hand goes back to the files. */
@@ -136,7 +136,7 @@ export const HERO = {
   clip: {
     duration: total,
     chapters: [
-      { start: 0, title: "the lid" },
+      { start: 0, title: "the screen" },
       { start: OPENING, title: `${accounts}, a list` },
       { start: at(1), title: `${money}, a plain table` },
       { start: at(1), title: "a type, a reference, a formula" },
