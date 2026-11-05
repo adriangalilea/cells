@@ -202,7 +202,13 @@ pub fn hover(folder: &Folder, file: &File, at: usize) -> Option<Hover> {
     let lines = Lines::new(&file.text);
     let doc = &file.doc;
     match spot(file, at) {
-        Spot::Name(c, s) | Spot::Type(c, s) => Some(markdown(about(&doc.columns()[c]), Some(lines.range(s)))),
+        Spot::Name(c, s) | Spot::Type(c, s) => {
+            let mut out = about(&doc.columns()[c]);
+            for e in doc.broken().iter().filter(|e| e.at == cells::At::Column(c as u32 + 1)) {
+                out.push_str(&format!("\n\n{}", e.why));
+            }
+            Some(markdown(out, Some(lines.range(s))))
+        }
         Spot::Cell(r, c, s) => {
             let col = &doc.columns()[c];
             let mut out = format!("{}\n\n", about(col));
@@ -690,6 +696,8 @@ mod tests {
         assert_eq!(d[0].message, "to: accounts has no column \"a\" (its key is account)");
         assert_eq!(d[0].range, Lines::new(&text).range(span(at(&text, "accounts.a,", 0) as u32, 10)));
         assert!(hover(&folder, &file, at(&text, "950", 0)).is_some());
+        let to = said(hover(&folder, &file, at(&text, "to:", 0)).unwrap());
+        assert_eq!(to, "`to:text?`\n\nto: accounts has no column \"a\" (its key is account)");
     }
 
     #[test]
