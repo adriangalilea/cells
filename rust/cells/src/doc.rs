@@ -54,6 +54,10 @@ impl fmt::Display for At {
 pub struct Error {
     pub at: At,
     pub why: String,
+    /// Where in the place the grammar breaks, when it is a part of it: its first byte and
+    /// its length in the place's text read (a header cell's, unquoted), the part of a
+    /// formula that does not read.
+    pub within: Option<(u32, u32)>,
 }
 
 impl fmt::Display for Error {
@@ -66,7 +70,7 @@ impl fmt::Display for Error {
 impl std::error::Error for Error {}
 
 fn error(at: At, why: impl Into<String>) -> Error {
-    Error { at, why: why.into() }
+    Error { at, why: why.into(), within: None }
 }
 
 /// A character by its code point, as a message shows one that renders as nothing: `U+0000`.
@@ -337,7 +341,7 @@ pub struct Doc {
     formulas: Vec<Option<Ir>>,
     problems: Vec<Problem>,
     /// Why a cell's own formula does not compute, by place.
-    unwell: BTreeMap<(u32, u32), String>,
+    unwell: BTreeMap<(u32, u32), expr::Fault>,
     /// What a formula gave a cell whose type it breaks, by place, so its problem can say.
     gave: BTreeMap<(u32, u32), String>,
     /// The header line rewritten, without its line break.
@@ -758,6 +762,104 @@ fn redecode(base: &Base, offsets: &[i32], bytes: &[u8], valid: &BitsBuilder) -> 
 }
 
 /// A line's ending: `\r\n`, `\n`, a plain file's lone `\r`, or none at the end of the file.
+/// Where something is in a file's text: its first byte and its length, in bytes. An empty
+/// span is a place: where a missing cell stands.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Span {
+    pub start: u32,
+    pub len: u32,
+}
+
+/// Field `k` of a record whose line starts at `start`: its text, inside its quotes when it
+/// is quoted; past the record's last field, an empty span at its end.
+fn field_span(start: u32, line: &str, fields: &[&str], k: usize) -> Span {
+    let Some(raw) = fields.get(k) else { return Span { start: start + line.len() as u32, len: 0 } };
+    let at = raw.as_ptr() as usize - line.as_ptr() as usize;
+    let quoted = raw.len() >= 2 && raw.starts_with('"') && raw.ends_with('"');
+    let (at, len) = if quoted { (at + 1, raw.len() - 2) } else { (at, raw.len()) };
+    Span { start: start + at as u32, len: len as u32 }
+}
+
+/// The part of a field at `at` in its text unquoted (its first byte and length), where it is
+/// in the file: the field `cell` spans `raw` there, inside its quotes when it is `quoted`,
+/// a `""` in it one `"` of its text.
+fn within(cell: Span, raw: &str, quoted: bool, (s, l): (u32, u32)) -> Span {
+    if !quoted {
+        return Span { start: cell.start + s, len: l };
+    }
+    let b = raw.as_bytes();
+    let raw_at = |u: u32| {
+        let (mut r, mut t) = (0usize, 0u32);
+        while t < u && r < b.len() {
+            r += if b[r] == b'"' && b.get(r + 1) == Some(&b'"') { 2 } else { 1 };
+            t += 1;
+        }
+        r as u32
+    };
+    let (from, to) = (raw_at(s), raw_at(s + l));
+    Span { start: cell.start + from, len: to - from }
+}
+
+impl Error {
+    /// Where the place this error names is in `source`, the bytes refused as `dialect`: a
+    /// header cell, a prelude line, a record, the header line, the prelude's opening line,
+    /// narrowed to `within` where the error says. Nothing for the file as a whole.
+    pub fn span(&self, source: &[u8], dialect: Dialect) -> Option<Span> {
+        let src = core::str::from_utf8(source).ok()?;
+        let bom = if src.starts_with('\u{feff}') { 3 } else { 0 };
+        let line_at = |from: usize| {
+            let rest = &src[from..];
+            let end = rest.find('\n').map_or(rest.len(), |i| i + 1);
+            let line = &rest[..end];
+            Span { start: from as u32, len: (line.len() - ending(line).len()) as u32 }
+        };
+        // An error past the prelude comes from a file whose prelude reads.
+        let body = || match dialect {
+            Dialect::Plain(_) => bom,
+            Dialect::Cells => read_prelude(src, bom).map_or(bom, |(b, _)| b),
+        };
+        let how = dialect.records();
+        match self.at {
+            At::File => None,
+            At::Prelude => Some(line_at(bom)),
+            At::PreludeLine(n) => {
+                let from = bom + src[bom..].split_inclusive('\n').take(n as usize).map(str::len).sum::<usize>();
+                Some(line_at(from))
+            }
+            At::Header => Some(line_at(body())),
+            At::Column(n) => {
+                let from = body();
+                let Ok((fields, _)) = scan::record(source, from, how) else { return Some(line_at(from)) };
+                let &(s, e) = fields.get(n as usize - 1)?;
+                let field = &src[s as usize..e as usize];
+                let quoted = field.len() >= 2 && field.starts_with('"') && field.ends_with('"');
+                let (inside, raw) = if quoted { (s + 1, &field[1..field.len() - 1]) } else { (s, field) };
+                let cell = Span { start: inside, len: raw.len() as u32 };
+                Some(match self.within {
+                    Some(part) => within(cell, raw, quoted, part),
+                    None => cell,
+                })
+            }
+            At::Row(n) => {
+                let mut from = scan::record(source, body(), how).ok()?.1;
+                for _ in 0..n {
+                    match scan::record(source, from, how) {
+                        Ok((_, next)) => from = next,
+                        Err(_) => return Some(line_at(from)),
+                    }
+                }
+                Some(match scan::record(source, from, how) {
+                    Ok((_, next)) => {
+                        let rec = &src[from..next];
+                        Span { start: from as u32, len: (rec.len() - ending(rec).len()) as u32 }
+                    }
+                    Err(_) => line_at(from),
+                })
+            }
+        }
+    }
+}
+
 fn ending(s: &str) -> &str {
     if s.ends_with("\r\n") {
         "\r\n"
@@ -804,6 +906,62 @@ impl Doc {
     /// A naming problem in words: `the header, column 2: "a" names column 1 too`.
     pub fn describe_naming(&self, n: &Naming) -> String {
         format!("the header, column {}: {}", n.column() + 1, self.naming_why(n))
+    }
+
+    /// Where each problem is in the text `write` gives now, in `problems`' order: a broken
+    /// cell's text (inside its quotes), the control character a cell holds, an empty span
+    /// where a missing cell stands. What a client marks without reading the file itself.
+    pub fn spans(&self) -> Vec<Span> {
+        let starts = self.written_records();
+        self.problems.iter().map(|p| self.span_of(&starts, p)).collect()
+    }
+
+    /// Where a plain file's header cell that names its column badly is, in the text
+    /// `write` gives now.
+    pub fn naming_span(&self, n: &Naming) -> Span {
+        let line = self.header_line();
+        let fields = self.raw_fields(line);
+        field_span(self.body, line, &fields, n.column() as usize)
+    }
+
+    /// Where each row's record starts in the text `write` gives now: the source's offsets,
+    /// moved by every rewritten line before them.
+    fn written_records(&self) -> Vec<u32> {
+        let header = self.header_text();
+        let mut delta: i64 = match &self.header {
+            Some(h) => h.len() as i64 - (header.len() - ending(header).len()) as i64,
+            None => 0,
+        };
+        let mut out = Vec::with_capacity(self.rows());
+        for r in 0..self.rows() {
+            out.push((self.records[r] as i64 + delta) as u32);
+            if let Some(e) = self.edits.get(&(r as u32)) {
+                let old = (self.records[r + 1] - self.records[r]) as i64;
+                delta += (e.len() + self.terminator(r).len()) as i64 - old;
+            }
+        }
+        out
+    }
+
+    fn span_of(&self, starts: &[u32], p: &Problem) -> Span {
+        let row = p.row as usize;
+        let line = self.line(row);
+        let fields = self.raw_fields(line);
+        let cell = field_span(starts[row], line, &fields, p.column as usize);
+        let raw = &line[(cell.start - starts[row]) as usize..(cell.start - starts[row] + cell.len) as usize];
+        match p.why {
+            Why::Control { point } => {
+                let ch = char::from_u32(point).expect("a control character is a code point");
+                let at = raw.find(ch).expect("the cell holds the control character its problem names");
+                Span { start: cell.start + at as u32, len: ch.len_utf8() as u32 }
+            }
+            // The part of its own formula that does not read: after the cell's `` `= ``.
+            Why::Formula => match self.unwell.get(&(p.row, p.column)).and_then(|f| f.at) {
+                Some((s, l)) => within(cell, raw, fields[p.column as usize] != raw, (2 + s, l)),
+                None => cell,
+            },
+            _ => cell,
+        }
     }
 
     /// The text between two fields.
@@ -978,7 +1136,7 @@ impl Doc {
         let why = match p.why {
             Why::Missing => return "is missing".to_owned(),
             Why::Formula | Why::Computed => {
-                return format!("{}: {}", text, self.unwell.get(&at).map_or("the formula does not compute", String::as_str));
+                return format!("{}: {}", text, self.unwell.get(&at).map_or("the formula does not compute", |f| f.why.as_str()));
             }
             Why::Absent => format!("is no key of {}", tables()),
             Why::Ambiguous => format!("is a key of more than one of {}, so it names no one row", tables()),
@@ -1601,15 +1759,25 @@ impl Doc {
         let scope = DocScope { columns: &self.columns, tables: &self.tables };
         let mut formulas = Vec::with_capacity(self.columns.len());
         let mut aggregates = 0;
+        let header = self.raw_fields(self.header_line());
         for (k, c) in self.columns.iter().enumerate() {
             let Some(f) = &c.formula else {
                 formulas.push(None);
                 continue;
             };
-            let at = At::Column(k as u32 + 1);
-            let e = expr::parse(f).map_err(|why| error(at, why))?;
-            let (ir, kind) = expr::resolve(&e, &scope, &mut aggregates).map_err(|why| error(at, why))?;
-            holds(&c.ty.base, kind).map_err(|why| error(at, why))?;
+            // Where the formula is in its header cell's text: after the type's `=`, its
+            // spaces cut.
+            let cell = scan::unquoted(header[k]);
+            let (_, written) = types::split_formula(&cell[c.name.len() + 1..]);
+            let written = written.expect("a column with a formula has one in its header cell");
+            let from = written.as_ptr() as usize - cell.as_ptr() as usize + (written.len() - written.trim_start_matches([' ', '\t']).len());
+            let fail = |fault: expr::Fault| {
+                let (s, l) = fault.at.unwrap_or((0, f.len() as u32));
+                Error { at: At::Column(k as u32 + 1), why: fault.why, within: Some((from as u32 + s, l)) }
+            };
+            let e = expr::parse(f).map_err(fail)?;
+            let (ir, kind) = expr::resolve(&e, &scope, &mut aggregates).map_err(fail)?;
+            holds(&c.ty.base, kind).map_err(|why| fail(expr::Fault::whole(why)))?;
             formulas.push(Some(ir));
         }
         // A formula reading itself, through others or not, never finishes.
@@ -1684,7 +1852,7 @@ impl Doc {
     fn compute(&mut self) {
         let rows = self.rows();
         // Each cell's own formula, resolved; why not, where it does not.
-        let mut cells: BTreeMap<(u32, u32), Result<Ir, String>> = BTreeMap::new();
+        let mut cells: BTreeMap<(u32, u32), Result<Ir, expr::Fault>> = BTreeMap::new();
         let mut aggregates = self.formulas.iter().flatten().map(slots).max().unwrap_or(0);
         {
             let scope = DocScope { columns: &self.columns, tables: &self.tables };
@@ -1696,7 +1864,7 @@ impl Doc {
                     let text = self.text(r, k);
                     let src = &text[2..text.len() - 1];
                     let resolved = expr::parse(src).and_then(|e| expr::resolve(&e, &scope, &mut aggregates)).and_then(|(ir, kind)| {
-                        holds(&c.ty.base, kind)?;
+                        holds(&c.ty.base, kind).map_err(expr::Fault::whole)?;
                         Ok(ir)
                     });
                     cells.insert((r as u32, k as u32), resolved);
@@ -1745,7 +1913,7 @@ impl Doc {
         }
         for (r, k) in cycles {
             if self.columns[k].origin(r) == Origin::Cell {
-                self.unwell.entry((r as u32, k as u32)).or_insert_with(|| "the formula reads itself".to_owned());
+                self.unwell.entry((r as u32, k as u32)).or_insert_with(|| expr::Fault::whole("the formula reads itself".to_owned()));
             }
         }
         for &(r, k) in self.unwell.keys() {
@@ -1964,7 +2132,7 @@ struct Eval<'a> {
     columns: &'a [Column],
     tables: &'a [Table],
     formulas: &'a [Option<Ir>],
-    cells: &'a BTreeMap<(u32, u32), Result<Ir, String>>,
+    cells: &'a BTreeMap<(u32, u32), Result<Ir, expr::Fault>>,
     rows: usize,
     memo: &'a mut [Vec<Slot>],
     aggregates: Vec<Option<V>>,

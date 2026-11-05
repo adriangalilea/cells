@@ -142,6 +142,31 @@ fn an_edit_reads_back_as_written() {
         let ours: Vec<_> = doc.problems().iter().map(|p| (p.row, p.column, p.kind())).collect();
         let theirs: Vec<_> = again.problems().iter().map(|p| (p.row, p.column, p.kind())).collect();
         assert_eq!(ours, theirs, "{:?}", doc.write());
+        // An edited doc's spans are where the file read again has them.
+        assert_eq!(doc.spans(), again.spans(), "{:?}", doc.write());
+    }
+}
+
+#[test]
+fn a_problem_spans_its_cell() {
+    let mut rng = Rng(41);
+    for k in 0..3000 {
+        let (src, dialect) = if k % 2 == 0 { (file(&mut rng), crate::Dialect::Cells) } else { plain(&mut rng) };
+        let doc = crate::read_as(src.clone(), dialect, 1).unwrap();
+        for (p, s) in doc.problems().iter().zip(doc.spans()) {
+            let at = &src[s.start as usize..(s.start + s.len) as usize];
+            match p.why {
+                // The character itself.
+                crate::Why::Control { point } => assert_eq!(at.chars().collect::<Vec<_>>(), [char::from_u32(point).unwrap()], "{src:?}"),
+                // A cell's field, inside its quotes when it has them: read as the reader
+                // reads a field, it is the cell's text.
+                _ => {
+                    let quoted = s.start > 0 && src.as_bytes()[s.start as usize - 1] == b'"';
+                    let raw = if quoted { format!("\"{at}\"") } else { String::from(at) };
+                    assert_eq!(crate::scan::unquoted(&raw), doc.text(p.row as usize, p.column as usize), "{src:?} {p:?}");
+                }
+            }
+        }
     }
 }
 

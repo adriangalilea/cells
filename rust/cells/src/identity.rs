@@ -178,7 +178,7 @@ impl Doc {
                     out.push(',');
                     out.push_str(&src[at[r] as usize..at[r + 1] as usize]);
                 }
-                crate::read(out).map_err(|e| Error { at: e.at, why: format!("with ids added: {}", e.why) })
+                crate::read(out).map_err(|e| Error { at: e.at, why: format!("with ids added: {}", e.why), within: e.within })
             }
         }
     }
