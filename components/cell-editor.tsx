@@ -19,8 +19,9 @@ import { cn } from "@/lib/utils"
 
 /** The editor's type: one size, one line height, shared by the colours, the textarea
  *  and the marks so all three lie on the same characters. */
-const TYPE = "font-mono text-[13px] leading-[1.7] slashed-zero [tab-size:2]"
-const PAD = "px-4 py-3.5"
+/** The size is the box's (CellEditor's `fit`, else 15px, 19px from md), inherited. */
+const TYPE = "font-mono leading-[1.7] slashed-zero [tab-size:2]"
+const PAD = "px-4 py-3.5 md:px-6 md:py-5"
 
 /** A line's runs cut where the band starts and ends, each piece knowing which side it is. */
 function cut(runs: CodeRun[], lineStart: number, band: [number, number] | null): (CodeRun & { lit: boolean })[] {
@@ -55,7 +56,7 @@ function groups(pieces: (CodeRun & { lit: boolean })[]): { lit: boolean; runs: C
 function Piece({ run, opacity }: { run: CodeRun; opacity: number }) {
   return (
     <span
-      className={cn(run.ink && "text-(--ink-light) dark:text-(--ink-dark)")}
+      className={cn("transition-opacity duration-300", run.ink && "text-(--ink-light) dark:text-(--ink-dark)")}
       style={{
         ...(run.ink ? { "--ink-light": run.ink.light, "--ink-dark": run.ink.dark, fontStyle: run.ink.italic ? "italic" : undefined } : {}),
         opacity,
@@ -76,6 +77,7 @@ export function CellEditor({
   band = null,
   dim = 0,
   caret = null,
+  fit,
   className,
 }: {
   name: string
@@ -92,6 +94,9 @@ export function CellEditor({
   dim?: number
   /** Where keys are landing, an offset into `value`. */
   caret?: number | null
+  /** The characters a line must show whole: the type is as large as the box allows for
+   *  them, up to its usual size, never below 12px (past that, the line scrolls). */
+  fit?: number
   className?: string
 }) {
   const colours = useCodeColours(value, langOf(name))
@@ -108,8 +113,11 @@ export function CellEditor({
     revealX(el?.querySelector<HTMLElement>("[data-caret]") ?? [...(el?.querySelectorAll<HTMLElement>("[data-lit]") ?? [])].at(-1) ?? null)
   }, [band, caret])
   let lineStart = 0
+  // Geist Mono's advance is 0.6 em, and the box loses its padding (3rem at most) to the text.
+  const size = fit ? { fontSize: `min(var(--type-max), max(12px, calc((100cqw - 3rem) / ${fit * 0.6})))` } : undefined
   return (
-    <div ref={root} data-slot="cell-editor" className={cn("relative grid overflow-auto", className)}>
+    <div className="@container">
+    <div ref={root} data-slot="cell-editor" className={cn("relative grid overflow-auto text-[15px] [--type-max:15px] md:text-[19px] md:[--type-max:19px]", className)} style={size}>
       <pre aria-hidden className={cn(TYPE, PAD, "pointer-events-none col-start-1 row-start-1 m-0 whitespace-pre")}>
         {lines.map((runs, i) => {
           const marks = byLine.get(i + 1) ?? []
@@ -147,7 +155,7 @@ export function CellEditor({
                 </span>
               ))}
               {marks.length > 0 && (
-                <span className="ml-[2ch] text-[11.5px] text-haze/90">{marks.map((m) => m.message).join(" · ")}</span>
+                <span className="ml-[2ch] text-[0.75em] text-haze/90">{marks.map((m) => m.message).join(" · ")}</span>
               )}
             </div>
           )
@@ -168,8 +176,9 @@ export function CellEditor({
           PAD,
           "col-start-1 row-start-1 m-0 resize-none overflow-hidden whitespace-pre bg-transparent text-transparent caret-edge outline-none selection:bg-edge/25 selection:text-transparent",
         )}
-        style={{ minHeight: `calc(${value.split("\n").length} * 1.7em + 1.75rem)` }}
+        style={{ minHeight: `calc(${value.split("\n").length} * 1.7em)` }}
       />
+    </div>
     </div>
   )
 }

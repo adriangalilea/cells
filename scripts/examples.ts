@@ -1,16 +1,16 @@
-// Every file the site shows, read by the engine, and what its step claims asserted: the
-// problems the first file has as the page ships, and the values it computes. A step that
+// Every file the site shows, read by the engine, and what its act claims asserted: the
+// problems the file has as the act leaves it, and the values it computes. An act that
 // says something the engine does not do fails here, before anyone reads it.
 //
 //   bun scripts/examples.ts
 
-import { readFiles as readWith } from "@/lib/cells"
+import { readFiles as readWith } from "@/lib/view"
 import { loadEngine } from "@/lib/engine-module"
 import { codeTimeline } from "@/lib/code-session"
 import { HERO, savedAt, textAt } from "@/lib/hero"
 import { placeBroken } from "@/lib/spans"
-import { sceneFrameAt, sceneTimeline } from "@/lib/scene"
-import { filesOf, STORY } from "@/lib/story"
+import { actFrameAt, actTimeline } from "@/lib/scene"
+import { STORY } from "@/lib/story"
 
 const engine = await loadEngine()
 const readFiles = (files: Parameters<typeof readWith>[1]) => readWith(engine, files)
@@ -21,30 +21,31 @@ const fail = (where: string, what: string) => {
   console.error(`✗ ${where}: ${what}`)
 }
 
-for (const step of STORY) {
+for (const act of STORY) {
   const before = failed
-  const t = readFiles(filesOf(step))
-  if (t.broken.length) fail(step.id, `its grammar breaks: ${t.broken.map((b) => b.why).join("; ")}`)
-  // The file before the step reads whole too, and both marks are in the text they mark.
-  const was = readFiles([{ name: step.name.before, text: step.text.before }, ...step.others])
-  if (was.broken.length) fail(step.id, `before the step its grammar breaks: ${was.broken.map((b) => b.why).join("; ")}`)
-  if (step.spot && !step.text.before.includes(step.spot)) fail(step.id, `the spot "${step.spot}" is not in the file before`)
-  if (!step.text.after.includes(step.mark)) fail(step.id, `the mark "${step.mark}" is not in the file after`)
-  if (step.lit && !t.columns.some((c) => c.name === step.lit?.column)) fail(step.id, `no column ${step.lit.column} to light`)
-  // Played frame by frame, the step ends on the file it claims, never throwing on the way.
-  const timeline = sceneTimeline(step)
-  let last = sceneFrameAt(timeline, 0)
-  for (let ms = 0; ms <= timeline.total; ms += 5) last = sceneFrameAt(timeline, ms)
-  if (last.text !== step.text.after || last.name !== step.name.after || last.tell !== 1)
-    fail(step.id, `played, it ends on ${last.name} "${last.text.slice(0, 40)}…", told ${last.tell}`)
+  const t = readFiles([act.end, ...act.others])
+  if (t.broken.length) fail(act.id, `its grammar breaks: ${t.broken.map((b) => b.why).join("; ")}`)
+  // The file as the act finds it reads whole too.
+  const was = readFiles([{ name: act.name, text: act.text }, ...act.others])
+  if (was.broken.length) fail(act.id, `before the act its grammar breaks: ${was.broken.map((b) => b.why).join("; ")}`)
+  for (const b of act.beats)
+    if ("light" in b && !t.columns.some((c) => c.name === b.light.column)) fail(act.id, `no column ${b.light.column} to light`)
+  // Played frame by frame (every mark found where its beat marks it), the act ends on
+  // the file it claims, told last.
+  const timeline = actTimeline(act)
+  let last = actFrameAt(timeline, 0)
+  if (last.tell !== 0) fail(act.id, "told before it is shown")
+  for (let ms = 0; ms <= timeline.total; ms += 5) last = actFrameAt(timeline, ms)
+  if (last.text !== act.end.text || last.name !== act.end.name || last.tell !== 1)
+    fail(act.id, `played, it ends on ${last.name} "${last.text.slice(0, 40)}…", told ${last.tell}`)
   const got = t.problems.map((p) => p.why)
-  const want = step.expect.problems
-  if (JSON.stringify(got) !== JSON.stringify(want)) fail(step.id, `problems ${JSON.stringify(got)}, expected ${JSON.stringify(want)}`)
-  for (const [column, values] of Object.entries(step.expect.values ?? {})) {
+  const want = act.expect.problems
+  if (JSON.stringify(got) !== JSON.stringify(want)) fail(act.id, `problems ${JSON.stringify(got)}, expected ${JSON.stringify(want)}`)
+  for (const [column, values] of Object.entries(act.expect.values ?? {})) {
     const have = t.values[column]
-    if (JSON.stringify(have) !== JSON.stringify(values)) fail(step.id, `${column} is ${JSON.stringify(have)}, expected ${JSON.stringify(values)}`)
+    if (JSON.stringify(have) !== JSON.stringify(values)) fail(act.id, `${column} is ${JSON.stringify(have)}, expected ${JSON.stringify(values)}`)
   }
-  console.log(`${failed > before ? "✗" : "✓"} ${step.id}: ${t.rows.length} rows, ${got.length} problems`)
+  console.log(`${failed > before ? "✗" : "✓"} ${act.id}: ${t.rows.length} rows, ${got.length} problems, ${(timeline.total / 1000).toFixed(1)}s`)
 }
 
 const heroFiles = (f: { money: string; accounts: string }) => [
@@ -61,9 +62,9 @@ for (const [name, frame] of Object.entries(HERO.checkpoints)) {
 // The running total follows its column's order, never the lines': the same rows in
 // another order give each item the same running value.
 {
-  const step = STORY.find((s) => s.id === "running")
-  if (!step) throw new Error("examples: no running step")
-  const file = { name: step.name.after, text: step.text.after }
+  const act = STORY.find((s) => s.id === "running")
+  if (!act) throw new Error("examples: no running act")
+  const file = act.end
   const [header, ...rows] = file.text.trimEnd().split("\n")
   const shuffled = { name: file.name, text: `${header}\n${[...rows].reverse().join("\n")}\n` }
   const by = (t: ReturnType<typeof readFiles>) =>

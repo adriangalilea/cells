@@ -1,78 +1,87 @@
-// A STORY STEP, timed: what it draws at an instant of its arrival. In order: the step
-// arrives; the spot it is about is marked, everything else dimmed; a rename is typed into
-// the file's name; the keys land in the text (a character at a time, taken away then
-// typed); the mark moves onto what changed; the table arrives if this is its step; the
-// table lights what it did; the told line arrives. A pure function of the instant, so a
-// played step, a scrubbed one and a still are the same frames. Framework-free.
+// AN ACT, timed: what it draws at an instant of its show. The beats run one after another
+// (lib/story `StoryBeat`), each leaving its effect for the next: the text typed stays
+// typed, the table once arrived stays, the light once lit stays lit, a mark stays until
+// another takes its place. Nothing is marked before the beat that marks it. After the
+// last beat, a settle, then the told line. A pure function of the instant, so a played
+// act, a scrubbed one and a still are the same frames. Framework-free.
 
-import type { StoryEdit, StoryStep } from "@/lib/story"
+import type { StoryAct, StoryBeat, StoryEdit, StoryLit } from "@/lib/story"
 
-/** The pacing, one table: a step's time is decided here and nowhere else. */
-const ARRIVE_MS = 400
-const SPOT_MS = 900
+/** The pacing, one table: an act's time is decided here and nowhere else. */
 const TYPE_MS = 55
 const REMOVE_MS = 45
-const SETTLE_MS = 350
+/** A mark held, to be seen, after keys or on its own. */
+const HOLD_MS = 900
 const TABLE_MS = 600
-const LIGHT_MS = 700
+const LIGHT_MS = 900
+const SETTLE_MS = 400
 const TELL_MS = 600
 
-export interface SceneTimeline {
-  step: StoryStep
-  /** The rename's keys, then the text's, ms. */
-  rename: { from: number; to: number }
-  keys: { from: number; to: number }
-  /** The table arriving (its own step only), the light, the words, ms. */
-  table: number
-  light: number
+export interface ActTimeline {
+  act: StoryAct
+  /** Each beat's start, ms. */
+  starts: number[]
+  /** When the words begin to arrive, and the whole. */
   tell: number
   total: number
 }
 
-export interface SceneFrame {
+export interface ActFrame {
   name: string
   /** The marked characters of the name, [from, to); null when it is not marked. */
   nameBand: [number, number] | null
-  /** The text at the instant. */
   text: string
-  /** The marked characters, [from, to) offsets into `text`; null when nothing is marked. */
+  /** The marked characters, [from, to) offsets into `text`; null when nothing is. */
   band: [number, number] | null
-  /** Everything but the band dimmed, 0..1. */
-  dim: number
-  /** The table, there 0..1 (1 once it has arrived). */
-  table: number
-  /** The table's lit column or cell, 0..1. */
-  lit: number
-  /** The told line, 0..1. */
-  tell: number
   /** Where keys are landing: in the name or the text. */
   caret: { in: "name" | "text"; at: number } | null
+  /** The table, there 0..1. */
+  table: number
+  /** What the table lights, and how far (0..1). */
+  lit: { at: StoryLit; amount: number } | null
+  /** The told line, 0..1. */
+  tell: number
 }
 
 /** A rename as keys: the old name's end taken away after what the two share, the new
  *  name's end typed. */
-function renameEdit(step: StoryStep): StoryEdit | null {
-  const { before, after } = step.name
-  if (before === after) return null
+function renameEdit(from: string, to: string): StoryEdit {
   let p = 0
-  while (p < before.length && before[p] === after[p]) p++
-  return { after: before.slice(0, p), remove: before.length - p, insert: after.slice(p) }
+  while (p < from.length && from[p] === to[p]) p++
+  return { after: from.slice(0, p), remove: from.length - p, insert: to.slice(p) }
 }
 
 const keysMs = (edits: readonly StoryEdit[]) => edits.reduce((n, e) => n + (e.remove ?? 0) * REMOVE_MS + e.insert.length * TYPE_MS, 0)
 
-export function sceneTimeline(step: StoryStep): SceneTimeline {
-  const rename = renameEdit(step)
-  const renameFrom = ARRIVE_MS + SPOT_MS
-  const renameTo = renameFrom + (rename ? keysMs([rename]) : 0)
-  // After a rename the spot in the text is marked for its own look before the keys.
-  const from = rename ? renameTo + SPOT_MS : renameFrom
-  const to = from + keysMs(step.edits)
-  const settled = step.edits.length || rename ? to + SETTLE_MS : to
-  const table = settled
-  const light = step.table === "arrives" ? table + TABLE_MS : settled
-  const tell = light + LIGHT_MS
-  return { step, rename: { from: renameFrom, to: renameTo }, keys: { from, to }, table, light, tell, total: tell + TELL_MS }
+/** The names the act's file has, beat by beat: what each rename starts from. */
+function namesOf(act: StoryAct): string[] {
+  let name = act.name
+  return act.beats.map((b) => {
+    const was = name
+    if ("rename" in b) name = b.rename
+    return was
+  })
+}
+
+function beatMs(b: StoryBeat, name: string): number {
+  if ("see" in b) return b.see
+  if ("rename" in b) return keysMs([renameEdit(name, b.rename)])
+  if ("type" in b) return keysMs(b.type) + HOLD_MS
+  if ("table" in b) return TABLE_MS
+  if ("light" in b) return LIGHT_MS
+  return HOLD_MS
+}
+
+export function actTimeline(act: StoryAct): ActTimeline {
+  const names = namesOf(act)
+  const starts: number[] = []
+  let at = 0
+  for (const [i, b] of act.beats.entries()) {
+    starts.push(at)
+    at += beatMs(b, names[i] as string)
+  }
+  const tell = at + SETTLE_MS
+  return { act, starts, tell, total: tell + TELL_MS }
 }
 
 const ease = (t: number) => {
@@ -106,32 +115,52 @@ function typing(text: string, edits: readonly StoryEdit[], ms: number): { text: 
   return null
 }
 
-export function sceneFrameAt(t: SceneTimeline, ms: number): SceneFrame {
-  const s = t.step
-  const dim = ease((ms - ARRIVE_MS) / 400)
-  const table = s.table === "none" ? 0 : s.table === "shown" ? 1 : ease((ms - t.table) / TABLE_MS)
-  const lit = ease((ms - t.light) / 500)
-  const tell = ease((ms - t.tell) / TELL_MS)
-  const arrived = ms >= ARRIVE_MS
-  const base = { dim, table, lit, tell }
-  const done = { name: s.name.after, nameBand: null, text: s.text.after, band: rangeOf(s.text.after, s.mark), caret: null }
-  if (!s.spot) return { ...base, ...done, band: arrived ? done.band : null }
-  const rename = renameEdit(s)
-  // The name first, while the text waits dimmed: its old end marked, then retyped.
-  if (rename && ms < t.rename.to) {
-    const typed = ms < t.rename.from ? null : typing(s.name.before, [rename], ms - t.rename.from)
-    return {
-      ...base,
-      name: typed?.text ?? s.name.before,
-      nameBand: arrived ? (typed?.band ?? [rename.after.length, s.name.before.length]) : null,
-      text: s.text.before,
-      band: null,
-      caret: typed ? { in: "name", at: typed.caret } : null,
+export function actFrameAt(t: ActTimeline, ms: number): ActFrame {
+  const act = t.act
+  const f: ActFrame = { name: act.name, nameBand: null, text: act.text, band: null, caret: null, table: act.table ? 1 : 0, lit: null, tell: ease((ms - t.tell) / TELL_MS) }
+  for (const [i, b] of act.beats.entries()) {
+    const start = t.starts[i] as number
+    if (ms < start) break
+    const into = ms - start
+    if ("rename" in b) {
+      const edit = renameEdit(f.name, b.rename)
+      const typed = typing(f.name, [edit], into)
+      if (typed) {
+        f.name = typed.text
+        f.nameBand = typed.band
+        f.band = null
+        f.caret = { in: "name", at: typed.caret }
+      } else {
+        f.name = b.rename
+        f.nameBand = null
+        f.caret = null
+      }
+    } else if ("type" in b) {
+      const typed = typing(f.text, b.type, into)
+      f.nameBand = null
+      if (typed) {
+        f.text = typed.text
+        f.band = typed.band
+        f.caret = { in: "text", at: typed.caret }
+      } else {
+        // The same edits whole: what `typing` ends on.
+        let text = f.text
+        for (const e of b.type) {
+          const at = text.indexOf(e.after) + e.after.length
+          text = text.slice(0, at) + e.insert + text.slice(at + (e.remove ?? 0))
+        }
+        f.text = text
+        f.band = rangeOf(text, b.mark)
+        f.caret = null
+      }
+    } else if ("mark" in b && !("light" in b)) {
+      f.band = rangeOf(f.text, b.mark)
+    } else if ("table" in b) {
+      f.table = ease(into / TABLE_MS)
+    } else if ("light" in b) {
+      f.lit = { at: b.light, amount: ease(into / 500) }
+      if (b.mark) f.band = rangeOf(f.text, b.mark)
     }
   }
-  if (ms < t.keys.from)
-    return { ...base, name: s.name.after, nameBand: null, text: s.text.before, band: arrived ? rangeOf(s.text.before, s.spot) : null, caret: null }
-  const typed = typing(s.text.before, s.edits, ms - t.keys.from)
-  if (!typed) return { ...base, ...done }
-  return { ...base, name: s.name.after, nameBand: null, text: typed.text, band: typed.band, caret: { in: "text", at: typed.caret } }
+  return f
 }
