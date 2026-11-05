@@ -8,7 +8,8 @@ A `.cell` file in an editor takes two pieces from this repository: the tree-sitt
 
 - **Diagnostics** as you type, in every open file: each break of the grammar and each problem, where it is (a cell's text, a header cell's type, the part of a formula that does not read, a prelude line). A change in one file that breaks a reference in another shows in the other.
 - **Hover**: a column's header cell, its type, its formula, what it references, and why it breaks; a cell's value, computed or written, its problem, and the row its reference finds.
-- **Completion**: in a reference's cell, the keys of the tables it names, each with its row; a choice's words, a boolean's; in a type, the named types, the tables' keys (`accounts.account`) and the bases; in a formula, the columns, the tables and the functions, and after `.` the columns of what the name leads to (`accounts['rent'].`).
+- **Completion**: in a reference's cell, the keys of the tables it names, each with its row; a choice's words, a boolean's; in a type, the named types, the tables' keys (`accounts.account`) and the bases; in a formula, the columns, `this`, the tables and the functions, after `.` the columns of what the name leads to (`accounts['rent'].`), and inside `this[` or `fees[` the table's rows, each by its key, found by its number too (`#3`).
+- **A row by its number**: a formula holding `this[#3]` breaks (a file never holds a row's place), and the code action writes the row's key in its place: `this['k7m2q9xa']`.
 - **Go to definition** from a reference (the row it finds, in its file), a type's target (the key's header cell), a formula's name (its column, its table) and an import (its file).
 - **Rename** of a key or a column, followed through every file of the folder that names it: the key's references and the formulas that find its row; the column's formulas, and in other files the references and formulas that reach it. A column takes a name formulas write bare (letters, digits and `_`).
 
@@ -37,7 +38,7 @@ command = "/path/to/cells/rust/target/release/cells"
 args = ["lsp"]
 ```
 
-Then `hx --grammar build`, and link the queries: `ln -s /path/to/cells/tree-sitter/queries/helix ~/.config/helix/runtime/queries/cells`. `hx --health cells` shows the server, the parser and the highlights. Hover is `space k`, the diagnostics `space d`, go to definition `g d`, rename `space r`.
+Then `hx --grammar build`, and link the queries: `ln -s /path/to/cells/tree-sitter/queries/helix ~/.config/helix/runtime/queries/cells`. `hx --health cells` shows the server, the parser and the highlights. Hover is `space k`, the diagnostics `space d`, go to definition `g d`, rename `space r`, the code action `space a`.
 
 ## Neovim
 

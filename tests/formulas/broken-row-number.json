@@ -1,0 +1,15 @@
+{
+  "columns": [
+    { "name": "id", "type": "text!" },
+    { "name": "amount", "type": "EUR" },
+    { "name": "second", "type": "EUR", "formula": "this[#2].amount" }
+  ],
+  "rows": [
+    { "id": { "text": "k1" }, "amount": { "money": "30.00", "currency": "EUR" }, "second": { "from": "formula" } },
+    { "id": { "text": "k2" }, "amount": { "money": "70.00", "currency": "EUR" }, "second": { "from": "formula" } }
+  ],
+  "problems": [],
+  "broken": [
+    { "at": "column 3", "span": [36, 2] }
+  ]
+}

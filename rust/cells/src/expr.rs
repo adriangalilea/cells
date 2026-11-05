@@ -207,6 +207,12 @@ fn lex(src: &str) -> Result<Vec<(Tok, Sp)>, Fault> {
         } else if let Some(s) = SYMS.iter().find(|s| b[i..].starts_with(s.as_bytes())) {
             i += s.len();
             out.push((Tok::Sym(s), sp(start, i)));
+        } else if c == b'#' {
+            // `#3`, a row by where a screen shows it: input an app or the language server
+            // turns into the row's key, never what a file holds.
+            let end = i + 1 + b[i + 1..].iter().take_while(|d| d.is_ascii_digit()).count();
+            let why = format!("{} is a row by where it shows, which a file never holds: write its key, this['…']", &src[i..end]);
+            return Err(Fault::at(sp(i, end), why));
         } else {
             let ch = src[i..].chars().next().unwrap();
             return Err(Fault::at(sp(i, i + ch.len_utf8()), format!("\"{ch}\" cannot stand in a formula")));

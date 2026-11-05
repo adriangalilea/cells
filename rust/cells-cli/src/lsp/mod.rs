@@ -77,6 +77,7 @@ impl LanguageServer for Backend {
                     ..CompletionOptions::default()
                 }),
                 definition_provider: Some(OneOf::Left(true)),
+                code_action_provider: Some(CodeActionProviderCapability::Simple(true)),
                 rename_provider: Some(OneOf::Right(RenameOptions {
                     prepare_provider: Some(true),
                     work_done_progress_options: Default::default(),
@@ -127,6 +128,13 @@ impl LanguageServer for Backend {
     async fn goto_definition(&self, p: GotoDefinitionParams) -> Result<Option<GotoDefinitionResponse>> {
         let Some((folder, file, at)) = self.at(&p.text_document_position_params) else { return Ok(None) };
         Ok(features::definition(&folder, &file, at).map(GotoDefinitionResponse::Scalar))
+    }
+
+    async fn code_action(&self, p: CodeActionParams) -> Result<Option<CodeActionResponse>> {
+        let folder = self.folder();
+        let Some(file) = path(&p.text_document.uri).and_then(|path| folder.read(&path)) else { return Ok(None) };
+        let actions = features::actions(&folder, &file, p.range);
+        Ok((!actions.is_empty()).then(|| actions.into_iter().map(CodeActionOrCommand::CodeAction).collect()))
     }
 
     async fn prepare_rename(&self, p: TextDocumentPositionParams) -> Result<Option<PrepareRenameResponse>> {

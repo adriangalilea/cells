@@ -6,8 +6,8 @@ use std::collections::HashMap;
 use std::path::Path;
 
 use tower_lsp::lsp_types::{
-    CompletionItem, CompletionItemKind, CompletionTextEdit, Diagnostic, DiagnosticSeverity, Hover, HoverContents, Location, MarkupContent,
-    MarkupKind, Range, TextEdit, Url, WorkspaceEdit,
+    CodeAction, CodeActionKind, CompletionItem, CompletionItemKind, CompletionTextEdit, Diagnostic, DiagnosticSeverity, Hover,
+    HoverContents, Location, MarkupContent, MarkupKind, Range, TextEdit, Url, WorkspaceEdit,
 };
 
 use cells::expr::{self, Named};
@@ -389,6 +389,23 @@ fn formula_completions(folder: &Folder, file: &File, f: &Formula, at: usize, lin
             .map(|c| item(written(&c.name), CompletionItemKind::FIELD, format!("{detail}{}", c.ty.shorthand()), range))
             .collect()
     };
+    // Inside `this[`, `fees[`: the table's rows, each by its key, found by its number too.
+    if let Some((name, open)) = opened(src) {
+        let Some(held) = folder.held(file, name) else { return Vec::new() };
+        let d = held.doc();
+        let Some(k) = d.columns().iter().position(|c| c.ty.key) else { return Vec::new() };
+        let range = lines.range(span(f.base + open as u32, (here - open) as u32));
+        return (0..d.rows())
+            .filter_map(|r| {
+                let key = d.text(r, k);
+                (!key.is_empty()).then(|| CompletionItem {
+                    filter_text: Some(format!("#{} {key}", r + 1)),
+                    sort_text: Some(format!("{r:010}")),
+                    ..item(written_key(&key), CompletionItemKind::VALUE, format!("#{} {}", r + 1, summary(d, r)), range)
+                })
+            })
+            .collect();
+    }
     let before = src[..from].trim_end_matches([' ', '\t']);
     if let Some(path) = before.strip_suffix('.') {
         // `table['k'].`: the table's columns.
@@ -412,6 +429,7 @@ fn formula_completions(folder: &Folder, file: &File, f: &Formula, at: usize, lin
         };
     }
     let mut out = columns(&file.doc, "");
+    out.push(item(expr::THIS.to_owned(), CompletionItemKind::MODULE, "this file's own table".into(), range));
     for t in file.doc.tables() {
         out.push(item(written(&t.name), CompletionItemKind::MODULE, "a table".into(), range));
     }
@@ -419,6 +437,80 @@ fn formula_completions(folder: &Folder, file: &File, f: &Formula, at: usize, lin
         out.push(item(name.to_owned(), CompletionItemKind::FUNCTION, "a function".into(), range));
     }
     out
+}
+
+/// A key as a formula writes it: text in quotes, a `'` inside doubled.
+fn written_key(key: &str) -> String {
+    format!("'{}'", key.replace('\'', "''"))
+}
+
+/// The table a formula names before an `[` still open at its end, and where what
+/// follows the `[` starts: `this[`, `fees['ca`.
+fn opened(src: &str) -> Option<(&str, usize)> {
+    let open = src.rfind('[')?;
+    if src[open..].contains(']') {
+        return None;
+    }
+    let before = src[..open].trim_end_matches([' ', '\t']);
+    let name = &before[before.rfind(|c: char| !ident(c)).map_or(0, |i| i + 1)..];
+    (!name.is_empty()).then_some((name, open + 1))
+}
+
+// ---- #n ----
+
+/// A `#n` written in a formula: `T[#n]`, the row numbered `n` (from 1) where it shows,
+/// which a file never holds; each one in `file` whose table has that row, with its key.
+pub struct Numbered {
+    pub span: Span,
+    pub row: usize,
+    pub key: String,
+}
+
+pub fn numbered(folder: &Folder, file: &File) -> Vec<Numbered> {
+    let mut out = Vec::new();
+    for (src, base) in formulas(file) {
+        for (i, _) in src.match_indices('#') {
+            let digits = src[i + 1..].bytes().take_while(u8::is_ascii_digit).count();
+            let Ok(n) = src[i + 1..i + 1 + digits].parse::<usize>() else { continue };
+            // `[`, then the number, then `]`.
+            let Some((name, open)) = opened(&src[..i]) else { continue };
+            if !src[open..i].trim().is_empty() || !src[i + 1 + digits..].trim_start().starts_with(']') {
+                continue;
+            }
+            let Some(held) = folder.held(file, name) else { continue };
+            let d = held.doc();
+            let Some(k) = d.columns().iter().position(|c| c.ty.key) else { continue };
+            if n == 0 || n > d.rows() || d.text(n - 1, k).is_empty() {
+                continue;
+            }
+            out.push(Numbered { span: span(base + i as u32, 1 + digits as u32), row: n, key: d.text(n - 1, k).into_owned() });
+        }
+    }
+    out
+}
+
+/// What can be done at a range: each `#n` on its lines written as its row's key.
+pub fn actions(folder: &Folder, file: &File, range: Range) -> Vec<CodeAction> {
+    let lines = Lines::new(&file.text);
+    numbered(folder, file)
+        .into_iter()
+        .filter(|n| {
+            let r = lines.range(n.span);
+            r.start.line <= range.end.line && r.end.line >= range.start.line
+        })
+        .map(|n| {
+            let edit = TextEdit { range: lines.range(n.span), new_text: written_key(&n.key) };
+            CodeAction {
+                title: format!("#{} is the row {}: write its key", n.row, written_key(&n.key)),
+                kind: Some(CodeActionKind::QUICKFIX),
+                edit: Some(WorkspaceEdit {
+                    changes: Some(HashMap::from([(uri(&file.path), Vec::from([edit]))])),
+                    ..WorkspaceEdit::default()
+                }),
+                ..CodeAction::default()
+            }
+        })
+        .collect()
 }
 
 // ---- definition ----
@@ -730,6 +822,30 @@ mod tests {
         assert_eq!((amount.uri, amount.range.start.line), (uri(&money), 3));
         let import = definition(&folder, &file, at(MONEY, "import", 0)).unwrap();
         assert_eq!(import.uri, uri(&accounts));
+    }
+
+    #[test]
+    fn a_row_by_its_number_is_written_as_its_key() {
+        let (folder, _, money) = books("numbered");
+        let text = MONEY.replace("amount * 2", "this[#2].amount + this[");
+        let folder = Folder { open: Arc::new(BTreeMap::from([(money.clone(), text.clone())])), ..folder };
+        let file = folder.read(&money).unwrap();
+        // The file holds it, so the formula breaks, and the action writes the key.
+        assert!(diagnostics(&file).iter().any(|d| d.message.starts_with("double: #2 is a row by where it shows")));
+        let header = Lines::new(&text).position(at(&text, "#2", 0)).line;
+        let line = Range {
+            start: tower_lsp::lsp_types::Position { line: header, character: 0 },
+            end: tower_lsp::lsp_types::Position { line: header, character: 0 },
+        };
+        let a = actions(&folder, &file, line);
+        assert_eq!(a.len(), 1);
+        assert_eq!(a[0].title, "#2 is the row 'a2': write its key");
+        let edit = &a[0].edit.as_ref().unwrap().changes.as_ref().unwrap()[&uri(&money)][0];
+        assert_eq!((edit.range, edit.new_text.as_str()), (Lines::new(&text).range(span(at(&text, "#2", 0) as u32, 2)), "'a2'"));
+        // Inside `this[`: the rows, by key, found by number.
+        let rows = complete(&folder, &file, at(&text, "this[", 1) + "this[".len());
+        let labels: Vec<(&str, Option<&str>)> = rows.iter().map(|i| (i.label.as_str(), i.filter_text.as_deref())).collect();
+        assert_eq!(labels, [("'a1'", Some("#1 a1")), ("'a2'", Some("#2 a2")), ("'a3'", Some("#3 a3"))]);
     }
 
     #[test]

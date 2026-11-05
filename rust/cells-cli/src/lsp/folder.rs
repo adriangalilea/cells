@@ -95,8 +95,12 @@ impl Folder {
         out
     }
 
-    /// The table `name` read where it lives, as `file` names it.
+    /// The table `name` read where it lives, as `file` names it: `this`, the file's own.
     pub fn held(&self, file: &File, name: &str) -> Option<Held> {
+        if name == cells::expr::THIS {
+            let own = File { path: file.path.clone(), text: file.text.clone(), doc: file.doc.clone() };
+            return Some(Held { file: own, inline: None, base: 0 });
+        }
         match home(file, name)? {
             Home::Main(path) => Some(Held { file: self.read(&path)?, inline: None, base: 0 }),
             Home::Inline(path, table) => {

@@ -1,0 +1,3 @@
+id:text!,amount:EUR,second:EUR=this[#2].amount
+k1,30.00,
+k2,70.00,
