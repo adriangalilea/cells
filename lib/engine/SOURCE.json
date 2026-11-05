@@ -1,0 +1,9 @@
+{
+  "from": "/Users/adrian/Developer/tcsv",
+  "copied": "2026-11-05T16:02:35.632Z",
+  "files": {
+    "lib/engine/cells.ts": "rust/cells-wasm/js/cells.ts sha256:6e0a86f6784b69f9",
+    "lib/engine/wasm.ts": "rust/cells-wasm/js/wasm.ts sha256:c48da7f8e3f23c33",
+    "lib/engine/cells.tmLanguage.json": "syntaxes/cells.tmLanguage.json sha256:39a6e37f4cf6da45"
+  }
+}
