@@ -20,7 +20,9 @@ import { Macos } from "@/components/ui/macos"
 import { Playback, Playhead, usePlayhead } from "@/components/ui/playback"
 import { Terminal, useTerminalPalette } from "@/components/ui/terminal"
 import { TerminalEditor } from "@/components/ui/terminal-editor"
-import { codeFrameAt, codeTimeline } from "@/lib/code-session"
+import { useEngine } from "@/components/use-engine"
+import { readFiles } from "@/lib/cells"
+import { codeFrameAt, codeTimeline, TYPE_MS } from "@/lib/code-session"
 import { HERO, textAt } from "@/lib/hero"
 import { type Art, LID_MS, sceneClock, type Timeline } from "@/lib/macos-session"
 import { PRODUCT } from "@/lib/product"
@@ -50,15 +52,19 @@ const ROWS = 27
 
 const share = (ms: number, from: number, length: number) => Math.min(1, Math.max(0, (ms - from) / length))
 
-/** Both files as they stand at the hero's instant, and the editor's own moment. */
+/** Both files as they stand at the hero's instant, the editor's own moment, and money.cell
+ *  as it last read (`held`, for the Cells window while a header cell is half typed): found
+ *  by stepping back a keystroke at a time, so a still knows it as a played frame does. */
 function useFiles(ms: number) {
+  const engine = useEngine()
   const editAt = share(ms, HERO.edit.from, HERO.edit.duration)
   const editMs = editAt * EDIT.total
-  return {
-    editAt,
-    money: textAt(EDIT, HERO.money, editMs),
-    accounts: textAt(EDIT, HERO.accounts, editMs),
-  }
+  const money = textAt(EDIT, HERO.money, editMs)
+  const accounts = textAt(EDIT, HERO.accounts, editMs)
+  const reads = (t: string) => !readFiles(engine, [{ name: HERO.money, text: t }, { name: HERO.accounts, text: accounts }]).error
+  let held = money
+  for (let back = editMs; !reads(held) && back > 0; back -= TYPE_MS) held = textAt(EDIT, HERO.money, back)
+  return { editAt, money, accounts, held }
 }
 
 /** Helix's bufferline: the open files as tabs, the one in front lit. A site-side stand-in
@@ -122,11 +128,13 @@ function Scene({ lid }: { lid: number }) {
           name={HERO.money}
           text={files.money}
           others={[{ name: HERO.accounts, text: files.accounts }]}
+          held={files.held}
           className="absolute top-[36px] left-[562px] h-[300px] w-[386px]"
         />
         <Playhead progress={share(ms, HERO.terminal.from, HERO.terminal.duration)}>
-          <div className="absolute top-[346px] left-[562px] w-[386px]">
-            <Terminal alt="" accent={ACCENT} size="9.5px" session={HERO.session} rows={5} />
+          {/* Down to the editor's foot: the two columns end on one line. */}
+          <div className="absolute top-[346px] bottom-[12px] left-[562px] w-[386px] [&>*]:h-full">
+            <Terminal alt="" accent={ACCENT} size="9.5px" session={HERO.session} rows={5} className="h-full" />
           </div>
         </Playhead>
       </Macos>
@@ -149,7 +157,7 @@ function Stacked() {
         {/* The longest file is 8 lines: the phone's editor is no taller than it needs. */}
         <Editor size="clamp(7px,2.35vw,10px)" rows={10} />
       </Playhead>
-      <CellsWindow name={HERO.money} text={files.money} others={[{ name: HERO.accounts, text: files.accounts }]} className="h-[150px]" />
+      <CellsWindow name={HERO.money} text={files.money} others={[{ name: HERO.accounts, text: files.accounts }]} held={files.held} className="h-[188px]" />
       <Playhead progress={share(ms, HERO.terminal.from, HERO.terminal.duration)}>
         <Terminal alt="" accent={ACCENT} size="clamp(7px,2.35vw,10px)" session={HERO.session} rows={4} />
       </Playhead>

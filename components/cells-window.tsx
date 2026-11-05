@@ -9,28 +9,55 @@
 import * as React from "react"
 import { Table, type TableColumn } from "@/components/ui/table"
 import { useEngine } from "@/components/use-engine"
-import { readFiles, type ViewCell } from "@/lib/cells"
+import { readFiles, type ViewCell, type ViewTable } from "@/lib/cells"
 import { PRODUCT } from "@/lib/product"
 import { cn } from "@/lib/utils"
 
 type Row = { id: string; cells: ViewCell[] }
 
+const NONE: { name: string; text: string }[] = []
+
+/** A file read as it stands (`now`), and the table to show (`shown`): the file's own while
+ *  it reads; while its grammar does not (a header cell half typed), `held`, the text as it
+ *  last read (a still has no past to remember, so the caller says it), else the last
+ *  table this view drew. A table never gives way to an error, and nothing moves. */
+function useRead(
+  name: string,
+  text: string,
+  others: { name: string; text: string }[],
+  held?: string,
+): { now: ViewTable; shown: ViewTable } {
+  const engine = useEngine()
+  const now = React.useMemo(() => readFiles(engine, [{ name, text }, ...others]), [engine, name, text, others])
+  const kept = React.useMemo(
+    () => (now.error && held !== undefined ? readFiles(engine, [{ name, text: held }, ...others]) : null),
+    [engine, now, name, held, others],
+  )
+  const good = React.useRef<ViewTable | null>(null)
+  if (!now.error) good.current = now
+  else if (kept && !kept.error) good.current = kept
+  const shown = now.error && good.current ? { ...good.current, problems: [] } : now
+  return { now, shown }
+}
+
 /** A file as a table: its columns, its rows, its problems by cell. */
 export function CellsTable({
   name,
   text,
-  others = [],
+  others = NONE,
+  held,
   label,
   className,
 }: {
   name: string
   text: string
   others?: { name: string; text: string }[]
+  /** The text as it last read, shown while `text` does not. */
+  held?: string
   label: string
   className?: string
 }) {
-  const engine = useEngine()
-  const read = React.useMemo(() => readFiles(engine, [{ name, text }, ...others]), [engine, name, text, others])
+  const read = useRead(name, text, others, held).shown
   const rows = React.useMemo<Row[]>(() => read.rows.map((cells, i) => ({ id: String(i), cells })), [read])
   const problems = React.useMemo(() => {
     const m = new Map<string, string>()
@@ -60,8 +87,8 @@ export function CellsTable({
       })),
     [read],
   )
-  if (read.error)
-    return <p className={cn("p-3 font-mono text-[11px] text-haze", className)}>{read.error}</p>
+  // A file that has never read (nothing to keep on screen): its columns' place, empty.
+  if (read.error) return <div className={className} />
   return (
     <Table
       rows={rows}
@@ -79,19 +106,26 @@ export function CellsTable({
 
 const r0Numeric = (rows: ViewCell[][], k: number) => rows.some((r) => r[k]?.numeric)
 
-/** The app's window: a title bar with the file's name, the table under it. */
+/** The app's window: a title bar with the file's name, the table under it, and a strip of
+ *  a fixed height at its foot with the file's problems (their count and the engine's own
+ *  words), so a problem appearing or going never moves anything. */
 export function CellsWindow({
   name,
   text,
-  others,
+  others = NONE,
+  held,
   className,
 }: {
   name: string
   text: string
   /** The files it imports, as they stand. */
   others?: { name: string; text: string }[]
+  /** The text as it last read, shown while `text` does not. */
+  held?: string
   className?: string
 }) {
+  const { now } = useRead(name, text, others)
+  const said = now.error ? [now.error] : now.problems.map((p) => p.why)
   return (
     <div
       data-slot="cells-window"
@@ -109,7 +143,22 @@ export function CellsWindow({
         </span>
       </div>
       <div className="dark min-h-0 flex-1 overflow-hidden text-[11px]">
-        <CellsTable name={name} text={text} others={others} label={name} className="h-full" />
+        <CellsTable name={name} text={text} others={others} held={held} label={name} className="h-full" />
+      </div>
+      <div
+        data-slot="cells-window-problems"
+        className="flex h-[38px] shrink-0 items-start gap-2 overflow-hidden border-t border-white/8 px-3 py-1.5 font-mono text-[10px] leading-[1.45]"
+      >
+        <span className={cn("shrink-0 tabular-nums", said.length ? "text-haze" : "text-edge/80")}>
+          {said.length ? `${said.length} ${said.length === 1 ? "problem" : "problems"}` : "no problems"}
+        </span>
+        <span className="min-w-0 text-white/60">
+          {said.slice(0, 2).map((s) => (
+            <span key={s} className="block truncate">
+              {s}
+            </span>
+          ))}
+        </span>
       </div>
     </div>
   )
