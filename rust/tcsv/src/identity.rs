@@ -62,8 +62,8 @@ pub struct Version {
 impl Doc {
     /// The column that is the rows' identity: the first key, else an `id` column.
     pub fn identity(&self) -> Option<usize> {
-        let stored = &self.columns()[..self.stored()];
-        stored.iter().position(|c| c.ty.key).or_else(|| stored.iter().position(|c| c.ty.base == Base::Id))
+        let columns = self.columns();
+        columns.iter().position(|c| c.ty.key).or_else(|| columns.iter().position(|c| c.ty.base == Base::Id))
     }
 
     /// A row's identity as a change names it.
@@ -123,7 +123,7 @@ impl Doc {
     }
 
     fn stored_column(&self, name: &str) -> Result<usize, Refused> {
-        self.columns()[..self.stored()].iter().position(|c| c.name == name).ok_or_else(|| Refused::NoColumn(name.into()))
+        self.columns().iter().position(|c| c.name == name).ok_or_else(|| Refused::NoColumn(name.into()))
     }
 
     /// Every row given an identity. A file with a key has one already; a file with an `id`
@@ -161,7 +161,7 @@ impl Doc {
                 Ok(doc)
             }
             None => {
-                if self.stored() == 0 {
+                if self.columns().is_empty() {
                     return Ok(self);
                 }
                 // The text as it stands, read again so every record's span is its own.

@@ -11,9 +11,10 @@ use core::fmt;
 
 use crate::column::{self, Bits, BitsBuilder, Building, Data, Decoder, Kind, Problem, Run, Value, Why, infer};
 use crate::exact::Exact;
+use crate::expr::{self, Ir, K, V};
 use crate::format::{Dialect, Separator};
-use crate::prelude::{self, Computed, Op, Prelude};
-use crate::read::{self, Part, Reading};
+use crate::prelude::{self, Fenced, Schedule, Statement};
+use crate::read::{self, Cells, Part, Reading, Said};
 use crate::scan::{self, Fields, Records, Stop};
 use crate::types::{self, Base, NamedType, Type};
 use crate::value::{self, Decimal, Instant};
@@ -92,22 +93,42 @@ fn stop_why(s: Stop, header_fields: usize) -> String {
     }
 }
 
-/// A column: stored in the rows, or computed by the prelude.
+/// Where a cell's value comes from; a byte, 0 to 2 in this order, where a binding reads
+/// them in place.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+#[repr(u8)]
+pub enum Origin {
+    /// Its text: written, or in a column with a formula, the row's override.
+    Written,
+    /// Its column's formula, its field left blank.
+    Formula,
+    /// Its own formula, `` `=…` ``.
+    Cell,
+}
+
+/// A column, its header cell's and its cells'.
 #[derive(Clone, Debug, PartialEq)]
 pub struct Column {
     pub name: String,
-    /// The type as the header cell spells it after its `:`; nothing for a plain column
-    /// and a computed one.
+    /// What the header cell spells after its `:`, its formula included; nothing for a
+    /// plain column.
     pub spelled: Option<String>,
     pub ty: Type,
-    /// A computed column's expression, as the prelude writes it.
-    pub computed: Option<String>,
+    /// The column's formula, as the header cell writes it after the type's `=`.
+    pub formula: Option<String>,
     pub data: Data,
     /// Set where the cell has a value; clear for a blank or broken cell.
     pub valid: Bits,
+    /// Each cell's origin, when any is computed; empty when every cell is written.
+    pub origin: Arc<Vec<Origin>>,
 }
 
 impl Column {
+    /// Where the value at `row` comes from.
+    pub fn origin(&self, row: usize) -> Origin {
+        self.origin.get(row).copied().unwrap_or(Origin::Written)
+    }
+
     pub fn len(&self) -> usize {
         self.valid.len
     }
@@ -144,11 +165,12 @@ impl Column {
         }
     }
 
-    /// A value as this column writes it: its pair's words, its format, ISO otherwise.
+    /// A value as this column writes it: its pair's words, its format, ISO otherwise, and
+    /// text that would read as a formula with its first backtick doubled.
     pub fn form(&self, v: Value) -> String {
         match v {
             Value::Null => String::new(),
-            Value::Text(t) | Value::Choice(t) => t.to_owned(),
+            Value::Text(t) | Value::Choice(t) => escaped(t),
             Value::Int(n) => n.to_string(),
             Value::Decimal(d) => d.to_string(),
             Value::Bool(b) => match &self.ty.base {
@@ -193,13 +215,81 @@ pub enum ColumnAt<'a> {
     New(&'a str, &'a [&'a str]),
 }
 
-/// A computed column changed (`Doc::recomputed`): one the prelude has, by its index among
-/// the computed columns, given a name and an expression; a new one; or one taken out.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum Computing<'a> {
-    Set(usize, &'a str, &'a str),
-    New(&'a str, &'a str),
-    Removed(usize),
+/// Text as a cell writes it: as it is, or, when it would read as a formula (`` `=x` ``),
+/// its first backtick doubled.
+fn escaped(t: &str) -> String {
+    match read::said(t.as_bytes()) {
+        Said::Plain => t.to_owned(),
+        _ => format!("`{t}"),
+    }
+}
+
+/// A table the prelude names: written inline, filled by a script, or another file's.
+#[derive(Clone, Debug)]
+pub struct Table {
+    pub name: String,
+    pub exported: bool,
+    /// The table read; nothing for an import that could not be reached, whose cells and
+    /// formulas read as unchecked.
+    pub doc: Option<Arc<Doc>>,
+    /// Its prelude line.
+    pub line: u32,
+    /// Written in this file (inline, or by a script), not imported: its problems are this
+    /// file's.
+    pub own: bool,
+}
+
+/// A table a script fills (`name = run …`): its schedule, its code, and where the
+/// engine's blocks under it lie in the source.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Script {
+    pub name: String,
+    pub line: u32,
+    pub schedule: Schedule,
+    pub language: String,
+    /// The script's text.
+    pub code: String,
+    /// Where the next block would be written: the end of the code's fence or of the
+    /// last block after it, the line break included.
+    pub after: usize,
+    pub stored: Option<Fenced>,
+    pub runs: Option<Fenced>,
+}
+
+/// What an import is, for a host that follows it (`read_with`).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Import {
+    /// As written: a path relative to the importing file, or a URL.
+    pub from: String,
+    /// `with { sha256: "…", rev: "…" }`.
+    pub with: Vec<(String, String)>,
+}
+
+/// How a reader follows imports: the file an import names read, or nothing when it cannot
+/// be reached (the importing file still reads, what it takes from it unchecked), or why it
+/// is refused (a hash that does not match, a cycle).
+pub trait Imports {
+    fn import(&mut self, import: &Import) -> Result<Option<Doc>, String>;
+}
+
+/// Imports never followed: a file read alone.
+pub struct Alone;
+
+impl Imports for Alone {
+    fn import(&mut self, _: &Import) -> Result<Option<Doc>, String> {
+        Ok(None)
+    }
+}
+
+/// The imports a file followed when it was read, given again as they were.
+struct Again<'a> {
+    imported: &'a [(Import, Option<Arc<Doc>>)],
+}
+
+impl Imports for Again<'_> {
+    fn import(&mut self, i: &Import) -> Result<Option<Doc>, String> {
+        Ok(self.imported.iter().find(|(j, _)| j == i).and_then(|(_, d)| d.as_deref().cloned()))
+    }
 }
 
 /// A plain file's header cell that names its column badly. TCSV refuses both (SPEC.md, A
@@ -235,10 +325,21 @@ pub struct Doc {
     body: u32,
     /// Where each row's record starts, and where the last one ends.
     records: Vec<u32>,
-    prelude: Prelude,
+    statements: Vec<Statement>,
+    named: Vec<NamedType>,
+    tables: Vec<Table>,
+    scripts: Vec<Script>,
+    /// Every import and what following it gave, so the file read again after an edit reads
+    /// them the same.
+    imported: Vec<(Import, Option<Arc<Doc>>)>,
     columns: Vec<Column>,
-    stored: usize,
+    /// Each column's formula, resolved.
+    formulas: Vec<Option<Ir>>,
     problems: Vec<Problem>,
+    /// Why a cell's own formula does not compute, by place.
+    unwell: BTreeMap<(u32, u32), String>,
+    /// What a formula gave a cell whose type it breaks, by place, so its problem can say.
+    gave: BTreeMap<(u32, u32), String>,
     /// The header line rewritten, without its line break.
     header: Option<String>,
     /// Rewritten rows' records, without their line breaks.
@@ -271,7 +372,24 @@ pub fn read_as(source: impl Into<Vec<u8>>, dialect: Dialect, threads: usize) -> 
     read_on(source.into(), dialect, threads)
 }
 
+/// `read` with its imports followed by `imports`, on up to `threads` threads (1 starts
+/// none): what it takes from another file read there, its references checked and its
+/// formulas computed against it. A file whose imports cannot be reached reads as `read`
+/// reads it.
+pub fn read_with(source: impl Into<Vec<u8>>, imports: &mut dyn Imports, threads: usize) -> Result<Doc, Error> {
+    #[cfg(not(feature = "std"))]
+    assert_eq!(threads, 1, "threads need the std feature");
+    read_in(source.into(), Dialect::Tcsv, threads, imports, None)
+}
+
 fn read_on(bytes: Vec<u8>, dialect: Dialect, threads: usize) -> Result<Doc, Error> {
+    read_in(bytes, dialect, threads, &mut Alone, None)
+}
+
+/// A table written in a prelude takes the types and the tables the prelude named above it.
+type Above<'a> = (&'a [NamedType], &'a [Table]);
+
+fn read_in(bytes: Vec<u8>, dialect: Dialect, threads: usize, imports: &mut dyn Imports, above: Option<Above>) -> Result<Doc, Error> {
     let source = String::from_utf8(bytes)
         .map_err(|e| error(At::File, format!("is not UTF-8: byte {} begins no character", e.utf8_error().valid_up_to())))?;
     if source.len() >= u32::MAX as usize {
@@ -279,30 +397,43 @@ fn read_on(bytes: Vec<u8>, dialect: Dialect, threads: usize) -> Result<Doc, Erro
     }
     let bom = if source.starts_with('\u{feff}') { 3 } else { 0 };
     let plain = matches!(dialect, Dialect::Plain(_));
-    let (body, prelude) = if plain { (bom, Prelude::default()) } else { read_prelude(&source, bom)? };
+    let (mut named, mut tables) = match above {
+        Some((n, t)) => (n.to_vec(), t.to_vec()),
+        None => (Vec::new(), Vec::new()),
+    };
+    let (body, statements) = if plain || above.is_some() { (bom, Vec::new()) } else { read_prelude(&source, bom)? };
+    let (scripts, imported) = settle_prelude(&source, &statements, imports, &mut named, &mut tables)?;
     let how = dialect.records();
     let src = source.as_bytes();
+    let mut doc = Doc {
+        dialect,
+        quotes_all: false,
+        naming: Vec::new(),
+        source: String::new(),
+        body: body as u32,
+        records: Vec::from([body as u32]),
+        statements,
+        named,
+        tables,
+        scripts,
+        imported,
+        columns: Vec::new(),
+        formulas: Vec::new(),
+        problems: Vec::new(),
+        unwell: BTreeMap::new(),
+        gave: BTreeMap::new(),
+        header: None,
+        edits: BTreeMap::new(),
+        candidates: Vec::new(),
+    };
     if body == src.len() {
-        let records = Vec::from([body as u32]);
-        return Ok(Doc {
-            dialect,
-            quotes_all: false,
-            naming: Vec::new(),
-            source,
-            body: body as u32,
-            records,
-            prelude,
-            columns: Vec::new(),
-            stored: 0,
-            problems: Vec::new(),
-            header: None,
-            edits: BTreeMap::new(),
-            candidates: Vec::new(),
-        });
+        doc.source = source;
+        return Ok(doc);
     }
     let (fields, first) = scan::record(src, body, how).map_err(|s| error(At::Header, stop_why(s, 0)))?;
     let mut scratch = Vec::new();
-    let mut heads: Vec<(String, Option<String>, Option<Type>)> = Vec::with_capacity(fields.len());
+    let names: Vec<String> = doc.tables.iter().map(|t| t.name.clone()).collect();
+    let mut heads: Vec<Head> = Vec::with_capacity(fields.len());
     let mut naming = Vec::new();
     for (j, &(s, e)) in fields.iter().enumerate() {
         let at = At::Column(j as u32 + 1);
@@ -317,93 +448,246 @@ fn read_on(bytes: Vec<u8>, dialect: Dialect, threads: usize) -> Result<Doc, Erro
             let column = j as u32;
             if cell.is_empty() {
                 naming.push(Naming::Blank { column });
-            } else if let Some(first) = heads.iter().position(|(n, _, _)| n == cell) {
+            } else if let Some(first) = heads.iter().position(|h| h.name == cell) {
                 naming.push(Naming::Twice { column, first: first as u32 });
             }
-            heads.push((cell.to_owned(), None, None));
+            heads.push(Head { name: cell.to_owned(), spelled: None, ty: None, formula: None });
             continue;
         }
-        let (name, spelled) = types::split_header(cell);
-        if name.is_empty() {
-            return Err(error(at, "a column has a name"));
+        let head = head(cell, &doc.named, &names).map_err(|why| error(at, why))?;
+        if heads.iter().any(|h| h.name == head.name) {
+            return Err(error(at, format!("two columns are named {}", head.name)));
         }
-        if heads.iter().any(|(n, _, _)| n == name) {
-            return Err(error(at, format!("two columns are named {name}")));
-        }
-        let ty = match spelled {
-            Some(t) => Some(types::parse_type(t, &prelude.named).map_err(|why| error(at, why))?),
-            None => None,
-        };
-        heads.push((name.to_owned(), spelled.map(str::to_owned), ty));
+        heads.push(head);
     }
     let quoted = |fields: &[(u32, u32)]| fields.iter().all(|&(s, e)| s < e && src[s as usize] == b'"');
-    let quotes_all = plain && quoted(&fields) && (first == src.len() || quoted(&scan::record(src, first, how).unwrap().0));
-    let decoders = decoders(heads.iter().map(|(_, _, t)| t.as_ref()));
+    doc.quotes_all = plain && quoted(&fields) && (first == src.len() || quoted(&scan::record(src, first, how).unwrap().0));
+    doc.naming = naming;
+    let decoders = decoders(heads.iter().map(|h| (h.ty.as_ref(), h.formula.is_some())));
     let parts = read::body(src, first, &decoders, how, threads).map_err(|(row, s)| error(At::Row(row), stop_why(s, heads.len())))?;
     let mut part = read::join(parts);
     part.records.push(src.len() as u32);
     let Part { records, columns: readings, mut problems, .. } = part;
-    let candidates = readings.iter().map(|r| r.candidates).collect();
-    let mut columns = Vec::with_capacity(heads.len() + prelude.computed.len());
-    for (j, ((name, spelled, ty), r)) in heads.into_iter().zip(readings).enumerate() {
-        let (ty, data, valid) = settle(ty, r, j as u32, threads, &mut problems);
-        columns.push(Column { name, spelled, ty, computed: None, data, valid });
+    doc.candidates = readings.iter().map(|r| r.candidates).collect();
+    let rows = records.len() - 1;
+    let origins = origins(&mut problems, heads.len(), rows);
+    for (j, ((h, r), origin)) in heads.into_iter().zip(readings).zip(origins).enumerate() {
+        let (ty, data, valid) = settle(h.ty, r, j as u32, threads, &mut problems);
+        doc.columns.push(Column { name: h.name, spelled: h.spelled, ty, formula: h.formula, data, valid, origin: Arc::new(origin) });
     }
-    let stored = columns.len();
-    let mut doc = Doc {
-        dialect,
-        quotes_all,
-        naming,
-        source,
-        body: body as u32,
-        records,
-        prelude,
-        columns,
-        stored,
-        problems,
-        header: None,
-        edits: BTreeMap::new(),
-        candidates,
-    };
-    doc.compute()?;
-    doc.problems.sort_by_key(|p| p.order());
+    doc.records = records;
+    doc.problems = problems;
+    doc.source = source;
+    doc.check_targets()?;
+    doc.resolve_formulas()?;
+    doc.recompute();
     Ok(doc)
 }
 
-fn decoders<'a>(types: impl Iterator<Item = Option<&'a Type>>) -> Vec<(Decoder, bool)> {
-    types.map(|t| (Decoder::of(t), t.is_none_or(|t| t.optional))).collect()
+/// A header cell read: its name, its type and its formula.
+struct Head {
+    name: String,
+    spelled: Option<String>,
+    ty: Option<Type>,
+    formula: Option<String>,
 }
 
-/// The prelude, if the file opens with one after its byte order mark, and where the
-/// header starts.
-fn read_prelude(source: &str, from: usize) -> Result<(usize, Prelude), Error> {
-    fn line_of(l: &str) -> &str {
-        l.strip_suffix('\n').map(|l| l.strip_suffix('\r').unwrap_or(l)).unwrap_or(l)
+/// A `.tcsv` header cell: `name`, `name:type`, `name:type=formula`.
+fn head(cell: &str, named: &[NamedType], tables: &[String]) -> Result<Head, String> {
+    let (name, spelled) = types::split_header(cell);
+    if name.is_empty() {
+        return Err("a column has a name".to_owned());
     }
-    let rest = &source[from..];
-    let mut lines = rest.split_inclusive('\n');
-    let Some(first) = lines.next() else { return Ok((from, Prelude::default())) };
-    if line_of(first) != "---" {
-        return Ok((from, Prelude::default()));
-    }
-    if !first.ends_with('\n') {
-        return Err(error(At::Prelude, "opens with --- and never closes"));
-    }
-    let mut at = from + first.len();
-    let mut inside = Vec::new();
-    for l in lines {
-        at += l.len();
-        if line_of(l) == "---" {
-            let p = prelude::parse(&inside).map_err(|(n, why)| error(At::PreludeLine(n), why))?;
-            return Ok((at, p));
+    let Some(spelled) = spelled else { return Ok(Head { name: name.to_owned(), spelled: None, ty: None, formula: None }) };
+    let (ty, formula) = types::split_formula(spelled);
+    let formula = match formula.map(|f| f.trim_matches([' ', '\t'])) {
+        Some("") => return Err("a formula follows the =".to_owned()),
+        f => f.map(str::to_owned),
+    };
+    let ty = types::parse_type(ty, named, tables)?;
+    Ok(Head { name: name.to_owned(), spelled: Some(spelled.to_owned()), ty: Some(ty), formula })
+}
+
+fn decoders<'a>(heads: impl Iterator<Item = (Option<&'a Type>, bool)>) -> Vec<Cells> {
+    heads.map(|(t, computed)| Cells { decoder: Decoder::of(t), optional: t.is_none_or(|t| t.optional), computed }).collect()
+}
+
+/// Each column's cells' origins, from the marks the read left (`Why::Computed`,
+/// `Why::Formula`), taken out of the problems: empty for a column every cell of which is
+/// written.
+fn origins(problems: &mut Vec<Problem>, columns: usize, rows: usize) -> Vec<Vec<Origin>> {
+    let mut out: Vec<Vec<Origin>> = (0..columns).map(|_| Vec::new()).collect();
+    problems.retain(|p| {
+        let o = match p.why {
+            Why::Computed => Origin::Formula,
+            Why::Formula => Origin::Cell,
+            _ => return true,
+        };
+        let col = &mut out[p.column as usize];
+        if col.is_empty() {
+            col.resize(rows, Origin::Written);
         }
-        if let Some(point) = column::control(line_of(l).as_bytes()) {
-            let n = inside.len() as u32 + 1;
-            return Err(error(At::PreludeLine(n), format!("holds {}, a control character", code_point(point))));
+        col[p.row as usize] = o;
+        false
+    });
+    out
+}
+
+/// The prelude, if the file opens with one after its byte order mark: its statements, and
+/// where the header starts.
+fn read_prelude(source: &str, from: usize) -> Result<(usize, Vec<Statement>), Error> {
+    let first = source[from..].split_inclusive('\n').next().unwrap_or("");
+    if first.strip_suffix('\n').map(|l| l.strip_suffix('\r').unwrap_or(l)) != Some("---") {
+        if first == "---" {
+            return Err(error(At::Prelude, "opens with --- and never closes"));
         }
-        inside.push(line_of(l));
+        return Ok((from, Vec::new()));
     }
-    Err(error(At::Prelude, "opens with --- and never closes"))
+    let (statements, body) = prelude::parse(source, from).map_err(|(n, why)| match n {
+        0 => error(At::Prelude, why),
+        n => error(At::PreludeLine(n), why),
+    })?;
+    for (n, l) in source[from..body].split_inclusive('\n').enumerate().skip(1) {
+        if let Some(point) = column::control(l.trim_end_matches(['\r', '\n']).as_bytes()) {
+            return Err(error(At::PreludeLine(n as u32), format!("holds {}, a control character", code_point(point))));
+        }
+    }
+    Ok((body, statements))
+}
+
+fn is_url(from: &str) -> bool {
+    from.starts_with("https://") || from.starts_with("http://")
+}
+
+/// What a prelude settles to besides its types and tables: its scripts, and each import
+/// with what following it gave.
+type Settled = (Vec<Script>, Vec<(Import, Option<Arc<Doc>>)>);
+
+/// The prelude's statements settled in order: each type parsed, each import followed,
+/// each table read, every name once.
+fn settle_prelude(
+    source: &str,
+    statements: &[Statement],
+    imports: &mut dyn Imports,
+    named: &mut Vec<NamedType>,
+    tables: &mut Vec<Table>,
+) -> Result<Settled, Error> {
+    let mut scripts = Vec::new();
+    let mut imported = Vec::new();
+    let taken =
+        |named: &[NamedType], tables: &[Table], name: &str| named.iter().any(|t| t.name == name) || tables.iter().any(|t| t.name == name);
+    for s in statements {
+        let at = At::PreludeLine(s.line());
+        let fail = |why: String| error(at, why);
+        match s {
+            Statement::Type { name, spelled, .. } => {
+                if !name.as_bytes().first().is_some_and(|c| c.is_ascii_uppercase()) {
+                    return Err(fail(format!("a type's name starts with a capital letter, not \"{name}\"")));
+                }
+                if types::currency(name).is_some() {
+                    return Err(fail(format!("{name} is a currency")));
+                }
+                if taken(named, tables, name) {
+                    return Err(fail(format!("the type {name} is named twice")));
+                }
+                let names: Vec<String> = tables.iter().map(|t| t.name.clone()).collect();
+                let ty = types::parse_type(spelled, named, &names).map_err(fail)?;
+                named.push(NamedType { name: name.clone(), ty });
+            }
+            Statement::Import { default, names, from, with, .. } => {
+                if is_url(from) && !with.iter().any(|(k, _)| k == "sha256") {
+                    return Err(fail(format!("\"{from}\" is pinned by its hash: with {{ sha256: \"…\" }}, which tcsv pin writes")));
+                }
+                let import = Import { from: from.clone(), with: with.clone() };
+                let doc = imports.import(&import).map_err(|why| fail(format!("\"{from}\": {why}")))?;
+                let doc = doc.map(Arc::new);
+                imported.push((import, doc.clone()));
+                if let Some(name) = default {
+                    if taken(named, tables, name) {
+                        return Err(fail(format!("the name {name} is taken")));
+                    }
+                    tables.push(Table { name: name.clone(), exported: false, doc: doc.clone(), line: s.line(), own: false });
+                }
+                for name in names {
+                    if taken(named, tables, name) {
+                        return Err(fail(format!("the name {name} is taken")));
+                    }
+                    let Some(d) = &doc else {
+                        // Unreachable: a capital names a type, read as unchecked text.
+                        if name.as_bytes()[0].is_ascii_uppercase() {
+                            named.push(NamedType { name: name.clone(), ty: Type::plain(Base::Text) });
+                        } else {
+                            tables.push(Table { name: name.clone(), exported: false, doc: None, line: s.line(), own: false });
+                        }
+                        continue;
+                    };
+                    if let Some(t) = d.exported_type(name) {
+                        named.push(NamedType { name: name.clone(), ty: t.ty.clone() });
+                    } else if let Some(t) = d.tables.iter().find(|t| t.exported && &t.name == name) {
+                        tables.push(Table { name: name.clone(), exported: false, doc: t.doc.clone(), line: s.line(), own: false });
+                    } else {
+                        let all = d.exports();
+                        let shown = if all.is_empty() { "nothing".to_owned() } else { all.join(", ") };
+                        return Err(fail(format!("\"{from}\" exports no \"{name}\" (it exports: {shown})")));
+                    }
+                }
+            }
+            Statement::Table { name, exported, body, .. } => {
+                if taken(named, tables, name) {
+                    return Err(fail(format!("the name {name} is taken")));
+                }
+                let doc = inline(source, name, body, imports, named, tables)?;
+                tables.push(Table { name: name.clone(), exported: *exported, doc: Some(Arc::new(doc)), line: s.line(), own: true });
+            }
+            Statement::Run { name, exported, schedule, code, stored, runs, .. } => {
+                if taken(named, tables, name) {
+                    return Err(fail(format!("the name {name} is taken")));
+                }
+                let Some(stored) = stored else {
+                    return Err(fail(format!("{name}'s rows are declared under its script: a ```tcsv block, its header at least")));
+                };
+                let doc = inline(source, name, stored, imports, named, tables)?;
+                if doc.columns.is_empty() {
+                    return Err(error(At::PreludeLine(stored.line), format!("{name}'s ```tcsv block holds its header at least")));
+                }
+                if let Some(r) = runs {
+                    inline(source, name, r, imports, named, tables)?;
+                }
+                let after = runs.as_ref().unwrap_or(stored).end;
+                let after = after + source[after..].find('\n').map_or(source.len() - after, |n| n + 1);
+                tables.push(Table { name: name.clone(), exported: *exported, doc: Some(Arc::new(doc)), line: s.line(), own: true });
+                scripts.push(Script {
+                    name: name.clone(),
+                    line: s.line(),
+                    schedule: schedule.clone(),
+                    language: code.lang.clone(),
+                    code: source[code.start..code.end].to_owned(),
+                    after,
+                    stored: Some(stored.clone()),
+                    runs: runs.clone(),
+                });
+            }
+        }
+    }
+    Ok((scripts, imported))
+}
+
+/// A table fenced in the prelude, read with what the prelude named above it. An error
+/// inside it names the prelude line it is on.
+fn inline(source: &str, name: &str, body: &Fenced, imports: &mut dyn Imports, named: &[NamedType], tables: &[Table]) -> Result<Doc, Error> {
+    let text = &source[body.start..body.end];
+    read_in(text.as_bytes().to_vec(), Dialect::Tcsv, 1, imports, Some((named, tables))).map_err(|e| {
+        let line = |offset: usize| body.line + 1 + text[..offset.min(text.len())].matches('\n').count() as u32;
+        let n = match e.at {
+            At::Header | At::Column(_) | At::File | At::Prelude => body.line + 1,
+            At::PreludeLine(n) => body.line + n,
+            At::Row(r) => {
+                let starts: Vec<usize> = core::iter::once(0).chain(text.match_indices('\n').map(|(i, _)| i + 1)).collect();
+                line(starts.get(r as usize + 1).copied().unwrap_or(text.len()))
+            }
+        };
+        error(At::PreludeLine(n), format!("{name}: {}", e.why))
+    })
 }
 
 /// A column's reading made final: an untyped column's type inferred from its values and
@@ -537,14 +821,9 @@ impl Doc {
         scan::quote_in(text, self.dialect.separator().byte(), self.quotes_all)
     }
 
-    /// Every column: the header's, then the prelude's computed ones.
+    /// Every column, in the header's order.
     pub fn columns(&self) -> &[Column] {
         &self.columns
-    }
-
-    /// How many of `columns` are stored in the rows (the rest are computed).
-    pub fn stored(&self) -> usize {
-        self.stored
     }
 
     pub fn rows(&self) -> usize {
@@ -556,12 +835,48 @@ impl Doc {
         &self.problems
     }
 
+    /// The types the prelude names, those it imports included, in order.
     pub fn named(&self) -> &[NamedType] {
-        &self.prelude.named
+        &self.named
     }
 
-    pub fn computed(&self) -> &[Computed] {
-        &self.prelude.computed
+    /// The prelude's statements, as written.
+    pub fn statements(&self) -> &[Statement] {
+        &self.statements
+    }
+
+    /// The tables the prelude names: written inline, filled by scripts, imported.
+    pub fn tables(&self) -> &[Table] {
+        &self.tables
+    }
+
+    /// The scripts that fill tables, in the prelude's order.
+    pub fn scripts(&self) -> &[Script] {
+        &self.scripts
+    }
+
+    /// A type this file exports, by its name.
+    pub fn exported_type(&self, name: &str) -> Option<&NamedType> {
+        let exported = self.statements.iter().any(|s| matches!(s, Statement::Type { name: n, exported: true, .. } if n == name));
+        exported.then(|| self.named.iter().find(|t| t.name == name)).flatten()
+    }
+
+    /// The names this file exports, types and tables, in the prelude's order.
+    pub fn exports(&self) -> Vec<String> {
+        self.statements
+            .iter()
+            .filter_map(|s| match s {
+                Statement::Type { name, exported: true, .. }
+                | Statement::Table { name, exported: true, .. }
+                | Statement::Run { name, exported: true, .. } => Some(name.clone()),
+                _ => None,
+            })
+            .collect()
+    }
+
+    /// Whether any cell is computed, by its column's formula or its own.
+    pub fn computes(&self) -> bool {
+        self.columns.iter().any(|c| !c.origin.is_empty())
     }
 
     pub fn column(&self, name: &str) -> Option<usize> {
@@ -605,7 +920,7 @@ impl Doc {
 
     /// A stored cell's text as written, unquoted; blank for a field the row leaves out.
     pub fn text(&self, row: usize, column: usize) -> Cow<'_, str> {
-        assert!(column < self.stored, "column {column} is not stored");
+        assert!(column < self.columns.len(), "column {column} is not stored");
         let fields = self.raw_fields(self.line(row));
         fields.get(column).map_or(Cow::Borrowed(""), |raw| scan::unquoted(raw))
     }
@@ -614,7 +929,7 @@ impl Doc {
     /// what a host that keeps its own rows (a table editing the file) takes.
     pub fn texts(&self, row: usize) -> Vec<Cow<'_, str>> {
         let fields = self.raw_fields(self.line(row));
-        (0..self.stored).map(|k| fields.get(k).map_or(Cow::Borrowed(""), |raw| scan::unquoted(raw))).collect()
+        (0..self.columns.len()).map(|k| fields.get(k).map_or(Cow::Borrowed(""), |raw| scan::unquoted(raw))).collect()
     }
 
     /// A field as written, to write again with more after it: as it is, but for a quote a
@@ -648,11 +963,25 @@ impl Doc {
     /// `"8x.50" is not a number`, `is missing`.
     pub fn why(&self, p: &Problem) -> String {
         let c = &self.columns[p.column as usize];
-        let text = self.text(p.row as usize, p.column as usize);
+        let at = (p.row, p.column);
+        let gave = self.gave.get(&at);
+        let text = match gave {
+            Some(g) => Cow::Borrowed(g.as_str()),
+            None => self.text(p.row as usize, p.column as usize),
+        };
         let bound = |b: &Option<types::Bound>| b.map(|b| b.value.normal().to_string()).unwrap_or_default();
         let length = matches!(c.ty.base, Base::Text);
+        let tables = || match &c.ty.base {
+            Base::Ref(t) => t.iter().map(|t| t.table.as_str()).collect::<Vec<_>>().join(" or "),
+            _ => String::new(),
+        };
         let why = match p.why {
             Why::Missing => return "is missing".to_owned(),
+            Why::Formula | Why::Computed => {
+                return format!("{}: {}", text, self.unwell.get(&at).map_or("the formula does not compute", String::as_str));
+            }
+            Why::Absent => format!("is no key of {}", tables()),
+            Why::Ambiguous => format!("is a key of more than one of {}, so it names no one row", tables()),
             Why::Control { point } => {
                 // The text up to the character, never the character itself, which shows nothing.
                 let (at, _) = column::control_at(text.as_bytes()).unwrap();
@@ -663,7 +992,7 @@ impl Doc {
                 };
             }
             Why::Ragged { fields } => {
-                let n = self.stored;
+                let n = self.columns.len();
                 return match (fields as usize) < n {
                     true => format!("the row has {fields} of the header's {n} fields"),
                     false => format!("the row has {fields} fields, the header {n}"),
@@ -711,7 +1040,10 @@ impl Doc {
             ),
             Why::Duplicate { other } => format!("is the key of row {other} too"),
         };
-        format!("\"{text}\" {why}")
+        match gave {
+            Some(_) => format!("the formula gives \"{text}\", which {why}"),
+            None => format!("\"{text}\" {why}"),
+        }
     }
 
     /// The header's line break, the one new lines take; `\n` when it has none.
@@ -783,81 +1115,11 @@ impl Doc {
         out
     }
 
-    /// The file with one computed column changed, read again on up to `threads` threads:
-    /// its prelude line rewritten as `name = expression` (the spacing before its comment and
-    /// the comment kept), a new one a line at the prelude's end (a file with no prelude
-    /// gains one), or its line taken out. Every other byte stays as it is. Refused, this doc
-    /// untouched, when the prelude no longer reads (an expression that does not parse, a
-    /// name taken, a column it reads that does not exist or is no number) or a `//` in the
-    /// expression would make the rest of it a comment.
-    pub fn recomputed(&self, change: Computing, threads: usize) -> Result<Doc, Error> {
-        assert_eq!(self.dialect, Dialect::Tcsv, "a plain file computes nothing: written as TCSV, it can");
-        let text = self.write();
-        let body = self.body as usize;
-        let bom = if text.starts_with('\u{feff}') { 3 } else { 0 };
-        let nl = self.newline();
-        let statement = |name: &str, expression: &str| {
-            assert!(!name.contains(['\n', '\r']) && !expression.contains(['\n', '\r']), "a computed column is one line");
-            format!("{name} = {}", expression.trim_matches([' ', '\t']))
-        };
-        let computed = |k: usize| {
-            assert!(k < self.prelude.computed.len(), "no computed column {k}");
-            self.prelude.computed[k].line as usize
-        };
-        // The prelude's lines with their breaks, the fences included.
-        let lines: Vec<&str> = text[bom..body].split_inclusive('\n').collect();
-        let mut out = String::with_capacity(text.len() + 64);
-        out.push_str(&text[..bom]);
-        let (line, written) = match change {
-            Computing::Set(k, name, expression) => {
-                let at = computed(k);
-                for (n, l) in lines.iter().enumerate() {
-                    if n != at {
-                        out.push_str(l);
-                        continue;
-                    }
-                    let content = &l[..l.len() - ending(l).len()];
-                    let said = prelude::uncomment(content);
-                    let kept = &content[said.trim_end_matches([' ', '\t']).len()..];
-                    out.push_str(&statement(name, expression));
-                    out.push_str(kept);
-                    out.push_str(ending(l));
-                }
-                (at as u32, Some(expression))
-            }
-            Computing::New(name, expression) => {
-                if lines.is_empty() {
-                    out.push_str(&format!("---{nl}{}{nl}---{nl}", statement(name, expression)));
-                    (1, Some(expression))
-                } else {
-                    let (last, inside) = lines.split_last().unwrap();
-                    for l in inside {
-                        out.push_str(l);
-                    }
-                    out.push_str(&statement(name, expression));
-                    out.push_str(ending(inside.last().unwrap()));
-                    out.push_str(last);
-                    (inside.len() as u32, Some(expression))
-                }
-            }
-            Computing::Removed(k) => {
-                let at = computed(k);
-                for (n, l) in lines.iter().enumerate() {
-                    if n != at {
-                        out.push_str(l);
-                    }
-                }
-                (at as u32, None)
-            }
-        };
-        out.push_str(&text[body..]);
-        let doc = read_on(out.into_bytes(), self.dialect, threads)?;
-        if let Some(expression) = written
-            && !doc.prelude.computed.iter().any(|c| c.line == line && c.expression == expression.trim_matches([' ', '\t']))
-        {
-            return Err(error(At::PreludeLine(line), "a // in an expression opens a comment"));
-        }
-        Ok(doc)
+    /// `text`, this file changed, read again on up to `threads` threads, its imports the
+    /// ones this file followed.
+    fn reread(&self, text: String, threads: usize) -> Result<Doc, Error> {
+        let mut again = Again { imported: &self.imported };
+        read_in(text.into_bytes(), self.dialect, threads, &mut again, None)
     }
 
     /// The file with exactly `rows`, in their order, read again on up to `threads`
@@ -867,7 +1129,7 @@ impl Doc {
     /// file ends in one when it did. What moving, adding and taking out rows is. A new
     /// cell holding a control character is refused at its row.
     pub fn rearranged(&self, rows: &[Row], threads: usize) -> Result<Doc, Error> {
-        assert!(self.stored > 0, "a file with no header has no rows to arrange");
+        assert!(!self.columns.is_empty(), "a file with no header has no rows to arrange");
         let nl = self.newline();
         let mut out = String::with_capacity(self.source.len() + 64);
         out.push_str(&self.source[..self.body as usize]);
@@ -888,7 +1150,7 @@ impl Doc {
             }
         }
         self.close(&mut out, !rows.is_empty(), nl);
-        read_on(out.into_bytes(), self.dialect, threads)
+        self.reread(out, threads)
     }
 
     /// A file being written, its lines broken by `nl`, ends as this one does: in a line
@@ -924,11 +1186,11 @@ impl Doc {
             }
             match *c {
                 ColumnAt::Kept(j) => {
-                    assert!(j < self.stored, "column {j} is not stored");
+                    assert!(j < self.columns.len(), "column {j} is not stored");
                     out.push_str(heads[j]);
                 }
                 ColumnAt::Renamed(j, name) => {
-                    assert!(j < self.stored, "column {j} is not stored");
+                    assert!(j < self.columns.len(), "column {j} is not stored");
                     let cell = match (&self.dialect, &self.columns[j].spelled) {
                         (Dialect::Tcsv, spelled) => {
                             assert!(!name.contains(':'), "a column's name holds no \":\" ({name})");
@@ -963,20 +1225,20 @@ impl Doc {
                     }
                 }
             }
-            for extra in fields.iter().skip(self.stored) {
+            for extra in fields.iter().skip(self.columns.len()) {
                 out.push_str(self.sep());
                 out.push_str(&self.sound(extra));
             }
         }
         self.close(&mut out, rows > 0, self.newline());
-        read_on(out.into_bytes(), self.dialect, threads)
+        self.reread(out, threads)
     }
 
     /// The file written as `to`, another dialect or this one with other header cells: a
-    /// plain file's header the columns' names, the computed columns' among them with their
-    /// values a column after the stored ones, so the numbers a person saw are in the file;
-    /// a `.tcsv` file's header `header` when given (each column's cell with its type, a
-    /// plain file converted), else the header as it is, and the prelude kept. A record is
+    /// plain file's header the columns' names and every computed cell its value, so the
+    /// numbers a person saw are in the file; a `.tcsv` file's header `header` when given
+    /// (each column's cell with its type, a plain file converted, its text that would read
+    /// as a formula escaped), else the header as it is, and the prelude kept. A record is
     /// kept as written when the separator is the same and nothing joins it; otherwise it
     /// is written from its cells, quoted where `to` needs it (a plain file that quotes
     /// every field still does). A `.tcsv` file holds no fields past its header's, so a
@@ -986,8 +1248,9 @@ impl Doc {
         if to == self.dialect && header.is_none() {
             return self.write();
         }
+        let width = self.columns.len();
         if let Some(h) = header {
-            assert_eq!(h.len(), self.stored, "a header cell for each stored column");
+            assert_eq!(h.len(), width, "a header cell for each column");
         }
         let plain = matches!(to, Dialect::Plain(_));
         // A `.tcsv` file's lines end in `\n` or `\r\n`, never a lone `\r`.
@@ -999,7 +1262,8 @@ impl Doc {
         let quote = |t: &str| scan::quote_in(t, sep, all).into_owned();
         let sep_text = [sep];
         let sep_text = core::str::from_utf8(&sep_text).unwrap();
-        let computed = if plain { &self.columns[self.stored..] } else { &[][..] };
+        let computes = plain && self.computes();
+        let escapes = !plain && self.dialect != Dialect::Tcsv;
         let mut out = String::with_capacity(self.source.len() + 64);
         let bom = if self.source.starts_with('\u{feff}') { "\u{feff}" } else { "" };
         out.push_str(match (to, self.dialect) {
@@ -1009,31 +1273,36 @@ impl Doc {
         let names: Vec<String> = match header {
             Some(h) => h.iter().map(|c| quote(c)).collect(),
             None if !plain && self.dialect == Dialect::Tcsv => Vec::from([self.header_line().to_owned()]),
-            None => self.columns[..self.stored].iter().chain(computed).map(|c| quote(&c.name)).collect(),
+            None => self.columns.iter().map(|c| quote(&c.name)).collect(),
         };
         out.push_str(&names.join(sep_text));
-        let same = to.separator() == self.dialect.separator() && computed.is_empty();
+        let same = to.separator() == self.dialect.separator() && !computes;
         let strict = Records { sep, lenient: false };
         for r in 0..self.rows() {
             out.push_str(nl);
             let line = self.line(r);
             let fields = self.raw_fields(line);
             let regular = scan::record(line.as_bytes(), 0, strict).is_ok();
-            if same && regular && (plain || fields.len() <= self.stored) {
+            if same && regular && (plain || fields.len() <= width) && !(escapes && line.contains('`')) {
                 out.push_str(line);
                 continue;
             }
-            let mut cells: Vec<String> = fields.iter().map(|f| quote(&scan::unquoted(f))).collect();
+            let mut cells: Vec<String> =
+                fields.iter().map(|f| if escapes { quote(&escaped(&scan::unquoted(f))) } else { quote(&scan::unquoted(f)) }).collect();
             if !plain {
-                cells.truncate(self.stored);
+                cells.truncate(width);
             }
-            if !computed.is_empty() {
-                cells.resize(cells.len().max(self.stored), quote(""));
-                for c in computed {
-                    cells.push(match c.value(r) {
-                        Value::Decimal(d) => d.normal().to_string(),
-                        _ => quote(""),
-                    });
+            if computes {
+                cells.resize(cells.len().max(width), quote(""));
+                for (k, c) in self.columns.iter().enumerate() {
+                    if c.origin(r) != Origin::Written {
+                        cells[k] = match c.value(r) {
+                            Value::Null => quote(""),
+                            Value::Decimal(d) => d.normal().to_string(),
+                            Value::Text(t) | Value::Choice(t) => quote(t),
+                            v => quote(&c.form(v)),
+                        };
+                    }
                 }
             }
             out.push_str(&cells.join(sep_text));
@@ -1048,7 +1317,7 @@ impl Doc {
     /// computed columns. Text holding a control character is refused at the row, the doc
     /// untouched.
     pub fn set_cell(&mut self, row: usize, column: usize, text: &str) -> Result<(), Error> {
-        assert!(column < self.stored, "column {column} is not stored");
+        assert!(column < self.columns.len(), "column {column} is not stored");
         assert!(row < self.rows(), "row {row} does not exist");
         writable(text, At::Row(row as u32))?;
         let was = self.text(row, column).into_owned();
@@ -1065,12 +1334,33 @@ impl Doc {
             joined.push_str("\"\"");
         }
         self.edits.insert(row as u32, joined);
-        self.decode_cell(row, column, text, &was);
+        let tcsv = self.dialect == Dialect::Tcsv;
+        let origin = match (tcsv && read::said(text.as_bytes()) == Said::Formula, text.is_empty() && self.columns[column].formula.is_some())
+        {
+            (true, _) => Origin::Cell,
+            (false, true) => Origin::Formula,
+            _ => Origin::Written,
+        };
+        if self.computes() || origin != Origin::Written {
+            let col = &mut self.columns[column];
+            if col.origin.is_empty() && origin != Origin::Written {
+                col.origin = Arc::new(alloc::vec![Origin::Written; self.records.len() - 1]);
+            }
+            if !col.origin.is_empty() {
+                Arc::make_mut(&mut col.origin)[row] = origin;
+            }
+            self.rebuild(column, &[]);
+            self.recompute();
+        } else {
+            let text = if tcsv && read::said(text.as_bytes()) == Said::Escaped { &text[1..] } else { text };
+            let was = if tcsv && read::said(was.as_bytes()) == Said::Escaped { &was[1..] } else { &was[..] };
+            self.decode_cell(row, column, text, was);
+        }
         if matches!(self.dialect, Dialect::Plain(_)) {
             // The row's width may have changed: a field written past a short row's end.
             self.problems.retain(|p| !(p.row == row as u32 && p.kind() == Kind::Ragged));
-            if width != self.stored {
-                let p = read::ragged(row as u32, width, self.stored);
+            if width != self.columns.len() {
+                let p = read::ragged(row as u32, width, self.columns.len());
                 let at = self.problems.partition_point(|q| q.order() < p.order());
                 self.problems.insert(at, p);
             }
@@ -1095,12 +1385,16 @@ impl Doc {
             // infer it.
             let could = |t: &str| (!t.is_empty()).then(|| infer::narrow(infer::ALL, t.as_bytes()));
             if col.valid.get(row) && could(text) == could(was) && put(col, row, text) == Some(None) {
-                return self.compute_values();
+                return self.recompute();
             }
-            return self.rebuild(column);
+            self.rebuild(column, &[]);
+            return self.recompute();
         }
         let why = put(col, row, text);
-        let Some(why) = why else { return self.rebuild(column) };
+        let Some(why) = why else {
+            self.rebuild(column, &[]);
+            return self.recompute();
+        };
         let at = self.problems.partition_point(|p| p.order() < (row as u32, column as u32));
         let end = at + self.problems[at..].iter().take_while(|p| p.order() == (row as u32, column as u32)).count();
         let fresh: Vec<Problem> = why.map(|why| Problem { row: row as u32, column: column as u32, why }).into_iter().collect();
@@ -1108,24 +1402,33 @@ impl Doc {
         if self.columns[column].ty.key {
             self.rekey(column);
         }
-        self.compute_values();
+        self.recompute();
     }
 
-    /// A stored column read again from its cells, as a fresh read would.
-    fn rebuild(&mut self, column: usize) {
+    /// A column read again from its cells, as a fresh read would, but for the cells
+    /// `results` names (by row, in order), read as the text their formulas gave. A cell
+    /// computed and given nothing here is null, and its only problem a type its result
+    /// breaks.
+    fn rebuild(&mut self, column: usize, results: &[(usize, String)]) {
         let rows = self.rows();
         let mut raw = String::new();
         let mut spans = Vec::with_capacity(rows);
+        let mut given = results.iter().peekable();
         for r in 0..rows {
-            let fields = self.raw_fields(self.line(r));
             let s = raw.len() as u32;
-            raw.push_str(fields.get(column).copied().unwrap_or(""));
+            match given.next_if(|(row, _)| *row == r) {
+                Some((_, text)) => raw.push_str(&scan::quote(text)),
+                None => {
+                    let fields = self.raw_fields(self.line(r));
+                    raw.push_str(fields.get(column).copied().unwrap_or(""));
+                }
+            }
             spans.push((s, raw.len() as u32));
         }
         let c = &self.columns[column];
         let ty = if c.ty.inferred { None } else { Some(c.ty.clone()) };
-        let decoders = decoders(core::iter::once(ty.as_ref()));
-        let mut part = Part::new(raw.as_bytes(), 0, raw.len(), &decoders, false);
+        let decoders = decoders(core::iter::once((ty.as_ref(), false)));
+        let mut part = Part::new(raw.as_bytes(), 0, raw.len(), &decoders, self.dialect != Dialect::Tcsv);
         for &(s, e) in &spans {
             part.field(s, e).unwrap();
             part.record(e);
@@ -1134,9 +1437,12 @@ impl Doc {
         let mut problems = core::mem::take(&mut part.problems);
         let reading = part.columns.pop().unwrap();
         self.candidates[column] = reading.candidates;
-        for p in &mut problems {
+        let origin = Arc::clone(&self.columns[column].origin);
+        problems.retain_mut(|p| {
             p.column = column as u32;
-        }
+            let computed = origin.get(p.row as usize).is_some_and(|o| *o != Origin::Written);
+            !matches!(p.why, Why::Formula | Why::Computed) && !(computed && p.why == Why::Missing)
+        });
         let (ty, data, valid) = settle(ty, reading, column as u32, 1, &mut problems);
         let col = &mut self.columns[column];
         col.ty = ty;
@@ -1146,7 +1452,6 @@ impl Doc {
         self.problems.retain(|p| p.column != column as u32 || p.kind() == Kind::Ragged);
         self.problems.extend(problems);
         self.problems.sort_by_key(|p| p.order());
-        self.compute_values();
     }
 
     /// The file grown: when `bytes` is this file's bytes with records after them (a
@@ -1156,13 +1461,21 @@ impl Doc {
     /// gives for `bytes`.
     pub fn extend(mut self, bytes: Vec<u8>) -> Result<Doc, Error> {
         let from = self.source.len();
+        // A formula or a reference reads more than its row, so a file holding one is read
+        // whole.
+        let alone = !self.computes() && self.formulas.iter().all(Option::is_none) && self.tables.is_empty();
         let appended = !self.changed()
-            && self.stored > 0
+            && alone
+            && !self.columns.is_empty()
             && bytes.len() > from
             && self.source.ends_with('\n')
             && bytes.starts_with(self.source.as_bytes());
         if !appended {
-            return read_on(bytes, self.dialect, 1);
+            return self.reread(
+                String::from_utf8(bytes)
+                    .map_err(|e| error(At::File, format!("is not UTF-8: byte {} begins no character", e.utf8_error().valid_up_to())))?,
+                1,
+            );
         }
         if let Err(e) = core::str::from_utf8(&bytes[from..]) {
             return Err(error(At::File, format!("is not UTF-8: byte {} begins no character", from + e.valid_up_to())));
@@ -1174,12 +1487,14 @@ impl Doc {
         // break, and the rest was checked just above.
         let source = unsafe { String::from_utf8_unchecked(bytes) };
         let old_rows = self.rows() as u32;
-        let stored = &self.columns[..self.stored];
-        let decoders = decoders(stored.iter().map(|c| (!c.ty.inferred).then_some(&c.ty)));
+        let decoders = decoders(self.columns.iter().map(|c| ((!c.ty.inferred).then_some(&c.ty), false)));
         let tail = read::sequential(source.as_bytes(), from, &decoders, self.dialect.records())
-            .map_err(|(row, s)| error(At::Row(old_rows + row), stop_why(s, self.stored)))?;
+            .map_err(|(row, s)| error(At::Row(old_rows + row), stop_why(s, self.columns.len())))?;
         let Part { records, columns: readings, problems, .. } = tail;
-        let mut joined = Vec::with_capacity(self.stored);
+        if problems.iter().any(|p| p.why == Why::Formula) {
+            return self.reread(source, 1);
+        }
+        let mut joined = Vec::with_capacity(self.columns.len());
         for (c, r) in readings.into_iter().enumerate() {
             let col = &self.columns[c];
             if !col.ty.inferred {
@@ -1192,7 +1507,7 @@ impl Doc {
             let candidates = self.candidates[c] & r.candidates;
             let base = if had || has { inferred_base(candidates) } else { Base::Text };
             if base != col.ty.base {
-                return read_on(source.into_bytes(), self.dialect, 1);
+                return self.reread(source, 1);
             }
             self.candidates[c] = candidates;
             if base == Base::Text {
@@ -1201,7 +1516,7 @@ impl Doc {
             }
             match redecode(&base, &offsets, &bytes, &r.valid) {
                 Some(b) => joined.push(b),
-                None => return read_on(source.into_bytes(), self.dialect, 1),
+                None => return self.reread(source, 1),
             }
         }
         for (c, (b, v)) in joined.into_iter().enumerate() {
@@ -1217,13 +1532,12 @@ impl Doc {
         self.records.extend_from_slice(&records);
         self.records.push(source.len() as u32);
         self.source = source;
-        for c in 0..self.stored {
+        for c in 0..self.columns.len() {
             if self.columns[c].ty.key {
                 let col = &self.columns[c];
                 crate::keys::check(&col.data, &col.valid, c as u32, 1, &mut self.problems);
             }
         }
-        self.compute_values();
         self.problems.sort_by_key(|p| p.order());
         Ok(self)
     }
@@ -1237,88 +1551,492 @@ impl Doc {
         self.problems.sort_by_key(|p| p.order());
     }
 
-    /// One column's type rewritten, in the shorthand a writer writes (`""` makes it a
-    /// plain column again). No cell is rewritten: a cell the new type breaks is reported.
+    /// One column's header cell rewritten after its `:`: its type in the shorthand a
+    /// writer writes, and its formula when `spelled` has one (`EUR=cost*qty`); `""` makes
+    /// it a plain column again. No cell is rewritten: a cell the new type breaks is
+    /// reported, and a formula fills the cells left blank. Refused, the doc untouched, when
+    /// the header no longer reads (a type or a formula that does not, a formula another
+    /// column's formula then cannot read): the place is the column refused.
     pub fn set_type(&mut self, column: usize, spelled: &str) -> Result<(), Error> {
-        assert!(column < self.stored, "column {column} is not stored");
+        assert!(column < self.columns.len(), "column {column} is not stored");
         assert_eq!(self.dialect, Dialect::Tcsv, "a plain file holds no types: written as TCSV (`written_as`), it does");
         let at = At::Column(column as u32 + 1);
         if let Some(point) = column::control(spelled.as_bytes()) {
             return Err(error(at, format!("holds {}, a control character", code_point(point))));
         }
-        let ty =
-            if spelled.is_empty() { None } else { Some(types::parse_type(spelled, &self.prelude.named).map_err(|why| error(at, why))?) };
-        for c in &self.prelude.computed {
-            let reads = c.program.iter().any(|op| matches!(op, Op::Column(k) if *k == column));
-            if reads && ty.as_ref().is_some_and(|t| !t.base.is_number()) {
-                return Err(error(at, format!("{} computes from it, so it stays a number", c.name)));
-            }
-        }
-        let shorthand = ty.as_ref().map(Type::shorthand);
+        let names: Vec<String> = self.tables.iter().map(|t| t.name.clone()).collect();
         let name = self.columns[column].name.clone();
-        let cell = match &shorthand {
-            Some(s) => format!("{name}:{s}"),
-            None => name,
+        let cell = match spelled {
+            "" => name,
+            s => {
+                let h = head(&format!("{name}:{s}"), &self.named, &names).map_err(|why| error(at, why))?;
+                let ty = h.ty.as_ref().unwrap().shorthand();
+                match h.formula {
+                    Some(f) => format!("{name}:{ty}={f}"),
+                    None => format!("{name}:{ty}"),
+                }
+            }
         };
         let line = self.header_line().to_owned();
         let mut fields: Vec<Cow<'_, str>> = self.raw_fields(&line).into_iter().map(Cow::Borrowed).collect();
         fields[column] = scan::quote(&cell);
-        let joined = fields.join(",");
-        self.header = Some(joined);
-        let col = &mut self.columns[column];
-        col.spelled = shorthand;
-        col.ty = ty.unwrap_or_else(|| Type::inferred(Base::Text));
-        self.rebuild(column);
+        let header = fields.join(",");
+        let mut text = String::with_capacity(self.source.len() + 32);
+        text.push_str(self.prelude_text());
+        text.push_str(&header);
+        let rest = self.write();
+        text.push_str(&rest[self.body as usize + self.header_line().len()..]);
+        let doc = self.reread(text, 1).map_err(|e| match e.at {
+            At::Column(_) => error(at, e.why),
+            _ => e,
+        })?;
+        *self = doc;
         Ok(())
     }
 
-    /// Resolves the computed columns' names and evaluates them.
-    fn compute(&mut self) -> Result<(), Error> {
-        for k in 0..self.prelude.computed.len() {
-            let c = &mut self.prelude.computed[k];
-            let at = At::PreludeLine(c.line);
-            if self.columns[..self.stored].iter().any(|col| col.name == c.name) {
-                return Err(error(at, format!("a column is named {} already", c.name)));
+    /// The column formulas resolved against the columns and the tables, and refused at
+    /// their column when one does not read, names what is not there, gives what its
+    /// column cannot hold, or reads itself through others.
+    fn resolve_formulas(&mut self) -> Result<(), Error> {
+        let scope = DocScope { columns: &self.columns, tables: &self.tables };
+        let mut formulas = Vec::with_capacity(self.columns.len());
+        let mut aggregates = 0;
+        for (k, c) in self.columns.iter().enumerate() {
+            let Some(f) = &c.formula else {
+                formulas.push(None);
+                continue;
+            };
+            let at = At::Column(k as u32 + 1);
+            let e = expr::parse(f).map_err(|why| error(at, why))?;
+            let (ir, kind) = expr::resolve(&e, &scope, &mut aggregates).map_err(|why| error(at, why))?;
+            holds(&c.ty.base, kind).map_err(|why| error(at, why))?;
+            formulas.push(Some(ir));
+        }
+        // A formula reading itself, through others or not, never finishes.
+        let n = self.columns.len();
+        let mut reads: Vec<Vec<usize>> = Vec::with_capacity(n);
+        for f in &formulas {
+            let mut out = Vec::new();
+            if let Some(ir) = f {
+                expr::reads(ir, None, &mut out);
             }
-            for op in &mut c.program {
-                if let Op::Name(n) = op {
-                    let Some(j) = self.columns.iter().position(|col| col.name == *n) else {
-                        return Err(error(at, format!("no column \"{n}\" above it")));
-                    };
-                    if !self.columns[j].ty.base.is_number() {
-                        return Err(error(at, format!("\"{n}\" is {}, not a number", self.columns[j].ty.base.tag())));
-                    }
-                    *op = Op::Column(j);
+            reads.push(out);
+        }
+        let mut state = alloc::vec![0u8; n];
+        fn visit(k: usize, reads: &[Vec<usize>], formulas: &[Option<Ir>], state: &mut [u8]) -> Option<usize> {
+            if formulas[k].is_none() || state[k] == 2 {
+                return None;
+            }
+            if state[k] == 1 {
+                return Some(k);
+            }
+            state[k] = 1;
+            for &j in &reads[k] {
+                if let Some(c) = visit(j, reads, formulas, state) {
+                    return Some(c);
                 }
             }
-            let c = &self.prelude.computed[k];
-            let (data, valid) = evaluate(&self.columns, c, self.rows());
-            let ty = Type { optional: true, ..Type::plain(Base::Num) };
-            self.columns.push(Column { name: c.name.clone(), spelled: None, ty, computed: Some(c.expression.clone()), data, valid });
+            state[k] = 2;
+            None
+        }
+        for k in 0..n {
+            if let Some(c) = visit(k, &reads, &formulas, &mut state) {
+                return Err(error(At::Column(c as u32 + 1), format!("{}'s formula reads itself", self.columns[c].name)));
+            }
+        }
+        self.formulas = formulas;
+        Ok(())
+    }
+
+    /// Every reference column's tables reachable, each naming its key: refused at the
+    /// column when one names a column that is no key of its table.
+    fn check_targets(&self) -> Result<(), Error> {
+        for (k, c) in self.columns.iter().enumerate() {
+            let Base::Ref(targets) = &c.ty.base else { continue };
+            for t in targets {
+                let table = self.tables.iter().find(|x| x.name == t.table).unwrap();
+                let Some(doc) = &table.doc else { continue };
+                let key = doc.columns.iter().find(|x| x.name == t.column);
+                if !key.is_some_and(|x| x.ty.key) {
+                    return Err(error(
+                        At::Column(k as u32 + 1),
+                        format!("{} is no key of {}: its key is written column!", t.column, t.table),
+                    ));
+                }
+            }
         }
         Ok(())
     }
 
-    fn compute_values(&mut self) {
-        for k in 0..self.prelude.computed.len() {
-            let (data, valid) = evaluate(&self.columns, &self.prelude.computed[k], self.rows());
-            let col = &mut self.columns[self.stored + k];
-            col.data = data;
-            col.valid = valid;
+    /// Every computed cell computed again, each column holding one decoded with what its
+    /// cells gave, and every reference checked against its tables.
+    fn recompute(&mut self) {
+        self.problems.retain(|p| !matches!(p.why, Why::Formula | Why::Absent | Why::Ambiguous));
+        self.unwell.clear();
+        self.gave.clear();
+        if self.computes() {
+            self.compute();
+        }
+        self.check_references();
+        self.problems.sort_by_key(|p| p.order());
+    }
+
+    fn compute(&mut self) {
+        let rows = self.rows();
+        // Each cell's own formula, resolved; why not, where it does not.
+        let mut cells: BTreeMap<(u32, u32), Result<Ir, String>> = BTreeMap::new();
+        let mut aggregates = self.formulas.iter().flatten().map(slots).max().unwrap_or(0);
+        {
+            let scope = DocScope { columns: &self.columns, tables: &self.tables };
+            for (k, c) in self.columns.iter().enumerate() {
+                for r in 0..c.origin.len() {
+                    if c.origin[r] != Origin::Cell {
+                        continue;
+                    }
+                    let text = self.text(r, k);
+                    let src = &text[2..text.len() - 1];
+                    let resolved = expr::parse(src).and_then(|e| expr::resolve(&e, &scope, &mut aggregates)).and_then(|(ir, kind)| {
+                        holds(&c.ty.base, kind)?;
+                        Ok(ir)
+                    });
+                    cells.insert((r as u32, k as u32), resolved);
+                }
+            }
+        }
+        let mut memo: Vec<Vec<Slot>> =
+            self.columns.iter().map(|c| if c.origin.is_empty() { Vec::new() } else { alloc::vec![Slot::Pending; rows] }).collect();
+        let mut eval = Eval {
+            columns: &self.columns,
+            tables: &self.tables,
+            formulas: &self.formulas,
+            cells: &cells,
+            rows,
+            memo: &mut memo,
+            aggregates: alloc::vec![None; aggregates],
+            indexes: (0..self.tables.len()).map(|_| None).collect(),
+            cycles: Vec::new(),
+        };
+        let mut results: Vec<Vec<(usize, V)>> = Vec::with_capacity(self.columns.len());
+        for (k, c) in self.columns.iter().enumerate() {
+            let mut out = Vec::new();
+            for r in 0..c.origin.len() {
+                if c.origin[r] != Origin::Written {
+                    let v = expr::Source::cell(&mut eval, None, r, k);
+                    out.push((r, v));
+                }
+            }
+            results.push(out);
+        }
+        let cycles = core::mem::take(&mut eval.cycles);
+        for (k, out) in results.into_iter().enumerate() {
+            if self.columns[k].origin.is_empty() {
+                continue;
+            }
+            let given = render(&self.columns[k], &out);
+            self.rebuild(k, &given);
+            for (r, text) in given {
+                if self.problems.iter().any(|p| p.row == r as u32 && p.column == k as u32) {
+                    self.gave.insert((r as u32, k as u32), text);
+                }
+            }
+        }
+        for ((r, k), why) in cells.iter().filter_map(|(at, c)| c.as_ref().err().map(|w| (at, w))) {
+            self.unwell.insert((*r, *k), why.clone());
+        }
+        for (r, k) in cycles {
+            if self.columns[k].origin(r) == Origin::Cell {
+                self.unwell.entry((r as u32, k as u32)).or_insert_with(|| "the formula reads itself".to_owned());
+            }
+        }
+        for &(r, k) in self.unwell.keys() {
+            self.problems.retain(|p| !(p.row == r && p.column == k));
+            self.problems.push(Problem { row: r, column: k, why: Why::Formula });
+        }
+    }
+
+    /// Every reference's key looked up in the tables its column names: a problem where it
+    /// is in none, or in two. A column naming a table that could not be reached is
+    /// unchecked.
+    fn check_references(&mut self) {
+        for (k, c) in self.columns.iter().enumerate() {
+            let Base::Ref(targets) = &c.ty.base else { continue };
+            let mut keys: Vec<(&Column, BTreeMap<String, ()>)> = Vec::with_capacity(targets.len());
+            for t in targets {
+                let Some(doc) = self.tables.iter().find(|x| x.name == t.table).and_then(|x| x.doc.as_deref()) else { break };
+                let key = doc.columns.iter().find(|x| x.name == t.column).unwrap();
+                let set = (0..key.len()).filter_map(|r| value_v(key, r).canonical()).map(|s| (s, ())).collect();
+                keys.push((key, set));
+            }
+            if keys.len() != targets.len() {
+                continue;
+            }
+            for r in 0..c.len() {
+                let Value::Text(text) = c.value(r) else { continue };
+                let found = keys
+                    .iter()
+                    .filter(|(key, set)| {
+                        decode_one(key, text).and_then(|one| value_v(&one, 0).canonical()).is_some_and(|s| set.contains_key(&s))
+                    })
+                    .count();
+                let why = match found {
+                    0 => Why::Absent,
+                    1 => continue,
+                    _ => Why::Ambiguous,
+                };
+                self.problems.push(Problem { row: r as u32, column: k as u32, why });
+            }
         }
     }
 }
 
-/// A numeric cell as an exact decimal.
-fn exact(c: &Column, row: usize) -> Option<Exact> {
-    if !c.valid.get(row) {
-        return None;
+/// What a formula giving `kind` may fill a column of `base` with: a number a numeric
+/// column, a boolean a boolean one; anything else is written as text and read by the
+/// column's type.
+fn holds(base: &Base, kind: K) -> Result<(), String> {
+    let ok = match (base, kind) {
+        (_, K::Null) => true,
+        (b, k) if b.is_number() => k == K::Num,
+        (Base::Bool { .. }, k) => k == K::Bool,
+        (Base::Date, k) => matches!(k, K::Date | K::Text),
+        _ => true,
+    };
+    if ok { Ok(()) } else { Err(format!("the formula gives {}, which a {} column does not hold", kind.word(), base.tag())) }
+}
+
+/// The slots an `Ir`'s aggregates take: one past the last.
+fn slots(ir: &Ir) -> usize {
+    match ir {
+        Ir::Const(_) | Ir::Col(_) => 0,
+        Ir::Agg(_, _, a, slot) => slots(a).max(slot + 1),
+        Ir::Follow(a, _) | Ir::Neg(a) | Ir::Not(a) | Ir::IsNull(a, _) => slots(a),
+        Ir::Bin(_, a, b) => slots(a).max(slots(b)),
+        Ir::Case(arms, o) => arms.iter().map(|(w, t)| slots(w).max(slots(t))).max().unwrap_or(0).max(slots(o)),
+        Ir::Call(_, args) => args.iter().map(slots).max().unwrap_or(0),
     }
-    Some(match &c.data {
-        Data::Int(v) => Exact::from_int(v[row]),
-        Data::Decimal { values, scale } => Exact::from_decimal(Decimal { mantissa: values[row], scale: *scale }),
-        _ => unreachable!("a computed column reads numbers"),
-    })
+}
+
+/// The kind a column's values are to a formula.
+fn kind_of(base: &Base) -> K {
+    match base {
+        b if b.is_number() => K::Num,
+        Base::Bool { .. } => K::Bool,
+        Base::Date => K::Date,
+        _ => K::Text,
+    }
+}
+
+/// A cell's value as a formula reads it.
+fn value_v(c: &Column, row: usize) -> V {
+    match c.value(row) {
+        Value::Null => V::Null,
+        Value::Text(t) | Value::Choice(t) => V::Text(t.to_owned()),
+        Value::Int(n) => V::Num(Exact::from_int(n)),
+        Value::Decimal(d) => V::Num(Exact::from_decimal(d)),
+        Value::Bool(b) => V::Bool(b),
+        Value::Date(d) => V::Date(d),
+        Value::Time(t) => V::Text(value::format_time(t)),
+        Value::DateTime(t) => V::Text(value::format_datetime(t)),
+    }
+}
+
+/// What a column's formulas gave, as the text its cells are read from: an amount at its
+/// currency's minor unit, half to even, any other number at the most digits after the
+/// point any of them has (fewer when 38 digits would not hold the largest), a boolean in
+/// the column's words, a date in its format, text that would read as a formula escaped.
+fn render(c: &Column, results: &[(usize, V)]) -> Vec<(usize, String)> {
+    let minor = match &c.ty.base {
+        Base::Money(cur) => cur.minor_unit(),
+        _ => None,
+    };
+    let numbers = results.iter().filter_map(|(_, v)| match v {
+        V::Num(n) => {
+            let mut n = n.clone();
+            n.normalize();
+            Some(n)
+        }
+        _ => None,
+    });
+    let (mut int, mut frac) = (0, 0);
+    for n in numbers {
+        if n.int_digits() <= value::PRECISION {
+            int = int.max(n.int_digits());
+            frac = frac.max(n.scale);
+        }
+    }
+    let scale = frac.min(value::PRECISION - int);
+    results
+        .iter()
+        .map(|(r, v)| {
+            let text = match v {
+                V::Null => String::new(),
+                V::Num(n) if c.ty.base.is_number() => {
+                    if let Some(d) = minor {
+                        return (*r, n.rescale(d).to_string());
+                    }
+                    let mut n = n.round(scale);
+                    if c.ty.base == Base::Int {
+                        n.normalize();
+                    }
+                    n.to_string()
+                }
+                V::Bool(b) => match &c.ty.base {
+                    Base::Bool { yes, no } => {
+                        if *b {
+                            yes.clone()
+                        } else {
+                            no.clone()
+                        }
+                    }
+                    _ => b.to_string(),
+                },
+                V::Date(d) => match (&c.ty.base, &c.ty.format) {
+                    (Base::Date, Some(f)) => f.write(Some(*d), None),
+                    _ => value::format_date(*d),
+                },
+                V::Text(t) => escaped(t),
+                other => other.canonical().unwrap_or_default(),
+            };
+            (*r, text)
+        })
+        .collect()
+}
+
+/// Names as a formula in this file reads them: its columns, and its tables' columns.
+struct DocScope<'a> {
+    columns: &'a [Column],
+    tables: &'a [Table],
+}
+
+impl expr::Scope for DocScope<'_> {
+    fn column(&self, table: expr::Table, name: &str) -> Option<(usize, K)> {
+        let columns = match table {
+            None => self.columns,
+            Some(t) => match &self.tables[t].doc {
+                // A table not reached: whatever it holds reads as null.
+                None => return Some((0, K::Null)),
+                Some(d) => &d.columns,
+            },
+        };
+        columns.iter().position(|c| c.name == name).map(|k| (k, kind_of(&columns[k].ty.base)))
+    }
+
+    fn table(&self, name: &str) -> Option<usize> {
+        self.tables.iter().position(|t| t.name == name)
+    }
+
+    fn targets(&self, table: expr::Table, column: usize) -> Vec<(usize, usize)> {
+        let base = match table {
+            None => &self.columns[column].ty.base,
+            Some(t) => match &self.tables[t].doc {
+                None => return Vec::new(),
+                Some(d) => &d.columns[column].ty.base,
+            },
+        };
+        let Base::Ref(targets) = base else { return Vec::new() };
+        targets
+            .iter()
+            .filter_map(|t| {
+                let k = self.table(&t.table)?;
+                let key = self.tables[k].doc.as_ref().map_or(Some(0), |d| d.columns.iter().position(|c| c.name == t.column))?;
+                Some((k, key))
+            })
+            .collect()
+    }
+
+    fn key(&self, table: usize) -> Option<usize> {
+        match &self.tables[table].doc {
+            None => Some(0),
+            Some(d) => d.columns.iter().position(|c| c.ty.key),
+        }
+    }
+}
+
+#[derive(Clone)]
+enum Slot {
+    Pending,
+    Busy,
+    Done(V),
+}
+
+/// A file's formulas evaluated: a computed cell when first read, every other value as its
+/// column holds it.
+struct Eval<'a> {
+    columns: &'a [Column],
+    tables: &'a [Table],
+    formulas: &'a [Option<Ir>],
+    cells: &'a BTreeMap<(u32, u32), Result<Ir, String>>,
+    rows: usize,
+    memo: &'a mut [Vec<Slot>],
+    aggregates: Vec<Option<V>>,
+    /// Each table's key values, as `V::canonical` writes them, and the row of each.
+    indexes: Vec<Option<BTreeMap<String, usize>>>,
+    /// The computed cells found reading themselves.
+    cycles: Vec<(usize, usize)>,
+}
+
+impl expr::Source for Eval<'_> {
+    fn cell(&mut self, table: expr::Table, row: usize, column: usize) -> V {
+        if let Some(t) = table {
+            return match &self.tables[t].doc {
+                Some(d) => value_v(&d.columns[column], row),
+                None => V::Null,
+            };
+        }
+        let c = &self.columns[column];
+        let origin = c.origin(row);
+        if origin == Origin::Written {
+            return value_v(c, row);
+        }
+        match &self.memo[column][row] {
+            Slot::Done(v) => return v.clone(),
+            Slot::Busy => {
+                self.cycles.push((row, column));
+                return V::Null;
+            }
+            Slot::Pending => {}
+        }
+        self.memo[column][row] = Slot::Busy;
+        let (formulas, cells) = (self.formulas, self.cells);
+        let ir = match origin {
+            Origin::Formula => formulas[column].as_ref(),
+            _ => cells.get(&(row as u32, column as u32)).and_then(|r| r.as_ref().ok()),
+        };
+        let v = match ir {
+            Some(ir) => expr::eval(ir, None, row, self),
+            None => V::Null,
+        };
+        self.memo[column][row] = Slot::Done(v.clone());
+        v
+    }
+
+    fn rows(&self, table: expr::Table) -> usize {
+        match table {
+            None => self.rows,
+            Some(t) => self.tables[t].doc.as_ref().map_or(0, |d| d.rows()),
+        }
+    }
+
+    fn find(&mut self, table: usize, key: usize, value: &V) -> Option<usize> {
+        let doc = self.tables[table].doc.as_deref()?;
+        let index = self.indexes[table].get_or_insert_with(|| {
+            let mut m = BTreeMap::new();
+            for r in (0..doc.rows()).rev() {
+                if let Some(s) = value_v(&doc.columns[key], r).canonical() {
+                    m.insert(s, r);
+                }
+            }
+            m
+        });
+        index.get(&value.canonical()?).copied()
+    }
+
+    fn recall(&mut self, slot: usize) -> Option<V> {
+        self.aggregates.get(slot).cloned().flatten()
+    }
+
+    fn remember(&mut self, slot: usize, v: V) {
+        self.aggregates[slot] = Some(v);
+    }
 }
 
 /// A column's values with a tail's after them, in place when nothing else holds the
@@ -1382,29 +2100,6 @@ fn joined<T: Copy>(a: Arc<Vec<T>>, b: &[T]) -> Vec<T> {
     a
 }
 
-/// A computed column's values from the columns before it, stored as `Decimal128(38, s)`:
-/// `s` the most digits after the point any value has, less what the largest value's
-/// integer digits need; a value with more digits after the point is rounded half to even
-/// to `s`, one with more than 38 before it is blank.
-fn evaluate(columns: &[Column], c: &Computed, rows: usize) -> (Data, Bits) {
-    let results: Vec<Option<Exact>> = (0..rows).map(|r| prelude::evaluate(c, |k| exact(&columns[k], r))).collect();
-    let fits = |e: &Exact| e.int_digits() <= value::PRECISION;
-    let int = results.iter().flatten().filter(|e| fits(e)).map(Exact::int_digits).max().unwrap_or(0);
-    let frac = results.iter().flatten().filter(|e| fits(e)).map(|e| e.scale).max().unwrap_or(0);
-    let scale = frac.min(value::PRECISION - int);
-    let mut values = Vec::with_capacity(rows);
-    let mut valid = BitsBuilder::with_capacity(rows);
-    for r in &results {
-        let v = r.as_ref().filter(|e| fits(e)).and_then(|e| e.to_i128(scale));
-        values.push(v.unwrap_or(0));
-        valid.push(v.is_some());
-    }
-    (Data::Decimal { values: Arc::new(values), scale: scale as u8 }, valid.finish())
-}
-
-/// Writes one cell's value into its column in place and says why it is a problem, if it
-/// is one; nothing when the column has to be read again whole (a value with more digits
-/// after the point than its column's scale or unit).
 /// One text read by a column's type, as a column of one cell: nothing when the text breaks
 /// the type or is blank.
 pub(crate) fn decode_one(col: &Column, text: &str) -> Option<Column> {
@@ -1418,9 +2113,20 @@ pub(crate) fn decode_one(col: &Column, text: &str) -> Option<Column> {
     let mut run = Run { valid: &mut valid, problems: &mut problems, column: 0, first: 0 };
     column::decode(&d, &mut one, text.as_bytes(), &mut run).ok()?;
     valid.push(true);
-    Some(Column { name: String::new(), spelled: None, ty: col.ty.clone(), computed: None, data: one.finish(), valid: valid.finish() })
+    Some(Column {
+        name: String::new(),
+        spelled: None,
+        ty: col.ty.clone(),
+        formula: None,
+        data: one.finish(),
+        valid: valid.finish(),
+        origin: Arc::new(Vec::new()),
+    })
 }
 
+/// Writes one cell's value into its column in place and says why it is a problem, if it
+/// is one; nothing when the column has to be read again whole (a value with more digits
+/// after the point than its column's scale or unit).
 fn put(col: &mut Column, row: usize, text: &str) -> Option<Option<Why>> {
     let d = Decoder::of(Some(&col.ty));
     let mut one = Building::new(&d, 1);

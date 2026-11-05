@@ -150,7 +150,7 @@ fn main() {
             let dialect = if args[2].ends_with(".tcsv") { tcsv::Dialect::Tcsv } else { tcsv::Dialect::Plain(tcsv::detect(&bytes)) };
             let doc = tcsv::read_as(bytes, dialect, threads).unwrap();
             println!("{} ({} rows, {dialect:?})", args[2], doc.rows());
-            for c in 0..doc.stored() {
+            for c in 0..doc.columns().len() {
                 let mut d = doc.clone();
                 let row = doc.rows() / 2;
                 let text = doc.text(row, c).into_owned();

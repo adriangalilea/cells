@@ -230,8 +230,8 @@ pub fn format_of(c: &Column) -> String {
 }
 
 fn column_schema(c: &Column) -> ArrowSchema {
-    let ty = match &c.computed {
-        Some(e) => format!("{} = {e}", c.ty.shorthand()),
+    let ty = match &c.formula {
+        Some(f) => format!("{}={f}", c.ty.shorthand()),
         None => c.ty.shorthand(),
     };
     let meta = metadata(&[("tcsv.type", &ty)]);
@@ -291,8 +291,9 @@ fn keep_one<T: Send + Sync + 'static>(
     Vec::from([validity, ptr_of(v)])
 }
 
-/// The file's columns as one struct array (`+s`), the stored columns then the computed
-/// ones. The caller owns both and calls each one's `release` once.
+/// The file's columns as one struct array (`+s`), in the header's order, a computed
+/// cell's value where it computes. The caller owns both and calls each one's `release`
+/// once.
 pub fn export(doc: &Doc) -> (ArrowSchema, ArrowArray) {
     let cols = doc.columns();
     let fields: Vec<ArrowSchema> = cols.iter().map(column_schema).collect();

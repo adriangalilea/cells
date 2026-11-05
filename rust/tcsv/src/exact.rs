@@ -373,6 +373,71 @@ impl Exact {
         }
     }
 
+    /// The order of two values, whatever their scales (`1.0` and `1.00` are in no order,
+    /// unlike `==`, which compares how each is held).
+    pub fn order(&self, b: &Exact) -> Ordering {
+        match (self.is_zero() || !self.negative, b.is_zero() || !b.negative) {
+            (true, false) => return Ordering::Greater,
+            (false, true) => return Ordering::Less,
+            _ => {}
+        }
+        let s = self.scale.max(b.scale);
+        let o = cmp_mag(&self.at_scale(s), &b.at_scale(s));
+        if self.negative && !self.is_zero() { o.reverse() } else { o }
+    }
+
+    /// Rounded half to even to `scale` digits after the point (none fewer than it has).
+    pub fn round(&self, scale: u32) -> Exact {
+        if scale >= self.scale {
+            return self.clone();
+        }
+        let mut d = self.scale - scale;
+        let mut r = self.magnitude.clone();
+        let mut last = 0u32;
+        let mut sticky = false;
+        while d > 0 {
+            let (q, rem) = div_small(&r, 10);
+            sticky |= d > 1 && rem != 0;
+            if d == 1 {
+                last = rem;
+            }
+            r = q;
+            d -= 1;
+        }
+        let up = last > 5 || (last == 5 && (sticky || r.first().is_some_and(|l| l % 2 == 1)));
+        let m = if up { add_mag(&r, &from_u128(1)) } else { r };
+        Exact::signed(self.negative, m, scale)
+    }
+
+    /// At exactly `scale` digits after the point: rounded half to even to fewer, zeros
+    /// written to more (`84.2` at 2 is `84.20`).
+    pub fn rescale(&self, scale: u32) -> Exact {
+        if scale < self.scale {
+            return self.round(scale);
+        }
+        Exact::signed(self.negative, self.at_scale(scale), scale)
+    }
+
+    /// Rounded toward negative infinity to a whole number.
+    pub fn floor(&self) -> Exact {
+        let t = self.trunc();
+        if self.negative && t.order(self) != Ordering::Equal { t.sub(&Exact::from_int(1)) } else { t }
+    }
+
+    /// The whole part, toward zero.
+    pub fn trunc(&self) -> Exact {
+        let mut r = self.magnitude.clone();
+        for _ in 0..self.scale {
+            r = div_small(&r, 10).0;
+        }
+        trim(&mut r);
+        Exact::signed(self.negative, r, 0)
+    }
+
+    pub fn abs(&self) -> Exact {
+        Exact::signed(false, self.magnitude.clone(), self.scale)
+    }
+
     /// Digits before the point.
     pub fn int_digits(&self) -> u32 {
         digits(&self.magnitude).saturating_sub(self.scale)

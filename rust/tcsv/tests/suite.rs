@@ -5,7 +5,7 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use tcsv::{Base, ColumnAt, Computing, Dialect, Doc, Naming, Separator, Value};
+use tcsv::{Base, ColumnAt, Dialect, Doc, Naming, Origin, Separator, Value};
 
 /// JSON, as much of it as the suite writes.
 #[derive(Clone, Debug, PartialEq)]
@@ -190,7 +190,7 @@ fn normal(n: &str) -> String {
 fn tagged(doc: &Doc, row: usize, column: usize) -> Option<(String, String, Option<String>)> {
     let c = &doc.columns()[column];
     let v = c.value(row);
-    let tag = if c.computed.is_some() { "num" } else { c.ty.base.tag() }.to_string();
+    let tag = c.ty.base.tag().to_string();
     let currency = match &c.ty.base {
         Base::Money(cur) => Some(cur.as_str().to_string()),
         _ => None,
@@ -210,7 +210,8 @@ fn tagged(doc: &Doc, row: usize, column: usize) -> Option<(String, String, Optio
 
 fn expected(v: &Json) -> Option<(String, String, Option<String>)> {
     let Json::Object(o) = v else { return None };
-    let (tag, val) = o.iter().find(|(k, _)| k != "currency").unwrap();
+    // `{ "from": "formula" }`: a computed cell that gave nothing.
+    let (tag, val) = o.iter().find(|(k, _)| k != "currency" && k != "from")?;
     let text = match val {
         Json::Str(s) => s.clone(),
         Json::Bool(b) => b.to_string(),
@@ -243,9 +244,9 @@ fn check_read(doc: &Doc, want: &Json) -> Vec<String> {
         if c.ty.inferred != inferred {
             fails.push(format!("column {name}: inferred {}, the suite says {inferred}", c.ty.inferred));
         }
-        let computed = w.get("computed").map(|e| e.str());
-        if c.computed.as_deref() != computed {
-            fails.push(format!("column {name}: computed {:?}, the suite says {computed:?}", c.computed));
+        let formula = w.get("formula").map(|e| e.str());
+        if c.formula.as_deref() != formula {
+            fails.push(format!("column {name}: formula {:?}, the suite says {formula:?}", c.formula));
         }
     }
     if let Some(Json::Object(types)) = want.get("types") {
@@ -276,6 +277,15 @@ fn check_read(doc: &Doc, want: &Json) -> Vec<String> {
                 let theirs = expected(wv);
                 if ours != theirs {
                     fails.push(format!("row {r}, {}: {ours:?}, the suite says {theirs:?}", c.name));
+                }
+                let from = match c.origin(r) {
+                    Origin::Written => None,
+                    Origin::Formula => Some("formula"),
+                    Origin::Cell => Some("cell"),
+                };
+                let said = wv.get("from").map(Json::str);
+                if from != said {
+                    fails.push(format!("row {r}, {}: from {from:?}, the suite says {said:?}", c.name));
                 }
             }
         }
@@ -312,29 +322,7 @@ fn apply(doc: &mut Doc, edits: &Json) -> Result<String, String> {
             let header: Option<Vec<&str>> = e.get("header").map(|h| h.array().iter().map(Json::str).collect());
             return Ok(doc.written_as(dialect, header.as_deref()));
         }
-        let computed = |doc: &Doc, key: &str| {
-            let name = e.get(key).unwrap().str();
-            doc.computed().iter().position(|c| c.name == name).ok_or_else(|| format!("no computed column {name}"))
-        };
-        let expression = || e.get("expression").map(Json::str).unwrap_or("");
-        let changed = if let Some(name) = e.get("compute") {
-            Some(doc.recomputed(Computing::New(name.str(), expression()), 1))
-        } else if e.get("recompute").is_some() {
-            let k = computed(doc, "recompute")?;
-            let name = e.get("name").map_or(doc.computed()[k].name.as_str(), Json::str);
-            Some(doc.recomputed(Computing::Set(k, name, expression()), 1))
-        } else if e.get("uncompute").is_some() {
-            Some(doc.recomputed(Computing::Removed(computed(doc, "uncompute")?), 1))
-        } else {
-            None
-        };
-        if let Some(r) = changed {
-            if let Some(d) = taken(r, e)? {
-                *doc = d;
-            }
-            continue;
-        }
-        let stored: Vec<ColumnAt> = (0..doc.stored()).map(ColumnAt::Kept).collect();
+        let stored: Vec<ColumnAt> = (0..doc.columns().len()).map(ColumnAt::Kept).collect();
         let reshaped = if let Some(Json::Number(at)) = e.get("insert") {
             let cells: Vec<&str> = e.get("cells").map(|c| c.array().iter().map(Json::str).collect()).unwrap_or_default();
             let mut order = stored;
@@ -462,6 +450,12 @@ fn conformance() {
     let root = std::env::var("TCSV_SUITE").map(PathBuf::from).unwrap_or_else(|_| Path::new(env!("CARGO_MANIFEST_DIR")).join("../../tests"));
     let mut all = Vec::new();
     cases(&root, &mut all);
+    // Every `.tcsv` file by its path in the suite, for a case's imports to follow.
+    let files: std::collections::BTreeMap<String, String> = all
+        .iter()
+        .filter(|p| p.extension().is_some_and(|e| e == "tcsv"))
+        .filter_map(|p| Some((p.strip_prefix(&root).unwrap().to_string_lossy().into_owned(), String::from_utf8(fs::read(p).ok()?).ok()?)))
+        .collect();
     let mut failed = 0;
     let mut passed = 0;
     for path in &all {
@@ -472,7 +466,11 @@ fn conformance() {
         let mut fails = Vec::new();
         let plain = ext != "tcsv";
         let dialect = if plain { Dialect::Plain(tcsv::detect(&bytes)) } else { Dialect::Tcsv };
-        let read = tcsv::read_as(bytes.clone(), dialect, 1);
+        let at = path.strip_prefix(&root).unwrap().to_string_lossy().into_owned();
+        let read = match plain {
+            true => tcsv::read_as(bytes.clone(), dialect, 1),
+            false => tcsv::read_with(bytes.clone(), &mut tcsv::files::Files::new(&files, &at), 1),
+        };
         if edit.exists() {
             let out = fs::read(format!("{}.out.{ext}", stem.display())).unwrap();
             match read {

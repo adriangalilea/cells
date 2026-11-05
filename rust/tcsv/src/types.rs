@@ -36,6 +36,16 @@ pub enum Base {
     Money(Currency),
     /// One of the words, in the order written.
     Choice(Vec<String>),
+    /// A key of another table, of any of them when there are several (`accounts.account`,
+    /// `shared.account|clients.account`).
+    Ref(Vec<Target>),
+}
+
+/// A table a reference names, and its key column.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Target {
+    pub table: String,
+    pub column: String,
 }
 
 impl Base {
@@ -59,6 +69,7 @@ impl Base {
             Base::Id => "id",
             Base::Money(_) => "money",
             Base::Choice(_) => "choice",
+            Base::Ref(_) => "ref",
         }
     }
 }
@@ -89,6 +100,30 @@ pub const CURRENCIES: &[&str] = &[
     "VES", "VND", "VUV", "WST", "XAF", "XAG", "XAU", "XBA", "XBB", "XBC", "XBD", "XCD", "XCG", "XDR", "XOF", "XPD", "XPF", "XPT", "XSU",
     "XUA", "YER", "ZAR", "ZMW", "ZWG",
 ];
+
+impl Currency {
+    /// Its minor unit, ISO 4217's: the digits after the point an amount of it has (`EUR`
+    /// 2, `JPY` 0, `KWD` 3); nothing for a unit that has none (the metals, `XDR`).
+    pub fn minor_unit(self) -> Option<u32> {
+        const NONE: [&str; 11] = ["XAG", "XAU", "XBA", "XBB", "XBC", "XBD", "XDR", "XPD", "XPT", "XSU", "XUA"];
+        const ZERO: [&str; 17] =
+            ["BIF", "CLP", "DJF", "GNF", "ISK", "JPY", "KMF", "KRW", "PYG", "RWF", "UGX", "UYI", "VND", "VUV", "XAF", "XOF", "XPF"];
+        const THREE: [&str; 7] = ["BHD", "IQD", "JOD", "KWD", "LYD", "OMR", "TND"];
+        const FOUR: [&str; 2] = ["CLF", "UYW"];
+        let c = self.as_str();
+        if NONE.contains(&c) {
+            None
+        } else if ZERO.contains(&c) {
+            Some(0)
+        } else if THREE.contains(&c) {
+            Some(3)
+        } else if FOUR.contains(&c) {
+            Some(4)
+        } else {
+            Some(2)
+        }
+    }
+}
 
 pub fn currency(word: &str) -> Option<Currency> {
     let b = word.as_bytes();
@@ -298,6 +333,7 @@ fn base_shorthand(base: &Base) -> String {
             }
             s
         }
+        Base::Ref(targets) => targets.iter().map(|t| format!("{}.{}", t.table, t.column)).collect::<Vec<_>>().join("|"),
         other => other.tag().to_owned(),
     }
 }
@@ -444,10 +480,32 @@ fn starts_bound(t: &[Token], i: usize) -> bool {
     }
 }
 
+/// `table.column` when `table` is one of `tables`.
+fn target<'a>(t: &Token<'a>, tables: &[String]) -> Option<Target> {
+    let Token::Word(w) = t else { return None };
+    let (table, column) = w.split_once('.')?;
+    (!column.is_empty() && tables.iter().any(|n| n == table)).then(|| Target { table: table.to_owned(), column: column.to_owned() })
+}
+
 /// What the column holds, from the type's first tokens.
-fn holder(t: &[Token], i: &mut usize, named: &[NamedType]) -> Result<Type, String> {
+fn holder(t: &[Token], i: &mut usize, named: &[NamedType], tables: &[String]) -> Result<Type, String> {
     let x = &t[*i];
     let next = t.get(*i + 1);
+    if let Some(first) = target(x, tables) {
+        let mut targets = Vec::from([first]);
+        *i += 1;
+        while t.get(*i).is_some_and(|n| n.is_op("|")) {
+            let Some(more) = t.get(*i + 1).and_then(|n| target(n, tables)) else {
+                return Err("a reference joins other references with |: shared.account|clients.account".to_owned());
+            };
+            if targets.contains(&more) {
+                return Err(format!("{}.{} is named twice", more.table, more.column));
+            }
+            targets.push(more);
+            *i += 2;
+        }
+        return Ok(Type::plain(Base::Ref(targets)));
+    }
     if let Some(word) = x.text()
         && next.is_some_and(|n| n.is_op("|"))
     {
@@ -513,9 +571,10 @@ fn holder(t: &[Token], i: &mut usize, named: &[NamedType]) -> Result<Type, Strin
     }
 }
 
-/// A type from what follows a header cell's `:`. `named` are the prelude's types defined
-/// so far. The error is why, without the place; the caller knows the place.
-pub fn parse_type(spelled: &str, named: &[NamedType]) -> Result<Type, String> {
+/// A type from what follows a header cell's `:` (its formula cut, `split_formula`).
+/// `named` are the prelude's types defined so far, `tables` the tables a reference may
+/// name. The error is why, without the place; the caller knows the place.
+pub fn parse_type(spelled: &str, named: &[NamedType], tables: &[String]) -> Result<Type, String> {
     if spelled.contains(',') || spelled.contains('"') {
         return Err("a type never holds , or \"".to_owned());
     }
@@ -524,7 +583,7 @@ pub fn parse_type(spelled: &str, named: &[NamedType]) -> Result<Type, String> {
         return Err("no type".to_owned());
     }
     let mut i = 0;
-    let mut ty = if starts_bound(&t, 0) { Type::plain(Base::Num) } else { holder(&t, &mut i, named)? };
+    let mut ty = if starts_bound(&t, 0) { Type::plain(Base::Num) } else { holder(&t, &mut i, named, tables)? };
     let mut said = match ty.named.as_deref() {
         Some(n) => {
             Said { min: n.ty.min.is_some(), max: n.ty.max.is_some(), format: n.ty.format.is_some(), key: n.ty.key, optional: n.ty.optional }
@@ -703,12 +762,27 @@ pub fn split_header(cell: &str) -> (&str, Option<&str>) {
     }
 }
 
+/// What follows a header cell's `:` split at its formula: the type, and what follows the
+/// first `=` outside single quotes that closes no `>=` or `<=`.
+pub fn split_formula(spelled: &str) -> (&str, Option<&str>) {
+    let b = spelled.as_bytes();
+    let mut quoted = false;
+    for i in 0..b.len() {
+        match b[i] {
+            b'\'' => quoted = !quoted,
+            b'=' if !quoted && !(i > 0 && matches!(b[i - 1], b'<' | b'>')) => return (&spelled[..i], Some(&spelled[i + 1..])),
+            _ => {}
+        }
+    }
+    (spelled, None)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
     fn sh(s: &str) -> String {
-        parse_type(s, &[]).unwrap_or_else(|e| panic!("{s}: {e}")).shorthand()
+        parse_type(s, &[], &[]).unwrap_or_else(|e| panic!("{s}: {e}")).shorthand()
     }
 
     #[test]
@@ -778,18 +852,30 @@ mod tests {
             "id>=1",
             "eur",
         ] {
-            assert!(parse_type(bad, &[]).is_err(), "{bad:?} should not read");
+            assert!(parse_type(bad, &[], &[]).is_err(), "{bad:?} should not read");
         }
     }
 
     #[test]
     fn named() {
-        let cat = NamedType { name: "Category".into(), ty: parse_type("travel|stay", &[]).unwrap() };
-        let t = parse_type("Category?", core::slice::from_ref(&cat)).unwrap();
+        let cat = NamedType { name: "Category".into(), ty: parse_type("travel|stay", &[], &[]).unwrap() };
+        let t = parse_type("Category?", core::slice::from_ref(&cat), &[]).unwrap();
         assert_eq!(t.base, Base::Choice(alloc::vec!["travel".into(), "stay".into()]));
         assert!(t.optional);
         assert_eq!(t.shorthand(), "Category?");
-        let opt = NamedType { name: "Note".into(), ty: parse_type("text?", &[]).unwrap() };
-        assert!(parse_type("Note?", core::slice::from_ref(&opt)).is_err());
+        let opt = NamedType { name: "Note".into(), ty: parse_type("text?", &[], &[]).unwrap() };
+        assert!(parse_type("Note?", core::slice::from_ref(&opt), &[]).is_err());
+    }
+
+    #[test]
+    fn references_and_formulas() {
+        let tables = ["accounts".to_owned(), "clients".to_owned()];
+        let t = parse_type("accounts.account|clients.account?", &[], &tables).unwrap();
+        assert_eq!(t.shorthand(), "accounts.account|clients.account?");
+        assert!(matches!(&t.base, Base::Ref(r) if r.len() == 2));
+        assert!(parse_type("accounts.account", &[], &[]).is_err());
+        assert_eq!(split_formula("EUR>=0=cost*qty"), ("EUR>=0", Some("cost*qty")));
+        assert_eq!(split_formula("'a=b'|c"), ("'a=b'|c", None));
+        assert_eq!(split_formula("int<=5"), ("int<=5", None));
     }
 }

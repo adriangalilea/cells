@@ -24,6 +24,8 @@ pub mod arrow;
 pub mod column;
 mod doc;
 pub mod exact;
+pub mod expr;
+pub mod files;
 mod format;
 mod identity;
 mod keys;
@@ -32,6 +34,7 @@ pub mod prelude;
 mod properties;
 mod read;
 mod scan;
+pub mod sha256;
 pub mod tokens;
 pub mod types;
 pub mod value;
@@ -39,9 +42,12 @@ pub mod value;
 pub use column::{Bits, Data, Kind, Problem, Value, Why};
 #[cfg(feature = "std")]
 pub use doc::read_parallel;
-pub use doc::{At, Column, ColumnAt, Computing, Doc, Error, Naming, Row, compose, read, read_as};
+pub use doc::{
+    Alone, At, Column, ColumnAt, Doc, Error, Import, Imports, Naming, Origin, Row, Script, Table, compose, read, read_as, read_with,
+};
 pub use format::{Dialect, Separator, detect};
 pub use identity::{Change, Refused, RowAt, Version};
+pub use prelude::{Fenced, Schedule, Statement, Trigger};
 pub use scan::quote;
-pub use types::{Base, Bound, Currency, Format, NamedType, Type, parse_type, split_header};
+pub use types::{Base, Bound, Currency, Format, NamedType, Target, Type, parse_type, split_formula, split_header};
 pub use value::Decimal;

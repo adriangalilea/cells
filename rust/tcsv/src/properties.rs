@@ -126,7 +126,7 @@ fn an_edit_reads_back_as_written() {
         let edits = 1 + rng.below(4);
         for _ in 0..edits {
             let r = rng.below(doc.rows() as u64) as usize;
-            let c = rng.below(doc.stored() as u64) as usize;
+            let c = rng.below(doc.columns().len() as u64) as usize;
             let t = cell(&mut rng);
             // Text holding a control character is refused, the doc untouched.
             assert_eq!(doc.set_cell(r, c, &t).is_err(), crate::column::control(t.as_bytes()).is_some());
@@ -134,7 +134,7 @@ fn an_edit_reads_back_as_written() {
         let again = crate::read(doc.write()).unwrap_or_else(|e| panic!("{:?}: {e}", doc.write()));
         assert_eq!(again.rows(), doc.rows(), "{src:?} became {:?}", doc.write());
         for r in 0..doc.rows() {
-            for c in 0..doc.stored() {
+            for c in 0..doc.columns().len() {
                 assert_eq!(again.text(r, c), doc.text(r, c), "{:?}", doc.write());
                 assert_eq!(again.value(r, c), doc.value(r, c), "row {r} column {c} of {:?}", doc.write());
             }
@@ -156,13 +156,13 @@ fn rows_rearranged_keep_their_cells() {
             continue;
         }
         // Reversed, the first row dropped, a new row in the middle.
-        let blank: Vec<&str> = (0..doc.stored()).map(|_| "").collect();
+        let blank: Vec<&str> = (0..doc.columns().len()).map(|_| "").collect();
         let mut order: Vec<Row> = (1..doc.rows()).rev().map(Row::Kept).collect();
         order.insert(order.len() / 2, Row::New(&blank));
         let after = doc.rearranged(&order, 1).unwrap_or_else(|e| panic!("{src:?}: {e}"));
         assert_eq!(after.rows(), order.len(), "{src:?} became {:?}", after.write());
         for (r, o) in order.iter().enumerate() {
-            for c in 0..doc.stored() {
+            for c in 0..doc.columns().len() {
                 let want = match o {
                     Row::Kept(k) => doc.text(*k, c).into_owned(),
                     Row::New(_) => String::new(),
@@ -273,7 +273,7 @@ fn a_plain_file_reads_and_is_written_back() {
         assert_eq!(doc.write(), src);
         for r in 0..doc.rows() {
             let ragged = doc.problems().iter().any(|p| p.row as usize == r && p.kind() == crate::Kind::Ragged);
-            assert_eq!(ragged, doc.width(r) != doc.stored(), "row {r} of {src:?}");
+            assert_eq!(ragged, doc.width(r) != doc.columns().len(), "row {r} of {src:?}");
         }
         // A plain file's columns are inferred: a cell is broken only by a control character.
         let only = |p: &crate::Problem| p.kind() == crate::Kind::Ragged || matches!(p.why, crate::Why::Control { .. });
@@ -292,7 +292,7 @@ fn a_plain_edit_reads_back_as_written() {
         }
         for _ in 0..1 + rng.below(4) {
             let r = rng.below(doc.rows() as u64) as usize;
-            let c = rng.below(doc.stored() as u64) as usize;
+            let c = rng.below(doc.columns().len() as u64) as usize;
             let t = cell(&mut rng);
             // Text holding a control character is refused, the doc untouched.
             assert_eq!(doc.set_cell(r, c, &t).is_err(), crate::column::control(t.as_bytes()).is_some());
@@ -303,7 +303,7 @@ fn a_plain_edit_reads_back_as_written() {
             assert_eq!(again.texts(r), doc.texts(r), "{:?}", doc.write());
         }
         assert_eq!(again.problems(), doc.problems(), "{:?}", doc.write());
-        for c in 0..doc.stored() {
+        for c in 0..doc.columns().len() {
             assert_eq!(again.columns()[c].ty, doc.columns()[c].ty, "{:?}", doc.write());
             for r in 0..doc.rows() {
                 assert_eq!(again.value(r, c), doc.value(r, c), "row {r} column {c} of {:?}", doc.write());
@@ -319,21 +319,21 @@ fn columns_reshaped_keep_their_cells() {
     for k in 0..3000 {
         let (src, dialect) = if k % 2 == 0 { (file(&mut rng), crate::Dialect::Tcsv) } else { plain(&mut rng) };
         let doc = crate::read_as(src.clone(), dialect, 1).unwrap();
-        if doc.stored() == 0 {
+        if doc.columns().is_empty() {
             continue;
         }
         // Reversed, the first renamed, a new one in the middle, the last taken out.
         let cells: Vec<String> = (0..doc.rows()).map(|r| format!("n{r}")).collect();
         let cells: Vec<&str> = cells.iter().map(String::as_str).collect();
-        let mut order: Vec<ColumnAt> = (0..doc.stored()).rev().map(ColumnAt::Kept).collect();
-        order[doc.stored() - 1] = ColumnAt::Renamed(0, "first");
-        if doc.stored() > 1 && doc.computed().is_empty() {
+        let mut order: Vec<ColumnAt> = (0..doc.columns().len()).rev().map(ColumnAt::Kept).collect();
+        order[doc.columns().len() - 1] = ColumnAt::Renamed(0, "first");
+        if doc.columns().len() > 1 {
             order.remove(0);
         }
         order.insert(order.len() / 2, ColumnAt::New("fresh", &cells));
         let after = doc.reshaped(&order, 1).unwrap_or_else(|e| panic!("{src:?}: {e}"));
         assert_eq!(after.rows(), doc.rows(), "{src:?} became {:?}", after.write());
-        assert_eq!(after.stored(), order.len());
+        assert_eq!(after.columns().len(), order.len());
         for (c, o) in order.iter().enumerate() {
             let name = match o {
                 ColumnAt::Kept(j) => doc.columns()[*j].name.as_str(),
@@ -367,7 +367,7 @@ fn a_file_written_as_another_reads_back_its_cells() {
         assert_eq!(theirs, names, "{src:?} as {to:?}: {text:?}");
         for r in 0..doc.rows() {
             let texts = doc.texts(r);
-            assert_eq!(&again.texts(r)[..doc.stored()], &texts[..], "{src:?} as {to:?}: {text:?}");
+            assert_eq!(&again.texts(r)[..doc.columns().len()], &texts[..], "{src:?} as {to:?}: {text:?}");
         }
         if dialect == Dialect::Tcsv {
             continue;
@@ -449,7 +449,7 @@ fn a_plain_file_in_parallel_is_read_as_in_sequence() {
     assert!(!one.problems().is_empty());
     assert_eq!(one.problems(), many.problems());
     assert_eq!(one.records(), many.records());
-    for c in 0..one.stored() {
+    for c in 0..one.columns().len() {
         assert_eq!(one.columns()[c].ty, many.columns()[c].ty);
         assert_eq!(one.columns()[c].valid.bytes, many.columns()[c].valid.bytes);
     }
@@ -457,12 +457,16 @@ fn a_plain_file_in_parallel_is_read_as_in_sequence() {
 }
 
 #[cfg(feature = "std")]
-fn decoders_of(doc: &crate::Doc) -> Vec<(crate::column::Decoder, bool)> {
-    doc.columns()[..doc.stored()]
+fn decoders_of(doc: &crate::Doc) -> Vec<crate::read::Cells> {
+    doc.columns()
         .iter()
         .map(|c| {
             let ty = if c.ty.inferred { None } else { Some(&c.ty) };
-            (crate::column::Decoder::of(ty), ty.is_none_or(|t| t.optional))
+            crate::read::Cells {
+                decoder: crate::column::Decoder::of(ty),
+                optional: ty.is_none_or(|t| t.optional),
+                computed: c.formula.is_some(),
+            }
         })
         .collect()
 }

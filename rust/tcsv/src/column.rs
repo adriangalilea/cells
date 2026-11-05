@@ -205,6 +205,16 @@ pub enum Why {
     Ragged {
         fields: u32,
     },
+    /// A formula's cell: while a file is read, one its column's formula computes
+    /// (`Computed`) or one holding its own (`Formula`), both settled once every column
+    /// is; after it, a cell formula that does not read, names what is not there or
+    /// reads itself (`Formula`, its words the doc's).
+    Computed,
+    Formula,
+    /// A reference whose key is in none of the tables it names (`Absent`), or in two
+    /// (`Ambiguous`).
+    Absent,
+    Ambiguous,
 }
 
 /// What a problem is: the suite's kinds.
@@ -215,6 +225,10 @@ pub enum Kind {
     Key,
     /// A plain file's record of another width than its header.
     Ragged,
+    /// A cell's own formula that does not compute.
+    Formula,
+    /// A reference to no row, or to rows of two tables.
+    Reference,
 }
 
 impl Kind {
@@ -224,6 +238,8 @@ impl Kind {
             Kind::Missing => "missing",
             Kind::Key => "key",
             Kind::Ragged => "ragged",
+            Kind::Formula => "formula",
+            Kind::Reference => "reference",
         }
     }
 }
@@ -234,6 +250,8 @@ impl Why {
             Why::Missing => Kind::Missing,
             Why::Duplicate { .. } => Kind::Key,
             Why::Ragged { .. } => Kind::Ragged,
+            Why::Formula | Why::Computed => Kind::Formula,
+            Why::Absent | Why::Ambiguous => Kind::Reference,
             _ => Kind::Type,
         }
     }
@@ -296,7 +314,8 @@ impl Decoder {
         let Some(ty) = ty else { return Decoder::Untyped };
         let (min, max) = (ty.min, ty.max);
         match &ty.base {
-            Base::Text => Decoder::Text { min, max },
+            // A reference holds its key's text, checked against the tables once read.
+            Base::Text | Base::Ref(_) => Decoder::Text { min, max },
             Base::Url => Decoder::Url,
             Base::Email => Decoder::Email,
             Base::Id => Decoder::Id,

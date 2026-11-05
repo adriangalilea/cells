@@ -10,14 +10,47 @@ use crate::scan::{self, Fields, Records, Stop};
 /// Rows decoded together.
 const BATCH: usize = 4096;
 
+/// How a column's cells are read: its decoder, whether a blank is allowed, and whether
+/// its formula computes a blank.
+#[derive(Clone, Debug)]
+pub(crate) struct Cells {
+    pub decoder: Decoder,
+    pub optional: bool,
+    pub computed: bool,
+}
+
 /// One column while its cells are read.
 pub(crate) struct Reading {
     pub decoder: Decoder,
     pub optional: bool,
+    pub computed: bool,
     pub building: Building,
     pub valid: BitsBuilder,
     /// An untyped column's candidates (`infer`).
     pub candidates: u8,
+}
+
+/// What a cell's text is to a `.tcsv` file: a formula (`` `=cost*qty` ``), text written
+/// with its first backtick doubled so it reads as no formula (`` ``=x` `` is `` `=x` ``),
+/// or plain text.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum Said {
+    Plain,
+    Formula,
+    Escaped,
+}
+
+#[inline]
+pub(crate) fn said(t: &[u8]) -> Said {
+    if t.first() != Some(&b'`') || t.last() != Some(&b'`') {
+        return Said::Plain;
+    }
+    let ticks = t.iter().take_while(|&&c| c == b'`').count();
+    match (ticks, t.get(ticks)) {
+        (1, Some(b'=')) if t.len() >= 3 => Said::Formula,
+        (2.., Some(b'=')) => Said::Escaped,
+        _ => Said::Plain,
+    }
 }
 
 /// A part of the body read: its records and columns and the problems in them.
@@ -45,7 +78,7 @@ pub(crate) struct Part<'a> {
 }
 
 impl<'a> Part<'a> {
-    pub fn new(src: &'a [u8], from: usize, to: usize, decoders: &[(Decoder, bool)], lenient: bool) -> Part<'a> {
+    pub fn new(src: &'a [u8], from: usize, to: usize, decoders: &[Cells], lenient: bool) -> Part<'a> {
         let ncols = decoders.len();
         Part {
             src,
@@ -58,10 +91,11 @@ impl<'a> Part<'a> {
             records: Vec::with_capacity(BATCH + 1),
             columns: decoders
                 .iter()
-                .map(|(d, optional)| Reading {
-                    decoder: d.clone(),
-                    optional: *optional,
-                    building: Building::new(d, BATCH),
+                .map(|c| Reading {
+                    decoder: c.decoder.clone(),
+                    optional: c.optional,
+                    computed: c.computed,
+                    building: Building::new(&c.decoder, BATCH),
                     valid: BitsBuilder::with_capacity(BATCH),
                     candidates: infer::ALL,
                 })
@@ -84,12 +118,13 @@ impl<'a> Part<'a> {
         let from = self.records[self.records.len() - n] as usize;
         self.controls.clear();
         scan::controls(self.src, from, self.start as usize, &mut self.controls);
+        let formulas = !self.lenient;
         for (c, col) in self.columns.iter_mut().enumerate() {
             let cells = &self.cells[c * BATCH..c * BATCH + n];
             let (src, controls, problems, scratch) = (self.src, &self.controls[..], &mut self.problems, &mut self.scratch);
             match controls.is_empty() {
-                true => decode_run::<false>(src, cells, controls, col, c as u32, base, problems, scratch),
-                false => decode_run::<true>(src, cells, controls, col, c as u32, base, problems, scratch),
+                true => decode_run::<false>(src, cells, controls, col, c as u32, base, formulas, problems, scratch),
+                false => decode_run::<true>(src, cells, controls, col, c as u32, base, formulas, problems, scratch),
             }
         }
         if base == 0 && n == BATCH {
@@ -119,6 +154,8 @@ impl<'a> Part<'a> {
 /// holding a control character is broken before its type is read: one whose span holds
 /// a start in `controls` (sorted, as the cells are), looked for only in a run whose batch
 /// has any (`CONTROLS`), so every other run's loop is as it would be without the rule.
+/// A cell's formula, a formula column's blank, are marked (`Why::Formula`,
+/// `Why::Computed`) where `formulas` (a `.tcsv` file's), its value null until computed.
 #[allow(clippy::too_many_arguments)]
 #[inline(always)]
 fn each<const CONTROLS: bool>(
@@ -130,22 +167,38 @@ fn each<const CONTROLS: bool>(
     c: u32,
     base: u32,
     missing: bool,
+    computed: bool,
+    formulas: bool,
     scratch: &mut Vec<u8>,
     mut put: impl FnMut(Option<&[u8]>, &mut Run) -> Result<(), Why>,
 ) {
     let mut next = 0;
     for (k, &(s, e)) in cells.iter().enumerate() {
         let row = base + k as u32;
-        let text = scan::text(src, s, e, scratch);
+        let mut text = scan::text(src, s, e, scratch);
         // A part's rows count from 0, so its values start at row 0.
         let mut run = Run { valid, problems, column: c, first: 0 };
         if text.is_empty() {
             let _ = put(None, &mut run);
             valid.push(false);
-            if missing {
+            if computed {
+                problems.push(Problem { row, column: c, why: Why::Computed });
+            } else if missing {
                 problems.push(Problem { row, column: c, why: Why::Missing });
             }
             continue;
+        }
+        if formulas && text[0] == b'`' {
+            match said(text) {
+                Said::Formula => {
+                    let _ = put(None, &mut run);
+                    valid.push(false);
+                    problems.push(Problem { row, column: c, why: Why::Formula });
+                    continue;
+                }
+                Said::Escaped => text = &text[1..],
+                Said::Plain => {}
+            }
         }
         if CONTROLS {
             while next < controls.len() && controls[next] < s {
@@ -183,14 +236,16 @@ fn decode_run<const CONTROLS: bool>(
     col: &mut Reading,
     c: u32,
     base: u32,
+    formulas: bool,
     problems: &mut Vec<Problem>,
     scratch: &mut Vec<u8>,
 ) {
-    let Reading { decoder, optional, building, valid, candidates } = col;
+    let Reading { decoder, optional, computed, building, valid, candidates } = col;
     let missing = !*optional && !matches!(decoder, Decoder::Untyped);
+    let computed = *computed;
     match (&*decoder, &mut *building) {
         (Decoder::Untyped, Building::Text { offsets, bytes }) => {
-            each::<CONTROLS>(src, cells, controls, valid, problems, c, base, missing, scratch, |t, _| {
+            each::<CONTROLS>(src, cells, controls, valid, problems, c, base, missing, computed, formulas, scratch, |t, _| {
                 match t {
                     None => offsets.push(bytes.len() as i32),
                     Some(t) => {
@@ -202,7 +257,7 @@ fn decode_run<const CONTROLS: bool>(
             })
         }
         (Decoder::Text { min: None, max: None }, Building::Text { offsets, bytes }) => {
-            each::<CONTROLS>(src, cells, controls, valid, problems, c, base, missing, scratch, |t, _| {
+            each::<CONTROLS>(src, cells, controls, valid, problems, c, base, missing, computed, formulas, scratch, |t, _| {
                 match t {
                     None => offsets.push(bytes.len() as i32),
                     Some(t) => column::push_text(offsets, bytes, t),
@@ -211,7 +266,7 @@ fn decode_run<const CONTROLS: bool>(
             })
         }
         (Decoder::Choice(words), Building::Choice(v)) => {
-            each::<CONTROLS>(src, cells, controls, valid, problems, c, base, missing, scratch, |t, _| {
+            each::<CONTROLS>(src, cells, controls, valid, problems, c, base, missing, computed, formulas, scratch, |t, _| {
                 let Some(t) = t else {
                     v.push(0);
                     return Ok(());
@@ -222,7 +277,7 @@ fn decode_run<const CONTROLS: bool>(
             })
         }
         (Decoder::Date(None), Building::Date(v)) => {
-            each::<CONTROLS>(src, cells, controls, valid, problems, c, base, missing, scratch, |t, _| {
+            each::<CONTROLS>(src, cells, controls, valid, problems, c, base, missing, computed, formulas, scratch, |t, _| {
                 let Some(t) = t else {
                     v.push(0);
                     return Ok(());
@@ -231,13 +286,15 @@ fn decode_run<const CONTROLS: bool>(
                 Ok(())
             })
         }
-        (d, b) => each::<CONTROLS>(src, cells, controls, valid, problems, c, base, missing, scratch, |t, run| match t {
-            None => {
-                column::push_null(b);
-                Ok(())
-            }
-            Some(t) => column::decode(d, b, t, run),
-        }),
+        (d, b) => {
+            each::<CONTROLS>(src, cells, controls, valid, problems, c, base, missing, computed, formulas, scratch, |t, run| match t {
+                None => {
+                    column::push_null(b);
+                    Ok(())
+                }
+                Some(t) => column::decode(d, b, t, run),
+            })
+        }
     }
 }
 
@@ -287,13 +344,7 @@ pub(crate) fn ragged(row: u32, fields: usize, ncols: usize) -> Problem {
 
 /// The body's records read into parts, on up to `threads` threads: `Err` names the row
 /// (from 0) and why. The parts joined are the sequential reading, whatever the threads.
-pub(crate) fn body<'a>(
-    src: &'a [u8],
-    from: usize,
-    decoders: &[(Decoder, bool)],
-    how: Records,
-    threads: usize,
-) -> Result<Vec<Part<'a>>, (u32, Stop)> {
+pub(crate) fn body<'a>(src: &'a [u8], from: usize, decoders: &[Cells], how: Records, threads: usize) -> Result<Vec<Part<'a>>, (u32, Stop)> {
     #[cfg(feature = "std")]
     if let Some(parts) = parallel(src, from, decoders, how, threads) {
         return parts;
@@ -303,7 +354,7 @@ pub(crate) fn body<'a>(
     Ok(Vec::from([sequential(src, from, decoders, how)?]))
 }
 
-pub(crate) fn sequential<'a>(src: &'a [u8], from: usize, decoders: &[(Decoder, bool)], how: Records) -> Result<Part<'a>, (u32, Stop)> {
+pub(crate) fn sequential<'a>(src: &'a [u8], from: usize, decoders: &[Cells], how: Records) -> Result<Part<'a>, (u32, Stop)> {
     let mut part = Part::new(src, from, src.len(), decoders, how.lenient);
     match scan::fast(src, from, src.len(), how.sep, &mut part) {
         Ok(()) => {}
@@ -326,7 +377,7 @@ pub(crate) fn sequential<'a>(src: &'a [u8], from: usize, decoders: &[(Decoder, b
 fn parallel<'a>(
     src: &'a [u8],
     from: usize,
-    decoders: &[(Decoder, bool)],
+    decoders: &[Cells],
     how: Records,
     threads: usize,
 ) -> Option<Result<Vec<Part<'a>>, (u32, Stop)>> {

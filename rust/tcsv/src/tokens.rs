@@ -1,9 +1,11 @@
 //! A file's text as spans, each with what it is: the fences, the prelude's statements and
-//! comments, every header cell's name and the parts of its type, and every cell by its
-//! column. What a highlighter paints and a language server's semantic tokens carry. Read
-//! from the text alone, never refused: a file that does not read still has its spans, a
-//! part that has no meaning marked as such, so a broken file shows where it breaks.
+//! comments, its tables written inline and its scripts, every header cell's name, the
+//! parts of its type and its formula, and every cell by its column. What a highlighter
+//! paints and a language server's semantic tokens carry. Read from the text alone, never
+//! refused: a file that does not read still has its spans, a part that has no meaning
+//! marked as such, so a broken file shows where it breaks.
 
+use alloc::string::String;
 use alloc::vec::Vec;
 
 use crate::Base;
@@ -12,13 +14,14 @@ use crate::types::{self, BASES, EXPLICIT, NamedType, OPS, RESERVED, Type};
 /// What a span of the text is.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum Kind {
-    /// A prelude's `---`.
+    /// A prelude's `---`, and a fence's backticks with its language.
     Fence,
     /// `// …` to the end of a prelude line.
     Comment,
-    /// `type`, opening a named type.
+    /// `type`, `export`, `import`, `from`, `with`, `run` and a schedule's words; a
+    /// formula's `and`, `case`, `null`, and its functions.
     Keyword,
-    /// A column's name: a header cell's, or a computed column's in the prelude.
+    /// A column's name, and a table's where the prelude names it.
     Name,
     /// What a column holds: a base, a currency, a named type (where it is used and where
     /// it is defined), `one of`, `bool`.
@@ -31,14 +34,14 @@ pub enum Kind {
     Format,
     /// A choice's word, or a boolean pair's.
     Choice,
-    /// `:` after a name, `|` and `/` in a type, `=` in a statement, a record's commas, a
-    /// quoted header cell's quotes.
+    /// `:` after a name, `|` and `/` in a type, `=` before a formula or in a statement, a
+    /// record's commas, a quoted header cell's quotes, a cell formula's backticks.
     Punct,
-    /// A number in a computed column's expression.
+    /// A number in a formula or a schedule.
     Number,
-    /// A column named in a computed column's expression.
+    /// A column or a table a formula names, a schedule's zone or path.
     Reference,
-    /// `+ - * / ( )` in an expression.
+    /// `+ - * / || = < ( ) [ ] . ,` in a formula.
     Operator,
     /// A cell of a text column (an untyped column's too).
     CellText,
@@ -53,6 +56,10 @@ pub enum Kind {
     CellId,
     /// A part that has no meaning where it stands.
     Error,
+    /// A quoted string: where an import comes from, an attribute's value, a formula's text.
+    String,
+    /// A script's code, inside its fence.
+    Code,
 }
 
 /// A span of the source in bytes, `start..end`, and its column where it has one (a header
@@ -86,30 +93,55 @@ pub fn tokens(source: &str) -> Vec<Token> {
     let mut out = Out { tokens: Vec::new() };
     let mut at = if source.starts_with('\u{feff}') { 3 } else { 0 };
     let mut named: Vec<NamedType> = Vec::new();
-    // The prelude: from a first line of exactly `---` to the next one.
+    let mut tables: Vec<String> = Vec::new();
+    // The prelude: from a first line of exactly `---` to the next one outside a fence.
     if line(src, at).1 == b"---" {
         let (next, _) = line(src, at);
         out.push(at, at + 3, Kind::Fence, NONE);
         at = next;
+        // A fence open: its backticks, its language, where its content starts.
+        let mut open: Option<(usize, bool, usize)> = None;
         while at < src.len() {
             let (next, l) = line(src, at);
+            let end = at + l.len();
+            if let Some((ticks, table, from)) = open {
+                let closing = l.len() >= ticks
+                    && l.iter().all(|&c| c == b'`' || c == b' ' || c == b'\t')
+                    && l.iter().filter(|&&c| c == b'`').count() == ticks;
+                if closing {
+                    if table {
+                        // A table written inline: its own header and rows.
+                        for t in tokens(&source[from..at]) {
+                            out.tokens.push(Token { start: t.start + from as u32, end: t.end + from as u32, ..t });
+                        }
+                    }
+                    out.push(at, end, Kind::Fence, NONE);
+                    open = None;
+                } else if !table {
+                    out.push(at, end, Kind::Code, NONE);
+                }
+                at = next;
+                continue;
+            }
             if l == b"---" {
                 out.push(at, at + 3, Kind::Fence, NONE);
                 at = next;
                 break;
             }
-            statement(source, at, at + l.len(), &mut named, &mut out);
+            if let Some((ticks, table)) = statement(source, at, end, &mut named, &mut tables, &mut out) {
+                open = Some((ticks, table, next));
+            }
             at = next;
         }
     }
     if at >= src.len() {
         return out.tokens;
     }
-    // The header: each cell's name, and its type's parts.
+    // The header: each cell's name, its type's parts and its formula.
     let mut columns: Vec<Option<Type>> = Vec::new();
     let (fields, next) = record(src, at);
     for (k, &(s, e)) in fields.iter().enumerate() {
-        columns.push(header_cell(source, s, e, k as u32, &named, &mut out));
+        columns.push(header_cell(source, s, e, k as u32, &named, &tables, &mut out));
     }
     at = next;
     // The records: every cell by its column's kind.
@@ -124,6 +156,13 @@ pub fn tokens(source: &str) -> Vec<Token> {
                 Some(None) => Kind::CellText,
                 None => Kind::Error,
             };
+            if kind != Kind::Error && crate::read::said(&src[s..e]) == crate::read::Said::Formula {
+                // `` `=formula` ``: its backticks and `=`, and the formula's parts.
+                out.push(s, s + 2, Kind::Punct, k as u32);
+                expression(source, s + 2, e - 1, k as u32, &mut out);
+                out.push(e - 1, e, Kind::Punct, k as u32);
+                continue;
+            }
             out.push(s, e, kind, k as u32);
         }
         at = next;
@@ -187,12 +226,14 @@ fn cell_kind(base: &Base) -> Kind {
         Base::Date | Base::Time | Base::DateTime => Kind::CellDate,
         Base::Url | Base::Email => Kind::CellLink,
         Base::Id => Kind::CellId,
-        Base::Choice(_) => Kind::CellChoice,
+        // A key of another table: one of the words it holds.
+        Base::Choice(_) | Base::Ref(_) => Kind::CellChoice,
     }
 }
 
-/// A header cell `s..e`: its name, `:`, its type's parts. Its type when it reads.
-fn header_cell(source: &str, s: usize, e: usize, k: u32, named: &[NamedType], out: &mut Out) -> Option<Type> {
+/// A header cell `s..e`: its name, `:`, its type's parts and its formula's. Its type when
+/// it reads.
+fn header_cell(source: &str, s: usize, e: usize, k: u32, named: &[NamedType], tables: &[String], out: &mut Out) -> Option<Type> {
     let raw = &source[s..e];
     let (from, to) = match raw.strip_prefix('"') {
         Some(inner) if inner.ends_with('"') && !inner[..inner.len() - 1].contains('"') => {
@@ -214,29 +255,42 @@ fn header_cell(source: &str, s: usize, e: usize, k: u32, named: &[NamedType], ou
     out.push(from, from + colon, Kind::Name, k);
     out.push(from + colon, from + colon + 1, Kind::Punct, k);
     let spelled = &cell[colon + 1..];
-    type_parts(source, from + colon + 1, to, k, named, out);
-    types::parse_type(spelled, named).ok()
+    let (ty, formula) = types::split_formula(spelled);
+    let ty_end = from + colon + 1 + ty.len();
+    type_parts(source, from + colon + 1, ty_end, k, named, tables, out);
+    if formula.is_some() {
+        out.push(ty_end, ty_end + 1, Kind::Punct, k);
+        expression(source, ty_end + 1, to, k, out);
+    }
+    types::parse_type(ty, named, tables).ok()
 }
 
-/// One prelude line `s..e`: a named type, a computed column, a comment, or nothing.
-fn statement(source: &str, s: usize, e: usize, named: &mut Vec<NamedType>, out: &mut Out) {
+/// One prelude line `s..e` outside a fence: a named type, an import, a table's name and
+/// what fills it, a fence opening, a comment, or nothing. A line that opens a fence says
+/// how many backticks close it, and whether what it holds is a table.
+fn statement(
+    source: &str,
+    s: usize,
+    e: usize,
+    named: &mut Vec<NamedType>,
+    tables: &mut Vec<String>,
+    out: &mut Out,
+) -> Option<(usize, bool)> {
     let b = source.as_bytes();
-    // The comment: `//` outside single quotes.
-    let mut quoted = false;
-    let mut said_end = e;
-    for i in s..e {
-        if b[i] == b'\'' {
-            quoted = !quoted;
-        } else if !quoted && b[i] == b'/' && b.get(i + 1) == Some(&b'/') {
-            said_end = i;
-            break;
-        }
-    }
     let blank = |c: u8| c == b' ' || c == b'\t';
     let mut i = s;
-    while i < said_end && blank(b[i]) {
+    while i < e && blank(b[i]) {
         i += 1;
     }
+    // A fence of the script's or of what the engine stored under it.
+    if b[i..e].starts_with(b"```") {
+        let ticks = b[i..e].iter().take_while(|&&c| c == b'`').count();
+        out.push(i, e, Kind::Fence, NONE);
+        let lang = core::str::from_utf8(&b[i + ticks..e]).unwrap_or("").trim_matches([' ', '\t']);
+        return Some((ticks, lang.starts_with("tcsv")));
+    }
+    // The comment: `//` outside single and double quotes.
+    let said_end = s + crate::prelude::uncomment(&source[s..e]).len();
     let mut end = said_end;
     while end > i && blank(b[end - 1]) {
         end -= 1;
@@ -248,47 +302,154 @@ fn statement(source: &str, s: usize, e: usize, named: &mut Vec<NamedType>, out: 
         }
         j
     };
+    let skip = |mut j: usize| {
+        while j < end && blank(b[j]) {
+            j += 1;
+        }
+        j
+    };
+    let mut opened = None;
     if i < end {
-        let word = ident(i);
-        let after = {
-            let mut j = word;
-            while j < end && blank(b[j]) {
-                j += 1;
-            }
-            j
-        };
+        let mut word = ident(i);
+        if &source[i..word] == "export" && word < end && blank(b[word]) {
+            out.push(i, word, Kind::Keyword, NONE);
+            i = skip(word);
+            word = ident(i);
+        }
+        let after = skip(word);
         if &source[i..word] == "type" && after > word && b.get(after) != Some(&b'=') {
             // `type Name = <type>`
             out.push(i, word, Kind::Keyword, NONE);
             let name_end = ident(after);
             out.push(after, name_end, Kind::Type, NONE);
-            let mut j = name_end;
-            while j < end && blank(b[j]) {
-                j += 1;
-            }
+            let j = skip(name_end);
             if j < end && b[j] == b'=' {
                 out.push(j, j + 1, Kind::Punct, NONE);
-                type_parts(source, j + 1, end, NONE, named, out);
-                if let Ok(ty) = types::parse_type(&source[j + 1..end], named) {
+                type_parts(source, j + 1, end, NONE, named, tables, out);
+                if let Ok(ty) = types::parse_type(&source[j + 1..end], named, tables) {
                     named.push(NamedType { name: source[after..name_end].into(), ty });
                 }
             } else {
                 out.push(j, end, Kind::Error, NONE);
             }
+        } else if &source[i..word] == "import" {
+            out.push(i, word, Kind::Keyword, NONE);
+            import(source, word, end, named, tables, out);
         } else if word > i && b.get(after) == Some(&b'=') {
-            // `name = expression`
+            // `name = ```tcsv` or `name = run <schedule>`
             out.push(i, word, Kind::Name, NONE);
+            tables.push(source[i..word].into());
             out.push(after, after + 1, Kind::Punct, NONE);
-            expression(source, after + 1, end, out);
+            let v = skip(after + 1);
+            if b[v..end].starts_with(b"```") {
+                out.push(v, end, Kind::Fence, NONE);
+                opened = Some((b[v..end].iter().take_while(|&&c| c == b'`').count(), true));
+            } else if b[v..end].starts_with(b"run") {
+                out.push(v, v + 3, Kind::Keyword, NONE);
+                schedule(source, v + 3, end, out);
+            } else {
+                out.push(v, end, Kind::Error, NONE);
+            }
         } else {
             out.push(i, end, Kind::Error, NONE);
         }
     }
     out.push(said_end, e, Kind::Comment, NONE);
+    opened
 }
 
-/// A computed column's expression `s..e`.
-fn expression(source: &str, s: usize, e: usize, out: &mut Out) {
+/// What follows `import` on its line: the names it takes, where from, its attributes.
+fn import(source: &str, s: usize, e: usize, named: &mut Vec<NamedType>, tables: &mut Vec<String>, out: &mut Out) {
+    let b = source.as_bytes();
+    let mut i = s;
+    while i < e {
+        let c = b[i];
+        let start = i;
+        if c == b' ' || c == b'\t' {
+            i += 1;
+        } else if c == b'"' {
+            i += 1;
+            while i < e && b[i] != b'"' {
+                i += 1 + (b[i] == b'\\') as usize;
+            }
+            i = (i + 1).min(e);
+            out.push(start, i, Kind::String, NONE);
+        } else if c.is_ascii_alphabetic() || c == b'_' {
+            while i < e && (b[i].is_ascii_alphanumeric() || b[i] == b'_') {
+                i += 1;
+            }
+            let w = &source[start..i];
+            if matches!(w, "from" | "with") {
+                out.push(start, i, Kind::Keyword, NONE);
+            } else if b.get(i) == Some(&b':') {
+                // An attribute's key.
+                out.push(start, i, Kind::Keyword, NONE);
+            } else if c.is_ascii_uppercase() {
+                named.push(NamedType { name: w.into(), ty: Type::plain(Base::Text) });
+                out.push(start, i, Kind::Type, NONE);
+            } else {
+                tables.push(w.into());
+                out.push(start, i, Kind::Name, NONE);
+            }
+        } else {
+            i += source[i..].chars().next().map_or(1, char::len_utf8);
+            out.push(start, i, Kind::Punct, NONE);
+        }
+    }
+}
+
+/// A schedule `s..e`: its words, its numbers and times, its zone or path.
+fn schedule(source: &str, s: usize, e: usize, out: &mut Out) {
+    const WORDS: [&str; 18] = [
+        "every",
+        "at",
+        "in",
+        "on",
+        "cron",
+        "when",
+        "changes",
+        "minute",
+        "hour",
+        "day",
+        "weekday",
+        "month",
+        "monday",
+        "tuesday",
+        "wednesday",
+        "thursday",
+        "friday",
+        "saturday",
+    ];
+    let b = source.as_bytes();
+    let mut i = s;
+    while i < e {
+        if b[i] == b' ' || b[i] == b'\t' || b[i] == b',' {
+            if b[i] == b',' {
+                out.push(i, i + 1, Kind::Punct, NONE);
+            }
+            i += 1;
+            continue;
+        }
+        let start = i;
+        while i < e && !matches!(b[i], b' ' | b'\t' | b',') {
+            i += 1;
+        }
+        let w = &source[start..i];
+        let kind = if WORDS.contains(&w) || w == "sunday" {
+            Kind::Keyword
+        } else if w.bytes().next().is_some_and(|c| c.is_ascii_digit() || c == b'*') {
+            Kind::Number
+        } else {
+            Kind::Reference
+        };
+        out.push(start, i, kind, NONE);
+    }
+}
+
+/// A formula `s..e`, in the header's cell or a cell's own: its numbers, texts, names,
+/// keywords and operators.
+fn expression(source: &str, s: usize, e: usize, column: u32, out: &mut Out) {
+    const KEYWORDS: [&str; 13] = ["and", "or", "not", "is", "null", "true", "false", "case", "when", "then", "else", "end", "in"];
     let b = source.as_bytes();
     let mut i = s;
     while i < e {
@@ -300,18 +461,35 @@ fn expression(source: &str, s: usize, e: usize, out: &mut Out) {
             while i < e && (b[i].is_ascii_digit() || b[i] == b'.') {
                 i += 1;
             }
-            out.push(start, i, Kind::Number, NONE);
+            out.push(start, i, Kind::Number, column);
+        } else if c == b'\'' || c == b'"' {
+            i += 1;
+            while i < e {
+                if b[i] == c {
+                    if b.get(i + 1) == Some(&c) && i + 1 < e {
+                        i += 2;
+                        continue;
+                    }
+                    i += 1;
+                    break;
+                }
+                i += 1;
+            }
+            out.push(start, i, if c == b'\'' { Kind::String } else { Kind::Reference }, column);
         } else if c.is_ascii_alphabetic() || c == b'_' {
             while i < e && (b[i].is_ascii_alphanumeric() || b[i] == b'_') {
                 i += 1;
             }
-            out.push(start, i, Kind::Reference, NONE);
-        } else if matches!(c, b'+' | b'-' | b'*' | b'/' | b'(' | b')') {
+            let w = &source[start..i];
+            let call = b.get(i) == Some(&b'(');
+            let kind = if call || KEYWORDS.iter().any(|k| k.eq_ignore_ascii_case(w)) { Kind::Keyword } else { Kind::Reference };
+            out.push(start, i, kind, column);
+        } else if matches!(c, b'+' | b'-' | b'*' | b'/' | b'(' | b')' | b'[' | b']' | b'.' | b',' | b'=' | b'<' | b'>' | b'!' | b'|') {
             i += 1;
-            out.push(start, i, Kind::Operator, NONE);
+            out.push(start, i, Kind::Operator, column);
         } else {
             i += source[i..].chars().next().map_or(1, char::len_utf8);
-            out.push(start, i, Kind::Error, NONE);
+            out.push(start, i, Kind::Error, column);
         }
     }
 }
@@ -326,7 +504,8 @@ enum Lex {
 }
 
 /// A type's text `s..e`, its parts by what they are, as `types::parse_type` reads them.
-fn type_parts(source: &str, s: usize, e: usize, column: u32, named: &[NamedType], out: &mut Out) {
+fn type_parts(source: &str, s: usize, e: usize, column: u32, named: &[NamedType], tables: &[String], out: &mut Out) {
+    let reference = |w: &str| w.split_once('.').is_some_and(|(t, c)| !c.is_empty() && tables.iter().any(|n| n == t));
     let b = source.as_bytes();
     let mut lexed: Vec<(usize, usize, Lex)> = Vec::new();
     let mut i = s;
@@ -390,7 +569,9 @@ fn type_parts(source: &str, s: usize, e: usize, column: u32, named: &[NamedType]
             Lex::Op(_) => Kind::Bound,
             Lex::Word => {
                 let w = word(k);
-                if matches!(w, "key" | "optional") {
+                if reference(w) {
+                    Kind::Reference
+                } else if matches!(w, "key" | "optional") {
                     listing = false;
                     Kind::Mark
                 } else if matches!(w, "min" | "max" | "above" | "below" | "between" | "and") {
@@ -442,15 +623,15 @@ mod tests {
 
     #[test]
     fn every_part_by_what_it_is() {
-        let src = "---\ntype Cat = travel|stay // why\ntotal = cost * 2\n---\nitem:text!,cat:Cat,cost:EUR>=0,on:date(DD/MM/YYYY)\nfuel,travel,84.20,14/08/2026\n";
+        let src = "---\ntype Cat = travel|stay // why\n---\nitem:text!,cat:Cat,cost:EUR>=0,on:date(DD/MM/YYYY),total:EUR=cost*2\nfuel,travel,84.20,14/08/2026,\n";
         let t = shown(src);
         let kinds = |k: Kind| t.iter().filter(|x| x.1 == k).map(|x| x.0.as_str()).collect::<Vec<_>>();
         assert_eq!(kinds(Kind::Fence), ["---", "---"]);
         assert_eq!(kinds(Kind::Keyword), ["type"]);
         assert_eq!(kinds(Kind::Comment), ["// why"]);
-        assert_eq!(kinds(Kind::Type), ["Cat", "text", "Cat", "EUR", "date"]);
+        assert_eq!(kinds(Kind::Type), ["Cat", "text", "Cat", "EUR", "date", "EUR"]);
         assert_eq!(kinds(Kind::Choice), ["travel", "stay"]);
-        assert_eq!(kinds(Kind::Name), ["total", "item", "cat", "cost", "on"]);
+        assert_eq!(kinds(Kind::Name), ["item", "cat", "cost", "on", "total"]);
         assert_eq!(kinds(Kind::Reference), ["cost"]);
         assert_eq!(kinds(Kind::Number), ["2"]);
         assert_eq!(kinds(Kind::Mark), ["!"]);
@@ -463,6 +644,20 @@ mod tests {
         assert!(kinds(Kind::Error).is_empty(), "{t:?}");
         // Cells carry their column, for a rainbow.
         assert_eq!(t.iter().filter(|x| x.0 == "84.20").map(|x| x.2).collect::<Vec<_>>(), [2]);
+    }
+
+    #[test]
+    fn tables_scripts_and_formulas() {
+        let src = "---\nimport accounts from \"../accounts.tcsv\"\nfees = ```tcsv\nkind:text!,pct:pct\ncard,1.4\n```\nfx = run every day at 18:00 in Europe/Madrid\n```ts\nexport default () => []\n```\n```tcsv\nrate:num\n```\n---\nto:accounts.account,cost:EUR\nrent,`=96.75/3`\n";
+        let t = shown(src);
+        let kinds = |k: Kind| t.iter().filter(|x| x.1 == k).map(|x| x.0.as_str()).collect::<Vec<_>>();
+        assert_eq!(kinds(Kind::String), ["\"../accounts.tcsv\""]);
+        assert_eq!(kinds(Kind::Code), ["export default () => []"]);
+        assert!(kinds(Kind::Name).contains(&"pct"), "{t:?}");
+        assert_eq!(kinds(Kind::CellChoice), ["rent"]);
+        assert_eq!(kinds(Kind::Number), ["18:00", "96.75", "3"]);
+        assert_eq!(kinds(Kind::CellNumber), ["1.4"]);
+        assert!(kinds(Kind::Error).is_empty(), "{t:?}");
     }
 
     #[test]
