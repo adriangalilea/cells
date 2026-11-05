@@ -38,7 +38,7 @@ const ACCOUNT = "coffee"
 
 /** What the engine says of the saved files with the row and no account (`cells check`'s
  *  own words; it prints nothing when nothing is wrong, and exits 0). */
-const FAILING = `${money} row 2, to: "${ACCOUNT}" is no key of accounts`
+const FAILING = `${money} row 3, to: "${ACCOUNT}" is no key of accounts`
 const FIRST = `$ ${PRODUCT.cli} check ${money}\n${FAILING}`
 const SECOND = `$ ${PRODUCT.cli} check ${money} && echo ok\nok`
 
@@ -57,16 +57,23 @@ const FILES: CodeFile[] = [
   { path: accounts, text: ACCOUNTS },
   { path: money, text: MONEY },
 ]
+/** How long a saved change holds before the next is typed: the Cells window reads the file
+ *  when it is written, and the change is looked at. */
+const LOOK_MS = 900
+
 const STEPS: CodeStep[] = [
   { kind: "open", path: accounts },
   { kind: "open", path: money, delay: 900 },
-  // The header, a part at a time: a type, a reference, a formula.
+  // The header, a part at a time, each saved: a type, a reference, a formula.
   { kind: "type", line: HEADER, column: "date,amount".length + 1, text: AMOUNT_TYPE, delay: 700 },
-  { kind: "type", line: HEADER, text: TO_TYPE, delay: 700 },
-  { kind: "type", line: HEADER, text: FORMULA, delay: 700 },
+  { kind: "save", delay: 200 },
+  { kind: "type", line: HEADER, text: TO_TYPE, delay: LOOK_MS },
+  { kind: "save", delay: 200 },
+  { kind: "type", line: HEADER, text: FORMULA, delay: LOOK_MS },
+  { kind: "save", delay: 200 },
   // A movement to an account accounts.cell does not have.
-  { kind: "type", line: 6, text: `\n${ROW}`, delay: 700 },
-  { kind: "save", delay: 250 },
+  { kind: "type", line: 6, text: `\n${ROW}`, delay: LOOK_MS },
+  { kind: "save", delay: 200 },
   // While the check runs and is read: then accounts.cell, and the account.
   { kind: "open", path: accounts, delay: TO_TERMINAL + firstCheck + READ_MS },
   { kind: "type", line: 4, text: `\n${ACCOUNT}`, delay: 300 },
@@ -77,8 +84,8 @@ const STEPS: CodeStep[] = [
 
 const edit = codeTimeline(FILES, STEPS)
 const at = (step: number) => OPENING + (edit.ends[step] as number)
-const savedTypo = at(6)
-const savedFixed = at(9)
+const savedTypo = at(9)
+const savedFixed = at(12)
 
 /** The terminal's session: the first check after the first save, the second after the
  *  second, its pause (`@ms`) keeping them apart on the one clock. */
@@ -96,6 +103,21 @@ export function textAt(timeline: CodeTimeline, path: string, ms: number): string
   let out = ""
   for (const c of chars) if (c.born <= ms) out += c.ch
   return out
+}
+
+/** A file as it was last written by an instant of the edit (ms on its own clock): what an
+ *  app watching the folder reads, never the editor's unsaved buffer. Before any save, the
+ *  file as the session found it. */
+export function savedAt(timeline: CodeTimeline, path: string, ms: number): string {
+  let front: string | null = null
+  let written = -1
+  for (const [i, s] of timeline.steps.entries()) {
+    if (s.kind === "open") front = s.path
+    if (s.kind === "save" && front === path && (timeline.ends[i] as number) <= ms) written = timeline.ends[i] as number
+  }
+  const initial = timeline.files.find((f) => f.path === path)
+  if (!initial) throw new Error(`hero: no file ${path} in the edit`)
+  return written < 0 ? initial.text : textAt(timeline, path, written)
 }
 
 const typo = MONEY.replace("date,amount,to", `date,amount${AMOUNT_TYPE},to${TO_TYPE}${FORMULA}`).replace(/\n$/, `\n${ROW}\n`)
@@ -117,10 +139,10 @@ export const HERO = {
       { start: 0, title: "the lid" },
       { start: OPENING, title: `${accounts}, a list` },
       { start: at(1), title: `${money}, a plain table` },
-      { start: at(2), title: "a type, a reference, a formula" },
-      { start: at(5), title: "an account that does not exist" },
+      { start: at(1), title: "a type, a reference, a formula" },
+      { start: at(7), title: "an account that does not exist" },
       { start: savedTypo, title: `${PRODUCT.cli} check names the row` },
-      { start: at(8) - (ACCOUNT.length + 1) * TYPE_MS, title: "the account added" },
+      { start: at(11) - (ACCOUNT.length + 1) * TYPE_MS, title: "the account added" },
       { start: savedFixed, title: `${PRODUCT.cli} check passes` },
     ],
   } satisfies Clip,
@@ -128,7 +150,7 @@ export const HERO = {
    *  accounts.cell (scripts/examples.ts asserts it). */
   checkpoints: {
     plain: { money: MONEY, accounts: ACCOUNTS, problems: [] as string[] },
-    typo: { money: typo, accounts: ACCOUNTS, problems: [`row 2, to: "${ACCOUNT}" is no key of accounts`] },
+    typo: { money: typo, accounts: ACCOUNTS, problems: [`row 3, to: "${ACCOUNT}" is no key of accounts`] },
     fixed: { money: typo, accounts: ACCOUNTS.replace(/\n$/, `\n${ACCOUNT}\n`), problems: [] as string[] },
   },
   /** What `cells check` prints for the typo, which the terminal shows. */

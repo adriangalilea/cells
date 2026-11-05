@@ -1,9 +1,7 @@
 import { Suspense } from "react"
 import { HeroShimmer } from "@/components/ground"
-import { Hero } from "@/components/hero"
+import { EditorWindow, Hero } from "@/components/hero"
 import { Story } from "@/components/story"
-import { Code } from "@/components/ui/code"
-import { HERO } from "@/lib/hero"
 import { PRODUCT } from "@/lib/product"
 
 /** What each neighbour does, honestly, and what a cell does instead. */
@@ -25,8 +23,8 @@ const ROWS = [
   },
   {
     them: "a spreadsheet",
-    lack: "formulas point at B7, which moves when a row is inserted; macros run when a file is opened",
-    cells: "formulas name columns and keys; opening a file runs nothing",
+    lack: "a formula points at B7, and a row inserted above moves what B7 is; a macro can run when the file opens",
+    cells: "a formula names columns and keys, and reads no clock, network or file; opening a file runs nothing",
   },
 ]
 
@@ -76,18 +74,14 @@ export default function Page() {
       {/* The file the hero's screen let go of lands here first, so its block leads and its
           words follow: nothing stands between the screen and where the text lands. */}
       <section id="story" className="mx-auto mt-24 max-w-6xl scroll-mt-20 px-6 md:mt-32">
-        <div data-hero-landing className="overflow-hidden rounded-xl border border-border bg-card/70">
-          <Code lang="cell" filename={HERO.money} copy>
-            {HERO.checkpoints.fixed.money.trimEnd()}
-          </Code>
+        {/* The editor window the Mac let go of, the same window: its two files a tab each. */}
+        <div data-hero-landing className="overflow-hidden rounded-[10px] shadow-[0_24px_60px_-24px_rgb(0_0_0/0.6)]">
+          <Suspense>
+            <EditorWindow />
+          </Suspense>
         </div>
-        <div className="mt-4 max-w-md overflow-hidden rounded-xl border border-border bg-card/70">
-          <Code lang="cell" filename={HERO.accounts} copy>
-            {HERO.checkpoints.fixed.accounts.trimEnd()}
-          </Code>
-        </div>
-        <h2 className="mt-14 max-w-[26ch] text-balance text-[clamp(1.75rem,3.2vw,2.5rem)] leading-[1.1] font-medium tracking-[-0.025em]">
-          The file on that screen. <span className="text-muted-foreground">Everything it does is in its text.</span>
+        <h2 className="mt-14 max-w-[28ch] text-balance text-[clamp(1.75rem,3.2vw,2.5rem)] leading-[1.1] font-medium tracking-[-0.025em]">
+          Types, a formula, an import. <span className="text-muted-foreground">No schema file beside it, no database behind it.</span>
         </h2>
       </section>
 
@@ -121,11 +115,11 @@ export default function Page() {
             <ul className="mt-4 space-y-2.5 text-[15px] leading-relaxed text-muted-foreground">
               <li>The spec, and a conformance suite every reader runs.</li>
               <li>The engine in Rust, passing all of it natively and as WebAssembly: what runs on this page.</li>
-              <li>Formulas in headers and cells, tables written inline, imports pinned by hash, references checked across files.</li>
+              <li>Formulas in headers and cells, tables written inline, imports (a URL's pinned by its hash), references checked across files.</li>
               <li>
                 <code className="font-mono text-foreground/80">{PRODUCT.cli} check</code>, <code className="font-mono text-foreground/80">show</code>, <code className="font-mono text-foreground/80">pin</code>, and <code className="font-mono text-foreground/80">run</code> with Bun.
               </li>
-              <li>The table you saw, on the web and on Apple platforms.</li>
+              <li>The engine bound on the web (the tables on this page) and in Swift, on macOS, iOS and tvOS.</li>
             </ul>
           </div>
           <div>

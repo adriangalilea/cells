@@ -6,14 +6,15 @@
 // drives it all: `Playback` plays it in view and round again; every window reads its own
 // moment from the hero's through a `Playhead`, so each ui piece keeps its clock's meaning.
 //
-// As the reader scrolls past it, the file leaves the computer: money.cell's text lifts off
-// the screen and travels into the page, landing on the story's first block (the same
-// characters, a copy of that block moved onto them), while the lid folds shut behind it,
-// folded by the Mac's own lid (its timeline's last step, driven by the scroll). Reduced
-// motion: the Mac shut and the text already in place. A phone stacks the windows and
-// keeps the text where it is.
+// As the reader scrolls past it, the editor's window leaves the computer: on the first
+// frame of scroll it comes off the screen as one object and grows, continuously, into the
+// page's first block, while the lid folds shut behind it (the Mac's own lid, its
+// timeline's last step, driven by the scroll). The Cells window shows the file in front in
+// the editor, as last saved. Reduced motion: the Mac shut and the window already in place.
+// A phone stacks the windows and nothing flies.
 
 import * as React from "react"
+import { createPortal } from "react-dom"
 import { CellsWindow } from "@/components/cells-window"
 import { HelixDiagnostics } from "@/components/helix-diagnostics"
 import { Macos } from "@/components/ui/macos"
@@ -21,9 +22,10 @@ import { Playback, Playhead, usePlayhead } from "@/components/ui/playback"
 import { Terminal, useTerminalPalette } from "@/components/ui/terminal"
 import { TerminalEditor } from "@/components/ui/terminal-editor"
 import { codeFrameAt, codeTimeline } from "@/lib/code-session"
-import { HERO, textAt } from "@/lib/hero"
+import { HERO, savedAt } from "@/lib/hero"
 import { type Art, LID_MS, sceneClock, type Timeline } from "@/lib/macos-session"
 import { PRODUCT } from "@/lib/product"
+import { LINE_HEIGHT } from "@/lib/terminal-session"
 
 /** The Mac's own story: closed, the lid opens, and (driven by the scroll) shuts again. */
 const WORLD = { battery: 82, charging: false, lid: "closed" as const, asleep: false, heat: false }
@@ -45,54 +47,97 @@ const EDIT = codeTimeline(HERO.files, HERO.steps)
 
 /** The editor's accent, the terminal's phosphor: the site's cold edge light. */
 const ACCENT = "#7fdcf0"
+/** The editor's window on the Mac's stage (960 by 600, ui macos): 36 from the top (under
+ *  the menu bar), 12 from the foot, the three windows' one inset. */
+const INSET = 12
+const TOP = 36
+const WINDOW_H = 600 - TOP - INSET
 /** Helix's rows: the screen's full height. */
-const ROWS = 27
+const ROWS = 26
+/** The window's height in its own type, from ui's terminal and terminal-editor: the bar
+ *  (30/13 em), the bufferline, the text's top padding (0.5 em), the rows, the status and
+ *  command lines; plus its 1px border above and below. */
+const EDITOR_EM = 30 / 13 + 0.5 + (ROWS + 3) * LINE_HEIGHT
+/** The type size that makes ROWS fill the window to its foot, status line last. */
+const EDITOR_SIZE = `${(WINDOW_H - 2) / EDITOR_EM}px`
 
 const share = (ms: number, from: number, length: number) => Math.min(1, Math.max(0, (ms - from) / length))
 
-/** Both files as they stand at the hero's instant, and the editor's own moment. */
+/** What the Cells window shows at the hero's instant: the file in front in the editor (it
+ *  follows the editor, never ahead of it), as last written (an app watching the folder
+ *  re-reads a file when the editor writes it, never while it is being typed), read with
+ *  the other as written; and the editor's own moment. */
 function useFiles(ms: number) {
   const editAt = share(ms, HERO.edit.from, HERO.edit.duration)
   const editMs = editAt * EDIT.total
+  const front = codeFrameAt(EDIT, editMs).active ?? HERO.accounts
+  const other = front === HERO.money ? HERO.accounts : HERO.money
   return {
     editAt,
-    money: textAt(EDIT, HERO.money, editMs),
-    accounts: textAt(EDIT, HERO.accounts, editMs),
+    name: front,
+    text: savedAt(EDIT, front, editMs),
+    others: [{ name: other, text: savedAt(EDIT, other, editMs) }],
   }
 }
 
-/** Helix's bufferline: the open files as tabs, the one in front lit. A site-side stand-in
- *  until ui's terminal-editor draws its own (for ui: `bufferline` on TerminalEditor). */
-function Bufferline() {
+/** Helix's bufferline: the open files as tabs, the one in front lit; with `choose`, a press
+ *  on a tab brings its file to the front. A site-side stand-in until ui's terminal-editor
+ *  draws its own (for ui: `bufferline` on TerminalEditor). */
+function Bufferline({ choose }: { choose?: (path: string) => void }) {
   const palette = useTerminalPalette()
   const ms = usePlayhead(undefined).at * EDIT.total
   const f = codeFrameAt(EDIT, ms)
   return (
     <div className="flex whitespace-pre" style={{ background: palette.bar, color: palette.muted }}>
-      {f.open.map((path) => (
-        <span
-          key={path}
-          className="px-[1ch]"
-          style={path === f.active ? { background: palette.bg, color: palette.command } : undefined}
-        >
-          {path}
-          {f.dirty.includes(path) ? " [+]" : ""}
-        </span>
-      ))}
+      {f.open.map((path) => {
+        const front = path === f.active
+        const style = front ? { background: palette.bg, color: palette.command } : undefined
+        const label = `${path}${f.dirty.includes(path) ? " [+]" : ""}`
+        return choose ? (
+          <button key={path} type="button" aria-pressed={front} onClick={() => choose(path)} className="cursor-pointer px-[1ch] hover:text-white" style={style}>
+            {label}
+          </button>
+        ) : (
+          <span key={path} className="px-[1ch]" style={style}>
+            {label}
+          </span>
+        )
+      })}
       {f.open.length === 0 && <span className="px-[1ch]"> </span>}
     </div>
   )
 }
 
-function Editor({ size, rows = ROWS }: { size: string; rows?: number }) {
+function Editor({ size, rows = ROWS, choose, className }: { size: string; rows?: number; choose?: (path: string) => void; className?: string }) {
   return (
-    <Terminal alt="" accent={ACCENT} size={size}>
-      <Bufferline />
+    <Terminal alt="" accent={ACCENT} size={size} className={className}>
+      <Bufferline choose={choose} />
       <div className="relative" data-slot="hero-editor">
         <TerminalEditor files={HERO.files} steps={HERO.steps} rows={rows} />
         <HelixDiagnostics timeline={EDIT} rows={rows} others={HERO.files.map((f) => f.path)} />
       </div>
     </Terminal>
+  )
+}
+
+/** The editor window as the page keeps it, after the hero: both files as the edit left
+ *  them, its tabs pressable. The same window the Mac's screen let go of, larger. */
+/** Rows: money.cell's 7 lines and the caret's last, plus helix's 3 rows kept below the
+ *  caret (its scrolloff), so the whole file shows from its first line. */
+const LANDING = { size: "clamp(11px, 1.15vw, 15px)", rows: 10 }
+/** The edit's instant each file is in front and whole: money.cell at the end, accounts.cell
+ *  just after its save. */
+const FRONT: Record<string, number> = {
+  [HERO.money]: 1,
+  [HERO.accounts]: ((EDIT.ends[12] as number) + 1) / EDIT.total,
+}
+
+export function EditorWindow({ choose = true, rows = LANDING.rows }: { choose?: boolean; rows?: number }) {
+  const [front, setFront] = React.useState(HERO.money)
+  return (
+    <Playhead progress={FRONT[front] as number}>
+      <Editor size={LANDING.size} rows={rows} choose={choose ? setFront : undefined} />
+    </Playhead>
   )
 }
 
@@ -114,14 +159,20 @@ function Scene({ lid }: { lid: number }) {
         {/* Night over the desktop picture: the windows are the brightest thing. */}
         <div aria-hidden className="absolute inset-0 bg-[radial-gradient(120%_90%_at_70%_100%,rgb(8_12_20/0.2),rgb(4_6_10/0.6))]" />
         <Playhead progress={files.editAt}>
-          <div className="absolute top-[36px] bottom-[12px] left-[12px] w-[540px]">
-            <Editor size="10.5px" />
+          {/* Gone from the screen while it flies (components/hero useDeparture): one window,
+              never two. */}
+          <div
+            data-slot="hero-editor-window"
+            className="absolute w-[540px]"
+            style={{ top: TOP, bottom: INSET, left: INSET, visibility: lid > 0 ? "hidden" : undefined }}
+          >
+            <Editor size={EDITOR_SIZE} className="h-full" />
           </div>
         </Playhead>
         <CellsWindow
-          name={HERO.money}
-          text={files.money}
-          others={[{ name: HERO.accounts, text: files.accounts }]}
+          name={files.name}
+          text={files.text}
+          others={files.others}
           className="absolute top-[36px] left-[562px] h-[300px] w-[386px]"
         />
         <Playhead progress={share(ms, HERO.terminal.from, HERO.terminal.duration)}>
@@ -150,7 +201,7 @@ function Stacked() {
         {/* The longest file is 8 lines: the phone's editor is no taller than it needs. */}
         <Editor size="clamp(7px,2.35vw,10px)" rows={10} />
       </Playhead>
-      <CellsWindow name={HERO.money} text={files.money} others={[{ name: HERO.accounts, text: files.accounts }]} className="h-[188px]" />
+      <CellsWindow name={files.name} text={files.text} others={files.others} className="h-[188px]" />
       <Playhead progress={share(ms, HERO.terminal.from, HERO.terminal.duration)}>
         <Terminal alt="" accent={ACCENT} size="clamp(7px,2.35vw,10px)" session={HERO.session} rows={4} />
       </Playhead>
@@ -165,7 +216,10 @@ export function Hero() {
   const still = useStill()
   const narrow = useNarrow()
   const root = React.useRef<HTMLDivElement>(null)
-  const lid = useDeparture(root, !narrow && !reduced)
+  const flight = React.useRef<HTMLDivElement>(null)
+  const departs = !narrow && !reduced
+  const mounted = React.useSyncExternalStore(NO_CHANGE, () => true, () => false)
+  const { lid, rows } = useDeparture(root, flight, departs && mounted)
   if (narrow) {
     if (still !== null || reduced) return <Playhead progress={still ?? 1}>{<Stacked />}</Playhead>
     return (
@@ -187,84 +241,105 @@ export function Hero() {
           <Scene lid={0} />
         </Playback>
       )}
+      {/* The window that comes out of the screen: the landing's twin, over the whole page. */}
+      {departs &&
+        mounted &&
+        createPortal(
+          <div ref={flight} aria-hidden className="pointer-events-none fixed top-0 left-0 z-30 origin-top-left overflow-hidden rounded-[10px] will-change-transform" style={{ display: "none" }}>
+            <EditorWindow choose={false} rows={rows} />
+          </div>,
+          document.body,
+        )}
     </div>
   )
 }
 
-const ease = (t: number) => t * t * (3 - 2 * t)
 const clamp01 = (t: number) => Math.min(1, Math.max(0, t))
 const lerp = (a: number, b: number, t: number) => a + (b - a) * t
+/** Fast at once, still at the end: the window starts growing on the first frame of scroll
+ *  and is at rest when the landing slides under it. */
+const easeOut = (t: number) => 1 - (1 - t) ** 3
+
+/** Where the window lands, as a share of the viewport's height from its top. */
+const LAND_AT = 0.28
 
 /** THE DEPARTURE: the scroll past the hero, read every frame. Returns how far the lid has
- *  shut (0..1, over the sticky stage's extra scroll), and moves a copy of the landing
- *  block from the editor's text onto the block itself as the block comes up the page.
- *  Styles are written straight to the elements: a frame of scroll re-renders only the Mac. */
-function useDeparture(root: React.RefObject<HTMLDivElement | null>, on: boolean): number {
+ *  shut (0..1, over the sticky stage's extra scroll) and the flying window's rows. The
+ *  editor's window comes out of the screen as ONE object: on the first frame of scroll the
+ *  Mac's window is gone from the screen and the page's own editor window (`flight`, laid
+ *  over everything) stands exactly where it stood (its columns, its rows, its type at the
+ *  Mac's scale); from there it grows continuously, while the lid folds behind it, to the
+ *  page column's width and the landing's rows, at rest where the landing slot is when the
+ *  scroll brings it there. Then the slot shows and the flight goes. Styles are written
+ *  straight to the elements; React renders only the lid and a change of rows. */
+function useDeparture(
+  root: React.RefObject<HTMLDivElement | null>,
+  flightRef: React.RefObject<HTMLDivElement | null>,
+  on: boolean,
+): { lid: number; rows: number } {
   const [lid, setLid] = React.useState(0)
+  const [rows, setRows] = React.useState(ROWS)
   React.useEffect(() => {
     const hero = root.current
-    if (!on || !hero) return
+    const flight = flightRef.current
+    if (!on || !hero || !flight) return
     const section = hero.closest<HTMLElement>("[data-hero-section]")
     const landing = document.querySelector<HTMLElement>("[data-hero-landing]")
     if (!section || !landing) throw new Error("hero: the page has no [data-hero-section] or [data-hero-landing]")
-    const pre = landing.querySelector<HTMLElement>("pre")
-    if (!pre) throw new Error("hero: the landing block holds no <pre>")
-    // The travelling copy: the landing block's own characters, inside code's own frame
-    // class so they keep its colours and metrics, fixed over the page.
-    const flight = document.createElement("div")
-    flight.setAttribute("aria-hidden", "true")
-    flight.className = "ag-code pointer-events-none fixed top-0 left-0 z-30 origin-top-left will-change-transform"
-    flight.append(pre.cloneNode(true))
-    flight.style.display = "none"
-    document.body.append(flight)
-    // Where the editor's first line stood in the window the moment the file lifted off:
-    // the lid then folds the editor away, and its live rect would fold with it.
-    let lifted: { left: number; top: number; line: number } | null = null
+    const fontOf = (el: Element | null) => {
+      const term = el?.querySelector('[data-slot="terminal"]')
+      if (!term) throw new Error("hero: an editor window with no terminal in it")
+      return Number.parseFloat(getComputedStyle(term).fontSize)
+    }
+    // The Mac's window as it stood before anything moved: its rect, its scale on the
+    // screen, its type. Once the lid folds, all three fold with it.
+    let from: { rect: DOMRect; width: number; scale: number; font: number } | null = null
     let frame = 0
-    let last = -1
+    let lastLid = -1
+    let lastRows = ROWS
     const tick = () => {
       frame = 0
       const vh = innerHeight
       const s = section.getBoundingClientRect()
       const shut = clamp01(-s.top / Math.max(1, s.height - vh))
-      if (Math.abs(shut - last) > 0.001) {
-        last = shut
+      if (Math.abs(shut - lastLid) > 0.001) {
+        lastLid = shut
         setLid(shut)
       }
-      const editor = hero.querySelector<HTMLElement>("[data-slot=hero-editor]")
-      const leaving = shut > 0.02
-      if (!leaving) lifted = null
-      else if (!lifted) {
-        const text = hero.querySelector<HTMLElement>("[data-slot=hero-editor] [data-slot=terminal-editor-line] > span + span")
-        if (!text) return
-        const r = text.getBoundingClientRect()
-        lifted = { left: r.left, top: r.top, line: r.height }
+      const window = hero.querySelector<HTMLElement>("[data-slot=hero-editor-window]")
+      if (!window) return
+      const l = landing.getBoundingClientRect()
+      // The journey is the scroll from the stage starting to move to the slot reaching
+      // LAND_AT: one progress for the lift, the growth and the travel.
+      const p = clamp01(-s.top / Math.max(1, l.top - s.top - vh * LAND_AT))
+      if (p === 0) {
+        const rect = window.getBoundingClientRect()
+        from = { rect, width: window.offsetWidth, scale: rect.width / window.offsetWidth, font: fontOf(window) }
       }
-      editor?.style.setProperty("opacity", leaving ? "0" : "1")
-      const p = pre.getBoundingClientRect()
-      // The flight starts as the stage lets go (the lid shut) and ends as the block reaches a
-      // third of the way down the window: the scroll between the two is the whole journey.
-      const released = Math.max(0, vh - s.bottom)
-      const from = p.top + released
-      const travel = ease(clamp01(released / Math.max(1, from - vh * 0.3)))
-      const away = leaving && travel < 1
+      const away = p > 0 && p < 1 && from !== null
       flight.style.display = away ? "block" : "none"
-      pre.style.visibility = away ? "hidden" : ""
-      if (!away || !lifted) return
-      const target = pre.querySelector<HTMLElement>(".line") ?? pre
-      const tgt = target.getBoundingClientRect()
-      const k0 = lifted.line / (tgt.height || 1)
-      const k = lerp(k0, 1, travel)
-      // Where the copy's top-left stands so its first line sits where the editor's stood,
-      // lifted a little as the lid shuts under it: held there in the window (the Mac
-      // scrolls away under it), then carried down onto the block.
-      const dx = tgt.left - p.left
-      const dy = tgt.top - p.top
-      const x = lerp(lifted.left - dx * k0, p.left, travel)
-      const y = lerp(lifted.top - dy * k0 - ease(shut) * 18, p.top, travel)
-      flight.style.width = `${p.width}px`
-      flight.style.transform = `translate3d(${x}px, ${y}px, 0) scale(${k})`
-      flight.style.filter = `drop-shadow(0 0 ${14 * (1 - travel)}px color-mix(in oklch, var(--edge) 45%, transparent))`
+      landing.style.visibility = away ? "hidden" : ""
+      if (!away || !from) return
+      const e = easeOut(p)
+      // The flight is laid out in the landing's type and drawn scaled: at the start its
+      // layout is the Mac window's columns in that type, its scale the Mac's type size.
+      const font = fontOf(landing)
+      const width0 = (from.width * from.font) / font
+      const scale = lerp((from.scale * from.font) / font, 1, e)
+      const width = lerp(width0, l.width, e)
+      const n = Math.round(lerp(ROWS, LANDING.rows, e))
+      if (n !== lastRows) {
+        lastRows = n
+        setRows(n)
+      }
+      const x = lerp(from.rect.left, l.left, e)
+      const y = lerp(from.rect.top, vh * LAND_AT, e)
+      // Lifted off the screen: the shadow of something nearer the reader, gone once it sits
+      // on the page.
+      const lift = Math.sin(Math.PI * Math.min(1, p * 1.6))
+      flight.style.width = `${width}px`
+      flight.style.transform = `translate3d(${x}px, ${y}px, 0) scale(${scale})`
+      flight.style.boxShadow = `0 ${28 * lift}px ${80 * lift}px -18px rgb(0 0 0 / 0.8)`
     }
     const schedule = () => {
       if (!frame) frame = requestAnimationFrame(tick)
@@ -276,11 +351,10 @@ function useDeparture(root: React.RefObject<HTMLDivElement | null>, on: boolean)
       cancelAnimationFrame(frame)
       removeEventListener("scroll", schedule)
       removeEventListener("resize", schedule)
-      flight.remove()
-      pre.style.visibility = ""
+      landing.style.visibility = ""
     }
-  }, [root, on])
-  return lid
+  }, [root, flightRef, on])
+  return { lid, rows }
 }
 
 const NO_CHANGE = () => () => {}
