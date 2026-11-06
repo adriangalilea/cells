@@ -343,6 +343,8 @@ pub struct Doc {
     /// Where each row's record starts, and where the last one ends.
     records: Vec<u32>,
     statements: Vec<Statement>,
+    /// Each statement's prelude lines, the last one's excluded.
+    spans: Vec<core::ops::Range<u32>>,
     named: Vec<NamedType>,
     tables: Vec<Table>,
     scripts: Vec<Script>,
@@ -428,7 +430,7 @@ fn read_in(bytes: Vec<u8>, dialect: Dialect, threads: usize, imports: &mut dyn I
         Some((n, t)) => (n.to_vec(), t.to_vec()),
         None => (Vec::new(), Vec::new()),
     };
-    let (body, statements, mut broken) = if plain || above.is_some() { (bom, Vec::new(), Vec::new()) } else { read_prelude(&source, bom) };
+    let Read { body, statements, spans, mut broken } = if plain || above.is_some() { Read::none(bom) } else { read_prelude(&source, bom) };
     let (scripts, imported) = settle_prelude(&source, &statements, imports, &mut named, &mut tables, &mut broken);
     let how = dialect.records();
     let src = source.as_bytes();
@@ -440,6 +442,7 @@ fn read_in(bytes: Vec<u8>, dialect: Dialect, threads: usize, imports: &mut dyn I
         body: body as u32,
         records: Vec::from([body as u32]),
         statements,
+        spans,
         named,
         tables,
         scripts,
@@ -675,15 +678,41 @@ fn origins(problems: &mut Vec<Problem>, columns: usize, rows: usize) -> Vec<Vec<
 /// The prelude, if the file opens with one after its byte order mark: where the header
 /// starts, the statements that read, and where one does not. A prelude never closed holds
 /// the whole file: none of it applies, and there is no header.
-fn read_prelude(source: &str, from: usize) -> (usize, Vec<Statement>, Vec<Error>) {
+fn read_prelude(source: &str, from: usize) -> Read {
     let first = source[from..].split_inclusive('\n').next().unwrap_or("");
-    let never = || (source.len(), Vec::new(), Vec::from([error(At::Prelude, "opens with --- and never closes")]));
+    let never = || Read {
+        body: source.len(),
+        statements: Vec::new(),
+        spans: Vec::new(),
+        broken: Vec::from([error(At::Prelude, "opens with --- and never closes")]),
+    };
     if first.strip_suffix('\n').map(|l| l.strip_suffix('\r').unwrap_or(l)) != Some("---") {
-        return if first == "---" { never() } else { (from, Vec::new(), Vec::new()) };
+        return if first == "---" { never() } else { Read::none(from) };
     }
     match prelude::parse(source, from) {
-        Ok(p) => (p.body, p.statements, p.broken.into_iter().map(|(n, why)| error(At::PreludeLine(n), why)).collect()),
-        Err(why) => (source.len(), Vec::new(), Vec::from([error(At::Prelude, why)])),
+        Ok(p) => Read {
+            body: p.body,
+            statements: p.statements,
+            spans: p.spans,
+            broken: p.broken.into_iter().map(|(n, why)| error(At::PreludeLine(n), why)).collect(),
+        },
+        Err(why) => Read { broken: Vec::from([error(At::Prelude, why)]), ..Read::none(source.len()) },
+    }
+}
+
+/// A prelude read: where the header starts, its statements and their lines, and where
+/// one does not read.
+struct Read {
+    body: usize,
+    statements: Vec<Statement>,
+    spans: Vec<core::ops::Range<u32>>,
+    broken: Vec<Error>,
+}
+
+impl Read {
+    /// No prelude: the header at `body`.
+    fn none(body: usize) -> Read {
+        Read { body, statements: Vec::new(), spans: Vec::new(), broken: Vec::new() }
     }
 }
 
@@ -992,7 +1021,7 @@ impl Error {
         // An error past the prelude comes from a file whose prelude reads.
         let body = || match dialect {
             Dialect::Plain(_) => bom,
-            Dialect::Cells => read_prelude(src, bom).0,
+            Dialect::Cells => read_prelude(src, bom).body,
         };
         let how = dialect.records();
         match self.at {
@@ -1043,13 +1072,6 @@ fn prelude_line(text: &str, n: u32) -> (usize, usize) {
     let mut lines = text[bom..].split_inclusive('\n');
     let from = bom + lines.by_ref().take(n as usize).map(str::len).sum::<usize>();
     (from, from + lines.next().map_or(0, str::len))
-}
-
-/// A column's name as its declaration writes it: quoted, `""` a quote inside, when it
-/// holds a `:`, a `,` or a `"`, or starts or ends with a space or a tab.
-pub(crate) fn declared_name(name: &str) -> Cow<'_, str> {
-    let edges = name.starts_with([' ', '\t']) || name.ends_with([' ', '\t']);
-    if edges || name.contains([':', ',', '"']) { Cow::Owned(format!("\"{}\"", name.replace('"', "\"\""))) } else { Cow::Borrowed(name) }
 }
 
 fn ending(s: &str) -> &str {
@@ -1316,6 +1338,53 @@ impl Doc {
     /// The prelude's statements, as written.
     pub fn statements(&self) -> &[Statement] {
         &self.statements
+    }
+
+    /// Statement `i`'s prelude lines (1-based inside the fences), the last one's excluded:
+    /// what an edit of it replaces.
+    pub fn statement_lines(&self, i: usize) -> core::ops::Range<u32> {
+        self.spans[i].clone()
+    }
+
+    /// Statement `i` as written: its lines, comments included, the last one's break not.
+    pub fn statement_text(&self, i: usize) -> &str {
+        let prelude = self.prelude_text();
+        let s = &self.spans[i];
+        let text = &prelude[prelude_line(prelude, s.start).0..prelude_line(prelude, s.end - 1).1];
+        &text[..text.len() - ending(text).len()]
+    }
+
+    /// The file's text with its prelude edited: statement `at`'s lines replaced by `text`
+    /// (empty: taken out), or `text` written last when `at` is none, the prelude opened for
+    /// it in a file without one. `text` is lines joined by `\n`, written with the file's
+    /// line break. The host reads it again, following the imports a new line may name.
+    pub fn prelude_edited(&self, at: Option<usize>, text: &str) -> String {
+        assert!(matches!(self.dialect, Dialect::Cells), "a plain file has no prelude");
+        assert!(!text.contains('\r'), "a prelude edit's lines are joined by \\n");
+        let nl = self.newline();
+        let lines: String = if text.is_empty() { String::new() } else { text.split('\n').map(|l| format!("{l}{nl}")).collect() };
+        let written = self.write();
+        let bom = if written.starts_with('\u{feff}') { 3 } else { 0 };
+        let (prelude, rest) = written.split_at(self.body as usize);
+        if prelude.len() == bom {
+            assert!(at.is_none(), "a file without a prelude has no statement {at:?}");
+            if lines.is_empty() {
+                return written;
+            }
+            return format!("{}---{nl}{lines}---{nl}{rest}", &prelude[..bom]);
+        }
+        let (from, to) = match at {
+            Some(i) => {
+                let s = &self.spans[i];
+                (prelude_line(prelude, s.start).0, prelude_line(prelude, s.end - 1).1)
+            }
+            // before the closing `---`
+            None => {
+                let closing = prelude.trim_end_matches(['\r', '\n']).rfind('\n').map_or(bom, |b| b + 1);
+                (closing, closing)
+            }
+        };
+        format!("{}{lines}{}{rest}", &prelude[..from], &prelude[to..])
     }
 
     /// The tables the prelude names: written inline, filled by scripts, imported.
@@ -1758,9 +1827,7 @@ impl Doc {
             match (renamed, kept) {
                 (Some(name), _) => {
                     let spelled = self.columns[j].spelled.as_deref().expect("a declared column has a type");
-                    let (ty, formula) = types::split_formula(spelled);
-                    let named = declared_name(name);
-                    lines.push((line, Some(formula.map_or_else(|| format!("{named}: {ty}"), |f| format!("{named}: {ty} = {f}")))));
+                    lines.push((line, Some(prelude::column_line(name, spelled))));
                 }
                 (None, true) => {}
                 (None, false) => lines.push((line, None)),
@@ -2225,13 +2292,8 @@ impl Doc {
                 let declared = match cell.split_once(':') {
                     None => String::new(),
                     Some((_, spelled)) => {
-                        let (ty, formula) = types::split_formula(spelled);
-                        let named = declared_name(&name);
                         let end = ending(&written[from..to]);
-                        match formula {
-                            Some(f) => format!("{named}: {ty} = {f}{end}"),
-                            None => format!("{named}: {ty}{end}"),
-                        }
+                        format!("{}{end}", prelude::column_line(&name, spelled))
                     }
                 };
                 format!("{}{declared}{}", &written[..from], &written[to..])
@@ -3175,4 +3237,29 @@ pub fn compose(like: &Doc, header: &[&str], rows: &[Vec<&str>]) -> String {
         out.push_str(nl);
     }
     out
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn prelude_edited() {
+        let doc = read("---\r\ntype Kind = a|b\r\nfx = run every hour\r\n```ts\r\nx\r\n```\r\n\r\n---\r\nk:Kind\r\na\r\n").unwrap();
+        assert_eq!(doc.statement_lines(1), 2..6);
+        assert_eq!(doc.statement_text(1), "fx = run every hour\r\n```ts\r\nx\r\n```");
+        // replaced, taken out, written last, a file's text kept as it was around them
+        assert_eq!(
+            doc.prelude_edited(Some(0), "type Kind = a|b|c"),
+            "---\r\ntype Kind = a|b|c\r\nfx = run every hour\r\n```ts\r\nx\r\n```\r\n\r\n---\r\nk:Kind\r\na\r\n"
+        );
+        assert_eq!(doc.prelude_edited(Some(1), ""), "---\r\ntype Kind = a|b\r\n\r\n---\r\nk:Kind\r\na\r\n");
+        assert_eq!(
+            doc.prelude_edited(None, "import accounts from \"accounts.cells\""),
+            "---\r\ntype Kind = a|b\r\nfx = run every hour\r\n```ts\r\nx\r\n```\r\n\r\nimport accounts from \"accounts.cells\"\r\n---\r\nk:Kind\r\na\r\n"
+        );
+        // a prelude opened for a file without one, its byte order mark first
+        let bare = read("\u{feff}a:int\n1\n").unwrap();
+        assert_eq!(bare.prelude_edited(None, "type A = int\nb: int"), "\u{feff}---\ntype A = int\nb: int\n---\na:int\n1\n");
+    }
 }

@@ -93,12 +93,7 @@ fn prelude(source: &str) -> Option<(crate::prelude::Parsed, usize)> {
 
 fn declared_lines(source: &str) -> Vec<usize> {
     let Some((parsed, _)) = prelude(source) else { return Vec::new() };
-    parsed
-        .statements
-        .iter()
-        .filter(|s| matches!(s, crate::prelude::Statement::Column { .. }))
-        .map(|s| s.line() as usize)
-        .collect()
+    parsed.statements.iter().filter(|s| matches!(s, crate::prelude::Statement::Column { .. })).map(|s| s.line() as usize).collect()
 }
 
 fn records(source: &str, mut at: usize, end: usize) -> Vec<Record> {
@@ -201,7 +196,7 @@ fn declarations(source: &str, align: bool) -> Vec<(usize, usize, String)> {
     for s in &parsed.statements {
         if let crate::prelude::Statement::Column { line, name, spelled } = s {
             let (ty, formula) = crate::types::split_formula(spelled);
-            found.push((*line as usize, crate::doc::declared_name(name).into_owned(), ty, formula));
+            found.push((*line as usize, crate::prelude::declared_name(name).into_owned(), ty, formula));
         }
     }
     let chars = |s: &str| s.chars().count();

@@ -5,19 +5,14 @@ use std::fs;
 use std::path::Path;
 
 use crate::disk::{cache, fetch};
-use crate::json;
 use cells::Statement;
 use cells::files::is_url;
 
 /// The import statement written again, its hash `sha256`, its other attributes kept.
 fn statement(default: &Option<String>, names: &[String], from: &str, with: &[(String, String)], sha256: &str) -> String {
-    let head = match default {
-        Some(d) => d.clone(),
-        None => format!("{{ {} }}", names.join(", ")),
-    };
-    let mut attrs = vec![format!("sha256: {}", json::quote(sha256))];
-    attrs.extend(with.iter().filter(|(k, _)| k != "sha256").map(|(k, v)| format!("{k}: {}", json::quote(v))));
-    format!("import {head} from {} with {{ {} }}", json::quote(from), attrs.join(", "))
+    let mut attrs = vec![("sha256".to_owned(), sha256.to_owned())];
+    attrs.extend(with.iter().filter(|(k, _)| k != "sha256").cloned());
+    cells::prelude::import_line(default.as_deref(), names, from, &attrs)
 }
 
 /// The file at `path` with each URL it imports pinned: what changed, a line each.

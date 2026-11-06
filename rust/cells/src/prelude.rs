@@ -53,8 +53,12 @@ impl Trigger {
 pub struct Schedule {
     pub triggers: Vec<Trigger>,
     pub zone: Option<String>,
+    /// As written after `run`: `every day at 18:00 in Europe/Madrid`.
+    pub spelled: String,
 }
 
+// A prelude holds a handful of statements: a script's size costs nothing.
+#[allow(clippy::large_enum_variant)]
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Statement {
     /// `type Name = <type>`, `export type Name = <type>`.
@@ -197,6 +201,8 @@ fn opening(s: &str) -> Option<(usize, &str, &str)> {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Parsed {
     pub statements: Vec<Statement>,
+    /// Each statement's lines, the last one's excluded: a fenced one's fences inside.
+    pub spans: Vec<core::ops::Range<u32>>,
     pub broken: Vec<(u32, String)>,
     pub body: usize,
 }
@@ -256,7 +262,62 @@ pub fn parse(source: &str, from: usize) -> Result<Parsed, String> {
     }
     read.retain(|(_, lines)| !controlled.iter().any(|j| lines.contains(j)));
     broken.sort_by_key(|b| b.0);
-    Ok(Parsed { statements: read.into_iter().map(|(s, _)| s).collect(), broken, body })
+    // A script's blank lines between its fences are its own, those after its last are not.
+    let spans = read
+        .iter()
+        .map(|(_, r)| {
+            let end =
+                (r.start + 1..r.end).rev().find(|&j| !content(lines[j].1).trim_matches(BLANK).is_empty()).map_or(r.start + 1, |j| j + 1);
+            r.start as u32..end as u32
+        })
+        .collect();
+    Ok(Parsed { statements: read.into_iter().map(|(s, _)| s).collect(), spans, broken, body })
+}
+
+/// A string as an import writes it: double quoted, `\"` and `\\` inside.
+fn quoted(s: &str) -> String {
+    format!("\"{}\"", s.replace('\\', "\\\\").replace('"', "\\\""))
+}
+
+/// `type Name = <type>`, as a writer writes it.
+pub fn type_line(name: &str, spelled: &str, exported: bool) -> String {
+    format!("{}type {name} = {spelled}", if exported { "export " } else { "" })
+}
+
+/// An import as a writer writes it: `import accounts from "accounts.cells"`, `import { A, b }
+/// from "…" with { sha256: "…" }`.
+pub fn import_line(default: Option<&str>, names: &[String], from: &str, with: &[(String, String)]) -> String {
+    let head = match default {
+        Some(d) => d.to_owned(),
+        None => format!("{{ {} }}", names.join(", ")),
+    };
+    let mut line = format!("import {head} from {}", quoted(from));
+    if !with.is_empty() {
+        let attrs: Vec<String> = with.iter().map(|(k, v)| format!("{k}: {}", quoted(v))).collect();
+        line.push_str(&format!(" with {{ {} }}", attrs.join(", ")));
+    }
+    line
+}
+
+/// A column's declaration as a writer writes it, from what follows its `:` as a header cell
+/// spells it (`EUR=cost * qty`): `total: EUR = cost * qty`.
+pub fn column_line(name: &str, spelled: &str) -> String {
+    let named = declared_name(name);
+    match crate::types::split_formula(spelled) {
+        (ty, Some(f)) => format!("{named}: {} = {}", ty.trim_matches(BLANK), f.trim_matches(BLANK)),
+        (ty, None) => format!("{named}: {}", ty.trim_matches(BLANK)),
+    }
+}
+
+/// A column's name as its declaration writes it: quoted, `""` a quote inside, when it
+/// holds a `:`, a `,` or a `"`, or starts or ends with a space or a tab.
+pub fn declared_name(name: &str) -> alloc::borrow::Cow<'_, str> {
+    let edges = name.starts_with(BLANK) || name.ends_with(BLANK);
+    if edges || name.contains([':', ',', '"']) {
+        alloc::borrow::Cow::Owned(format!("\"{}\"", name.replace('"', "\"\"")))
+    } else {
+        alloc::borrow::Cow::Borrowed(name)
+    }
 }
 
 /// A fence open at line `k`: its content to its closing line, and the line after it. One
@@ -523,7 +584,7 @@ pub fn schedule(s: &str) -> Result<Schedule, String> {
     if zone.is_none() && triggers.iter().any(Trigger::clock) {
         return Err("a time of day is in a zone: in Europe/Madrid".to_owned());
     }
-    Ok(Schedule { triggers, zone })
+    Ok(Schedule { triggers, zone, spelled: s.to_owned() })
 }
 
 #[cfg(test)]
@@ -533,8 +594,9 @@ mod tests {
     #[test]
     fn statements() {
         let src = "---\ntype Kind = a|b // the kinds\nimport accounts from \"../accounts.cells\"\nimport { Rate } from \"https://x.example/r.cells\" with { sha256: \"ab\" }\n\nfees = ```cells\nkind:text!\n---\n```\nfx = run every day at 18:00 in Europe/Madrid\n```ts\nexport default () => []\n```\n```cells runs\nrun:int!\n```\n---\nh\n";
-        let Parsed { statements: s, broken, body } = parse(src, 0).unwrap();
+        let Parsed { statements: s, spans, broken, body } = parse(src, 0).unwrap();
         assert!(broken.is_empty());
+        assert_eq!(spans, [1..2, 2..3, 3..4, 5..9, 9..16]);
         assert_eq!(&src[body..], "h\n");
         assert_eq!(s.len(), 5);
         assert!(matches!(&s[1], Statement::Import { default: Some(d), .. } if d == "accounts"));
@@ -554,5 +616,35 @@ mod tests {
         assert!(parse("---\ntype A = a|b\n", 0).is_err());
         assert!(schedule("every day at 18:00").is_err());
         assert_eq!(schedule("every 15m, when ../m.cells changes").unwrap().triggers.len(), 2);
+    }
+
+    #[test]
+    fn written() {
+        // Each line a writer writes reads back as the statement it says.
+        let lines = [
+            type_line("Money", "EUR>=0", true),
+            import_line(Some("accounts"), &[], "../a \"b\".cells", &[]),
+            import_line(
+                None,
+                &["Rate".to_owned(), "fx".to_owned()],
+                "https://x.example/r.cells",
+                &[("sha256".to_owned(), "ab".to_owned())],
+            ),
+            column_line("total", "EUR=cost * qty"),
+            column_line("a:b", "int"),
+        ];
+        assert_eq!(lines[0], "export type Money = EUR>=0");
+        assert_eq!(lines[3], "total: EUR = cost * qty");
+        assert_eq!(lines[4], "\"a:b\": int");
+        let src = format!("---\n{}\n---\nh\n", lines.join("\n"));
+        let p = parse(&src, 0).unwrap();
+        assert!(p.broken.is_empty(), "{:?}", p.broken);
+        assert!(
+            matches!(&p.statements[0], Statement::Type { name, spelled, exported: true, .. } if name == "Money" && spelled == "EUR>=0")
+        );
+        assert!(matches!(&p.statements[1], Statement::Import { from, .. } if from == "../a \"b\".cells"));
+        assert!(matches!(&p.statements[2], Statement::Import { names, with, .. } if names.len() == 2 && with[0].1 == "ab"));
+        assert!(matches!(&p.statements[3], Statement::Column { name, spelled, .. } if name == "total" && spelled == "EUR=cost * qty"));
+        assert!(matches!(&p.statements[4], Statement::Column { name, .. } if name == "a:b"));
     }
 }
