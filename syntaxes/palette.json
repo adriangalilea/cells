@@ -1,0 +1,12 @@
+{
+  "about": "The Cells palette, its one source: colour means a column. Six column colours in turn as the grammars cycle them (meta.column.1..6), one hue each apart from its neighbours and from red, which only an error wears, at one lightness per scheme: OKLCH L 0.50 C 0.15 light, L 0.80 C 0.12 dark, hues 200 295 60 145 335 95. Each clears 4.5:1 on a light code surface and 8.5:1 on a dark one. muted is what describes a column rather than holds it (a type, a bound, punctuation), over 5:1 either way. Vendored by ui's cells-code and swift-utils' CellsTable, never restated.",
+  "columns": [
+    { "light": "#007a85", "dark": "#43d5dc" },
+    { "light": "#6b4cae", "dark": "#c3aeff" },
+    { "light": "#9e4700", "dark": "#f6ab6b" },
+    { "light": "#107823", "dark": "#8bd28d" },
+    { "light": "#943b84", "dark": "#eea0dc" },
+    { "light": "#7e5f00", "dark": "#d6bd5c" }
+  ],
+  "muted": { "light": "#57606a", "dark": "#8b949e" }
+}
