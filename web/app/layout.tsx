@@ -3,6 +3,9 @@ import { Geist, Geist_Mono } from "next/font/google"
 import { cardImage } from "@/lib/card"
 import { PRODUCT } from "@/lib/product"
 import "./globals.css"
+// Cells in every code view the server draws (the docs' blocks); the client modules that
+// colour Cells in the browser (the hero, the story) register it there.
+import "@/lib/cells-code"
 
 const geist = Geist({ subsets: ["latin"], variable: "--font-geist" })
 const mono = Geist_Mono({ subsets: ["latin"], variable: "--font-geist-mono" })

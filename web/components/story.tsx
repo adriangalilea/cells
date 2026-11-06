@@ -18,6 +18,7 @@ import { type WalkthroughMoment, type WalkthroughSteps, WalkthroughScroll } from
 import { useCellsDiagnose } from "@/components/use-cells-diagnose"
 import { useEngine } from "@/components/use-engine"
 import { codeTimeline } from "@/lib/code-session"
+import "@/lib/cells-code"
 import { editOf, plain, type StoryAct, story } from "@/lib/story"
 import { walkthroughTimeline } from "@/lib/walkthrough-session"
 import { savedAt } from "@/lib/written"

@@ -5,6 +5,7 @@
 export const UI_ITEMS = [
   "ambient",
   "app-window",
+  "cells-code",
   "code",
   "code-session",
   "command",

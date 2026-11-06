@@ -2,9 +2,12 @@
 // (Shiki, VS Code's own grammars), read as one style per character instead of as
 // markup, for a view that draws text which is not all there yet (an editor whose
 // file is being typed: each character keeps the colour it has in the finished file,
-// so a half-typed attribute already reads as one). Framework-free; Shiki loads on the
-// first call, so the page ships none of it until something asks, and then only its
-// core, the JavaScript regex engine and the one grammar and two themes asked for.
+// so a half-typed attribute already reads as one). A language Shiki does not bundle
+// is registered here, read by a TextMate grammar or by a reader of its own (an engine
+// that knows what every part is), its spans resolved against the same themes by the
+// themes' own rules: one source of colour for every view. Framework-free; Shiki loads
+// on the first call, so the page ships none of it until something asks, and then only
+// its core, the JavaScript regex engine and the one grammar and two themes asked for.
 
 /** The two themes every code view here wears, light and dark, picked by the scheme
  *  it stands in. `code` and `markdown` render with them. */
@@ -56,26 +59,46 @@ export interface CodeColours {
   of: Uint16Array
 }
 
-/** A language Shiki does not bundle, told to code: its grammar, loaded the first time
- *  the language is asked for (Shiki's `LanguageInput`: one registration whose `name`
- *  is the language's id, or a list, the languages it embeds first), and the other
- *  names a file's extension or a fence calls it by. */
-export interface CodeLanguage {
-  grammar: () => Promise<
-    | import("shiki").LanguageRegistration
-    | import("shiki").LanguageRegistration[]
-  >
+/** A stretch of a text as a language's own reader reads it (`from` to `to`, a string's
+ *  indices), coloured by what it is: a TextMate scope, resolved against each code theme
+ *  by the theme's own rules, so it wears what that theme gives the scope; an ink of the
+ *  language's own, where no theme has a colour for what it means (a Cells column); or
+ *  the language it is written in (a script inside a file), coloured as that language. */
+export type CodeSpan = {
+  from: number
+  to: number
+  bold?: boolean
+} & (
+  | { scope: string }
+  | { ink: { light: string; dark: string } }
+  | { lang: string }
+)
+
+/** A language Shiki does not bundle, told to code, read one of two ways: by a TextMate
+ *  `grammar` Shiki runs (Shiki's `LanguageInput`: one registration whose `name` is the
+ *  language's id, or a list, the languages it embeds first), or by a `read`er of its
+ *  own that knows what every part of the text is (a language whose engine runs where
+ *  code does). Either is loaded the first time the language is asked for. */
+export type CodeLanguage = {
   /** `cell` for `cells`: what `money.cell` and a ```` ```cell ```` fence say. */
   aliases?: readonly string[]
-  /** What the language's own scopes wear in every theme, over its colours: a Cells
-   *  header's names bold. Each a TextMate scope selector, which a theme's rule for a
-   *  deeper scope still wins over. */
-  styles?: readonly { scope: string; bold?: boolean; italic?: boolean }[]
-}
+} & (
+  | {
+      grammar: () => Promise<
+        | import("shiki").LanguageRegistration
+        | import("shiki").LanguageRegistration[]
+      >
+      /** What the grammar's own scopes wear in every theme, over its colours. Each a
+       *  TextMate scope selector, which a theme's rule for a deeper scope still wins
+       *  over. */
+      styles?: readonly { scope: string; bold?: boolean; italic?: boolean }[]
+    }
+  | { read: () => Promise<(text: string) => CodeSpan[]> }
+)
 
 /** The languages code colours beyond Shiki's bundle, by id, and every alias to its
- *  id, filled by `registerLanguage`. `cells` is code's own: the Cells grammar (lib/cells-grammar, vendored from
- *  github.com/adriangalilea/cells), its columns in rainbow and its types by scope. */
+ *  id, filled by `registerLanguage`. Code holds none of its own: an item that brings a
+ *  language registers it (`cells-code`, Cells read by its engine). */
 const LANGUAGES = new Map<string, CodeLanguage>()
 const ALIASES = new Map<string, string>()
 
@@ -107,7 +130,8 @@ export function registerLanguage(id: string, language: CodeLanguage): void {
   for (const [alias, of] of ALIASES) if (of === id) ALIASES.delete(alias)
   LANGUAGES.set(id, language)
   for (const alias of language.aliases ?? []) ALIASES.set(alias, id)
-  if (language.styles?.length) styled++
+  readers.delete(id)
+  if ("styles" in language && language.styles?.length) styled++
 }
 
 /** Bumped whenever a language brings styles: a theme loaded before is loaded again,
@@ -117,7 +141,7 @@ let styled = 0
 /** Every registered language's styles, as a theme's rules. */
 const styleRules = () =>
   [...LANGUAGES.values()].flatMap((l) =>
-    (l.styles ?? []).map((s) => ({
+    ("styles" in l ? (l.styles ?? []) : []).map((s) => ({
       scope: s.scope,
       settings: {
         fontStyle: [s.bold && "bold", s.italic && "italic"]
@@ -127,15 +151,24 @@ const styleRules = () =>
     })),
   )
 
-registerLanguage("cells", {
-  grammar: () =>
-    import("@/lib/cells-grammar").then(
-      (m) => m.cellsGrammar,
-    ),
-  aliases: ["cell"],
-  // A header's names, each `meta.column.<n>` (its rainbow colour), bold.
-  styles: [{ scope: "meta.header.cells meta.column", bold: true }],
-})
+/** Each reader language's reader, loaded once. */
+const readers = new Map<string, Promise<(text: string) => CodeSpan[]>>()
+
+/** The reader `lang` (an id or an alias) is read by; undefined for a language read by
+ *  a grammar, or none. */
+export function readerOf(
+  lang: string,
+): Promise<(text: string) => CodeSpan[]> | undefined {
+  const id = languageOf(lang)
+  const language = LANGUAGES.get(id)
+  if (!language || !("read" in language)) return undefined
+  let r = readers.get(id)
+  if (!r) {
+    r = language.read()
+    readers.set(id, r)
+  }
+  return r
+}
 
 /** The id a language name stands for: a registered language's alias resolved
  *  (`cell` is `cells`), any other name as it is (Shiki reads its own aliases). */
@@ -158,7 +191,10 @@ export const registeredLanguage = (lang: string) =>
 
 /** The grammar loaded for `id`, which must name its language `id`: a grammar called
  *  anything else would load and never be found. */
-async function grammarOf(id: string, language: CodeLanguage) {
+async function grammarOf(
+  id: string,
+  language: Extract<CodeLanguage, { grammar: unknown }>,
+) {
   const g = await language.grammar()
   const list = Array.isArray(g) ? g : [g]
   if (!list.some((r) => r.name === id))
@@ -168,12 +204,12 @@ async function grammarOf(id: string, language: CodeLanguage) {
   return list
 }
 
-/** A registered language's grammar (an id or an alias), loaded and checked;
+/** A registered grammar language's grammar (an id or an alias), loaded and checked;
  *  undefined for any other. */
 export const ownGrammar = (lang: string) => {
   const id = languageOf(lang)
   const language = LANGUAGES.get(id)
-  return language ? grammarOf(id, language) : undefined
+  return language && "grammar" in language ? grammarOf(id, language) : undefined
 }
 
 type Core = import("shiki/core").HighlighterCore
@@ -183,7 +219,13 @@ type Core = import("shiki/core").HighlighterCore
  *  would download to colour a few lines), each language and theme loaded the first
  *  time it is asked for, alone. */
 let core: Promise<Core> | undefined
-async function highlighter(lang: string, themes: CodeThemes): Promise<Core> {
+/** The page's highlighter with `lang`'s grammar (none for a reader language, or
+ *  `text`) and both `themes` loaded, each theme wearing the languages' styles: what
+ *  every code view colours with, as markup (`codeHtml`) or per character. */
+export async function codeHighlighter(
+  lang: string,
+  themes: CodeThemes,
+): Promise<Core> {
   core ??= (async () => {
     const [{ createHighlighterCore }, { createJavaScriptRegexEngine }] =
       await Promise.all([
@@ -247,7 +289,9 @@ export async function codeColours(
   themes: CodeThemes = CODE_THEMES,
 ): Promise<CodeColours> {
   const lang = languageOf(name)
-  const h = await highlighter(lang, themes)
+  const read = readerOf(lang)
+  if (read) return readColours(text, await read, themes)
+  const h = await codeHighlighter(lang, themes)
   const lines = h.codeToTokensWithThemes(text, {
     lang: h.getLoadedLanguages().includes(lang) ? lang : "text",
     themes: { light: themes.light, dark: themes.dark },
@@ -278,6 +322,121 @@ export async function codeColours(
       }
       of.fill(n, token.offset, token.offset + token.content.length)
     }
+  return { inks, of }
+}
+
+/** What a loaded theme gives a TextMate scope, by the theme's own rules (VS Code's
+ *  matcher, Shiki's): its foreground and font style, the theme's foreground where no
+ *  rule colours it. One per theme load, each scope resolved once. */
+interface ScopeInks {
+  fg: string
+  of(scope: string): { color: string; italic: boolean; bold: boolean }
+}
+
+const scopeInks = new Map<string, Promise<ScopeInks>>()
+
+function scopeInksOf(h: Core, name: string): Promise<ScopeInks> {
+  const key = `${name} ${styled}`
+  let ready = scopeInks.get(key)
+  if (!ready) {
+    ready = import("shiki/textmate").then(({ Theme }) => {
+      const theme = h.getTheme(name)
+      const tm = Theme.createFromRawTheme({
+        name: theme.name,
+        settings: theme.settings,
+      })
+      const colours = tm.getColorMap()
+      const fg = theme.fg
+      const known = new Map<string, ReturnType<ScopeInks["of"]>>()
+      return {
+        fg,
+        of(scope) {
+          let ink = known.get(scope)
+          if (!ink) {
+            // The scope inside the file's root, as a tokenizer would stand it: the
+            // matcher reads a path's names and parents alone.
+            const path = {
+              parent: { parent: null, scopeName: "source" },
+              scopeName: scope,
+            }
+            const style = tm.match(path as never)
+            const font = style?.fontStyle ?? -1
+            ink = {
+              color:
+                style && style.foregroundId > 0
+                  ? (colours[style.foregroundId] ?? fg)
+                  : fg,
+              italic: font > 0 && (font & 1) !== 0,
+              bold: font > 0 && (font & 2) !== 0,
+            }
+            known.set(scope, ink)
+          }
+          return ink
+        },
+      }
+    })
+    scopeInks.set(key, ready)
+  }
+  return ready
+}
+
+/** A reader language's text in both themes: each span as what it is (a scope by each
+ *  theme's rules, an ink of its own, or another language coloured as itself), what no
+ *  span covers in each theme's foreground. A span outside the text throws. */
+async function readColours(
+  text: string,
+  read: (text: string) => CodeSpan[],
+  themes: CodeThemes,
+): Promise<CodeColours> {
+  const h = await codeHighlighter("text", themes)
+  const [light, dark] = await Promise.all([
+    scopeInksOf(h, themes.light),
+    scopeInksOf(h, themes.dark),
+  ])
+  const inks: CodeInk[] = []
+  const known = new Map<string, number>()
+  const index = (ink: CodeInk) => {
+    const key = `${ink.light} ${ink.dark} ${ink.italic} ${ink.bold}`
+    let n = known.get(key)
+    if (n === undefined) {
+      n = inks.length
+      inks.push(ink)
+      known.set(key, n)
+    }
+    return n
+  }
+  const of = new Uint16Array(text.length).fill(
+    index({ light: light.fg, dark: dark.fg, italic: false, bold: false }),
+  )
+  for (const span of read(text)) {
+    if (span.from < 0 || span.to > text.length || span.to < span.from)
+      throw new Error(
+        `code-tokens: a span ${span.from}..${span.to} outside a text of ${text.length}`,
+      )
+    if ("lang" in span) {
+      const inner = await codeColours(
+        text.slice(span.from, span.to),
+        span.lang,
+        themes,
+      )
+      for (let i = 0; i < inner.of.length; i++)
+        of[span.from + i] = index(inner.inks[inner.of[i] as number] as CodeInk)
+      continue
+    }
+    let ink: CodeInk
+    if ("ink" in span) ink = { ...span.ink, italic: false, bold: !!span.bold }
+    else {
+      const l = light.of(span.scope)
+      const d = dark.of(span.scope)
+      ink = {
+        light: l.color,
+        dark: d.color,
+        italic: l.italic,
+        bold: !!span.bold || l.bold,
+      }
+    }
+    of.fill(index(ink), span.from, span.to)
+  }
   return { inks, of }
 }
 

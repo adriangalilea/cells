@@ -8,20 +8,19 @@
 import type { BundledLanguage, ShikiTransformer } from "shiki"
 import {
   CODE_THEMES,
+  codeColours,
+  codeHighlighter,
   languageOf,
   linesOf,
-  ownGrammar,
+  readerOf,
   registeredLanguage,
+  runsOf,
 } from "@/lib/code-tokens"
 
 /** A language as code is told it: a Shiki id or alias, a registered language's id or
- *  alias (`cells`, `cell`; lib/code-tokens `registerLanguage`), or `text`. */
-export type CodeLang =
-  | BundledLanguage
-  | "cells"
-  | "cell"
-  | "text"
-  | (string & {})
+ *  alias (lib/code-tokens `registerLanguage`: `cells` once `cells-code` is imported), or
+ *  `text`. */
+export type CodeLang = BundledLanguage | "text" | (string & {})
 
 export type CodeHtmlOptions = {
   /** `text` when it is not code, which skips the grammar. One neither Shiki nor
@@ -83,20 +82,52 @@ export async function knownLanguage(name: string): Promise<boolean> {
   return lang in bundledLanguages
 }
 
-/** `source` as Shiki's markup, in code's two themes. */
+/** A reader language's colours as Shiki's tokens, a line each, so its markup is Shiki's
+ *  own and every transformer reads it as any other's. */
+function readTokens(
+  source: string,
+  colours: import("@/lib/code-tokens").CodeColours,
+): ShikiTransformer {
+  return {
+    name: "ag:reader-tokens",
+    tokens() {
+      let offset = 0
+      return runsOf(source, colours).map((line) => {
+        const tokens = line.map((run) => {
+          const ink = run.ink as NonNullable<typeof run.ink>
+          const token = {
+            content: run.text,
+            offset,
+            htmlStyle: {
+              "--shiki-light": ink.light,
+              "--shiki-dark": ink.dark,
+              ...(ink.bold ? { "font-weight": "bold" } : {}),
+              ...(ink.italic ? { "font-style": "italic" } : {}),
+            },
+          }
+          offset += run.text.length
+          return token
+        })
+        offset += 1
+        return tokens
+      })
+    },
+  }
+}
+
+/** `source` as Shiki's markup, in code's two themes, from the one highlighter every
+ *  code view colours with (lib/code-tokens): a grammar language by Shiki, a reader
+ *  language by its reader, the same markup either way. */
 export async function codeHtml(
   source: string,
   { lang: name, highlight, notations = false }: CodeHtmlOptions,
 ): Promise<string> {
   const lang = languageOf(name)
-  const { getSingletonHighlighter } = await import("shiki")
-  // Shiki's own languages by id, registered ones by their grammar, into one
-  // highlighter.
-  const own = ownGrammar(lang)
-  const h = await getSingletonHighlighter({
-    langs: own ? await own : [lang],
-    themes: [CODE_THEMES.light, CODE_THEMES.dark],
-  })
+  const read = readerOf(lang)
+  const h = await codeHighlighter(read ? "text" : lang, CODE_THEMES)
+  const reader = read
+    ? [readTokens(source, await codeColours(source, lang, CODE_THEMES))]
+    : []
   const marked = highlight ? linesOf(highlight) : null
   const notes = notations
     ? await import("@shikijs/transformers").then((t) => [
@@ -108,10 +139,11 @@ export async function codeHtml(
       ])
     : []
   return h.codeToHtml(source, {
-    lang,
+    lang: read ? "text" : lang,
     themes: CODE_THEMES,
     defaultColor: false,
     transformers: [
+      ...reader,
       // The notations travel INSIDE the source, so they survive an edit that moves a
       // line; Shiki strips the comment from the markup, the clipboard keeps it.
       ...notes,

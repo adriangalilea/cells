@@ -26,9 +26,9 @@ export interface CodeProps {
   /** A highlighted command row without a filename bar. Copy stays on the right;
    *  a command too long for the row scrolls on one line, its hidden side fading. */
   compact?: boolean
-  /** A Shiki language id, or a registered one (`cells`, or its alias `cell`; lib/
-   *  code-tokens `registerLanguage`). `text` when it is not code, which skips the
-   *  grammar. Absent: the `filename`'s extension's, else `tsx`. */
+  /** A Shiki language id, or a registered one (lib/code-tokens `registerLanguage`:
+   *  `cells` and `cell` once cells-code is imported). `text` when it is not code,
+   *  which skips the grammar. Absent: the `filename`'s extension's, else `tsx`. */
   lang?: CodeLang
   /** A path or a name for the tab. Without one the bar names the language. */
   filename?: string
