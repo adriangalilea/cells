@@ -68,12 +68,12 @@ const screen = await editorStill({
     { kind: "place", ...TYPO, delay: 300 },
   ],
   progress: 1,
-  // The file's four lines and the status line: as many as the card's height takes with
-  // the editor across its width.
+  // The file's lines, its header first: at fewer rows the view scrolls the caret off
+  // the bottom edge, as helix's does, and the header leaves the screen.
   rows: 5,
-  // The typo's row, its message after it, with room: the width the card's height
-  // leaves the editor at five rows.
-  columns: 66,
+  // The typo's row and its message after it: the fewest columns that hold it, so the
+  // type is as large as the card's width makes it.
+  columns: 58,
   diagnose: cellsDiagnose(engine),
   accent: ACCENT,
 })
@@ -83,7 +83,8 @@ assert.ok(
   screen.rows.every((r) => !r || r.runs.reduce((n, x) => n + x.text.length, 0) + screen.gutter <= screen.columns),
   "every line whole on the screen",
 )
-const still = renderEditorSvg(screen, { fontSize: 20 })
+// The status and command lines say nothing at a thumbnail's size: left out.
+const still = renderEditorSvg(screen, { fontSize: 20, statusLines: false })
 
 // ── the card ──
 

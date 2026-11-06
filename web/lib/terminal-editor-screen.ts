@@ -443,6 +443,10 @@ export interface EditorSvgOptions {
   /** The type, px; the whole window scales with it. */
   fontSize?: number
   face?: MonoFace
+  /** The status and command lines, drawn by default. A still seen too small to read
+   *  them (a link preview's thumbnail) leaves both out, the text's own padding under
+   *  its last row as above its first. */
+  statusLines?: boolean
 }
 
 /** The screen as the terminal's window in SVG, at its own size: `columns` wide in the
@@ -451,7 +455,11 @@ export interface EditorSvgOptions {
  *  quietly differs from the live one. */
 export function renderEditorSvg(
   screen: EditorScreen,
-  { fontSize = 16, face = GEIST_MONO }: EditorSvgOptions = {},
+  {
+    fontSize = 16,
+    face = GEIST_MONO,
+    statusLines = true,
+  }: EditorSvgOptions = {},
 ): string {
   const { palette, columns } = screen
   if (!Number.isFinite(columns))
@@ -579,6 +587,12 @@ export function renderEditorSvg(
     )
   }
   y += screen.rows.length * lh
+  if (!statusLines)
+    return terminalWindowSvg(
+      palette,
+      { width: columns * ch, height: y + TEXT_TOP * fontSize, fontSize, face },
+      out.join(""),
+    )
   // The status line: the mode, the file, then at the right the counts and the place,
   // a column between each, as the live one lays them in a row.
   const { status } = screen
