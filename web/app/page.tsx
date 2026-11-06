@@ -81,21 +81,17 @@ export default function Page() {
         {/* Glass, as the shimmer's own demo sets words over it: its blur frosts the
             facets behind, the words in front stay sharp. */}
         <Glass shape="surface" className="max-w-[52ch] p-8 [--glass-radius:1.25rem]">
-          <p className="font-mono text-[11px] tracking-[0.18em] text-muted-foreground/70">PRESS EITHER TAB</p>
+          <p className="font-mono text-[11px] tracking-[0.18em] text-muted-foreground/70">TRY IT</p>
           <h2 className="mt-4 text-balance text-[clamp(1.5rem,2.6vw,2.125rem)] leading-[1.15] font-medium tracking-[-0.02em]">
-            Two files, checked as one.
+            Files that check each other.
           </h2>
           <div className="mt-6 space-y-4 text-[16px] leading-relaxed text-muted-foreground">
             <p>
-              <code className="font-mono text-foreground/85">accounts{PRODUCT.extension}</code> lists the accounts.{" "}
-              <code className="font-mono text-foreground/85">money{PRODUCT.extension}</code> imports it, and its header says the rest: <code className="font-mono text-foreground/85">amount</code> is
-              euros above 0, <code className="font-mono text-foreground/85">to</code> names an account, <code className="font-mono text-foreground/85">vat</code> is computed for every row.
+              The header holds the types, the formulas and the links to other files. Every value is checked against them as you type, across files.
             </p>
-            <p>
-              <code className="font-mono text-foreground/85">coffee</code> was caught as it was typed, in the editor and by <code className="font-mono text-foreground/85">{PRODUCT.cli} check</code>: accounts had no
-              coffee. Added there, both went quiet.
+            <p className="text-foreground/80">
+              Change <code className="font-mono text-foreground">rent</code> to <code className="font-mono text-foreground">rant</code> in the editor.
             </p>
-            <p className="text-foreground/80">Below, one idea at a time, starting from a plain CSV.</p>
           </div>
         </Glass>
       </section>
