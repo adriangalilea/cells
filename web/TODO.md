@@ -1,6 +1,5 @@
 # TODO
 
-
 ## The hero becomes usable (Adrian's idea, worth a great deal of effort)
 
 After it plays, a "your turn" control pauses the clip, and the frame at that instant (the files as typed so far, the tab in front, the caret) becomes live state: one folder in memory (`accounts.cell`, `money.cell`) that every window reads and writes through the real wasm engine. Any window's edit is a write to the folder, and every window reads it again.
