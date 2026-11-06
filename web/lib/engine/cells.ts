@@ -37,6 +37,9 @@ interface Exports {
   cells_stored_since(h: number, before: number): void
   cells_read_as(ptr: number, len: number, cap: number, sep: number): number
   cells_detect(ptr: number, len: number): number
+  cells_token_kinds(): number
+  cells_tokens(ptr: number, len: number, cap: number): number
+  cells_layout(ptr: number, len: number, cap: number, fold: number): number
   cells_reshaped(h: number, ptr: number, len: number, cap: number): number
   cells_written_as(h: number, sep: number, ptr: number, len: number, cap: number): number
   cells_naming_why(h: number, i: number): number
@@ -553,7 +556,7 @@ export interface Files {
   files: Record<string, string>
 }
 
-/** A `.cell` file's text (or its bytes), read; its imports followed through `files` when
+/** A `.cells` file's text (or its bytes), read; its imports followed through `files` when
  *  given, else read alone (what it imports unchecked). */
 export function read(input: string | Uint8Array, files?: Files): Read {
   if (!files) return readAs(input, "cells")
@@ -572,6 +575,114 @@ export function detect(input: string | Uint8Array): Separator {
   const sep = String.fromCharCode(x.cells_detect(p, len)) as Separator
   x.cells_free(p, cap)
   return sep
+}
+
+/** What a span of a file is, as the engine names it (`cells::tokens::Kind::ALL`, in its
+ *  order): checked against the engine's own list on the first `tokens`, so a kind the
+ *  engine adds screams here instead of passing as a word no type knows. */
+export const TOKEN_KINDS = [
+  "fence",
+  "comment",
+  "keyword",
+  "name",
+  "type",
+  "mark",
+  "bound",
+  "format",
+  "choice",
+  "punct",
+  "number",
+  "reference",
+  "operator",
+  "cellText",
+  "cellNumber",
+  "cellBool",
+  "cellDate",
+  "cellChoice",
+  "cellLink",
+  "cellId",
+  "error",
+  "string",
+  "code",
+  "table",
+] as const
+
+export type TokenKind = (typeof TOKEN_KINDS)[number]
+
+/** A span of a file: `from` to `to` in UTF-16 units (a string's own indices), what it
+ *  is, the column it stands in (a header cell's parts, a cell), and for a name a formula
+ *  reads the column of its own table it names (`cost`, `TABLE['k7'].cost`); null where
+ *  there is none. */
+export interface Token {
+  from: number
+  to: number
+  kind: TokenKind
+  column: number | null
+  reads: number | null
+}
+
+/** The engine's kinds by their number across the boundary, once checked. */
+let kinds: readonly TokenKind[] | null = null
+
+function tokenKinds(): readonly TokenKind[] {
+  if (kinds) return kinds
+  const engine = returned(x.cells_token_kinds()).split("\n")
+  if (engine.join() !== TOKEN_KINDS.join())
+    throw new Error(`cells: the engine's token kinds are ${engine.join(", ")}, the wrapper's ${TOKEN_KINDS.join(", ")}`)
+  kinds = TOKEN_KINDS
+  return kinds
+}
+
+/** What every part of a file is, read from its text alone and never refused (a broken
+ *  file still has its spans): what a highlighter paints, the same reading a language
+ *  server's semantic tokens carry. In order, none overlapping; what lies between (spaces,
+ *  line breaks) is nothing. */
+export function tokens(text: string): Token[] {
+  const kinds = tokenKinds()
+  const [p, len, cap] = put(text)
+  const at = x.cells_tokens(p, len, cap)
+  const raw = new Uint32Array(x.memory.buffer, at, x.cells_len() / 4).slice()
+  const none = 0xffffffff
+  const out: Token[] = []
+  for (let i = 0; i < raw.length; i += 5) {
+    const kind = kinds[raw[i + 2] as number]
+    if (!kind) throw new Error(`cells: a token of kind ${raw[i + 2]}, which the engine does not name`)
+    const column = raw[i + 3] as number
+    const reads = raw[i + 4] as number
+    out.push({
+      from: raw[i] as number,
+      to: raw[i + 1] as number,
+      kind,
+      column: column === none ? null : column,
+      reads: reads === none ? null : reads,
+    })
+  }
+  return out
+}
+
+/** A file's tables laid out as tables, for a view that aligns their columns without
+ *  writing a byte: `pads`, spaces drawn at `at` (a string's index, where a cell's next
+ *  comma stands) so every cell of a column ends where its widest does; `cuts`, with a
+ *  `fold`, the middle of each cell wider than it, `from` to `to`, drawn folded until a
+ *  reader opens it (a header cell's name kept whole). Widths in characters. A cell is
+ *  read exactly as written, so these are never written into the file. */
+export interface Layout {
+  pads: { at: number; width: number }[]
+  cuts: { from: number; to: number }[]
+}
+
+export function layout(text: string, fold?: number): Layout {
+  if (fold !== undefined && !(Number.isInteger(fold) && fold >= 8))
+    throw new Error(`cells: a fold is a whole number of characters, 8 or more, not ${fold}`)
+  const [p, len, cap] = put(text)
+  const at = x.cells_layout(p, len, cap, fold ?? 0)
+  const raw = new Uint32Array(x.memory.buffer, at, x.cells_len() / 4).slice()
+  const count = raw[0] as number
+  const pads: Layout["pads"] = []
+  for (let i = 0; i < count; i++) pads.push({ at: raw[1 + 2 * i] as number, width: raw[2 + 2 * i] as number })
+  const cuts: Layout["cuts"] = []
+  for (let i = 1 + 2 * count; i < raw.length; i += 2) cuts.push({ from: raw[i] as number, to: raw[i + 1] as number })
+  return { pads, cuts }
 }
 
 /** A file read in a dialect: `cells`, or a plain file (a `.csv`, a `.tsv`, plain text) by
@@ -735,7 +846,7 @@ export type ColumnAt = { kept: number; name?: string } | { header: string; cells
 
 /** The file with exactly `columns`, in their order, read again as a new doc (`doc` is
  *  untouched): inserting, removing, moving and renaming columns. Each kept column keeps
- *  every row's field as written; a `.cell` file whose columns no longer read (two of one
+ *  every row's field as written; a `.cells` file whose columns no longer read (two of one
  *  name, a formula reading one taken out) throws. */
 export function reshape(doc: Doc, columns: readonly ColumnAt[]): Read {
   const spec = new Spec()
@@ -749,7 +860,7 @@ export function reshape(doc: Doc, columns: readonly ColumnAt[]): Read {
 }
 
 /** The file written in another dialect: a plain file's header the columns' names and
- *  every computed cell its value; a `.cell` file's header `header` when given (each
+ *  every computed cell its value; a `.cells` file's header `header` when given (each
  *  column's cell with its type), its prelude kept. */
 export function writtenAs(doc: Doc, dialect: Dialect, header?: readonly string[]): string {
   const [p, len, cap] = put(new Spec().list(header ?? []).bytes())

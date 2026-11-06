@@ -27,7 +27,7 @@ export interface CodeProps {
    *  a command too long for the row scrolls on one line, its hidden side fading. */
   compact?: boolean
   /** A Shiki language id, or a registered one (lib/code-tokens `registerLanguage`:
-   *  `cells` and `cell` once cells-code is imported). `text` when it is not code,
+   *  `cells` once cells-code is imported). `text` when it is not code,
    *  which skips the grammar. Absent: the `filename`'s extension's, else `tsx`. */
   lang?: CodeLang
   /** A path or a name for the tab. Without one the bar names the language. */

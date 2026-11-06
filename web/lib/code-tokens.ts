@@ -80,7 +80,8 @@ export type CodeSpan = {
  *  own that knows what every part of the text is (a language whose engine runs where
  *  code does). Either is loaded the first time the language is asked for. */
 export type CodeLanguage = {
-  /** `cell` for `cells`: what `money.cell` and a ```` ```cell ```` fence say. */
+  /** Other names a file's extension or a fence may call it by (`yml` for `yaml`); none
+   *  where the extension is the id (`.cells`). */
   aliases?: readonly string[]
 } & (
   | {
@@ -170,14 +171,14 @@ export function readerOf(
   return r
 }
 
-/** The id a language name stands for: a registered language's alias resolved
- *  (`cell` is `cells`), any other name as it is (Shiki reads its own aliases). */
+/** The id a language name stands for: a registered language's alias resolved, any
+ *  other name as it is (Shiki reads its own aliases). */
 export const languageOf = (name: string): string => {
   const lower = name.toLowerCase()
   return ALIASES.get(lower) ?? lower
 }
 
-/** The language a path is written in: its extension (`html`, `ts`, `md`, `cell`)
+/** The language a path is written in: its extension (`html`, `ts`, `md`, `cells`)
  *  read through `languageOf`, which Shiki reads as a language or one of its aliases;
  *  `text` with none. */
 export function langOf(path: string): string {

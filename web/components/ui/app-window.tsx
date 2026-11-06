@@ -4,7 +4,7 @@
 // bar, and a body that holds whatever React it is given (a table, a form, a chart),
 // so it reads as a real app on a page or on a `macos` screen:
 //
-//   <AppWindow title="money.cell"><Table … /></AppWindow>
+//   <AppWindow title="money.cells"><Table … /></AppWindow>
 //
 // It is the one drawing of a Mac window's chrome here: `browser` and `ide` draw their
 // buttons with `TrafficLights`, `macos` its terminal windows with `AppWindow`. The

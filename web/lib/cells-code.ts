@@ -1,9 +1,9 @@
-// CELLS IN CODE: `cells` (and `cell`) registered with code, read by the Cells engine
-// (`tokens`, the wasm build), never by a pattern. The engine knows what every part of
-// a file is, so a file is coloured the way a table is read, by its columns, as Rainbow
-// CSV colours one: a column's name in the header, every cell under it whatever it
-// spells, and every name a formula reads (`cost` in `=cost * qty`) share that column's
-// colour. In a table colour means a column, so nothing else wears a hue: what is read
+// CELLS IN CODE: `cells` (a `.cells` file, a ```` ```cells ```` fence) registered with
+// code, read by the Cells engine (`tokens`, the wasm build), never by a pattern. The
+// engine knows what every part of a file is, so a file is coloured the way a table is
+// read, by its columns, as Rainbow CSV colours one: a column's name in the header,
+// every cell under it whatever it spells, and every name a formula reads (`cost` in
+// `=cost * qty`) share that column's colour. In a table colour means a column, so nothing else wears a hue: what is read
 // is the text's own colour, what describes (types, bounds, punctuation) is muted, and
 // only an error and a comment take the theme's colours; a script in its fence is its
 // own language's. Import the module for its effect once in each
@@ -136,7 +136,6 @@ export function cellsSpans(text: string, read: readonly Token[]): CodeSpan[] {
 // The engine (its WebAssembly, half a megabyte as a module) loads when a Cells file is
 // first coloured, never with the page that registers it.
 registerLanguage("cells", {
-  aliases: ["cell"],
   read: () =>
     import("@/lib/cells").then(
       ({ tokens }) =>
