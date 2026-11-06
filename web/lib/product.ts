@@ -11,8 +11,9 @@ export const PRODUCT = {
   /** The command line. */
   cli: "cells",
   tagline: "Programmable data.",
-  /** Under the line, and the page's description wherever it is read. */
-  subline: "Logic and data in a single plain text file. Open it in any editor.",
+  /** Under the line, and the page's description wherever it is read; on the page its
+   *  extension is lit. */
+  subline: "In a single .cell plain text file.",
   domain: "cellular.computer",
   repo: "https://github.com/adriangalilea/cells",
 } as const
