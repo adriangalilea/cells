@@ -17,11 +17,13 @@ pub struct CellsDoc {
     doc: Doc,
     out: String,
     spans: Vec<CellsSpan>,
+    /// What `cells_complete` found last.
+    completions: Vec<cells::complete::Completion>,
 }
 
 impl CellsDoc {
     fn of(doc: Doc) -> *mut CellsDoc {
-        Box::into_raw(Box::new(CellsDoc { doc, out: String::new(), spans: Vec::new() }))
+        Box::into_raw(Box::new(CellsDoc { doc, out: String::new(), spans: Vec::new(), completions: Vec::new() }))
     }
 }
 
@@ -1314,6 +1316,124 @@ pub unsafe extern "C" fn cells_offers(d: *mut CellsDoc, column: usize) -> CellsS
     CellsStr::of(&d.out)
 }
 
+/// What a completion is, as an editor marks it.
+#[repr(C)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum CellsCompletionKind {
+    /// A row's key, a yes or a no.
+    CellsCompletionValue = 0,
+    /// One of a choice's words.
+    CellsCompletionEnumMember = 1,
+    /// A named type.
+    CellsCompletionClass = 2,
+    /// A table's key column, `accounts.account`.
+    CellsCompletionReference = 3,
+    /// The language's or the prelude's word, a base type.
+    CellsCompletionKeyword = 4,
+    /// A column.
+    CellsCompletionField = 5,
+    /// A table.
+    CellsCompletionModule = 6,
+    CellsCompletionFunction = 7,
+}
+
+/// A completion: what it is, and the bytes of the text it replaces (the word being
+/// typed); its words through `cells_completion_part`.
+#[repr(C)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub struct CellsCompletion {
+    pub kind: CellsCompletionKind,
+    pub from: u32,
+    pub to: u32,
+}
+
+/// A completion's words.
+#[repr(C)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum CellsCompletionPart {
+    /// What a list shows.
+    CellsCompletionLabel = 0,
+    /// What it is, quieter, beside it.
+    CellsCompletionDetail = 1,
+    /// What is written in place of the bytes it replaces.
+    CellsCompletionInsert = 2,
+    /// What it is matched by; empty where that is its label.
+    CellsCompletionFilter = 3,
+    /// Where it sorts; empty where that is by its label.
+    CellsCompletionSort = 4,
+}
+
+/// What may be written at byte `at` of `text`, the text `d` was read from: how many
+/// completions there are, each read with `cells_completion` (they stand until the next
+/// `cells_complete` on the doc). The tables the text names are the ones `d` holds: a doc
+/// read with its folder (`cells_read_with`) completes their keys and columns.
+///
+/// # Safety
+/// `d` is a live Cells doc read from `text`; `text` points at `len` bytes of UTF-8; `at`
+/// is at most `len`, on a character's first byte.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn cells_complete(d: *mut CellsDoc, text: *const c_char, len: usize, at: usize) -> usize {
+    // SAFETY: the caller's promise.
+    let d = unsafe { doc(d) };
+    // SAFETY: the caller's promise.
+    let text = unsafe { text_of(text, len) };
+    // A table by the names that reach it: the doc's own, then each one's own.
+    let held = |path: &[&str]| -> Option<std::sync::Arc<Doc>> {
+        let (first, rest) = path.split_first()?;
+        let mut t = d.doc.tables().iter().find(|t| t.name == *first)?.doc.clone()?;
+        for name in rest {
+            let next = t.tables().iter().find(|x| x.name == *name)?.doc.clone()?;
+            t = next;
+        }
+        Some(t)
+    };
+    let found = cells::complete::complete(&d.doc, text, at, held);
+    d.completions = found;
+    d.completions.len()
+}
+
+/// Completion `i` of the last `cells_complete`.
+///
+/// # Safety
+/// `d` is a live doc; `i` below what its last `cells_complete` returned.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn cells_completion(d: *mut CellsDoc, i: usize) -> CellsCompletion {
+    // SAFETY: the caller's promise.
+    let c = &unsafe { doc(d) }.completions[i];
+    use cells::complete::CompletionKind as K;
+    let kind = match c.kind {
+        K::Value => CellsCompletionKind::CellsCompletionValue,
+        K::EnumMember => CellsCompletionKind::CellsCompletionEnumMember,
+        K::Class => CellsCompletionKind::CellsCompletionClass,
+        K::Reference => CellsCompletionKind::CellsCompletionReference,
+        K::Keyword => CellsCompletionKind::CellsCompletionKeyword,
+        K::Field => CellsCompletionKind::CellsCompletionField,
+        K::Module => CellsCompletionKind::CellsCompletionModule,
+        K::Function => CellsCompletionKind::CellsCompletionFunction,
+    };
+    CellsCompletion { kind, from: c.from, to: c.to }
+}
+
+/// One of completion `i`'s words.
+///
+/// # Safety
+/// `d` is a live doc; `i` below what its last `cells_complete` returned.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn cells_completion_part(d: *mut CellsDoc, i: usize, part: CellsCompletionPart) -> CellsStr {
+    // SAFETY: the caller's promise.
+    let d = unsafe { doc(d) };
+    let c = &d.completions[i];
+    use CellsCompletionPart as P;
+    d.out = match part {
+        P::CellsCompletionLabel => c.label.clone(),
+        P::CellsCompletionDetail => c.detail.clone(),
+        P::CellsCompletionInsert => c.insert.clone(),
+        P::CellsCompletionFilter => c.filter.clone().unwrap_or_default(),
+        P::CellsCompletionSort => c.sort.clone().unwrap_or_default(),
+    };
+    CellsStr::of(&d.out)
+}
+
 /// The file's text with its prelude edited: prelude lines `from..to` (1-based inside the
 /// fences: a statement's, a script's code alone) replaced by `text` (empty: taken out;
 /// `from == to`: written before line `from`), or `text` written last when `from` is 0, a
@@ -1510,6 +1630,27 @@ pub unsafe extern "C" fn cells_tokens_free(t: CellsTokens) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn completions() {
+        let src = "---\ntype Money = EUR>=0\nprice: Mo\n---\nprice,cost:EUR\n1,2.00\n";
+        let at = src.find("Mo\n---").unwrap() + 2;
+        let mut f = CellsFailure { at: CellsAt::CellsAtNone, number: 0, why: ptr::null_mut(), why_len: 0 };
+        // SAFETY: valid pointers throughout; the doc released once.
+        unsafe {
+            let d = cells_read(src.as_ptr(), src.len(), 1, &mut f);
+            let n = cells_complete(d, src.as_ptr() as *const c_char, src.len(), at);
+            let found: Vec<(CellsCompletion, String)> = (0..n)
+                .map(|i| {
+                    let s = cells_completion_part(d, i, CellsCompletionPart::CellsCompletionLabel);
+                    (cells_completion(d, i), String::from_utf8_lossy(std::slice::from_raw_parts(s.ptr as *const u8, s.len)).into_owned())
+                })
+                .collect();
+            let (c, _) = found.iter().find(|(_, l)| l == "Money").expect("the named type offered");
+            assert_eq!((c.kind, c.from as usize, c.to as usize), (CellsCompletionKind::CellsCompletionClass, at - 2, at));
+            cells_free(d);
+        }
+    }
 
     #[test]
     fn through_the_abi() {
