@@ -1,5 +1,17 @@
 # TODO
 
+## The landing, as it stands and what it owes (2026-11-06)
+
+Built: the hero is someone at work in Cells (two app windows, ui's table-session, every commit the engine's); three tools one at a time (a spreadsheet beside the landed window, a database and a script each with its scene), then the one plain text file; the story from a CSV, the app first and the text after; the price ("Unapologetically incompatible with CSV."); what it opens, each lever with a proof the build checks; where it opens; your turn, the trip editable. "Programmable data." is the line, never reworded (the repository's CLAUDE.md).
+
+Owed, in order:
+
+- [ ] **The app's window, after Cells.app**: designed and validated in the Mac app first (untitled `apps/tally/TODO.md`, "The window, designed"), then mirrored here: the file's path in its title, the prelude folded over the table and opened into its setup, heads in their column's colour with the type, link and formula under the name, the folder a sidebar closed by default, the format's character. Never designed here ahead of the app.
+- [ ] **The hero, told in order, once the window is**: `accounts.cells` full screen and fully written; `money.cells` opened, the screen split; its import added from its prelude; its data typed a cell at a time, each computed value landing; a link to an account that is not there flagged and fixed in the other window. ui's table-session needs the steps for it: a window opened and the screen arranged, a prelude line set, a column's type and formula set in its head.
+- [ ] **The copy pass**, every line of the page and of the docs read again for density: each sentence a fact a reader needs, nothing that fills time.
+- [ ] **The link card's title**: it leads with "Programmable data." (the rule), the name smaller.
+- [ ] **Deploy**, once Adrian has seen it.
+
 ## The docs, finished
 
 Built: every document a page (SPEC.md a page per section), links resolved at build, every `cells` block read by the engine, the ground quiet behind reading. Owed, in order:
@@ -11,12 +23,8 @@ Built: every document a page (SPEC.md a page per section), links resolved at bui
 - **Guides.** Task pages (keep a budget, import a bank's CSV, set up an editor) as files under `docs/`, read and checked as the rest.
 - **Verified by eye.** Contrast of body text, code and the sidebar in both themes, on a real screen.
 
-## The hero becomes usable (Adrian's idea, worth a great deal of effort)
+## The app becomes usable (Adrian's idea, worth a great deal of effort)
 
-After it plays, a "your turn" control pauses the clip, and the frame at that instant (the files as typed so far, the tab in front, the caret) becomes live state: one folder in memory (`accounts.cells`, `money.cells`) that every window reads and writes through the real wasm engine. Any window's edit is a write to the folder, and every window reads it again.
+After the hero plays, its two app windows take the reader's hands: one folder in memory (`accounts.cells`, `money.cells`) that both windows read and write through the real wasm engine, every edit a write to the folder that both read again. ui's `table`, live, on that folder (`useTableDocument` with the `cells` codec, which shows a computed cell's value and stores what each edit reached). "Your turn" at the page's foot is Helix on the story's trip today; once the app takes hands it is the app first, the text beside it, as the story tells it.
 
-- **The Cells window:** ui's `table`, editable on that folder (`useTableDocument` with the `cells` codec, which shows a computed cell's value and stores what each edit reached). Buildable now.
-- **The terminal:** a small shell over the folder running the real engine: `cells check`, `cells show`, `ls`, `cat`. Anything else answers that it is not in this demo. Nothing leaves the page.
-- **The editor:** real modal editing, Helix's, with diagnostics, hover and completion from the engine as the language server gives them. The landing's window already takes typing as a text box (ui's `onEdit`).
-
-Waiting on ui (its TODO, "Cells on the one engine"): `terminal` taking input with a command handler the page supplies, and modal editing in `terminal-editor`'s look. The folder, the commands and the wiring are this site's.
+The text's side, waiting on ui (its TODO, "Cells on the one engine"): `terminal` taking input with a command handler the page supplies (`cells check`, `cells fmt`, `ls`, `cat`, nothing leaving the page), and modal editing in `terminal-editor`'s look.
