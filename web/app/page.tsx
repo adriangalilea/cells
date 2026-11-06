@@ -132,21 +132,24 @@ export default function Page() {
               <li>The engine in Rust, passing all of it natively and as WebAssembly: what runs on this page.</li>
               <li>Formulas in headers and cells, tables written inline, imports (a URL's pinned by its hash), references checked across files.</li>
               <li>
-                <code className="font-mono text-foreground/80">{PRODUCT.cli} check</code>, <code className="font-mono text-foreground/80">show</code>, <code className="font-mono text-foreground/80">pin</code>, and <code className="font-mono text-foreground/80">run</code> with Bun.
+                <code className="font-mono text-foreground/80">{PRODUCT.cli} check</code>, <code className="font-mono text-foreground/80">fix</code>, <code className="font-mono text-foreground/80">show</code>, <code className="font-mono text-foreground/80">pin</code>, and <code className="font-mono text-foreground/80">run</code> with Bun.
+              </li>
+              <li>
+                <code className="font-mono text-foreground/80">{PRODUCT.cli} lsp</code>: the problems you saw on this page, in your editor, with hover, completion, go to, rename, and every computed value stored as you save. Checked in Helix.
+              </li>
+              <li>
+                <code className="font-mono text-foreground/80">{PRODUCT.cli} merge</code>, git's merge driver: a computed value is never a conflict.
               </li>
               <li>The engine bound on the web (the tables on this page) and in Swift, on macOS, iOS and tvOS.</li>
             </ul>
           </div>
           <div>
-            <h3 className="text-lg font-medium">Being built, then next</h3>
+            <h3 className="text-lg font-medium">Next</h3>
             <ul className="mt-4 space-y-2.5 text-[15px] leading-relaxed text-muted-foreground">
-              <li>
-                <code className="font-mono text-foreground/80">{PRODUCT.cli} lsp</code>, being built now: the problems you saw on this page, in your editor, with hover, completion, go to and rename. Helix first.
-              </li>
-              <li>A daemon that keeps the schedules and serves every app.</li>
               <li>
                 <code className="font-mono text-foreground/80">{PRODUCT.cli} sql</code>, DuckDB over the typed columns of a folder.
               </li>
+              <li>A daemon that keeps the schedules and serves every app.</li>
               <li>Charts from the types, with no setup.</li>
             </ul>
           </div>
