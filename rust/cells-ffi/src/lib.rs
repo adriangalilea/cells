@@ -1152,6 +1152,168 @@ pub unsafe extern "C" fn cells_prelude_text(d: *mut CellsDoc) -> CellsStr {
     CellsStr::of(&d.out)
 }
 
+/// What a prelude statement is.
+#[repr(C)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum CellsStatementKind {
+    /// `type Name = <type>`.
+    CellsStatementType = 0,
+    /// `import accounts from "accounts.cells"`.
+    CellsStatementImport = 1,
+    /// `name = ```cells`, a table written inline.
+    CellsStatementTable = 2,
+    /// `name = run <schedule>`, a table its script fills.
+    CellsStatementRun = 3,
+    /// `name: type = formula`, a column of the file's table declared.
+    CellsStatementColumn = 4,
+}
+
+/// A prelude statement: what it is and its lines; its words through `cells_statement_part`.
+#[repr(C)]
+pub struct CellsStatement {
+    pub kind: CellsStatementKind,
+    /// Its first prelude line, 1-based inside the fences, and the line after its last.
+    pub line: u32,
+    pub end: u32,
+    pub exported: bool,
+    /// An import's names in braces (`CellsStatementWord`); 0 for one that takes a file whole.
+    pub words: usize,
+}
+
+/// A statement's words, read one at a time; empty where it has none.
+#[repr(C)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum CellsStatementPart {
+    /// The name it gives: a type's, a table's, a column's, an import's of a whole file.
+    CellsStatementName = 0,
+    /// A type as written after its `=`; a column's after its `:` as a header cell spells it.
+    CellsStatementSpelled = 1,
+    /// Where an import comes from, unquoted.
+    CellsStatementFrom = 2,
+    /// An import's name `word` in its braces.
+    CellsStatementWord = 3,
+    /// An import's `sha256`.
+    CellsStatementHash = 4,
+    /// A script's schedule as written after `run`.
+    CellsStatementSchedule = 5,
+    /// A script's language: `ts`.
+    CellsStatementLanguage = 6,
+    /// A script's code, its fence's lines.
+    CellsStatementCode = 7,
+    /// A table's rows as written: a table's fence, a script's stored rows.
+    CellsStatementRows = 8,
+    /// The statement as written, its lines and comments.
+    CellsStatementText = 9,
+}
+
+/// How many statements the prelude holds that read.
+///
+/// # Safety
+/// `d` is a live doc.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn cells_statement_count(d: *mut CellsDoc) -> usize {
+    // SAFETY: the caller's promise.
+    unsafe { doc(d) }.doc.statements().len()
+}
+
+/// Statement `i`.
+///
+/// # Safety
+/// `d` is a live doc; `i < cells_statement_count(d)`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn cells_statement(d: *mut CellsDoc, i: usize) -> CellsStatement {
+    // SAFETY: the caller's promise.
+    let d = unsafe { doc(d) };
+    let lines = d.doc.statement_lines(i);
+    use cells::Statement as S;
+    let (kind, exported, words) = match &d.doc.statements()[i] {
+        S::Type { exported, .. } => (CellsStatementKind::CellsStatementType, *exported, 0),
+        S::Import { names, .. } => (CellsStatementKind::CellsStatementImport, false, names.len()),
+        S::Table { exported, .. } => (CellsStatementKind::CellsStatementTable, *exported, 0),
+        S::Run { exported, .. } => (CellsStatementKind::CellsStatementRun, *exported, 0),
+        S::Column { .. } => (CellsStatementKind::CellsStatementColumn, false, 0),
+    };
+    CellsStatement { kind, line: lines.start, end: lines.end, exported, words }
+}
+
+/// One of statement `i`'s words.
+///
+/// # Safety
+/// `d` is a live doc; `i < cells_statement_count(d)`; `word` below its `words` for
+/// `CellsStatementWord`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn cells_statement_part(d: *mut CellsDoc, i: usize, part: CellsStatementPart, word: usize) -> CellsStr {
+    // SAFETY: the caller's promise.
+    let d = unsafe { doc(d) };
+    use CellsStatementPart as P;
+    use cells::Statement as S;
+    let prelude = d.doc.prelude_text();
+    let fenced = |f: &cells::Fenced| prelude[f.start..f.end].to_owned();
+    let s = &d.doc.statements()[i];
+    let text = match (part, s) {
+        (P::CellsStatementText, _) => d.doc.statement_text(i).to_owned(),
+        (P::CellsStatementName, S::Type { name, .. } | S::Table { name, .. } | S::Run { name, .. } | S::Column { name, .. }) => {
+            name.clone()
+        }
+        (P::CellsStatementName, S::Import { default, .. }) => default.clone().unwrap_or_default(),
+        (P::CellsStatementSpelled, S::Type { spelled, .. } | S::Column { spelled, .. }) => spelled.clone(),
+        (P::CellsStatementFrom, S::Import { from, .. }) => from.clone(),
+        (P::CellsStatementWord, S::Import { names, .. }) => names[word].clone(),
+        (P::CellsStatementHash, S::Import { with, .. }) => {
+            with.iter().find(|(k, _)| k == "sha256").map(|(_, v)| v.clone()).unwrap_or_default()
+        }
+        (P::CellsStatementSchedule, S::Run { schedule, .. }) => schedule.spelled.clone(),
+        (P::CellsStatementLanguage, S::Run { code, .. }) => code.lang.clone(),
+        (P::CellsStatementCode, S::Run { code, .. }) => fenced(code),
+        (P::CellsStatementRows, S::Table { body, .. }) => fenced(body),
+        (P::CellsStatementRows, S::Run { stored, .. }) => stored.as_ref().map(fenced).unwrap_or_default(),
+        _ => String::new(),
+    };
+    d.out = text;
+    CellsStr::of(&d.out)
+}
+
+/// The file's text with its prelude edited: statement `at`'s lines replaced by `text`
+/// (empty: taken out), or `text` written last when `at` is negative, a prelude opened for
+/// it in a file without one. `text` is lines joined by `\n`. The caller reads the text
+/// again, so the imports a new line names are followed.
+///
+/// # Safety
+/// `d` is a live Cells doc; `at` is negative or below `cells_statement_count(d)`; `text`
+/// points at `len` bytes of UTF-8.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn cells_prelude_edited(d: *mut CellsDoc, at: isize, text: *const c_char, len: usize) -> CellsStr {
+    // SAFETY: the caller's promise.
+    let d = unsafe { doc(d) };
+    // SAFETY: the caller's promise.
+    let text = unsafe { text_of(text, len) };
+    d.out = d.doc.prelude_edited(usize::try_from(at).ok(), text);
+    CellsStr::of(&d.out)
+}
+
+/// A one-line statement as a writer writes it: a type (`name`, the type after its `=` in
+/// `said`), an import of a file whole (`name`, where from in `said`), or a column (`name`,
+/// its type and formula as a header cell spells them in `said`, `EUR=cost * qty`).
+///
+/// # Safety
+/// `d` is a live doc, whose buffer holds the line; `kind` is a type, an import or a
+/// column; `name` and `said` are UTF-8.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn cells_prelude_line(d: *mut CellsDoc, kind: CellsStatementKind, name: CellsStr, said: CellsStr) -> CellsStr {
+    // SAFETY: the caller's promise.
+    let d = unsafe { doc(d) };
+    // SAFETY: the caller's promise.
+    let (name, said) = unsafe { (text_of(name.ptr, name.len), text_of(said.ptr, said.len)) };
+    use cells::prelude as p;
+    d.out = match kind {
+        CellsStatementKind::CellsStatementType => p::type_line(name, said, false),
+        CellsStatementKind::CellsStatementImport => p::import_line(Some(name), &[], said, &[]),
+        CellsStatementKind::CellsStatementColumn => p::column_line(name, said),
+        other => panic!("a {other:?} is more than one line"),
+    };
+    CellsStr::of(&d.out)
+}
+
 /// Whether the header's line break is `\r\n`.
 ///
 /// # Safety
