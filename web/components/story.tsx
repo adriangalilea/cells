@@ -23,14 +23,19 @@ import { editOf, plain, type StoryAct, story } from "@/lib/story"
 import { walkthroughTimeline } from "@/lib/walkthrough-session"
 import { savedAt } from "@/lib/written"
 
-/** One act, played: Helix on its edit at the step's progress, the Cells window on the file
- *  as Helix last wrote it. `rows`, the editor's: the same for every act. */
+/** One act, played. An app act is the Cells window alone, reading each write of the act's
+ *  edit as it lands; a text act adds the file under it, Helix on the edit at the step's
+ *  progress with the engine as its language server. `rows`, the editor's: the same for
+ *  every act. */
 function ActView({ act, p, rows }: { act: StoryAct; p: number; rows: number }) {
   const edit = React.useMemo(() => editOf(act), [act])
   const timeline = React.useMemo(() => codeTimeline(edit.files, edit.steps), [edit])
   const diagnose = useCellsDiagnose()
   const ms = p * timeline.total
   const text = savedAt(timeline, edit.path, ms)
+  const light = p >= 1 ? act.light : undefined
+  if (act.view === "app")
+    return <CellsWindow name={edit.path} text={text} others={act.others} light={light} className="h-[22rem]" />
   return (
     <div className="grid gap-4">
       <Playhead progress={p}>
@@ -38,7 +43,7 @@ function ActView({ act, p, rows }: { act: StoryAct; p: number; rows: number }) {
           <TerminalEditor files={edit.files} steps={edit.steps} rows={rows} softWrap bufferline="multiple" diagnose={diagnose} />
         </Terminal>
       </Playhead>
-      <CellsWindow name={edit.path} text={text} others={act.others} light={p >= 1 ? act.light : undefined} className="h-[13rem]" />
+      <CellsWindow name={edit.path} text={text} others={act.others} light={light} className="h-[13rem]" />
     </div>
   )
 }
@@ -68,10 +73,21 @@ function stepsOf(acts: StoryAct[]): WalkthroughSteps {
     return {
       title: plain(act.lead),
       heading: <Told text={act.lead} />,
-      words: act.rest && (
-        <p>
-          <Told text={act.rest} />
-        </p>
+      words: (act.rest || act.doc) && (
+        <>
+          {act.rest && (
+            <p>
+              <Told text={act.rest} />
+            </p>
+          )}
+          {act.doc && (
+            <p className="mt-3">
+              <a href={act.doc} className="text-[14px] text-muted-foreground underline decoration-border underline-offset-4 transition-colors hover:text-foreground">
+                In the docs
+              </a>
+            </p>
+          )}
+        </>
       ),
       // The step plays as long as its edit: the editor's clock is the step's.
       play: codeTimeline(edit.files, edit.steps).total,

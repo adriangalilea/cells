@@ -11,6 +11,8 @@ import { hero } from "@/lib/hero"
 import { savedAt, textAt } from "@/lib/written"
 import { placeBroken } from "@/lib/spans"
 import { editOf, story } from "@/lib/story"
+import { PRODUCT } from "@/lib/product"
+import { PROOFS, TRIP_FILES, TRIP_PROBLEM } from "@/lib/proofs"
 
 const engine = await loadEngine()
 const readFiles = (files: Parameters<typeof readWith>[1]) => readWith(engine, files)
@@ -115,6 +117,22 @@ else console.log("✓ hero edit: the played edit ends on the fixed checkpoint")
 const typo = readFiles(heroFiles(HERO.checkpoints.typo)).problems.map((p) => `${HERO.money} ${p.why}`)
 if (JSON.stringify(typo) !== JSON.stringify([HERO.failing])) fail("hero terminal", `prints ${JSON.stringify([HERO.failing])}, the engine says ${JSON.stringify(typo)}`)
 else console.log("✓ hero terminal: the check's line is the engine's")
+
+// The landing's proofs: the check's line is the engine's on the folder it names, and every
+// Cells file shown reads whole.
+{
+  const before = failed
+  const t = readFiles([...TRIP_FILES].reverse())
+  const said = t.problems.map((p) => p.why)
+  if (said.join() !== TRIP_PROBLEM) fail("proof folder", `the engine says ${JSON.stringify(said)}, the page ${TRIP_PROBLEM}`)
+  for (const [name, p] of Object.entries(PROOFS)) {
+    if (p.lang !== "cells") continue
+    const r = readFiles([{ name: `${name}${PRODUCT.extension}`, text: p.text }])
+    if (r.broken.length || r.problems.length)
+      fail(`proof ${name}`, [...r.broken.map((b) => b.why), ...r.problems.map((x) => x.why)].join("; "))
+  }
+  if (failed === before) console.log(`✓ proofs: the check's line is the engine's, every file shown reads whole`)
+}
 
 if (failed) {
   console.error(`${failed} claim(s) the engine does not back`)

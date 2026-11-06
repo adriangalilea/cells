@@ -2,7 +2,21 @@
 // written. The hero's Cells window and the story's read the second: an app watching the
 // folder re-reads a file when the editor writes it, never while it is being typed.
 
-import type { CodeTimeline } from "@/lib/code-session"
+import { type CodeFile, type CodeStep, type CodeTimeline, codeFrameAt, codeTimeline } from "@/lib/code-session"
+import { type Engine, savedAs } from "@/lib/view"
+
+/** The `:w` after `steps` on `files`: the file in front written as the language server's
+ *  formatting writes it (every computed value the edits since its last write reached,
+ *  stored beside its `=`), read with every other file as it stands. */
+export function saveAfter(engine: Engine, files: readonly CodeFile[], steps: readonly CodeStep[]): CodeStep {
+  const t = codeTimeline([...files], [...steps])
+  const path = codeFrameAt(t, t.total).active
+  if (!path) throw new Error("written: a save with no file in front")
+  const was = { name: path, text: savedAt(t, path, t.total) }
+  const now = { name: path, text: textAt(t, path, t.total) }
+  const others = files.filter((f) => f.path !== path).map((f) => ({ name: f.path, text: textAt(t, f.path, t.total) }))
+  return { kind: "save", formatted: savedAs(engine, was, now, others) }
+}
 
 /** A file's text at an instant of the edit (ms on the edit's own clock): the characters
  *  standing then (typed, and not yet typed over), whether or not the file is in front. */

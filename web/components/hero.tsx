@@ -23,8 +23,8 @@ import { TerminalEditor } from "@/components/ui/terminal-editor"
 import { useCellsDiagnose } from "@/components/use-cells-diagnose"
 import { useEngine } from "@/components/use-engine"
 import { type CodeStep, codeFrameAt } from "@/lib/code-session"
-import { hero, saveAfter } from "@/lib/hero"
-import { savedAt } from "@/lib/written"
+import { hero } from "@/lib/hero"
+import { saveAfter, savedAt } from "@/lib/written"
 import "@/lib/cells-code"
 import { type Art, LID_MS, sceneClock, type Timeline } from "@/lib/macos-session"
 import { PRODUCT } from "@/lib/product"
@@ -165,7 +165,7 @@ export function Landing() {
     (s: CodeStep) =>
       setAdded((a) => {
         const next = [...a, s]
-        return s.kind === "type" || s.kind === "replace" ? [...next, saveAfter(engine, [...h.steps, ...next])] : next
+        return s.kind === "type" || s.kind === "replace" ? [...next, saveAfter(engine, h.files, [...h.steps, ...next])] : next
       }),
     [engine, h],
   )

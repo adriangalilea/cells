@@ -1,13 +1,16 @@
 import { Fragment, Suspense } from "react"
 import { Ground } from "@/components/ground"
 import { Hero, Landing } from "@/components/hero"
+import { Playground } from "@/components/playground"
 import { SiteFooter } from "@/components/site-footer"
 import { SiteHeader } from "@/components/site-header"
-import { Glass } from "@/components/ui/material-glass"
 import { Story } from "@/components/story"
+import { Code as Block } from "@/components/ui/code"
+import { Glass } from "@/components/ui/material-glass"
 import { PRODUCT } from "@/lib/product"
+import { PROOFS } from "@/lib/proofs"
 
-/** What each neighbour does, honestly, and what a cell does instead. */
+/** What each neighbour does, honestly, and what a Cells file does instead. */
 const ROWS = [
   {
     them: "CSV with a JSON schema beside it",
@@ -31,43 +34,102 @@ const ROWS = [
   },
 ]
 
-/** Something written in the file, as the words beside it name it. */
-function Code({ children }: { children: React.ReactNode }) {
+/** Something written in a file, as the words beside it name it. */
+function Spelled({ children }: { children: React.ReactNode }) {
   return <code className="font-mono text-[0.92em] text-foreground">{children}</code>
 }
 
-/** The line's three words, each shown on the file in the editor beside them: what in its
- *  header makes it so, and what to do to see it. */
+/** A section's small capitals over its heading. */
+function Eyebrow({ children }: { children: React.ReactNode }) {
+  return <p className="font-mono text-[11px] tracking-[0.18em] text-muted-foreground/70 uppercase">{children}</p>
+}
+
+/** What it opens up, each shown, not described: what a reader gets, and the proof. */
+const LEVERS: { title: string; says: React.ReactNode; proof?: (typeof PROOFS)[keyof typeof PROOFS] }[] = [
+  {
+    title: "A folder is a database",
+    says: (
+      <>
+        Files point at files. One command checks every link across the folder, and a key renamed in one file is renamed in every
+        file that uses it.
+      </>
+    ),
+    proof: PROOFS.folder,
+  },
+  {
+    title: "Git understands your numbers",
+    says: (
+      <>
+        Two people add rows to a running total on two branches. The merge is clean and every total is right: a computed value is
+        never a conflict.
+      </>
+    ),
+    proof: PROOFS.git,
+  },
+  {
+    title: "Live data, still plain text",
+    says: <>A script fills a table on a schedule, and the file keeps what it fetched: the rates are there to read with nothing running.</>,
+    proof: PROOFS.live,
+  },
+  {
+    title: "Your editor knows the data",
+    says: (
+      <>
+        A broken value named as you type, hover to see how a value is computed, a key completed from another file, a rename
+        followed across the folder. <Spelled>{PRODUCT.cli} lsp</Spelled>, in Helix and Neovim today.
+      </>
+    ),
+  },
+  {
+    title: "Safe to hand to an agent",
+    says: <>An AI edits it like any text file, and the engine names every value it breaks, at its row, before anyone relies on it.</>,
+  },
+  {
+    title: "Nothing runs when you open it",
+    says: <>A formula reads no clock, network or file. A script runs only when told to. Opening a file is reading it.</>,
+  },
+]
+
+/** Where a Cells file opens today, and what comes next. */
+const PLATFORMS: { name: string; now: boolean }[] = [
+  { name: `The command line: ${PRODUCT.cli} check, fmt, merge, lsp`, now: true },
+  { name: "Helix and Neovim, through the language server", now: true },
+  { name: "Cells.app, on the Mac", now: true },
+  { name: "Swift, on macOS, iOS and tvOS", now: true },
+  { name: "The web: the engine as WebAssembly, what runs on this page", now: true },
+  { name: "A VS Code extension", now: false },
+  { name: "The npm package", now: false },
+  { name: "Prebuilt binaries", now: false },
+  { name: "Highlighting on GitHub", now: false },
+]
+
+/** Three things to do to the file in the window, each one word of the line. */
 const TRIES = [
   {
     word: "Typed",
-    code: "amount:EUR>0",
-    says: "holds euros above zero, so a wrong value is named where it is written.",
+    code: "cost:EUR>=0",
+    says: "holds euros, never below zero.",
     act: (
       <>
-        Make <Code>42.50</Code> negative.
+        Make a cost negative.
       </>
     ),
   },
   {
     word: "Reactive",
-    code: "vat:EUR=amount * 21 / 121",
+    code: "share:EUR=cost / 4",
     says: "is computed for every row and written beside its =.",
     act: (
       <>
-        Change <Code>950.00</Code> and watch its <Code>vat</Code> follow.
+        Change the flights to <Spelled>500.00</Spelled> and watch the share and the total follow.
       </>
     ),
   },
   {
     word: "Composable",
-    code: "to:accounts.account",
-    says: `names an account in accounts${PRODUCT.extension}, checked across the two files.`,
-    act: (
-      <>
-        Change <Code>rent</Code> to <Code>rant</Code>.
-      </>
-    ),
+    code: "paid:people.name",
+    says: `names a friend in people${PRODUCT.extension}, checked across the two files.`,
+    act: <>Say the taxi was paid by someone who was not on the trip.</>,
   },
 ]
 
@@ -110,40 +172,130 @@ export default function Page() {
         </div>
       </section>
 
-      {/* The file the hero's screen let go of lands here first, so its block leads and its
-          words follow: nothing stands between the screen and where the text lands. */}
-      <section id="story" className="mx-auto grid max-w-6xl scroll-mt-20 items-center gap-10 px-6 md:mt-8 md:grid-cols-[auto_minmax(0,1fr)] md:gap-16">
-        {/* The editor window the Mac let go of, the same window: its two files a tab each;
-            beside it, what it showed. */}
+      {/* The file the hero's screen let go of lands here first, its words beside it: three
+          tools named, then the one file they are. */}
+      <section className="mx-auto grid max-w-6xl items-center gap-10 px-6 md:mt-8 md:grid-cols-[auto_minmax(0,1fr)] md:gap-16">
         <Suspense>
           <Landing />
         </Suspense>
-        {/* Glass, as the shimmer's own demo sets words over it: its blur frosts the
-            facets behind, the words in front stay sharp. */}
-        <Glass shape="surface" className="max-w-[52ch] p-8 [--glass-radius:1.25rem]">
-          <h2 className="font-mono text-[11px] tracking-[0.18em] text-muted-foreground/70 uppercase">Try it in the editor</h2>
-          <dl className="mt-6 space-y-6">
-            {TRIES.map((t) => (
-              <div key={t.word}>
-                <dt className="text-[clamp(1.25rem,2vw,1.625rem)] leading-tight font-medium tracking-[-0.02em]">{t.word}</dt>
-                <dd className="mt-1.5 text-[15px] leading-relaxed text-muted-foreground">
-                  <Code>{t.code}</Code> {t.says}
-                </dd>
-                <dd className="mt-1 text-[15px] leading-relaxed text-foreground/85">{t.act}</dd>
-              </div>
-            ))}
-          </dl>
-        </Glass>
+        <div className="max-w-[40ch]">
+          <p className="text-[clamp(1.5rem,2.6vw,2.125rem)] leading-[1.2] font-medium tracking-[-0.025em] text-foreground/90">
+            A spreadsheet.
+            <br />A database.
+            <br />A script that keeps it current.
+          </p>
+          <p className="mt-6 text-[17px] leading-relaxed text-muted-foreground">Three tools you use today.</p>
+          <p className="mt-2 text-[clamp(1.25rem,2vw,1.625rem)] leading-snug font-medium tracking-[-0.02em]">
+            They are not three tools. It is one plain text file.
+          </p>
+          <a href="#story" className="mt-6 inline-block text-[15px] text-muted-foreground underline decoration-border underline-offset-4 hover:text-foreground">
+            See how, a step at a time
+          </a>
+        </div>
       </section>
 
-      <div className="mt-24 md:mt-32">
+      <div id="story" className="mt-24 scroll-mt-20 md:mt-32">
         <Suspense>
           <Story />
         </Suspense>
       </div>
 
+      <section className="mx-auto mt-48 max-w-3xl px-6">
+        <Eyebrow>The price</Eyebrow>
+        <h2 className="mt-4 text-balance text-[clamp(2rem,4vw,3.25rem)] leading-[1.05] font-medium tracking-[-0.035em]">
+          Unapologetically incompatible with CSV.
+        </h2>
+        <p className="mt-8 text-[18px] leading-relaxed text-foreground/85">
+          Rename a <Spelled>.csv</Spelled> to <Spelled>{PRODUCT.extension}</Spelled> and you are in. From then on, tools that only read CSV
+          will not read it. That is the price, and it is paid once.
+        </p>
+        <p className="mt-5 text-[17px] leading-relaxed text-muted-foreground">
+          Formats that bend to stay compatible pay forever: every rule becomes a compromise, and what they get back is partial,
+          inconsistent and confusing. Cells makes the cut once, and stays familiar: CSV's syntax, a spreadsheet's formulas, and the
+          logic written inline or in a prelude, as Markdown has its frontmatter.
+        </p>
+        <a href="/docs" className="mt-6 inline-block text-[15px] text-muted-foreground underline decoration-border underline-offset-4 hover:text-foreground">
+          The whole format, in the docs
+        </a>
+      </section>
+
       <section className="mx-auto mt-48 max-w-6xl px-6">
-        <p className="font-mono text-[11px] tracking-[0.18em] text-muted-foreground/70">AND NOT</p>
+        <Eyebrow>What it opens</Eyebrow>
+        <h2 className="mt-4 text-balance text-[clamp(1.75rem,3.2vw,2.5rem)] leading-[1.1] font-medium tracking-[-0.025em]">
+          {PRODUCT.tagline} <span className="text-muted-foreground">What that buys you.</span>
+        </h2>
+        <div className="mt-14 grid gap-x-12 gap-y-14 md:grid-cols-2">
+          {LEVERS.map((l) => (
+            <div key={l.title}>
+              <h3 className="text-[clamp(1.25rem,1.8vw,1.5rem)] leading-tight font-medium tracking-[-0.02em]">{l.title}</h3>
+              <p className="mt-2 text-[15px] leading-relaxed text-muted-foreground">{l.says}</p>
+              {l.proof && (
+                <Block lang={l.proof.lang} className="mt-4">
+                  {l.proof.text}
+                </Block>
+              )}
+            </div>
+          ))}
+        </div>
+        <p className="mt-16 text-[15px] leading-relaxed text-muted-foreground">
+          Next: <Spelled>{PRODUCT.cli} sql</Spelled>, a folder asked as one database, and charts straight from the types.
+        </p>
+      </section>
+
+      <section className="mx-auto mt-48 max-w-6xl px-6">
+        <Eyebrow>Where it opens</Eyebrow>
+        <ul className="mt-8 grid gap-x-12 gap-y-3 md:grid-cols-2">
+          {PLATFORMS.map((p) => (
+            <li key={p.name} className="flex gap-3 text-[15px] leading-relaxed">
+              <span aria-hidden className={p.now ? "text-edge" : "text-muted-foreground/50"}>
+                {p.now ? "✓" : "○"}
+              </span>
+              <span className={p.now ? "text-foreground/85" : "text-muted-foreground"}>
+                {p.name}
+                {p.now ? "" : ", coming"}
+              </span>
+            </li>
+          ))}
+        </ul>
+        <p className="mt-8 text-[15px] leading-relaxed text-muted-foreground">
+          And every file is plain text: open it in Vim, Helix or any editor you like.{" "}
+          <a href="/docs/editors" className="underline decoration-border underline-offset-4 hover:text-foreground">
+            Setting up an editor
+          </a>
+        </p>
+      </section>
+
+      <section className="mx-auto mt-48 grid max-w-6xl items-start gap-10 px-6 md:grid-cols-[minmax(0,1.1fr)_minmax(0,1fr)] md:gap-14">
+        <Suspense>
+          <Playground />
+        </Suspense>
+        <Glass shape="surface" className="p-8 [--glass-radius:1.25rem]">
+          <Eyebrow>Your turn</Eyebrow>
+          <dl className="mt-6 space-y-6">
+            {TRIES.map((t) => (
+              <div key={t.word}>
+                <dt className="text-[clamp(1.25rem,2vw,1.625rem)] leading-tight font-medium tracking-[-0.02em]">{t.word}</dt>
+                <dd className="mt-1.5 text-[15px] leading-relaxed text-muted-foreground">
+                  <Spelled>{t.code}</Spelled> {t.says}
+                </dd>
+                <dd className="mt-1 text-[15px] leading-relaxed text-foreground/85">{t.act}</dd>
+              </div>
+            ))}
+          </dl>
+          <p className="mt-8 text-[15px] text-muted-foreground">
+            <a href="/docs" className="underline decoration-border underline-offset-4 hover:text-foreground">
+              Read the docs
+            </a>{" "}
+            ·{" "}
+            <a href={PRODUCT.repo} className="underline decoration-border underline-offset-4 hover:text-foreground">
+              The source
+            </a>
+          </p>
+        </Glass>
+      </section>
+
+      <section className="mx-auto mt-48 max-w-6xl px-6">
+        <Eyebrow>And not</Eyebrow>
         <h2 className="mt-4 text-balance text-[clamp(1.75rem,3.2vw,2.5rem)] leading-[1.1] font-medium tracking-[-0.025em]">
           Why not what exists. <span className="text-muted-foreground">Each is good at something else.</span>
         </h2>
@@ -156,40 +308,6 @@ export default function Page() {
             </div>
           ))}
         </dl>
-      </section>
-
-      <section className="mx-auto mt-48 max-w-6xl px-6">
-        <p className="font-mono text-[11px] tracking-[0.18em] text-muted-foreground/70">WHERE IT STANDS</p>
-        <div className="mt-8 grid gap-12 md:grid-cols-2">
-          <div>
-            <h3 className="text-lg font-medium">Built</h3>
-            <ul className="mt-4 space-y-2.5 text-[15px] leading-relaxed text-muted-foreground">
-              <li>The spec, and a conformance suite every reader runs.</li>
-              <li>The engine in Rust, passing all of it natively and as WebAssembly: what runs on this page.</li>
-              <li>Formulas in headers and cells, tables written inline, imports (a URL's pinned by its hash), references checked across files.</li>
-              <li>
-                <code className="font-mono text-foreground/80">{PRODUCT.cli} check</code>, <code className="font-mono text-foreground/80">fix</code>, <code className="font-mono text-foreground/80">show</code>, <code className="font-mono text-foreground/80">pin</code>, and <code className="font-mono text-foreground/80">run</code> with Bun.
-              </li>
-              <li>
-                <code className="font-mono text-foreground/80">{PRODUCT.cli} lsp</code>: the problems you saw on this page, in your editor, with hover, completion, go to, rename, and every computed value stored as you save. Checked in Helix.
-              </li>
-              <li>
-                <code className="font-mono text-foreground/80">{PRODUCT.cli} merge</code>, git's merge driver: a computed value is never a conflict.
-              </li>
-              <li>The engine bound on the web (the tables on this page) and in Swift, on macOS, iOS and tvOS.</li>
-            </ul>
-          </div>
-          <div>
-            <h3 className="text-lg font-medium">Next</h3>
-            <ul className="mt-4 space-y-2.5 text-[15px] leading-relaxed text-muted-foreground">
-              <li>
-                <code className="font-mono text-foreground/80">{PRODUCT.cli} sql</code>, DuckDB over the typed columns of a folder.
-              </li>
-              <li>A daemon that keeps the schedules and serves every app.</li>
-              <li>Charts from the types, with no setup.</li>
-            </ul>
-          </div>
-        </div>
       </section>
 
       <SiteFooter />

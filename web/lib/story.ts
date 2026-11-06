@@ -1,9 +1,11 @@
-// THE STORY, as data: ONE file, built act by act. It starts as a short CSV; each act is one
-// idea shown on the file as the act before left it, then told: an edit in Helix (each
-// change typed where it goes, then written), the engine as its language server, and the
-// Cells window reading each write, the column or cell the act is about lit once it has
-// played. components/story.tsx tells it on ui's walkthrough, a step per act, pinned while
-// the page scrolls.
+// THE STORY, as data: ONE file, built act by act, a trip four friends share. It starts as a
+// CSV opened in Cells; each act is one thing the act before could not do, shown on the
+// file as it left it, then told. The app comes first (`view: "app"`, the Cells window
+// alone, reading each write, the column or cell the act is about lit once it has played);
+// only once the reader knows what it does is the file under it shown (`view: "text"`):
+// Helix beside the app, the edit typed where it goes and written, the engine as its
+// language server. components/story.tsx tells it on ui's walkthrough, a step per act,
+// pinned while the page scrolls; each act links to the docs' section it shows (`doc`).
 //
 // Every state of the file is the engine's: each `:w` writes what the language server's
 // formatting writes (every computed value the edit reached stored beside its `=`), so the
@@ -39,8 +41,14 @@ export interface StoryLit {
   row?: number
 }
 
+/** How an act is shown: the Cells window alone, or the file's text in Helix beside it. */
+export type StoryView = "app" | "text"
+
 export interface StoryAct {
   id: string
+  view: StoryView
+  /** The docs' page and heading the act is told in full by (`/docs/spec/formulas`). */
+  doc?: string
   /** What is told once it has been shown: its lead the step's title, then the rest, only
    *  where it adds something. In both, what is written in a file (a name, a value, a
    *  file's name) stands between backticks, set as code where it is drawn. */
@@ -116,6 +124,8 @@ export function editOf(act: StoryAct): { files: CodeFile[]; steps: CodeStep[]; p
 /** One act as written: what changes and what is said. The rest is the act before's. */
 interface Script {
   id: string
+  view: StoryView
+  doc?: string
   lead: string
   rest?: string
   /** The file's new name from this act on. */
@@ -143,18 +153,20 @@ function chain(engine: Engine, name: string, text: string, scripts: Script[]): S
       saved = { name: named, text: savedAs(engine, saved, now, others) }
       saves.push(saved.text)
     }
-    const act = { id: s.id, lead: s.lead, rest: s.rest, from, end: saved, edits, saves, others, light: s.light, expect: s.expect }
+    const act = { id: s.id, view: s.view, doc: s.doc, lead: s.lead, rest: s.rest, from, end: saved, edits, saves, others, light: s.light, expect: s.expect }
     from = saved
     return act
   })
 }
 
-const ACCOUNTS: StoryFile = {
-  name: `accounts${ext}`,
-  text: `account:text!,kind:needs|treats
-car,needs
-food,needs
-cafe,treats
+/** Who is on the trip, the file a cost's `paid` names a row of. */
+const PEOPLE: StoryFile = {
+  name: `people${ext}`,
+  text: `name:text!,email:email
+ana,ana@example.com
+ben,ben@example.com
+carla,carla@example.com
+dan,dan@example.com
 `,
 }
 
@@ -171,108 +183,122 @@ export function story(engine: Engine): StoryAct[] {
 
 const tell = (engine: Engine): StoryAct[] => chain(
   engine,
-  "groceries.csv",
-  `item,on,cost,qty
-fuel,2026-11-01,84.20,1
-groceries,2026-11-02,96.75,2
-coffee,2026-11-03,2.10,3
+  "lisbon.csv",
+  `item,paid,cost
+flights,ana,412.00
+apartment,ben,540.00
+dinner,carla,96.75
+taxi,dan,18.40
 `,
   [
+    // ── the app: what Cells does, before what it is ──
     {
-      id: "plain",
-      lead: "Behold a `.csv`",
-      rest: "Values separated by commas, a row per line. The first row names the columns.",
+      id: "csv",
+      view: "app",
+      doc: "/docs/spec/the-file",
+      lead: "A CSV, opened in Cells",
+      rest: "Four friends, one trip. It opens fine, but every value is text: nothing knows `cost` is money.",
       expect: { problems: [] },
     },
     {
-      id: "csv",
-      lead: "No types",
-      rest: "So a column meant to hold numbers takes a typo, and nothing screams.",
-      edits: [{ after: "2026-11-02,96.7", remove: 1, insert: "x" }],
+      id: "typo",
+      view: "app",
+      lead: "So a typo slips in",
+      rest: "`54O.00`, with a letter O. The CSV takes it, and any sum over the column is quietly wrong.",
+      edits: [{ after: "ben,54", remove: 1, insert: "O" }],
       light: { column: "cost", row: 1 },
       expect: { problems: [] },
     },
     {
       id: "renamed",
-      lead: `Now, let's \`${ext}\``,
-      rename: `groceries${ext}`,
+      view: "app",
+      doc: "/docs",
+      lead: `Rename it \`lisbon${ext}\``,
+      rest: "That is the whole migration. From here on, the file can say what each column holds.",
+      rename: `lisbon${ext}`,
       light: { column: "cost", row: 1 },
       expect: { problems: [] },
     },
     {
       id: "types",
-      lead: "Types live in the header",
-      rest: "A value that breaks its column's type screams, so it can be fixed.",
+      view: "app",
+      doc: "/docs/spec/types",
+      lead: "Say what a column holds",
+      rest: "`cost` is euros, never below zero. The typo is flagged where it is written; fixed, the column is money.",
       edits: [
-        { after: "item,on,cost", insert: ":EUR>=0" },
-        { after: "2026-11-02,96.7", remove: 1, insert: "5" },
+        { after: "item,paid,cost", insert: ":EUR>=0" },
+        { after: "ben,54", remove: 1, insert: "0" },
       ],
       light: { column: "cost", row: 1 },
-      expect: { problems: [], values: { cost: [84.2, 96.75, 2.1] }, between: [['row 2, cost: "96.7x" is not a number']] },
-    },
-    {
-      id: "formula",
-      lead: "Columns can compute",
-      rest: "A formula in the header fills the column. Each value is written beside its `=`, so every reader sees it.",
-      edits: [{ after: "qty", insert: ",total:EUR=cost * qty" }],
-      light: { column: "total" },
-      expect: { problems: [], values: { total: [84.2, 193.5, 6.3] } },
-    },
-    {
-      id: "running",
-      lead: "Formulas can see other rows",
-      rest: "A row is named by where it is: `[-1]` is the one above.",
-      edits: [{ after: "total:EUR=cost * qty", insert: ",running:EUR=running[-1] + total" }],
-      light: { column: "running" },
-      expect: { problems: [], values: { running: [84.2, 277.7, 284] } },
-    },
-    {
-      id: "cell",
-      lead: "A cell can hold its own formula",
-      rest: "The file keeps the formula and its value.",
-      edits: [{ after: "2026-11-03,", remove: 4, insert: "=6.30 / 3" }],
-      light: { column: "cost", row: 2 },
-      expect: { problems: [], values: { cost: [84.2, 96.75, 2.1] } },
-    },
-    {
-      id: "references",
-      lead: "Columns can point at another file",
-      rest: "Each value must be a key there, checked across files.",
-      imports: [ACCOUNTS],
-      edits: [
-        { after: "", insert: `---\nimport accounts from "./${ACCOUNTS.name}"\n---\n` },
-        { after: "running[-1] + total", insert: ",to:accounts.account" },
-        { after: "84.20=,84.20=", insert: ",car" },
-        { after: "277.70=", insert: ",food" },
-        { after: "284.00=", insert: ",cafe" },
-      ],
-      light: { column: "to" },
       expect: {
         problems: [],
-        values: { to: ["car", "food", "cafe"] },
-        between: [
-          [],
-          ["row 1, to: is missing", "row 2, to: is missing", "row 3, to: is missing"],
-          ["row 2, to: is missing", "row 3, to: is missing"],
-          ["row 3, to: is missing"],
-        ],
+        values: { cost: [412, 540, 96.75, 18.4] },
+        between: [['row 2, cost: "54O.00" is not a number']],
       },
     },
     {
-      id: "reads",
-      lead: "Formulas follow those links",
-      rest: "A column can read any field of the row it points at.",
-      edits: [{ after: "to:accounts.account", insert: ",kind:text=to.kind" }],
-      light: { column: "kind" },
-      expect: { problems: [], values: { kind: ["needs", "needs", "treats"] } },
+      id: "formula",
+      view: "app",
+      doc: "/docs/spec/formulas#a-columns-formula",
+      lead: "Columns compute",
+      rest: "Who owes what: a quarter of each cost, on every row. Each value is stored in the file beside its `=`, so it reads without running anything.",
+      edits: [{ after: "cost:EUR>=0", insert: ",share:EUR=cost / 4" }],
+      light: { column: "share" },
+      expect: { problems: [], values: { share: [103, 135, 24.19, 4.6] } },
     },
     {
-      id: "key",
-      lead: "A broken link screams",
-      rest: "Right where it is written, and what depends on it is left empty.",
-      edits: [{ after: "277.70=,", remove: 4, insert: "fodo" }],
-      light: { column: "to", row: 1 },
-      expect: { problems: ['row 2, to: "fodo" is no key of accounts'], values: { kind: ["needs", null, "treats"] } },
+      id: "cell",
+      view: "app",
+      doc: "/docs/spec/formulas#a-formula-in-a-cell",
+      lead: "A cell keeps its own math",
+      rest: "Dinner was three bottles at 28.50 and a tip. The cell holds the sum and how it was made.",
+      edits: [{ after: "dinner,carla,", remove: 5, insert: "=3 * 28.50 + 11.25" }],
+      light: { column: "cost", row: 2 },
+      expect: { problems: [], values: { cost: [412, 540, 96.75, 18.4] } },
+    },
+    {
+      id: "running",
+      view: "app",
+      doc: "/docs/spec/formulas#rows-by-where-they-are",
+      lead: "Formulas see other rows",
+      rest: "How much so far: each row adds its cost to the row above's, `[-1]`.",
+      edits: [{ after: "share:EUR=cost / 4", insert: ",spent:EUR=spent[-1] + cost" }],
+      light: { column: "spent" },
+      expect: { problems: [], values: { spent: [412, 952, 1048.75, 1067.15] } },
+    },
+    {
+      id: "references",
+      view: "app",
+      doc: "/docs/spec/types#references",
+      lead: "Who paid is one of the four",
+      rest: `\`paid\` names a row of \`people${ext}\`, checked across the two files, so \`karla\` is flagged.`,
+      imports: [PEOPLE],
+      edits: [
+        { after: "", insert: `---\nimport people from "./${PEOPLE.name}"\n---\n` },
+        { after: "item,paid", insert: ":people.name" },
+        { after: "dinner,", remove: 5, insert: "karla" },
+      ],
+      light: { column: "paid", row: 2 },
+      expect: { problems: ['row 3, paid: "karla" is no key of people'], between: [[], []] },
+    },
+    // ── the file: what it is, now the reader knows what it does ──
+    {
+      id: "text",
+      view: "text",
+      doc: "/docs/spec/the-file",
+      lead: "Underneath, it is plain text",
+      rest: "Everything you just did is a few characters: the types in the header, each computed value beside its `=`, the other file imported between the `---` lines. Open it in Vim, Helix or any editor.",
+      expect: { problems: ['row 3, paid: "karla" is no key of people'] },
+    },
+    {
+      id: "editor",
+      view: "text",
+      doc: "/docs/editors",
+      lead: "Your editor knows it too",
+      rest: `\`${PRODUCT.cli} lsp\` names a broken value as you type, completes a key from the other file, and stores every computed value when you save. Helix and Neovim today.`,
+      edits: [{ after: "dinner,", remove: 5, insert: "carla" }],
+      light: { column: "paid", row: 2 },
+      expect: { problems: [] },
     },
   ],
 )
