@@ -1,4 +1,4 @@
-import { Fragment, Suspense } from "react"
+import { Suspense } from "react"
 import { Hero, Landing } from "@/components/hero"
 import { Glass } from "@/components/ui/material-glass"
 import { Story } from "@/components/story"
@@ -55,16 +55,7 @@ export default function Page() {
               {PRODUCT.tagline}
             </h1>
             <p className="mx-auto mt-5 max-w-[50ch] text-pretty text-[16px] leading-relaxed text-foreground/70 md:text-[17px]">
-              {PRODUCT.subline.split(PRODUCT.extension).map((part, i) =>
-                i ? (
-                  <Fragment key={part}>
-                    <span className="font-mono text-edge">{PRODUCT.extension}</span>
-                    {part}
-                  </Fragment>
-                ) : (
-                  part
-                ),
-              )}
+              {PRODUCT.subline}
             </p>
           </div>
           <div className="relative w-[min(72rem,94vw,calc((100svh-17rem)*1.6))]">
