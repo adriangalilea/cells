@@ -2,6 +2,98 @@
 
 Programmable data: logic and data in a single file, open in any editor ([cellular.computer](https://cellular.computer)). A cell, a `.cell` file, is a table whose header cells carry their column's type, and its formula when it computes, in the file itself: one file, never a sidecar. Files import each other, so a folder of them is typed tables joined by references, and a table can be filled by a script. It is its own format, designed for its own ergonomics, never bent to suit readers that do not know it. [SPEC.md](SPEC.md) is the whole format, and not final yet.
 
+## From a CSV
+
+A CSV is where most tables start, and it reads as a cell already: one with no types written.
+
+```cells
+item,cost,qty,paid,on
+fuel,84.20,1,yes,2026-08-14
+split dinner,32.25,1,no,2026-08-15
+ferry,5O.00,1,no,2026-08-17
+```
+
+Nothing in it says `cost` is money, so the ferry's `5O.00`, typed with a letter O, is as good as any other value. A sum over the column is wrong, or fails somewhere far from the row that caused it.
+
+### Types
+
+Each header cell says what its column holds: `name:type`.
+
+```cells problem
+item:text,cost:EUR,qty:int,paid:yes/no,on:date
+fuel,84.20,1,yes,2026-08-14
+split dinner,32.25,1,no,2026-08-15
+ferry,5O.00,1,no,2026-08-17
+```
+
+The file still reads, every other cell a typed value, and the ferry's is a problem at its place: `row 3, cost: "5O.00" is not a number`. Nothing is coerced, and nothing is lost.
+
+### Rules
+
+A type can say more: `!` makes a column the key, and bounds say what a value may be.
+
+```cells
+item:text!,cost:EUR>=0,qty:int>=1,paid:yes/no,on:date
+fuel,84.20,1,yes,2026-08-14
+split dinner,32.25,1,no,2026-08-15
+ferry,50.00,2,no,2026-08-17
+```
+
+Two rows named `fuel`, a cost below zero or a quantity of none would each be a problem.
+
+### A computed column
+
+A CSV can hold a total, but only as a number: whether it is still `cost * qty` after a cost is edited, nothing knows. In a cell the formula is in the header, and each row stores the value it gave, before its `=`.
+
+```cells
+item:text!,cost:EUR>=0,qty:int>=1,total:EUR=cost * qty,paid:yes/no,on:date
+fuel,84.20,1,84.20=,yes,2026-08-14
+split dinner,32.25,1,32.25=,no,2026-08-15
+ferry,50.00,2,100.00=,no,2026-08-17
+```
+
+Every value is in the file, so it reads in any editor without running anything, and the `=` says which ones were computed.
+
+### A value left behind
+
+Edit a cost in a plain editor and leave its total as it was:
+
+```cells problem
+item:text!,cost:EUR>=0,qty:int>=1,total:EUR=cost * qty,paid:yes/no,on:date
+fuel,90.00,1,84.20=,yes,2026-08-14
+```
+
+The stored total is stale, and the reader says so with both numbers: `row 1, total: the formula gives 90.00, the file stores 84.20`. It is never overwritten unasked: `cells fix`, or saving through the language server, stores the new value.
+
+### A cell's own formula, and rows above
+
+The dinner was split three ways. A CSV keeps `32.25` and loses why; a cell keeps both. A formula can read the row above, for a running total:
+
+```cells
+item:text!,cost:EUR>=0,qty:int>=1,total:EUR=cost * qty,running:EUR=running[-1] + total
+fuel,84.20,1,84.20=,84.20=
+split dinner,32.25=96.75 / 3,1,32.25=,116.45=
+ferry,50.00,2,100.00=,216.45=
+```
+
+### Names, and other files
+
+A type used in many places gets a name, and a column can be a key of another file's table, so a value must exist there. Both go in the prelude, between two `---` lines:
+
+```cells
+---
+import accounts from "./accounts.cell"
+type Money = EUR>=0
+---
+item:text!,cost:Money,qty:int>=1,total:Money=cost * qty,from:accounts.account
+fuel,84.20,1,84.20=,card
+split dinner,32.25=96.75 / 3,1,32.25=,card
+```
+
+### All of it
+
+A table a script fills, kept in the file, and read by a formula:
+
 ````cells
 ---
 import accounts from "./accounts.cell"
