@@ -277,8 +277,95 @@ export function stillSize(): string {
   return `${(STILL.fontSize / STILL.width) * 100}cqw`
 }
 
-const esc = (s: string) =>
-  s.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;")
+/** Text as SVG markup takes it, in an element or an attribute's quotes. */
+export const escapeSvg = (s: string) =>
+  s
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+const esc = escapeSvg
+
+// ── the window, for a full-screen program's still ──
+
+/** The window's chrome as the live terminal draws it (ui/terminal), in px at its own
+ *  13px type, so in em of the window's type at any size: the corner, the bar's padding,
+ *  its dots and the gap between them. Both emitters read it, so a still's window is the
+ *  live one. */
+export const WINDOW = {
+  type: 13,
+  radius: 12,
+  padY: 10,
+  padX: 16,
+  dot: 10,
+  gap: 8,
+} as const
+/** The bar's height, in em of the window's type. */
+export const BAR_EM = (WINDOW.padY * 2 + WINDOW.dot) / WINDOW.type
+/** The hairline's alpha of the accent, as the live window's `edge`. */
+const EDGE_ALPHA = 0.16
+
+/** A monospaced face a still is set in, as its file measures it, in em: one
+ *  character's advance and the ascent and descent its line is centred by. A still
+ *  places every run by column, so a face named without its advance sets the columns
+ *  for some other face. */
+export interface MonoFace {
+  /** The CSS font-family the SVG names: what the rasterizer is handed the files of,
+   *  or a page's own (`var(--font-mono)`) for a still inlined in it. */
+  family: string
+  ch: number
+  ascent: number
+  descent: number
+}
+/** Geist Mono, measured from its files (fontTools: advance 600, hhea 1005 / -295, of
+ *  1000 units). */
+export const GEIST_MONO: MonoFace = {
+  family: "Geist Mono",
+  ch: 0.6,
+  ascent: 1.005,
+  descent: 0.295,
+}
+
+/** Where a row's text sits, em from the row's top: its line box centred in the row's
+ *  `LINE_HEIGHT`, as CSS centres it. */
+export const baselineOf = (face: MonoFace) =>
+  (LINE_HEIGHT - (face.ascent + face.descent)) / 2 + face.ascent
+
+/** A program's screen in the terminal's window, as SVG: `screen` (markup drawn from the
+ *  screen's top-left corner, in px) `width` by `height` px, under the bar and its dots,
+ *  in the palette, rounded and edged as the live window (its 1px hairline round it).
+ *  The window's own size is the screen's plus the bar and the hairline. */
+export function terminalWindowSvg(
+  palette: TerminalPalette,
+  {
+    width,
+    height,
+    fontSize,
+    face,
+  }: { width: number; height: number; fontSize: number; face: MonoFace },
+  screen: string,
+): string {
+  const u = fontSize / WINDOW.type
+  const bar = BAR_EM * fontSize
+  const w = width + 2
+  const h = height + bar + 2
+  const r = WINDOW.radius * u
+  const dots = [0, 1, 2]
+    .map((d) => {
+      const cx =
+        1 + (WINDOW.padX + WINDOW.dot / 2 + d * (WINDOW.dot + WINDOW.gap)) * u
+      return `<circle cx="${cx}" cy="${1 + bar / 2}" r="${(WINDOW.dot / 2) * u}" fill="${palette.dot}"/>`
+    })
+    .join("")
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${w} ${h}" width="${w}" height="${h}">
+  <rect width="${w}" height="${h}" rx="${r}" fill="${palette.bg}"/>
+  <path d="M1 ${r}a${r - 1} ${r - 1} 0 0 1 ${r - 1} ${-(r - 1)}h${w - 2 * r}a${r - 1} ${r - 1} 0 0 1 ${r - 1} ${r - 1}v${bar - r + 1}h${-(w - 2)}z" fill="${palette.bar}"/>
+  ${dots}
+  <g transform="translate(1 ${1 + bar})" font-size="${fontSize}" style="font-family: ${esc(face.family)}; white-space: pre" xml:space="preserve">${screen}</g>
+  <rect x="0.5" y="0.5" width="${w - 1}" height="${h - 1}" rx="${r - 0.5}" fill="none" stroke="${palette.accent}" stroke-opacity="${EDGE_ALPHA}"/>
+</svg>
+`
+}
 
 /** Render a session as a phosphor terminal frame (title bar, three dots, the lines,
  *  a block-cursor prompt at the end). Throws when the session overflows the frame:

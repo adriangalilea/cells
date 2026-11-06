@@ -24,6 +24,7 @@ import {
   type TerminalPalette,
   TYPE_MS,
   terminalPalette,
+  WINDOW,
 } from "@/lib/terminal-session"
 import { usePlayhead } from "@/components/ui/playback"
 
@@ -69,8 +70,9 @@ interface TerminalWindowProps {
   className?: string
 }
 
-/** The chrome is drawn at 13px type and kept in em, so it scales with `size`. */
-const em = (px: number) => `${px / 13}em`
+/** The chrome is drawn at the window's own type (lib/terminal-session `WINDOW`, which
+ *  a still's window reads too) and kept in em, so it scales with `size`. */
+const em = (px: number) => `${px / WINDOW.type}em`
 
 /** The palette a program in the window draws with (`children`): the window's own,
  *  from its accent. */
@@ -131,7 +133,7 @@ function TerminalWindow({
         display: "flex",
         flexDirection: "column",
         background: palette.bg,
-        borderRadius: em(12),
+        borderRadius: em(WINDOW.radius),
         overflow: "hidden",
         // Parted from the page by a hairline in its own accent and a soft, low
         // shadow: a window resting on it, not a hole in it.
@@ -156,18 +158,18 @@ function TerminalWindow({
           aria-hidden={interactive || undefined}
           style={{
             display: "flex",
-            gap: em(8),
+            gap: em(WINDOW.gap),
             alignItems: "center",
             background: palette.bar,
-            padding: `${em(10)} ${em(16)}`,
+            padding: `${em(WINDOW.padY)} ${em(WINDOW.padX)}`,
           }}
         >
           {[0, 1, 2].map((d) => (
             <span
               key={d}
               style={{
-                width: em(10),
-                height: em(10),
+                width: em(WINDOW.dot),
+                height: em(WINDOW.dot),
                 borderRadius: "50%",
                 background: palette.dot,
               }}

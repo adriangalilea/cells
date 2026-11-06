@@ -13,6 +13,11 @@
 //
 //   <Terminal alt="…"><TerminalEditor files={…} steps={…} /></Terminal>
 //
+// What is on the screen is decided by lib/terminal-editor-screen (`editorScreen`), the
+// same model its SVG still draws (`renderEditorSvg`), so a still and this view cannot
+// disagree; this file places the model's cells in `ch` and `em` and adds what only a
+// page has: the caret's blink, the presses and the keys.
+//
 // It wears the terminal's phosphor (`useTerminalPalette`) for everything but the
 // code, which takes code's dark theme (lib/code-tokens), and the severities, which
 // take the terminal's own red, yellow, blue and grey: a terminal is dark whatever
@@ -26,23 +31,26 @@ import {
   type CodeDiagnose,
   type CodeFile,
   type CodePopup,
-  type CodeSeverity,
   type CodeStep,
   codeFrameAt,
   codeTimeline,
   keyStep,
   placeOf,
 } from "@/lib/code-session"
+import { langOf } from "@/lib/code-tokens"
 import {
-  type CodePaint,
-  langOf,
-  paintRuns,
-  runsOf,
-} from "@/lib/code-tokens"
-import {
-  ansiColor,
-  LINE_HEIGHT,
-} from "@/lib/terminal-session"
+  type EditorRow,
+  type EditorScreen,
+  EOL_GAP,
+  EOL_OPACITY,
+  editorScreen,
+  MENU_ROWS,
+  SELECTION_ALPHA,
+  SEVERITY,
+  TEXT_TOP,
+  WRAP_INDICATOR,
+} from "@/lib/terminal-editor-screen"
+import { LINE_HEIGHT } from "@/lib/terminal-session"
 import { usePlayhead } from "@/components/ui/playback"
 import { useTerminalPalette } from "@/components/ui/terminal"
 import { useCodeColoursOf } from "@/components/ui/use-code-colours"
@@ -52,7 +60,8 @@ export interface TerminalEditorProps {
   files: CodeFile[]
   steps: CodeStep[]
   /** The instant drawn, 0..1 of the edit, for a still. Inside a driver (a Player)
-   *  omit it: the driver provides it. */
+   *  omit it: the driver provides it. The same instant as an SVG still:
+   *  lib/terminal-editor-screen `editorStill` and `renderEditorSvg`. */
   progress?: number
   /** The clock's length when the edit shares it with something longer, ms: the
    *  last frame holds to it (lib/code-session `codeTimeline`). */
@@ -85,31 +94,6 @@ export interface TerminalEditorProps {
   onEdit?: (step: CodeStep) => void
 }
 
-/** How the status line names each mode, helix's three letters: a selection made
- *  to be changed is normal mode's. */
-const MODES = {
-  normal: "NOR",
-  insert: "INS",
-  select: "NOR",
-  command: "NOR",
-} as const
-/** Rows helix keeps between the caret and the screen's foot. */
-const SCROLL_OFF = 3
-/** Helix's soft-wrap: the indicator a wrapped row opens with, and the longest
- *  word it moves whole to the next row rather than breaking (`max-wrap`). */
-const WRAP_INDICATOR = "↪ "
-const MAX_WRAP = 20
-/** The terminal's own colour for each severity (its red, yellow, blue, grey), and
- *  how helix's pickers name them. */
-const SEVERITY: Record<CodeSeverity, { ink: string; name: string }> = {
-  error: { ink: ansiColor(1), name: "ERROR" },
-  warning: { ink: ansiColor(3), name: "WARN" },
-  info: { ink: ansiColor(4), name: "INFO" },
-  hint: { ink: ansiColor(8), name: "HINT" },
-}
-const WORST: CodeSeverity[] = ["error", "warning", "info", "hint"]
-/** The rows helix's completion menu and picker show before they scroll. */
-const MENU_ROWS = 8
 /** How long the caret has been still, ms, before it blinks, and a blink's whole
  *  period: a terminal's. */
 const STILL_MS = 500
@@ -146,78 +130,15 @@ function Caret({
   )
 }
 
-/** What lies over a piece of a line: a diagnostic's severity, or the selection. */
-type Mark = CodeSeverity | "selection"
-
-/** A row of the screen: a piece of one line of the file, from column `from`. */
-interface ScreenRow {
-  line: number
-  from: number
-  runs: CodePaint<Mark>[]
-  first: boolean
-  last: boolean
-}
-
-/** `runs` from column `a` to `b`. */
-function cut(
-  runs: readonly CodePaint<Mark>[],
-  a: number,
-  b: number,
-): CodePaint<Mark>[] {
-  const out: CodePaint<Mark>[] = []
-  let at = 0
-  for (const r of runs) {
-    const end = at + r.text.length
-    const from = Math.max(a, at)
-    const to = Math.min(b, end)
-    if (from < to) out.push({ ...r, text: r.text.slice(from - at, to - at) })
-    at = end
-  }
-  return out
-}
-
-/** A line on the screen's rows, as helix soft-wraps it in `width` columns: at the
- *  last space that fits (one just past the edge too), unless the word left over is
- *  longer than MAX_WRAP, then at the edge; every row after the first
- *  `WRAP_INDICATOR` narrower. */
-function wrap(
-  line: number,
-  runs: readonly CodePaint<Mark>[],
-  width: number,
-): ScreenRow[] {
-  const text = runs.map((r) => r.text).join("")
-  const rows: ScreenRow[] = []
-  let from = 0
-  do {
-    const room = Math.max(
-      1,
-      rows.length ? width - WRAP_INDICATOR.length : width,
-    )
-    let to = Math.min(text.length, from + room)
-    if (to < text.length) {
-      const space = text.lastIndexOf(" ", to)
-      if (space >= from && to - space - 1 <= MAX_WRAP) to = space + 1
-    }
-    rows.push({
-      line,
-      from,
-      runs: cut(runs, from, to),
-      first: from === 0,
-      last: to >= text.length,
-    })
-    from = to
-  } while (from < text.length)
-  return rows
-}
-
-/** The screen's width in columns: the text's room over one character's width, as
- *  the page draws them. Unbounded until it is read. */
+/** The screen's whole width in columns (the gutter's included, as the model counts
+ *  them) over one character's width, as the page draws them. Unbounded until it is
+ *  read. */
 function useColumns(): [React.RefObject<HTMLSpanElement | null>, number] {
   const probe = React.useRef<HTMLSpanElement>(null)
   const [columns, setColumns] = React.useState(Number.POSITIVE_INFINITY)
   React.useLayoutEffect(() => {
     const el = probe.current
-    const room = el?.parentElement
+    const room = el?.closest<HTMLElement>('[data-slot="terminal-editor"]')
     if (!el || !room) return
     const read = () => {
       // Not laid out (inside `display: none`, a layout kept for a narrow window): no
@@ -267,46 +188,17 @@ export function TerminalEditor({
   )
   const colours = useCodeColoursOf(texts)[f.state] ?? null
   const [probe, columns] = useColumns()
-  const lines = runsOf(f.text, colours, f.origin)
-  const place = placeOf(f.text, f.caret)
-  const buffers =
-    bufferline === "always" || (bufferline === "multiple" && f.open.length > 1)
-  const textRows = rows - (buffers ? 1 : 0)
-  const ranges: { from: number; to: number; mark: Mark }[] = [
-    ...f.diagnostics.map((d) => ({ from: d.from, to: d.to, mark: d.severity })),
-    ...(f.selection ? [{ ...f.selection, mark: "selection" as const }] : []),
-  ]
-  // Each line's diagnostics, worst first: its gutter's mark, its end's message.
-  const starts: number[] = []
-  let at = 0
-  for (const runs of lines) {
-    starts.push(at)
-    at += runs.reduce((n, r) => n + r.text.length, 0) + 1
-  }
-  const lineOf = (offset: number) => starts.findLastIndex((s) => s <= offset)
-  const said = lines.map((_, i) =>
-    f.diagnostics
-      .filter((d) => lineOf(d.from) === i)
-      .sort((a, b) => WORST.indexOf(a.severity) - WORST.indexOf(b.severity)),
-  )
-  // The screen's rows: each line once, or soft-wrapped across as many as it needs.
-  const screen: ScreenRow[] = lines.flatMap((runs, i) => {
-    const painted = paintRuns(runs, starts[i] as number, ranges)
-    return softWrap && Number.isFinite(columns)
-      ? wrap(i, painted, columns)
-      : [{ line: i, from: 0, runs: painted, first: true, last: true }]
-  })
-  // The caret's row: the last piece of its line starting at or before its column.
-  const column = place.column - 1
-  const caretRow = screen.findLastIndex(
-    (s) => s.line === place.line - 1 && s.from <= column,
-  )
-  const caret = screen[caretRow] as ScreenRow
-  const top = Math.max(0, caretRow - textRows + SCROLL_OFF)
-  const digits = Math.max(3, String(lines.length).length)
   // A text box has no modes: taking typing, the editor is in insert.
-  const mode = onEdit && focused ? "insert" : f.mode
-  const insert = mode === "insert"
+  const screen = editorScreen(f, {
+    palette,
+    colours,
+    rows,
+    columns,
+    bufferline,
+    softWrap,
+    insert: onEdit !== undefined && focused,
+  })
+  const { status, caret } = screen
   /** A key, as the step it makes. */
   const key = (e: React.KeyboardEvent) => {
     if (!onEdit) return
@@ -320,51 +212,17 @@ export function TerminalEditor({
     onEdit(step)
   }
   /** A press on a screen row, as the caret placed where it landed. */
-  const press = (row: ScreenRow, e: React.PointerEvent<HTMLElement>) => {
+  const press = (row: EditorRow, e: React.PointerEvent<HTMLElement>) => {
     const ch = (probe.current?.getBoundingClientRect().width ?? 0) / 10
     if (!onEdit || !(ch > 0)) return
     const x = e.clientX - e.currentTarget.getBoundingClientRect().left
     const indent = row.first ? 0 : WRAP_INDICATOR.length
-    const width = (lines[row.line] ?? []).reduce((n, r) => n + r.text.length, 0)
     const at = Math.round(x / ch) - indent + row.from
     onEdit({
       kind: "place",
       line: row.line + 1,
-      column: Math.min(Math.max(at, row.from), width) + 1,
+      column: Math.min(Math.max(at, row.from), row.length) + 1,
     })
-  }
-  /** Where the text starts, past the diagnostics gutter and the numbers. */
-  const gutter = digits + 3
-  // The command line: what is typed into it, a prompt, else helix's answer to the
-  // last save (`'index.html' written, 12L 380B`) while that file is in front.
-  const message = f.prompt
-    ? `${f.prompt.label}: ${f.prompt.text}`
-    : f.command
-      ? f.command
-      : f.saved && f.saved.path === f.active
-        ? `'${f.saved.path}' written, ${f.text.replace(/\n$/, "").split("\n").length}L ${new TextEncoder().encode(f.text).length}B`
-        : ""
-  const counts = WORST.slice(0, 2).map((s) => ({
-    s,
-    n: f.problems.reduce(
-      (k, p) => k + p.diagnostics.filter((d) => d.severity === s).length,
-      0,
-    ),
-  }))
-  const caretAt = (row: number, offset: number) => {
-    const p = placeOf(f.text, offset)
-    const r = screen.findLastIndex(
-      (s) => s.line === p.line - 1 && s.from <= p.column - 1,
-    )
-    const s = screen[r] as ScreenRow | undefined
-    return {
-      row: (r < 0 ? row : r) - top,
-      column:
-        (s && !s.first ? WRAP_INDICATOR.length : 0) +
-        p.column -
-        1 -
-        (s?.from ?? 0),
-    }
   }
   return (
     <div
@@ -382,44 +240,42 @@ export function TerminalEditor({
         onBlur: () => setFocused(false),
       })}
     >
-      {buffers && (
+      {screen.buffers && (
         <div
           data-slot="terminal-editor-bufferline"
           className="flex overflow-hidden"
           style={{ background: palette.bar, height: `${LINE_HEIGHT}em` }}
         >
-          {f.open.map((p) => {
-            const front = p === f.active
-            const name = `${nameOf(p)}${f.dirty.includes(p) ? "[+]" : ""}`
+          {screen.buffers.map((b) => {
             const look = {
               className: "shrink-0 px-[1ch]",
-              style: front
+              style: b.front
                 ? { background: palette.dot, color: palette.command }
                 : { color: palette.muted },
             }
             return onOpen ? (
               <button
-                key={p}
+                key={b.path}
                 type="button"
                 data-slot="terminal-editor-buffer"
-                data-active={front || undefined}
+                data-active={b.front || undefined}
                 // The terminal is one picture to assistive tech (role img, its
                 // screen hidden): a tab is for the pointer, never a focus stop.
                 tabIndex={-1}
-                onClick={() => front || onOpen(p)}
+                onClick={() => b.front || onOpen(b.path)}
                 {...look}
                 className={`${look.className} cursor-pointer whitespace-pre transition-colors hover:brightness-150`}
               >
-                {name}
+                {b.label}
               </button>
             ) : (
               <span
-                key={p}
+                key={b.path}
                 data-slot="terminal-editor-buffer"
-                data-active={front || undefined}
+                data-active={b.front || undefined}
                 {...look}
               >
-                {name}
+                {b.label}
               </span>
             )
           })}
@@ -428,12 +284,10 @@ export function TerminalEditor({
       <div
         data-slot="terminal-editor-text"
         className="relative"
-        style={{ paddingTop: "0.5em" }}
+        style={{ paddingTop: `${TEXT_TOP}em` }}
       >
-        {Array.from({ length: textRows }, (_, r) => {
-          const row = screen[top + r]
-          const here = row !== undefined && top + r === caretRow
-          const worst = row ? said[row.line]?.[0] : undefined
+        {screen.rows.map((row, r) => {
+          const worst = row?.worst ?? null
           return (
             <div
               // biome-ignore lint/suspicious/noArrayIndexKey: a screen row
@@ -455,11 +309,8 @@ export function TerminalEditor({
                 data-slot="terminal-editor-number"
                 className="shrink-0 pr-[1ch] text-right"
                 style={{
-                  width: `${digits + 2}ch`,
-                  color:
-                    row && row.line === place.line - 1
-                      ? palette.accent
-                      : palette.prompt,
+                  width: `${screen.digits + 2}ch`,
+                  color: row?.current ? palette.accent : palette.prompt,
                 }}
               >
                 {row?.first ? row.line + 1 : ""}
@@ -483,31 +334,28 @@ export function TerminalEditor({
                     {WRAP_INDICATOR}
                   </span>
                 )}
-                {row?.runs.map((run, k) => {
-                  const severity = WORST.find((s) => run.marks.includes(s))
-                  return (
-                    <span
-                      // biome-ignore lint/suspicious/noArrayIndexKey: runs are positional
-                      key={k}
-                      data-slot={
-                        severity ? "terminal-editor-undercurl" : undefined
-                      }
-                      style={{
-                        color: run.ink?.dark,
-                        fontStyle: run.ink?.italic ? "italic" : undefined,
-                        fontWeight: run.ink?.bold ? 700 : undefined,
-                        background: run.marks.includes("selection")
-                          ? `color-mix(in oklab, ${palette.accent} 30%, transparent)`
-                          : undefined,
-                        textDecoration: severity
-                          ? `underline wavy ${SEVERITY[severity].ink}`
-                          : undefined,
-                      }}
-                    >
-                      {run.text}
-                    </span>
-                  )
-                })}
+                {row?.runs.map((run, k) => (
+                  <span
+                    // biome-ignore lint/suspicious/noArrayIndexKey: runs are positional
+                    key={k}
+                    data-slot={
+                      run.undercurl ? "terminal-editor-undercurl" : undefined
+                    }
+                    style={{
+                      color: run.color ?? undefined,
+                      fontStyle: run.italic ? "italic" : undefined,
+                      fontWeight: run.bold ? 700 : undefined,
+                      background: run.selected
+                        ? `color-mix(in oklab, ${palette.accent} ${Math.round(SELECTION_ALPHA * 100)}%, transparent)`
+                        : undefined,
+                      textDecoration: run.undercurl
+                        ? `underline wavy ${SEVERITY[run.undercurl].ink}`
+                        : undefined,
+                    }}
+                  >
+                    {run.text}
+                  </span>
+                ))}
                 {row?.last && worst && (
                   // Helix's end-of-line diagnostic: the worst one's message, after
                   // the line, in its severity's colour.
@@ -515,21 +363,21 @@ export function TerminalEditor({
                     data-slot="terminal-editor-eol"
                     style={{
                       color: SEVERITY[worst.severity].ink,
-                      opacity: 0.8,
+                      opacity: EOL_OPACITY,
                     }}
                   >
-                    {"    "}
+                    {EOL_GAP}
                     {worst.message}
                   </span>
                 )}
-                {here && (
+                {caret?.row === r && (
                   <Caret
                     still={f.keyed < 0 || ms - f.keyed >= STILL_MS}
                     style={{
-                      left: `${(caret.first ? 0 : WRAP_INDICATOR.length) + column - caret.from}ch`,
-                      width: insert ? "2px" : "1ch",
+                      left: `${caret.column}ch`,
+                      width: caret.insert ? "2px" : "1ch",
                       background: palette.accent,
-                      mixBlendMode: insert ? undefined : "difference",
+                      mixBlendMode: caret.insert ? undefined : "difference",
                     }}
                   />
                 )}
@@ -537,17 +385,15 @@ export function TerminalEditor({
             </div>
           )
         })}
-        {f.popup && (
+        {screen.popup && (
           <Popup
-            popup={f.popup}
-            at={caretAt(caretRow, f.popup.at)}
-            gutter={gutter}
-            rows={textRows}
+            popup={screen.popup.popup}
+            at={screen.popup}
+            gutter={screen.gutter}
+            rows={screen.rows.length}
           />
         )}
-        {f.panel === "problems" && (
-          <Picker path={path} diagnostics={f.diagnostics} text={f.text} />
-        )}
+        {screen.picker && <Picker picker={screen.picker} />}
       </div>
       <div
         data-slot="terminal-editor-status"
@@ -558,30 +404,24 @@ export function TerminalEditor({
           data-slot="terminal-editor-mode"
           className="px-[1ch] font-bold"
           style={{
-            background: insert ? palette.command : palette.accent,
+            background: status.insert ? palette.command : palette.accent,
             color: palette.bg,
           }}
         >
-          {MODES[mode]}
+          {status.mode}
         </span>
-        <span className="min-w-0 flex-1 truncate">
-          {path}
-          {f.active && f.dirty.includes(f.active) ? " [+]" : ""}
-        </span>
-        {counts.map(
-          ({ s, n }) =>
-            n > 0 && (
-              <span
-                key={s}
-                data-slot="terminal-editor-count"
-                style={{ color: SEVERITY[s].ink }}
-              >
-                ● {n}
-              </span>
-            ),
-        )}
+        <span className="min-w-0 flex-1 truncate">{status.file}</span>
+        {status.counts.map(({ severity, n }) => (
+          <span
+            key={severity}
+            data-slot="terminal-editor-count"
+            style={{ color: SEVERITY[severity].ink }}
+          >
+            ● {n}
+          </span>
+        ))}
         <span className="pr-[1ch]" style={{ color: palette.muted }}>
-          1 sel {place.line}:{place.column}
+          {status.place}
         </span>
       </div>
       <div
@@ -589,8 +429,8 @@ export function TerminalEditor({
         className="px-[1ch]"
         style={{ color: palette.muted }}
       >
-        {message || " "}
-        {f.prompt && (
+        {screen.command.text || " "}
+        {screen.command.prompt && (
           <span style={{ background: palette.accent, color: palette.bg }}>
             {" "}
           </span>
@@ -610,12 +450,11 @@ function Popup({
   rows,
 }: {
   popup: CodePopup
-  at: { row: number; column: number }
+  at: { row: number; column: number; below: boolean }
   gutter: number
   rows: number
 }) {
   const palette = useTerminalPalette()
-  const below = popup.kind === "completion" || at.row < 4
   const box: React.CSSProperties = {
     position: "absolute",
     zIndex: 10,
@@ -624,9 +463,9 @@ function Popup({
     background: palette.bar,
     color: palette.command,
     maxWidth: `calc(100% - ${gutter + at.column}ch)`,
-    ...(below
-      ? { top: `calc(0.5em + ${(at.row + 1) * LINE_HEIGHT}em)` }
-      : { bottom: `calc(100% - 0.5em - ${at.row * LINE_HEIGHT}em)` }),
+    ...(at.below
+      ? { top: `calc(${TEXT_TOP}em + ${(at.row + 1) * LINE_HEIGHT}em)` }
+      : { bottom: `calc(100% - ${TEXT_TOP}em - ${at.row * LINE_HEIGHT}em)` }),
   }
   if (popup.kind === "completion") {
     const first = Math.max(0, popup.selected - MENU_ROWS + 1)
@@ -691,24 +530,9 @@ function Popup({
 /** `space d`: helix's diagnostics picker over the editor, its prompt, the count,
  *  and one row per diagnostic of the file (its severity, source, message, place),
  *  the first selected. */
-function Picker({
-  path,
-  diagnostics,
-  text,
-}: {
-  path: string
-  diagnostics: readonly {
-    from: number
-    severity: CodeSeverity
-    message: string
-    source?: string
-  }[]
-  text: string
-}) {
+function Picker({ picker }: { picker: NonNullable<EditorScreen["picker"]> }) {
   const palette = useTerminalPalette()
-  const list = [...diagnostics].sort(
-    (a, b) => WORST.indexOf(a.severity) - WORST.indexOf(b.severity),
-  )
+  const list = picker.diagnostics
   return (
     <div
       data-slot="terminal-editor-picker"
@@ -733,11 +557,11 @@ function Picker({
       <div style={{ borderTop: `1px solid ${palette.prompt}` }}>
         {list.length === 0 && (
           <div className="px-[1ch]" style={{ color: palette.muted }}>
-            no diagnostics in {nameOf(path)}
+            no diagnostics in {picker.name}
           </div>
         )}
         {list.slice(0, MENU_ROWS).map((d, i) => {
-          const p = placeOf(text, d.from)
+          const p = placeOf(picker.text, d.from)
           return (
             <div
               key={`${d.from}:${d.message}`}
@@ -756,7 +580,7 @@ function Picker({
               </span>
               <span className="min-w-0 flex-1 truncate">{d.message}</span>
               <span className="shrink-0" style={{ color: palette.muted }}>
-                {nameOf(path)}:{p.line}:{p.column}
+                {picker.name}:{p.line}:{p.column}
               </span>
             </div>
           )
