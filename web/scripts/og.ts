@@ -1,8 +1,9 @@
 // THE LINK PREVIEW: cellular.computer's card, `app/card.png` (lib/card), which
 // app/opengraph-image.ts serves as the og:image of every page, with its alt. Drawn
 // from the site's own parts through ui's: a `.cell` file in Helix as the hero shows it
-// (ui's terminal-editor still, its accent, the engine as its language server), beside
-// the product's name and subline (lib/product), on the dark theme's ground, the
+// (ui's terminal-editor still, its accent, the engine as its language server), across
+// the card, the product's name and subline (lib/product) in a row under it, on the
+// dark theme's ground, the
 // extension in its edge light (app/globals.css). The file is read by the engine and
 // what the card claims is asserted: its totals stored beside their `=`, the one typo
 // named on its row, nothing else. The PNG is kept in the tree; `--check` draws it again
@@ -21,7 +22,7 @@ import { ACCENT } from "@/components/hero"
 import { CARD_CELL, CARD_FILE } from "@/lib/card"
 import { cellsDiagnose } from "@/lib/diagnose"
 import { loadEngine } from "@/lib/engine-module"
-import { ogStillCard } from "@/lib/og"
+import { ogStackCard } from "@/lib/og"
 import { geistFiles, ogFace, rasterizeOg } from "@/lib/og-still"
 import { PRODUCT } from "@/lib/product"
 import { editorStill, renderEditorSvg } from "@/lib/terminal-editor-screen"
@@ -67,9 +68,12 @@ const screen = await editorStill({
     { kind: "place", ...TYPO, delay: 300 },
   ],
   progress: 1,
-  rows: 6,
-  // The typo's row, its message after it, to the screen's edge.
-  columns: 58,
+  // The file's four lines and the status line: as many as the card's height takes with
+  // the editor across its width.
+  rows: 5,
+  // The typo's row, its message after it, with room: the width the card's height
+  // leaves the editor at five rows.
+  columns: 66,
   diagnose: cellsDiagnose(engine),
   accent: ACCENT,
 })
@@ -119,7 +123,7 @@ const edge = themed("edge")
 const [before, after] = PRODUCT.subline.split(PRODUCT.extension) as [string, string]
 assert.ok(PRODUCT.subline.split(PRODUCT.extension).length === 2, "the subline names the extension once")
 const fonts = geistFiles()
-const card = ogStillCard({
+const card = ogStackCard({
   title: PRODUCT.name,
   line: [before, { text: PRODUCT.extension, ink: edge }, after],
   faces: { title: ogFace(fonts.sansSemiBold, "Geist"), line: ogFace(fonts.sans, "Geist") },
