@@ -616,6 +616,24 @@ function columnOf(doc: Doc, column: string | number): number {
   return k
 }
 
+/** What a cell's text, as the file writes it, stores (SPEC.md, A cell), for a host that
+ *  keeps its own rows and shows them: left of its first `=` with no `'` before it (the
+ *  core's `read::split`), each `'=` read as `=`. `84.20=` and `84.20=cost * 2` show
+ *  `84.20`, a lone `=` nothing yet, `a'=b` `a=b`. Pure. */
+export function shown(text: string): string {
+  let at = text.indexOf("=")
+  while (at > 0 && text[at - 1] === "'") at = text.indexOf("=", at + 1)
+  return (at < 0 ? text : text.slice(0, at)).replaceAll("'=", "=")
+}
+
+/** What a person typed into a cell, as the file writes it: a text starting with `=` is a
+ *  formula (`=96.75 / 3` the cell's own, a lone `=` its column's, its value stored by the
+ *  next write), any other a value, its `=` written `'=` (`a=b` stays the text `a=b`), a
+ *  value with no `=` an override of a computed cell. Pure. */
+export function typed(text: string): string {
+  return text.startsWith("=") ? text : text.replaceAll("=", "'=")
+}
+
 /** One cell's text changed; every other byte stays as read but the computed values the
  *  change reaches, stored left of their `=` (SPEC.md, Writing). Returns `doc`, changed;
  *  text holding a control character throws `CellsError` at the row, `doc` untouched.
