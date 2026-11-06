@@ -85,22 +85,22 @@ const STEPS: CodeStep[] = [
   { kind: "open", path: money, delay: 900 },
 ]
 
-/** STEPS with each save written as the language server's formatting writes it: the file
- *  in front as Helix holds it then, against the file as it last saved it. */
+/** The save `steps` end on, written as the language server's formatting writes it: the
+ *  file in front as Helix holds it then, against the file as it last saved it, read with
+ *  the other as it stands. */
+export function saveAfter(engine: Engine, steps: readonly CodeStep[]): CodeStep {
+  const t = codeTimeline(FILES, [...steps])
+  const path = codeFrameAt(t, t.total).active as string
+  const other = path === money ? accounts : money
+  const was = { name: path, text: savedAt(t, path, t.total) }
+  const now = { name: path, text: textAt(t, path, t.total) }
+  return { kind: "save", formatted: savedAs(engine, was, now, [{ name: other, text: textAt(t, other, t.total) }]) }
+}
+
+/** STEPS with each save written as the language server's formatting writes it. */
 function formatted(engine: Engine): CodeStep[] {
   const steps: CodeStep[] = []
-  for (const s of STEPS) {
-    if (s.kind !== "save") {
-      steps.push(s)
-      continue
-    }
-    const t = codeTimeline(FILES, steps)
-    const path = codeFrameAt(t, t.total).active as string
-    const other = path === money ? accounts : money
-    const was = { name: path, text: savedAt(t, path, t.total) }
-    const now = { name: path, text: textAt(t, path, t.total) }
-    steps.push({ ...s, formatted: savedAs(engine, was, now, [{ name: other, text: savedAt(t, other, t.total) }]) })
-  }
+  for (const s of STEPS) steps.push(s.kind === "save" ? { ...saveAfter(engine, steps), delay: s.delay } : s)
   return steps
 }
 

@@ -28,6 +28,46 @@ const ROWS = [
   },
 ]
 
+/** Something written in the file, as the words beside it name it. */
+function Code({ children }: { children: React.ReactNode }) {
+  return <code className="font-mono text-[0.92em] text-foreground">{children}</code>
+}
+
+/** The line's three words, each shown on the file in the editor beside them: what in its
+ *  header makes it so, and what to do to see it. */
+const TRIES = [
+  {
+    word: "Typed",
+    code: "amount:EUR>0",
+    says: "holds euros above zero, so a wrong value is named where it is written.",
+    act: (
+      <>
+        Make <Code>42.50</Code> negative.
+      </>
+    ),
+  },
+  {
+    word: "Reactive",
+    code: "vat:EUR=amount * 21 / 121",
+    says: "is computed for every row and written beside its =.",
+    act: (
+      <>
+        Change <Code>950.00</Code> and watch its <Code>vat</Code> follow.
+      </>
+    ),
+  },
+  {
+    word: "Composable",
+    code: "to:accounts.account",
+    says: `names an account in accounts${PRODUCT.extension}, checked across the two files.`,
+    act: (
+      <>
+        Change <Code>rent</Code> to <Code>rant</Code>.
+      </>
+    ),
+  },
+]
+
 export default function Page() {
   return (
     <main>
@@ -90,18 +130,18 @@ export default function Page() {
         {/* Glass, as the shimmer's own demo sets words over it: its blur frosts the
             facets behind, the words in front stay sharp. */}
         <Glass shape="surface" className="max-w-[52ch] p-8 [--glass-radius:1.25rem]">
-          <p className="font-mono text-[11px] tracking-[0.18em] text-muted-foreground/70">TRY IT</p>
-          <h2 className="mt-4 text-balance text-[clamp(1.5rem,2.6vw,2.125rem)] leading-[1.15] font-medium tracking-[-0.02em]">
-            Files that check each other.
-          </h2>
-          <div className="mt-6 space-y-4 text-[16px] leading-relaxed text-muted-foreground">
-            <p>
-              The header holds the types, the formulas and the links to other files. Every value is checked against them as you type, across files.
-            </p>
-            <p className="text-foreground/80">
-              Change <code className="font-mono text-foreground">rent</code> to <code className="font-mono text-foreground">rant</code> in the editor.
-            </p>
-          </div>
+          <h2 className="font-mono text-[11px] tracking-[0.18em] text-muted-foreground/70 uppercase">Try it in the editor</h2>
+          <dl className="mt-6 space-y-6">
+            {TRIES.map((t) => (
+              <div key={t.word}>
+                <dt className="text-[clamp(1.25rem,2vw,1.625rem)] leading-tight font-medium tracking-[-0.02em]">{t.word}</dt>
+                <dd className="mt-1.5 text-[15px] leading-relaxed text-muted-foreground">
+                  <Code>{t.code}</Code> {t.says}
+                </dd>
+                <dd className="mt-1 text-[15px] leading-relaxed text-foreground/85">{t.act}</dd>
+              </div>
+            ))}
+          </dl>
         </Glass>
       </section>
 

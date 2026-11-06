@@ -23,7 +23,7 @@ import { TerminalEditor } from "@/components/ui/terminal-editor"
 import { useCellsDiagnose } from "@/components/use-cells-diagnose"
 import { useEngine } from "@/components/use-engine"
 import { type CodeStep, codeFrameAt } from "@/lib/code-session"
-import { hero } from "@/lib/hero"
+import { hero, saveAfter } from "@/lib/hero"
 import { savedAt } from "@/lib/written"
 import { type Art, LID_MS, sceneClock, type Timeline } from "@/lib/macos-session"
 import { PRODUCT } from "@/lib/product"
@@ -155,8 +155,19 @@ const LANDING_W = 600
  *  already shows the editor, stacked, and nothing flies, so there is none. */
 export function Landing() {
   const narrow = useNarrow()
+  const engine = useEngine()
+  const h = useHero()
   const [added, setAdded] = React.useState<CodeStep[]>(NO_STEPS)
-  const step = React.useCallback((s: CodeStep) => setAdded((a) => [...a, s]), [])
+  // An edit is written as it lands, as an editor formatting on save writes it: every
+  // computed value it reaches stored beside its `=`, so `vat` follows the amount typed.
+  const step = React.useCallback(
+    (s: CodeStep) =>
+      setAdded((a) => {
+        const next = [...a, s]
+        return s.kind === "type" || s.kind === "replace" ? [...next, saveAfter(engine, [...h.steps, ...next])] : next
+      }),
+    [engine, h],
+  )
   if (narrow) return null
   return (
     // Before it knows the width (the server's HTML) a phone collapses it rather than
