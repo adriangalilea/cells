@@ -42,7 +42,7 @@ pub mod tokens;
 pub mod types;
 pub mod value;
 
-pub use column::{Bits, Data, Kind, Problem, Value, Why};
+pub use column::{Bits, Data, Kind, Problem, Severity, Value, Why};
 #[cfg(feature = "std")]
 pub use doc::read_parallel;
 pub use doc::{

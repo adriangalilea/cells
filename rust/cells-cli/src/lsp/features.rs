@@ -174,7 +174,12 @@ pub fn diagnostics(file: &File) -> Vec<Diagnostic> {
                 Some(t) => format!("{t}, row {}, {column}", p.row + 1),
                 None => column.clone(),
             };
-            out.push(error(lines.range(shifted(s, base)), format!("{place}: {}", doc.why(p))));
+            let mut d = error(lines.range(shifted(s, base)), format!("{place}: {}", doc.why(p)));
+            // what is not there yet warns; what is wrong is an error
+            if p.kind().severity() == cells::Severity::Warning {
+                d.severity = Some(DiagnosticSeverity::WARNING);
+            }
+            out.push(d);
         }
     };
     problems(doc, 0, None, &mut out);

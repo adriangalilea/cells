@@ -515,6 +515,9 @@ pub struct CellsProblem {
     pub row: u32,
     pub column: u32,
     pub kind: CellsKind,
+    /// What is absent or behind (a warning), not what is wrong (an error):
+    /// `cells::Kind::severity`, the one rule every reader shows.
+    pub warning: bool,
 }
 
 /// How many problems, by row then column.
@@ -544,7 +547,7 @@ pub unsafe extern "C" fn cells_problem(d: *mut CellsDoc, i: usize) -> CellsProbl
         cells::Kind::Reference => CellsKind::CellsKindReference,
         cells::Kind::Stale => CellsKind::CellsKindStale,
     };
-    CellsProblem { row: p.row, column: p.column, kind }
+    CellsProblem { row: p.row, column: p.column, kind, warning: p.kind().severity() == cells::Severity::Warning }
 }
 
 /// Where a file's grammar breaks, the rest read (`cells::Doc::broken`): the place, and

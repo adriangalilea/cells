@@ -238,7 +238,26 @@ pub enum Kind {
     Stale,
 }
 
+/// How much a problem weighs, the same in every reader (the command line, the language
+/// server, an app): what is wrong, or what is not there yet.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum Severity {
+    /// A value that is wrong: it breaks its type, repeats a key, names no row, or its
+    /// formula does not compute. A grammar that breaks is one too.
+    Error,
+    /// Something absent or behind: a value not written, a stored value its formula has
+    /// moved past, a plain row of another width.
+    Warning,
+}
+
 impl Kind {
+    pub fn severity(self) -> Severity {
+        match self {
+            Kind::Type | Kind::Key | Kind::Formula | Kind::Reference => Severity::Error,
+            Kind::Missing | Kind::Stale | Kind::Ragged => Severity::Warning,
+        }
+    }
+
     pub fn as_str(self) -> &'static str {
         match self {
             Kind::Type => "type",
