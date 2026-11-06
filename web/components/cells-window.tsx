@@ -112,14 +112,15 @@ export function CellsTable({
 const r0Numeric = (rows: ViewCell[][], k: number) => rows.some((r) => r[k]?.numeric)
 
 /** A file's name, its extension lit (an extension alone, all of it): what tells a CSV
- *  from a Cells file. */
+ *  from a Cells file, ours in the edge's blue, any other in the haze's amber. */
 export function FileName({ name }: { name: string }) {
   const dot = name.lastIndexOf(".")
   if (dot < 0) return name
+  const ext = name.slice(dot)
   return (
     <>
       {name.slice(0, dot)}
-      <span className="text-edge">{name.slice(dot)}</span>
+      <span className={ext === PRODUCT.extension ? "text-edge" : "text-haze"}>{ext}</span>
     </>
   )
 }
@@ -157,8 +158,9 @@ export function CellsWindow({
       className={cn("rounded-[10px] [--ag-table-ground:var(--ag-app-window-ground)]", className)}
     >
       <div className="flex h-full flex-col">
-        <div className="min-h-0 flex-1 overflow-hidden text-[11px]">
-          <CellsTable name={name} text={text} others={others} label={name} light={light} className="h-full" />
+        <div className="min-h-0 flex-1 overflow-hidden">
+          {/* The table's own type size: its columns are counted in its characters. */}
+          <CellsTable name={name} text={text} others={others} label={name} light={light} className="h-full text-[11px]" />
         </div>
         <div
           data-slot="cells-window-problems"
