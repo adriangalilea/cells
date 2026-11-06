@@ -666,12 +666,12 @@ export function tokens(text: string): Token[] {
   return out
 }
 
-/** A file's tables laid out as tables, for a view that aligns their columns without
- *  writing a byte: `pads`, spaces drawn at `at` (a string's index, where a cell's next
- *  comma stands) so every cell of a column ends where its widest does; `cuts`, with a
- *  `fold`, the middle of each cell wider than it, `from` to `to`, drawn folded until a
- *  reader opens it (a header cell's name kept whole). Widths in characters. A cell is
- *  read exactly as written, so these are never written into the file. */
+/** A file's tables laid out as tables, by the rule `cells fmt` writes (SPEC.md,
+ *  Formatting), for a view that aligns their columns without writing a byte: `pads`,
+ *  spaces drawn at `at` (a string's index, a value's start) where the file has fewer
+ *  than bring the value to its column's start, none for a file formatted; `cuts`, with a
+ *  `fold`, the middle of each value wider than it, `from` to `to`, drawn folded until a
+ *  reader opens it (a header cell's name kept whole). Widths in characters. */
 export interface Layout {
   pads: { at: number; width: number }[]
   cuts: { from: number; to: number }[]

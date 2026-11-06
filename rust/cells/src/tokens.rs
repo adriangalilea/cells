@@ -311,105 +311,6 @@ pub fn tokens(source: &str) -> Vec<Token> {
     out.tokens
 }
 
-/// Spaces drawn after a cell, at the byte its next comma stands on, so every cell of its
-/// column ends where the column's widest one does. Never written: a cell is read exactly
-/// as written, so a space in the file would change its value.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct Pad {
-    pub at: u32,
-    pub width: u32,
-}
-
-/// The middle of a cell wider than a view's cap, `start..end` in bytes, drawn folded until
-/// a reader opens it: the cell's start and end stay, and a header cell's whole name.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct Cut {
-    pub start: u32,
-    pub end: u32,
-}
-
-/// A file's tables laid out as tables, for a view that aligns their columns without
-/// writing a byte (ui's code, a language server's inlay hints). Each table on its own
-/// (the file's, and each written inline in its prelude), its columns as wide as their
-/// widest cell, in characters; with a `cap`, a cell wider than it counts as its folded
-/// width, its middle a `Cut`. A record across a line break is left as written, and the
-/// columns are measured without it.
-pub fn layout(source: &str, cap: Option<u32>) -> (Vec<Pad>, Vec<Cut>) {
-    let src = source.as_bytes();
-    let starts: Vec<usize> = core::iter::once(0).chain(source.match_indices('\n').map(|(i, _)| i + 1)).collect();
-    let line_of = |at: usize| starts.partition_point(|&s| s <= at) - 1;
-    // The lines a table stands on: those a part with a column covers.
-    let mut tabled = alloc::vec![false; starts.len()];
-    for t in tokens(source) {
-        if t.column != NONE {
-            let (first, last) = (line_of(t.start as usize), line_of((t.end as usize).saturating_sub(1).max(t.start as usize)));
-            tabled[first..=last].fill(true);
-        }
-    }
-    let (mut pads, mut cuts) = (Vec::new(), Vec::new());
-    let mut l = 0;
-    while l < starts.len() {
-        if !tabled[l] {
-            l += 1;
-            continue;
-        }
-        let first = l;
-        while l < starts.len() && tabled[l] {
-            l += 1;
-        }
-        let end = starts.get(l).map_or(src.len(), |&s| s);
-        table_layout(source, starts[first], end, cap, &mut pads, &mut cuts);
-    }
-    (pads, cuts)
-}
-
-/// One table's records from `at` to `end`: its first the header.
-fn table_layout(source: &str, mut at: usize, end: usize, cap: Option<u32>, pads: &mut Vec<Pad>, cuts: &mut Vec<Cut>) {
-    let src = source.as_bytes();
-    // Each record's fields, each with the width it is drawn at and its cut.
-    let mut records: Vec<Vec<(usize, usize, u32)>> = Vec::new();
-    let mut header = true;
-    while at < end {
-        let (fields, next) = record(src, at);
-        let one_line = fields.iter().all(|&(s, e)| !src[s..e].contains(&b'\n'));
-        if one_line {
-            let mut drawn = Vec::with_capacity(fields.len());
-            for &(s, e) in &fields {
-                let cell = &source[s..e];
-                let chars = cell.chars().count() as u32;
-                let width = match cap {
-                    Some(cap) if chars > cap && cap >= 8 => {
-                        // The start keeps a header cell's name and its `:`; the end keeps
-                        // the rest of the cap, the part that tells cells apart.
-                        let name = if header { cell.find(':').map_or(0, |c| cell[..c].chars().count() as u32 + 1) } else { 0 };
-                        let head = name.max(cap / 3).min(cap - 4);
-                        let tail = cap - 1 - head;
-                        let byte = |n: u32| s + cell.char_indices().nth(n as usize).map_or(cell.len(), |(i, _)| i);
-                        cuts.push(Cut { start: byte(head) as u32, end: byte(chars - tail) as u32 });
-                        cap
-                    }
-                    _ => chars,
-                };
-                drawn.push((s, e, width));
-            }
-            records.push(drawn);
-        }
-        header = false;
-        at = next;
-    }
-    let columns = records.iter().map(Vec::len).max().unwrap_or(0);
-    let widths: Vec<u32> =
-        (0..columns).map(|k| records.iter().filter_map(|r| r.get(k)).map(|&(_, _, w)| w).max().unwrap_or(0)).collect();
-    for r in &records {
-        // The last cell of a record is followed by no comma, so by nothing to align.
-        for (k, &(_, e, w)) in r.iter().enumerate().take(r.len().saturating_sub(1)) {
-            if widths[k] > w {
-                pads.push(Pad { at: e as u32, width: widths[k] - w });
-            }
-        }
-    }
-}
-
 /// The line at `at`: where the next one starts, and its bytes without the line break.
 fn line(src: &[u8], at: usize) -> (usize, &[u8]) {
     let end = src[at..].iter().position(|&c| c == b'\n').map_or(src.len(), |p| at + p);
@@ -421,7 +322,7 @@ fn line(src: &[u8], at: usize) -> (usize, &[u8]) {
 /// A record's fields from `at`, each span with its quotes, and where the next record
 /// starts. Lenient: an unclosed quote runs to the end, text after a closing quote is the
 /// field's.
-fn record(src: &[u8], at: usize) -> (Vec<(usize, usize)>, usize) {
+pub(crate) fn record(src: &[u8], at: usize) -> (Vec<(usize, usize)>, usize) {
     let mut fields = Vec::new();
     let mut i = at;
     loop {
@@ -953,58 +854,13 @@ mod tests {
         assert!(tokens(src).iter().all(|t| t.kind != Kind::Error), "nothing in it is an error");
     }
 
-    /// The text as a view lays it out: every pad drawn as its spaces, every cut as `…`.
-    fn drawn(src: &str, cap: Option<u32>) -> String {
-        let (pads, cuts) = layout(src, cap);
-        let mut out = String::new();
-        let mut at = 0;
-        let mut marks: Vec<(usize, Option<usize>, u32)> = pads.iter().map(|p| (p.at as usize, None, p.width)).collect();
-        marks.extend(cuts.iter().map(|c| (c.start as usize, Some(c.end as usize), 0)));
-        marks.sort();
-        for (from, to, width) in marks {
-            out.push_str(&src[at..from]);
-            match to {
-                Some(to) => {
-                    out.push('…');
-                    at = to;
-                }
-                None => {
-                    out.extend(core::iter::repeat_n(' ', width as usize));
-                    at = from;
-                }
-            }
-        }
-        out.push_str(&src[at..]);
-        out
-    }
-
     #[test]
-    fn tables_laid_out_as_tables() {
-        let src = "item:text!,cost:EUR,total:EUR=cost * 2\nfuel,84.20,168.40=\nsplit dinner,3.10,6.20=\n";
-        assert_eq!(
-            drawn(src, None),
-            "item:text!  ,cost:EUR,total:EUR=cost * 2\nfuel        ,84.20   ,168.40=\nsplit dinner,3.10    ,6.20=\n"
-        );
-        // Each table on its own: the prelude's is not the file's.
-        let src = "---\nfees = ```cells\nkind:text!,pct:pct\ncard,1.4\n```\n---\na,b\nlonger,1\n";
-        assert_eq!(drawn(src, None), "---\nfees = ```cells\nkind:text!,pct:pct\ncard      ,1.4\n```\n---\na     ,b\nlonger,1\n");
-    }
-
-    #[test]
-    fn a_cell_past_the_cap_folds_in_its_middle() {
-        let src = "running:EUR=running[-1] + total,note\n1=,a very long note about the ferry\n";
-        let shown = drawn(src, Some(16));
-        // The header cell keeps its name; the note its start and its end.
-        assert_eq!(shown, "running:…+ total,note\n1=              ,a ver… the ferry\n");
-        // A cut is drawn at the cap, so the columns still line up.
-        let lines: Vec<&str> = shown.lines().collect();
-        assert_eq!(lines[0].find(',').map(|i| lines[0][..i].chars().count()), lines[1].find(',').map(|i| lines[1][..i].chars().count()));
-    }
-
-    #[test]
-    fn a_record_across_a_line_break_is_left_as_written() {
-        let src = "a,b\n\"x\ny\",2\nlonger,3\n";
-        assert_eq!(drawn(src, None), "a     ,b\n\"x\ny\",2\nlonger,3\n");
+    fn a_padded_cell_is_its_value() {
+        let t = shown("item:text!,  cost:EUR\n  fuel  ,\t84.20\n");
+        assert!(t.contains(&("cost".into(), Kind::Name, 1)), "{t:?}");
+        assert!(t.contains(&("fuel".into(), Kind::CellText, 0)), "{t:?}");
+        assert!(t.contains(&("84.20".into(), Kind::CellNumber, 1)), "{t:?}");
+        assert!(t.contains(&(",".into(), Kind::Punct, 1)), "the comma behind the padding: {t:?}");
     }
 
     #[test]

@@ -518,15 +518,16 @@ pub fn numbered(folder: &Folder, file: &File) -> Vec<Numbered> {
 
 /// The file as a write leaves it (SPEC.md, Writing), for a client formatting it as it
 /// saves: every computed value the edits since `saved` reached stored beside its `=`,
-/// every one not stored yet stored, and nothing else, a stale cell the edits did not reach
-/// left as it is. Nothing when it is already so.
-pub fn formatted(file: &File, saved: Option<&File>) -> Option<TextEdit> {
+/// every one not stored yet stored, a stale cell the edits did not reach left as it is;
+/// then laid out as `cells fmt` lays it (SPEC.md, Formatting), its columns aligned or,
+/// with `align` off, no padding. Nothing when it is already so.
+pub fn formatted(file: &File, saved: Option<&File>, align: bool) -> Option<TextEdit> {
     let mut doc = file.doc.clone();
     match saved {
         Some(saved) => doc.stored_since(&saved.doc),
         None => doc.store_unstored(),
     }
-    let text = doc.write();
+    let text = cells::layout::formatted(&doc.write(), align);
     (text != file.text).then(|| whole(file, &Lines::new(&file.text), text))
 }
 
@@ -985,14 +986,17 @@ mod tests {
         let text = MONEY.replace("64.30,pwer,,128.60=", "70.00,pwer,,128.60=");
         let folder = Folder { open: Arc::new(BTreeMap::from([(money.clone(), text.clone())])), ..folder };
         let now = folder.read(&money).unwrap();
-        let edit = formatted(&now, Some(&saved)).expect("a value to store");
+        let edit = formatted(&now, Some(&saved), false).expect("a value to store");
         assert!(applied(&edit).contains("70.00,pwer,,140.00="), "{}", applied(&edit));
         assert!(applied(&edit).contains("950.00,rent,,1900.00="), "the row not reached is as it was");
+        // Aligned, the same values, each table's columns laid out as `cells fmt` lays them.
+        let aligned = formatted(&now, Some(&saved), true).expect("a value to store, the table aligned");
+        assert_eq!(applied(&aligned), cells::layout::formatted(applied(&edit), true));
         // A value typed over its `=` is left for a person: a stale cell, not overwritten.
         let typed = MONEY.replace("1900.00=", "1999.00=");
         let folder = Folder { open: Arc::new(BTreeMap::from([(money.clone(), typed.clone())])), ..folder };
         let now = folder.read(&money).unwrap();
-        assert!(formatted(&now, Some(&saved)).is_none(), "nothing reached it");
+        assert!(formatted(&now, Some(&saved), false).is_none(), "nothing reached it");
         // Its two fixes.
         let lines = Lines::new(&typed);
         let row = lines.position(at(&typed, "1999.00=", 0)).line;

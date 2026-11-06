@@ -11,6 +11,7 @@ mod text;
 
 use std::collections::BTreeMap;
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 
 use tower_lsp::jsonrpc::{Error, Result};
@@ -26,6 +27,9 @@ struct Backend {
     /// Each open file's text as it was last saved (or opened): what formatting on save
     /// stores the edits since against.
     saved: Mutex<BTreeMap<PathBuf, String>>,
+    /// Whether formatting aligns a table's columns: the client's `align` in its
+    /// initialization options, on unless it says `false` (SPEC.md, Formatting).
+    align: AtomicBool,
 }
 
 impl Backend {
@@ -72,6 +76,8 @@ impl LanguageServer for Backend {
         let root =
             params.workspace_folders.as_ref().and_then(|w| w.first()).map(|w| w.uri.clone()).or(params.root_uri).and_then(|u| path(&u));
         self.folder.lock().unwrap().root = root;
+        let align = params.initialization_options.as_ref().and_then(|o| o.get("align")).and_then(|a| a.as_bool());
+        self.align.store(align.unwrap_or(true), Ordering::Relaxed);
         Ok(InitializeResult {
             capabilities: ServerCapabilities {
                 text_document_sync: Some(TextDocumentSyncCapability::Options(TextDocumentSyncOptions {
@@ -128,7 +134,7 @@ impl LanguageServer for Backend {
         let Some(file) = folder.read(&path) else { return Ok(None) };
         let saved = self.saved.lock().unwrap().get(&path).cloned();
         let saved = saved.and_then(|t| folder.read_as(&path, t));
-        Ok(features::formatted(&file, saved.as_ref()).map(|e| Vec::from([e])))
+        Ok(features::formatted(&file, saved.as_ref(), self.align.load(Ordering::Relaxed)).map(|e| Vec::from([e])))
     }
 
     async fn did_change(&self, p: DidChangeTextDocumentParams) {
@@ -204,6 +210,7 @@ pub fn serve() {
             client,
             folder: Mutex::new(Folder { root: None, open: Arc::new(BTreeMap::new()) }),
             saved: Mutex::new(BTreeMap::new()),
+            align: AtomicBool::new(true),
         });
         Server::new(tokio::io::stdin(), tokio::io::stdout(), socket).serve(service).await;
     });

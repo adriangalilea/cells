@@ -95,13 +95,13 @@ pub fn semantic_tokens(text: &str) -> Vec<SemanticToken> {
     out
 }
 
-/// The file's tables aligned, as inlay hints: after each cell the spaces that bring its
-/// column's cells to one end (`cells::tokens::layout`), drawn by the editor and never in
-/// the file, since a cell is read exactly as written. Those in `range` alone. No cell is
-/// folded: an editor shows the whole text.
+/// The file's tables aligned, as inlay hints: before each value the spaces that bring it
+/// to its column's start where the file has fewer (`cells::layout`), drawn by the editor
+/// and never written, so a file not formatted shows what `cells fmt` would write. Those
+/// in `range` alone. No value is folded: an editor shows the whole text.
 pub fn aligned(text: &str, range: Range) -> Vec<InlayHint> {
     let lines = Lines::new(text);
-    let (pads, _) = cells::tokens::layout(text, None);
+    let (pads, _) = cells::layout::layout(text, None);
     pads.into_iter()
         .map(|p| (lines.position(p.at as usize), p.width))
         .filter(|(at, _)| range.start <= *at && *at <= range.end)
@@ -168,7 +168,9 @@ mod tests {
                 InlayHintLabel::LabelParts(_) => unreachable!(),
             })
             .collect();
-        assert_eq!(hints, [(0, 4, 8), (1, 4, 8)], "item and fuel padded to split dinner's 12");
+        // `split dinner` is 12, with its comma and a space 14, its stop 16: each value of the
+        // second column starts there.
+        assert_eq!(hints, [(0, 5, 11), (1, 5, 11), (2, 13, 3)]);
         let first = Range { start: Position { line: 0, character: 0 }, end: Position { line: 0, character: 9 } };
         assert_eq!(aligned(text, first).len(), 1, "only the range asked");
     }

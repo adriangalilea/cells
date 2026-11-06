@@ -59,14 +59,14 @@ command = "/path/to/cells/rust/target/release/cells"
 args = ["lsp"]
 ```
 
-Then `hx --grammar build`, and link the queries: `ln -s /path/to/cells/tree-sitter/queries/helix ~/.config/helix/runtime/queries/cells`. `hx --health cells` shows the server, the parser and the highlights. Hover is `space k`, the diagnostics `space d`, go to definition `g d`, rename `space r`, the code action `space a`. A cell is an argument (`mia` and `maa` select it, `]a` and `[a` go to the next and the one before), a row an entry (`]e`, `[e`), a formula a function's body (`mif`), and the symbol picker (`space s`) lists every column, named type and table. A formula's brackets wear rainbow colours where `rainbow-brackets` is on. `auto-format` is what stores the computed values on `:w`; without it, `:format` does.
+Then `hx --grammar build`, and link the queries: `ln -s /path/to/cells/tree-sitter/queries/helix ~/.config/helix/runtime/queries/cells`. `hx --health cells` shows the server, the parser and the highlights. Hover is `space k`, the diagnostics `space d`, go to definition `g d`, rename `space r`, the code action `space a`. A cell is an argument (`mia` and `maa` select it, `]a` and `[a` go to the next and the one before), a row an entry (`]e`, `[e`), a formula a function's body (`mif`), and the symbol picker (`space s`) lists every column, named type and table. A formula's brackets wear rainbow colours where `rainbow-brackets` is on. `auto-format` is what stores the computed values on `:w` and lays the file out as `cells fmt` does, its columns aligned; without it, `:format` does. A file nobody formatted still shows aligned: the server's inlay hints draw the spaces `cells fmt` would write. To write no padding, `config = { align = false }` under `[language-server.cells]`.
 
 ## Git
 
-`cells merge` merges two versions of a file as SPEC.md, Merging, says: what was written merges as text, every computed value is computed again from the merged rows, so two branches that each add a row to a running balance never conflict on the balances. In the repository's `.gitattributes`:
+`cells merge` merges two versions of a file as SPEC.md, Merging, says: what was written merges as text, every computed value is computed again from the merged rows, so two branches that each add a row to a running balance never conflict on the balances. `cells diff` is git's textconv: a file with its padding taken out, so a diff shows the values that changed, never a column re-padded by `cells fmt` (SPEC.md, Formatting). In the repository's `.gitattributes`:
 
 ```text
-*.cells merge=cells
+*.cells merge=cells diff=cells
 ```
 
 and once per machine:
@@ -74,9 +74,10 @@ and once per machine:
 ```sh
 git config --global merge.cells.name "cells"
 git config --global merge.cells.driver "cells merge %O %A %B"
+git config --global diff.cells.textconv "cells diff"
 ```
 
-A conflict in what was written is left in the file with git's markers, and the merge exits 1.
+A conflict in what was written is left in the file with git's markers, and the merge exits 1. `git diff --no-textconv` shows the bytes, padding included.
 
 ## Neovim
 

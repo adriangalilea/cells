@@ -3,7 +3,13 @@
 //!   cells check <file|folder>...       every break and problem, `path column 3: to: why`,
 //!                                     `path row N, column: why`, its imports followed, its
 //!                                     own tables checked too
-//!   cells fmt --check <file|folder>... every file written back is the same bytes
+//!   cells fmt [--check] [--align on|off] <file|folder>...
+//!                                     each file as the format's standard lays it out,
+//!                                     every table's columns aligned (`--align off`: no
+//!                                     padding); `--check` writes nothing, it says which
+//!                                     files it would change
+//!   cells diff <file>                  git's textconv: the file with its padding taken
+//!                                     out, so a diff shows the values that changed
 //!   cells fix <file|folder>...         every stale computed cell given its formula's value,
 //!                                     every one not stored yet stored, each file written
 //!   cells merge <base> <ours> <theirs> git's merge driver: what was written merged, what is
@@ -33,7 +39,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 
 use disk::Disk;
 
-const USAGE: &str = "cells check <file|folder>...\ncells fmt --check <file|folder>...\ncells fix <file|folder>...\ncells merge <base> <ours> <theirs>\ncells pin <file>...\ncells run <file> [script]\ncells show <file>\ncells lsp";
+const USAGE: &str = "cells check <file|folder>...\ncells fmt [--check] [--align on|off] <file|folder>...\ncells diff <file>\ncells fix <file|folder>...\ncells merge <base> <ours> <theirs>\ncells pin <file>...\ncells run <file> [script]\ncells show <file>\ncells lsp";
 
 /// Every `.cells` file a path names, sorted.
 fn files(path: &Path, out: &mut Vec<PathBuf>) -> Result<(), String> {
@@ -102,19 +108,51 @@ fn fix(path: &Path, threads: usize) -> Result<Said, String> {
     Ok(Said::Found(vec![format!("{shown}: {stale} stale cells given their formula's value, every computed value stored")]))
 }
 
-fn round_trip(path: &Path, threads: usize) -> Result<Said, String> {
+/// The file as the format's standard lays it out (`cells::layout::formatted`): written
+/// when it is not, or with `check` only said. A file the engine refuses (bytes that are
+/// not UTF-8) is said, never written.
+fn fmt(path: &Path, threads: usize, align: bool, check: bool) -> Result<Said, String> {
     let bytes = fs::read(path).map_err(|e| format!("{}: {e}", path.display()))?;
     let shown = path.display();
-    match cells::read_with(bytes.clone(), &mut Disk::new(path), threads) {
-        Err(e) => Ok(Said::Found(vec![format!("{shown} {e}")])),
-        Ok(doc) if doc.write().as_bytes() != bytes => Ok(Said::Found(vec![format!("{shown}: written back, it is not the same bytes")])),
-        Ok(_) => Ok(Said::Clean),
+    if let Err(e) = cells::read_with(bytes.clone(), &mut Disk::new(path), threads) {
+        return Ok(Said::Found(vec![format!("{shown} {e}")]));
     }
+    let text = String::from_utf8(bytes).expect("a file the engine reads is UTF-8");
+    let formatted = cells::layout::formatted(&text, align);
+    if formatted == text {
+        return Ok(Said::Clean);
+    }
+    if check {
+        return Ok(Said::Found(vec![format!("{shown}: not formatted (cells fmt)")]));
+    }
+    fs::write(path, &formatted).map_err(|e| format!("{shown}: {e}"))?;
+    Ok(Said::Found(vec![format!("{shown}: formatted")]))
+}
+
+/// What `cells fmt`'s arguments say: its alignment, whether it only checks, its paths.
+fn fmt_args(args: &[String]) -> Option<(bool, bool, &[String])> {
+    let (mut align, mut check, mut at) = (true, false, 0);
+    while at < args.len() {
+        match args[at].as_str() {
+            "--check" => check = true,
+            "--align" => {
+                align = match args.get(at + 1).map(String::as_str) {
+                    Some("on") => true,
+                    Some("off") => false,
+                    _ => return None,
+                };
+                at += 1;
+            }
+            _ => break,
+        }
+        at += 1;
+    }
+    (at < args.len()).then(|| (align, check, &args[at..]))
 }
 
 /// Runs `each` over the files: many files share the threads one each, a few files take
 /// them all inside each file. Prints in path order.
-fn run(paths: &[String], each: fn(&Path, usize) -> Result<Said, String>) -> ExitCode {
+fn run(paths: &[String], each: impl Fn(&Path, usize) -> Result<Said, String> + Sync) -> ExitCode {
     let mut all = Vec::new();
     for p in paths {
         if let Err(e) = files(Path::new(p), &mut all) {
@@ -177,11 +215,35 @@ fn main() -> ExitCode {
             lsp::serve();
             ExitCode::SUCCESS
         }
-        Some("fmt") if args.get(1).map(String::as_str) == Some("--check") && args.len() > 2 => run(&args[2..], round_trip),
-        Some("fmt") => {
-            eprintln!("cells: fmt only checks for now: cells fmt --check <file|folder>...");
-            ExitCode::from(2)
-        }
+        Some("fmt") => match fmt_args(&args[1..]) {
+            // Formatting files exits 0, as a fix does; a check exits 1 on a file it would change.
+            Some((align, false, paths)) => match run(paths, |p, t| fmt(p, t, align, false)) {
+                code if code == ExitCode::from(2) => code,
+                _ => ExitCode::SUCCESS,
+            },
+            Some((align, true, paths)) => run(paths, |p, t| fmt(p, t, align, true)),
+            None => {
+                eprintln!("{USAGE}");
+                ExitCode::from(2)
+            }
+        },
+        // git's textconv: the file with its padding taken out, so a diff shows values.
+        Some("diff") if args.len() == 2 => match fs::read(&args[1]) {
+            Ok(bytes) => {
+                match String::from_utf8(bytes) {
+                    Ok(text) => print!("{}", cells::layout::formatted(&text, false)),
+                    Err(e) => {
+                        use std::io::Write;
+                        std::io::stdout().write_all(e.as_bytes()).expect("stdout");
+                    }
+                }
+                ExitCode::SUCCESS
+            }
+            Err(e) => {
+                eprintln!("cells: {}: {e}", args[1]);
+                ExitCode::from(2)
+            }
+        },
         // A fix that wrote files exits 0: it did what it was asked.
         Some("fix") if args.len() > 1 => match run(&args[1..], fix) {
             code if code == ExitCode::from(2) => code,

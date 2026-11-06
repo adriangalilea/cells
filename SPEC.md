@@ -391,7 +391,7 @@ A writer changing a type writes the shorthand, then its formula when it has one 
 `cells fmt` writes a file as the format's standard lays it out, and so does a language server's formatting on save: every table's columns aligned, each table on its own (the file's, and each written inline in the prelude).
 
 - **A column starts where it starts on every line.** Each field but a line's last is its value, its comma, and spaces up to the next column's start. A column is as wide as its widest value plus its comma and one space, rounded up to a stop of four characters, so a value that grows within its stop moves nothing.
-- **A value wider than the cap, 32 characters, widens no column.** Its line resumes at the first column start after it, and the rest of the table is laid out as if it were not there, so one long note never moves the table.
+- **A value wider than the cap, 32 characters, widens no column.** The value after it on its line starts one space after its comma, each later one at its own column's start as soon as the line has room, and the rest of the table is laid out as if it were not there, so one long note never moves the table.
 - **The prelude** is written as read, but a column's declarations ([Columns](#columns)) line up their `:` and their `=`.
 - **A file formatted is a function of its content**: formatting twice is formatting once, and `cells fmt --check` holds in CI.
 - **Alignment is a writer's setting, on by default.** `cells fmt --align off`, and the language server's `align` setting, write each field with no padding; reading never depends on which.

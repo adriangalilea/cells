@@ -30,6 +30,7 @@ pub mod files;
 mod format;
 mod identity;
 mod keys;
+pub mod layout;
 pub mod prelude;
 #[cfg(test)]
 mod properties;

@@ -653,11 +653,12 @@ pub unsafe extern "C" fn cells_tokens(ptr: *mut u8, len: usize, cap: usize) -> *
     s.tokens.as_ptr()
 }
 
-/// A text's tables laid out as tables (`cells::tokens::layout`), for a view that aligns
-/// their columns without writing a byte (room from `cells_alloc(cap)`, `len` bytes of it
-/// written, which this call takes); `fold` the widest a cell is drawn, 0 for none. `u32`s:
-/// the pads' count, each pad's place in UTF-16 units and its width in characters, then
-/// each cut's start and end in units to the end. `cells_len` is their length in bytes;
+/// A text's tables laid out as tables (`cells::layout::layout`, the rule `cells fmt`
+/// writes), for a view that aligns their columns without writing a byte (room from
+/// `cells_alloc(cap)`, `len` bytes of it written, which this call takes); `fold` the
+/// widest a value is drawn, 0 for none. `u32`s: the pads' count, each pad's place (a
+/// value's start) in UTF-16 units and its width in characters, then each cut's start and
+/// end in units to the end. `cells_len` is their length in bytes;
 /// they live until the next `cells_layout`.
 ///
 /// # Safety
@@ -666,7 +667,7 @@ pub unsafe extern "C" fn cells_tokens(ptr: *mut u8, len: usize, cap: usize) -> *
 pub unsafe extern "C" fn cells_layout(ptr: *mut u8, len: usize, cap: usize, fold: u32) -> *const u32 {
     // SAFETY: the caller's promise.
     let text = unsafe { take(ptr, len, cap) };
-    let (pads, cuts) = cells::tokens::layout(&text, (fold > 0).then_some(fold));
+    let (pads, cuts) = cells::layout::layout(&text, (fold > 0).then_some(fold));
     let mut wanted: Vec<u32> = pads.iter().map(|p| p.at).chain(cuts.iter().flat_map(|c| [c.start, c.end])).collect();
     wanted.sort_unstable();
     wanted.dedup();

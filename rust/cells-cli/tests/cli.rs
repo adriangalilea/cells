@@ -34,8 +34,22 @@ fn check_and_fmt() {
     assert_eq!(clean.status.code(), Some(0));
     assert!(clean.stdout.is_empty());
 
-    let fmt = Command::new(cells).args(["fmt", "--check"]).arg(dir.join("clean.cells")).arg(dir.join("trip/money.cells")).output().unwrap();
+    // `fmt --check` says which files it would change; `fmt` changes them, and then nothing.
+    let clean = dir.join("clean.cells");
+    let check = Command::new(cells).args(["fmt", "--check"]).arg(&clean).output().unwrap();
+    assert_eq!(check.status.code(), Some(1));
+    assert_eq!(String::from_utf8(check.stdout).unwrap(), format!("{}: not formatted (cells fmt)\n", clean.display()));
+    let fmt = Command::new(cells).arg("fmt").arg(&clean).output().unwrap();
     assert_eq!(fmt.status.code(), Some(0));
+    assert_eq!(fs::read_to_string(&clean).unwrap(), "item:text!, cost:EUR\nfuel,       84.20\n");
+    let check = Command::new(cells).args(["fmt", "--check"]).arg(&clean).output().unwrap();
+    assert_eq!(check.status.code(), Some(0));
+    // `cells diff`, git's textconv, prints the file with no padding; `--align off` writes it so.
+    let diff = Command::new(cells).arg("diff").arg(&clean).output().unwrap();
+    assert_eq!(String::from_utf8(diff.stdout).unwrap(), "item:text!,cost:EUR\nfuel,84.20\n");
+    let off = Command::new(cells).args(["fmt", "--align", "off"]).arg(&clean).output().unwrap();
+    assert_eq!(off.status.code(), Some(0));
+    assert_eq!(fs::read_to_string(&clean).unwrap(), "item:text!,cost:EUR\nfuel,84.20\n");
 
     let missing = Command::new(cells).arg("check").arg(dir.join("nowhere")).output().unwrap();
     assert_eq!(missing.status.code(), Some(2));
