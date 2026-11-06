@@ -5,7 +5,7 @@ One reader and writer of Cells, in Rust, that every surface uses: the command li
 | Crate | What it is | Depends on |
 |---|---|---|
 | `cells` | the reader, the writer, the columns, formulas, imports, the Arrow export | nothing; `no_std` with `alloc`, the `std` feature adds threads |
-| `cells-cli` | `cells check`, `fmt --check`, `pin`, `run`, `show`, and `lsp`, the language server (tower-lsp); imports followed from the disk, git and a cache, a file an editor holds open as it holds it | `cells`; `git`, `curl` and `bun` when a file asks |
+| `cells-cli` | `cells check`, `fmt` (and `--check`), `diff`, `pin`, `run`, `show`, and `lsp`, the language server (tower-lsp); imports followed from the disk, git and a cache, a file an editor holds open as it holds it | `cells`; `git`, `curl` and `bun` when a file asks |
 | `cells-wasm` | the core as WebAssembly, and `js/cells.ts`, a synchronous reader on it | `cells` without `std` |
 | `cells-ffi` | the C ABI, `cells.h` (cbindgen), `CellsCore.xcframework` | `cells` |
 | `cells-bench` | budgets generated and read, against the csv crate | `cells`, `csv` (bench only) |
