@@ -105,7 +105,25 @@ module.exports = grammar({
       $.import_statement,
       $.table_definition,
       $.script_definition,
+      $.column_declaration,
     ),
+
+    // `total: Money = cost * qty`: a column of the file's table, declared, its header
+    // cell then its name alone (SPEC, Columns). Its name is a header cell's, quoted when
+    // it holds a `:`, a `,` or a `"`; which column it is, the header says.
+    column_declaration: $ => seq(
+      field('name', choice(
+        alias($._declared_name, $.column_name),
+        seq('"', alias($._quoted_column_name, $.column_name), '"'),
+      )),
+      $._typed,
+    ),
+
+    // A name as words (`split dinner`, `price-net`): identifiers and the pieces between
+    // them, so a keyword (`type`, `import`) still opens its statement.
+    _declared_name: $ => repeat1(choice($.identifier, $._name_piece)),
+
+    _name_piece: _ => token(prec(-1, /[^:=,"\r\n\s\/`A-Za-z0-9_][^:=,"\r\n\s\/`]*/)),
 
     type_definition: $ => seq(
       optional('export'),
@@ -352,7 +370,8 @@ module.exports = grammar({
 
     _typed: $ => seq(':', field('type', $.type), optional(seq('=', field('formula', $._expression)))),
 
-    column_name: _ => /[^:,\r\n" \t][^:,\r\n]*/,
+    // Padding, the spaces and tabs at a field's ends, is no part of a name or a value.
+    column_name: _ => /[^:,\r\n" \t]([^:,\r\n]*[^:,\r\n \t])?/,
 
     // ── A type ───────────────────────────────────────────────────────────────
     // The same grammar after a header cell's `:` and after a prelude's
@@ -508,7 +527,7 @@ module.exports = grammar({
 
     email: _ => /([^\s@,"=']|'=?)+@([^\s@,"=']|'=?)+\.([^\s@,"=']|'=?)+/,
 
-    text: _ => /([^,\r\n" \t=']|'=?)([^,\r\n=']|'=?)*/,
+    text: _ => /([^,\r\n" \t=']|'=?)(([^,\r\n=']|'=?)*([^,\r\n" \t=']|'=?))?/,
 
     // ── Tokens shared by the rules above ─────────────────────────────────────
     // Declared after the rules that use them, before `_word`: on a tie the

@@ -375,3 +375,56 @@ fee:EUR(6),running:EUR=running[-1] + total,cum:EUR=SUM(total[FIRST:THIS]),near:n
         function: (function_name)
         (column_reference
           (identifier))))))
+
+==================|||
+Columns declared: a name, a name of words, a quoted name
+==================|||
+---
+total:   Money = cost * qty
+split dinner: text
+"price, net": EUR?
+---
+total,split dinner,"price, net"
+1=,a,2
+---|||
+
+(source_file
+  (prelude
+    (fence)
+    (column_declaration
+      name: (column_name
+        (identifier))
+      type: (type
+        (named_type))
+      formula: (binary_expression
+        left: (column_reference
+          (identifier))
+        right: (column_reference
+          (identifier))))
+    (column_declaration
+      name: (column_name
+        (identifier)
+        (identifier))
+      type: (type
+        (base_type)))
+    (column_declaration
+      name: (column_name)
+      type: (type
+        (currency)
+        (optional_mark)))
+    (fence))
+  (header
+    (header_cell
+      name: (column_name))
+    (header_cell
+      name: (column_name))
+    (header_cell
+      name: (column_name)))
+  (row
+    (field
+      (computed_cell
+        stored: (number)))
+    (field
+      (text))
+    (field
+      (number))))

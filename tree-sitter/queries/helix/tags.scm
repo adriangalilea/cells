@@ -2,6 +2,7 @@
 ; its name, every named type, and every table the prelude imports or writes.
 
 (header_cell name: (column_name) @definition.constant)
+(column_declaration name: (column_name) @definition.constant)
 (type_definition name: (type_name) @definition.type)
 (import_statement default: (table_name) @definition.module)
 (table_definition name: (table_name) @definition.module)

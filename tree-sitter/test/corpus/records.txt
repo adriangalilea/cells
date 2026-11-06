@@ -323,3 +323,31 @@ cost:num,note:text
     (field
       (quoted_field
         (escape_sequence)))))
+
+==================
+Padding is no part of a value: a number, a text, a quoted field inside some
+==================
+item:text!,  cost:EUR,  note
+fuel   ,  84.20,   "a, b"
+---
+
+(source_file
+  (header
+    (header_cell
+      name: (column_name)
+      type: (type
+        (base_type)
+        (key_mark)))
+    (header_cell
+      name: (column_name)
+      type: (type
+        (currency)))
+    (header_cell
+      name: (column_name)))
+  (row
+    (field
+      (text))
+    (field
+      (number))
+    (field
+      (quoted_field))))

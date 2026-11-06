@@ -177,8 +177,88 @@
         {
           "type": "SYMBOL",
           "name": "script_definition"
+        },
+        {
+          "type": "SYMBOL",
+          "name": "column_declaration"
         }
       ]
+    },
+    "column_declaration": {
+      "type": "SEQ",
+      "members": [
+        {
+          "type": "FIELD",
+          "name": "name",
+          "content": {
+            "type": "CHOICE",
+            "members": [
+              {
+                "type": "ALIAS",
+                "content": {
+                  "type": "SYMBOL",
+                  "name": "_declared_name"
+                },
+                "named": true,
+                "value": "column_name"
+              },
+              {
+                "type": "SEQ",
+                "members": [
+                  {
+                    "type": "STRING",
+                    "value": "\""
+                  },
+                  {
+                    "type": "ALIAS",
+                    "content": {
+                      "type": "SYMBOL",
+                      "name": "_quoted_column_name"
+                    },
+                    "named": true,
+                    "value": "column_name"
+                  },
+                  {
+                    "type": "STRING",
+                    "value": "\""
+                  }
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "type": "SYMBOL",
+          "name": "_typed"
+        }
+      ]
+    },
+    "_declared_name": {
+      "type": "REPEAT1",
+      "content": {
+        "type": "CHOICE",
+        "members": [
+          {
+            "type": "SYMBOL",
+            "name": "identifier"
+          },
+          {
+            "type": "SYMBOL",
+            "name": "_name_piece"
+          }
+        ]
+      }
+    },
+    "_name_piece": {
+      "type": "TOKEN",
+      "content": {
+        "type": "PREC",
+        "value": -1,
+        "content": {
+          "type": "PATTERN",
+          "value": "[^:=,\"\\r\\n\\s\\/`A-Za-z0-9_][^:=,\"\\r\\n\\s\\/`]*"
+        }
+      }
     },
     "type_definition": {
       "type": "SEQ",
@@ -2290,7 +2370,7 @@
     },
     "column_name": {
       "type": "PATTERN",
-      "value": "[^:,\\r\\n\" \\t][^:,\\r\\n]*"
+      "value": "[^:,\\r\\n\" \\t]([^:,\\r\\n]*[^:,\\r\\n \\t])?"
     },
     "type": {
       "type": "REPEAT1",
@@ -4575,7 +4655,7 @@
     },
     "text": {
       "type": "PATTERN",
-      "value": "([^,\\r\\n\" \\t=']|'=?)([^,\\r\\n=']|'=?)*"
+      "value": "([^,\\r\\n\" \\t=']|'=?)(([^,\\r\\n=']|'=?)*([^,\\r\\n\" \\t=']|'=?))?"
     },
     "_number": {
       "type": "PATTERN",

@@ -24,6 +24,7 @@ rates = run every day at 18:00 in Europe/Madrid
 \`\`\`ts
 export default async () => []
 \`\`\`
+split dinner: EUR? = cost * 2
 ---
 item:text!,category:Category,cost:EUR>=0,paid:yes/no,on:date(DD/MM/YYYY),note:text?,score:0..10,to:accounts.account,x:one of a b key,y:bool si no optional,z:num between 0 and 100,w:num min 1,total:EUR=ABS(cost) * (score - 1),fee:EUR(6),running:EUR=running[-1] + total,cum:EUR=SUM(total[FIRST:THIS]),low:num=round(cost)
 fuel,travel,32.25=96.75 / 3,yes,14/08/2026,"a ""b""",7,assets:bank,a,si,2026-08-14T10:00:00Z,https://example.com,84.20=,0.001200,84.20=,=SUM(TABLE.total),84=
@@ -60,6 +61,9 @@ const EXPECT: [string, string, string][] = [
   ["18:00", "number", "constant.numeric"],
   ["Europe/Madrid", "string.special", "string.special"],
   ["ts", "label", "label"],
+  // a column declared: its name, its type, its formula
+  ["split dinner", "variable.member", "variable.other.member"],
+  ["EUR", "type.builtin", "type.builtin"],
   ["---", "punctuation.special", "punctuation.special"],
   // the header: each name in its column's colour, then its type's parts
   ["item", "variable", "variable"],

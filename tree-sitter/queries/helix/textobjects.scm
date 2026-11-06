@@ -13,6 +13,7 @@
 (row) @entry.around
 
 (header_cell formula: (_) @function.inside) @function.around
+(column_declaration formula: (_) @function.inside) @function.around
 (computed_cell formula: (_) @function.inside) @function.around
 
 (comment) @comment.inside

@@ -33,6 +33,17 @@
 (type_definition
   "=" @operator)
 
+; A column's declaration: which column it is, the header says, which a query cannot
+; read, so its name wears one capture; the language server's tokens give its column.
+(column_declaration
+  name: (column_name) @variable.member)
+
+(column_declaration
+  [
+    ":"
+    "="
+  ] @operator)
+
 (import_statement
   default: (table_name) @module)
 
