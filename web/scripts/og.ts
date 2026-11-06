@@ -1,6 +1,6 @@
 // THE LINK PREVIEW: cellular.computer's card, `app/card.png` (lib/card), which
 // app/opengraph-image.ts serves as the og:image of every page, with its alt. Drawn
-// from the site's own parts through ui's: a `.cell` file in Helix as the hero shows it
+// from the site's own parts through ui's: a `.cells` file in Helix as the hero shows it
 // (ui's terminal-editor still, its accent, the engine as its language server), across
 // the card, the product's name and subline (lib/product) in a row under it, on the
 // dark theme's ground, the

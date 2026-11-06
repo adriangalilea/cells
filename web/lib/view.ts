@@ -91,7 +91,7 @@ export function readFiles(engine: Engine, files: readonly StoryFile[]): ViewTabl
   }
 }
 
-/** A `.cell` file read through its imports (`others`). */
+/** A `.cells` file read through its imports (`others`). */
 const readCell = (engine: Engine, file: StoryFile, others: readonly StoryFile[]) =>
   engine.read(file.text, { at: file.name, files: Object.fromEntries(others.map((f) => [f.name, f.text])) })
 

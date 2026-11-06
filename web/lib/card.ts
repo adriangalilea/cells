@@ -13,7 +13,7 @@ import { PRODUCT } from "@/lib/product"
 /** The file the card is in, from the site's root, and where it is served. */
 export const CARD_FILE = "public/og.png"
 const CARD_PATH = "/og.png"
-/** The `.cell` file the card shows open. */
+/** The `.cells` file the card shows open. */
 export const CARD_CELL = `groceries${PRODUCT.extension}`
 const CARD_ALT = `${PRODUCT.name}: ${PRODUCT.subline} Helix open on ${CARD_CELL}, each total stored beside its =, and a typo in a cost named on its row.`
 

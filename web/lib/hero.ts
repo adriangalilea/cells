@@ -1,9 +1,9 @@
 // THE HERO, as data: ten seconds or so on a Mac, the format revealed a step at a time.
-// accounts.cell is open first: a plain list. Then money.cell, which imports it, starts as
+// accounts.cells is open first: a plain list. Then money.cells, which imports it, starts as
 // a plain table; a type is typed into its header, then a reference to accounts, then a
 // formula, each changing what the Cells window beside it reads. A movement to an account
 // that does not exist is typed and named on its row; `:w`, and the terminal's check names
-// it too. Back in accounts.cell the account is added, `:w`, and the check passes. Each
+// it too. Back in accounts.cells the account is added, `:w`, and the check passes. Each
 // `:w` writes what the language server's formatting writes (the formula's values stored
 // beside their `=`), so the hero is made with the engine (`hero`). One clock for all of
 // it (`playable`), so a player, a playback and a fixed progress draw the same frames.
@@ -74,14 +74,14 @@ const STEPS: CodeStep[] = [
   { kind: "save", delay: 200 },
   { kind: "type", line: HEADER, text: FORMULA, delay: LOOK_MS },
   { kind: "save", delay: 200 },
-  // A movement to an account accounts.cell does not have.
+  // A movement to an account accounts.cells does not have.
   { kind: "type", line: 6, text: `\n${ROW}`, delay: LOOK_MS },
   { kind: "save", delay: 200 },
-  // While the check runs and is read: then accounts.cell, and the account.
+  // While the check runs and is read: then accounts.cells, and the account.
   { kind: "open", path: accounts, delay: TO_TERMINAL + firstCheck + READ_MS },
   { kind: "type", line: 4, text: `\n${ACCOUNT}`, delay: 300 },
   { kind: "save", delay: 250 },
-  // money.cell back in front, whole: the file the page goes on with.
+  // money.cells back in front, whole: the file the page goes on with.
   { kind: "open", path: money, delay: 900 },
 ]
 
@@ -146,8 +146,8 @@ function tell(engine: Engine) {
         { start: savedFixed, title: `${PRODUCT.cli} check passes` },
       ],
     } satisfies Playable,
-    /** The files as written at three moments, and what the engine must say of money.cell
-     *  read with accounts.cell (scripts/examples.ts asserts it). */
+    /** The files as written at three moments, and what the engine must say of money.cells
+     *  read with accounts.cells (scripts/examples.ts asserts it). */
     checkpoints: {
       plain: { money: MONEY, accounts: ACCOUNTS, problems: [] as string[] },
       typo: { ...filesAt(savedTypo - OPENING), problems: [`row 3, to: "${ACCOUNT}" is no key of accounts`] },

@@ -1,7 +1,7 @@
 "use client"
 
 // THE HERO: a MacBook at night, open on the format revealed a step at a time.
-// Helix, the full height of the screen on the left, opens accounts.cell then money.cell;
+// Helix, the full height of the screen on the left, opens accounts.cells then money.cells;
 // the Cells window and the terminal stack on the right. One clock (lib/hero's `playable`)
 // drives it all: `Playback` plays it in view and round again; every window reads its own
 // moment from the hero's through a `Playhead`, so each ui piece keeps its clock's meaning.
@@ -121,7 +121,7 @@ function Editor({
 
 /** The editor window the Mac's screen lets go of, as the page keeps it: the very window
  *  (its stage size, its type, its rows), scaled to `width` as a whole, so the flight
- *  between the two is a move and a scale and nothing else. money.cell as the edit left it,
+ *  between the two is a move and a scale and nothing else. money.cells as the edit left it,
  *  then what the reader did to it (`added`: a tab pressed, a key typed), each the edit's
  *  next step, handed back through `onStep`, so the frame drawn is still the edit's. */
 export function EditorWindow({

@@ -2,8 +2,8 @@
 // diagnostics with every file's text at the instant (`CodeDiagnose`), and this answers
 // with the engine's own: the file read with the others as its imports, each break of its
 // grammar and each problem of its cells placed on the characters it names, in the
-// engine's words. A problem money.cell has because of accounts.cell shows, and goes once
-// accounts.cell has the key. The page's editor reads it through `useCellsDiagnose`, a
+// engine's words. A problem money.cells has because of accounts.cells shows, and goes once
+// accounts.cells has the key. The page's editor reads it through `useCellsDiagnose`, a
 // build script (the og card) with the engine it loaded.
 
 import type { CodeDiagnose } from "@/lib/code-session"

@@ -2,18 +2,17 @@
 // rename is one edit.
 
 export const PRODUCT = {
-  /** The format, the project and the app. */
+  /** The format, the project and the app; a file is a Cells file, and a cell only ever a
+   *  table's. */
   name: "Cells",
-  /** What one file is called. */
-  file: "cell",
-  /** A file's extension, with its dot. */
-  extension: ".cell",
+  /** A file's extension, with its dot: the format's own name. */
+  extension: ".cells",
   /** The command line. */
   cli: "cells",
   tagline: "Programmable data.",
   /** Under the line, and the page's description wherever it is read; on the page its
    *  extension is lit. */
-  subline: "Plain text .cell files: typed, reactive and composable.",
+  subline: "Plain text .cells files: typed, reactive and composable.",
   domain: "cellular.computer",
   repo: "https://github.com/adriangalilea/cells",
 } as const
