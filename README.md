@@ -36,7 +36,7 @@ What a person sees is the table under the second `---`: `eur` computed on every 
 | [rust/README.md](rust/README.md) | the core in Rust: its crates, its API, what it measures, the wasm and Apple builds |
 | [ENGINE.md](ENGINE.md) | the engine every app reads and writes through: v0, one Mac, and what comes later |
 | [EDITORS.md](EDITORS.md) | the language server, `cells lsp`, and Helix, Neovim and VS Code set up for it |
-| [web/README.md](web/README.md) | the site, cellular.computer: how it is built from this repo's engine and ui's items |
+| [web/README.md](web/README.md) | the site, cellular.computer: how it is built from this repo's engine and ui's items, and its docs drawn from these documents |
 | [web/TODO.md](web/TODO.md) | what the site still owes |
 | [ACCOUNTING.md](ACCOUNTING.md) | books kept in Cells, drafted with the primitives the spec proposes |
 
