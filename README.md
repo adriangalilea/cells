@@ -1,6 +1,6 @@
 # Cells
 
-Programmable data: logic and data in a single file, open in any editor ([cellular.computer](https://cellular.computer)). A Cells file, `.cells`, is a table whose header cells carry their column's type, and its formula when it computes, in the file itself: one file, never a sidecar. Files import each other, so a folder of them is typed tables joined by references, and a table can be filled by a script. It is its own format, designed for its own ergonomics, never bent to suit readers that do not know it. [SPEC.md](SPEC.md) is the whole format, and not final yet.
+Programmable data: logic and data in a single file, open in any editor ([cellular.computer](https://cellular.computer)). A Cells file, `.cells`, is a table whose header cells carry their column's type, and its formula when it computes, in the file itself: one file, never a sidecar. Files import each other, so a folder of them is typed tables joined by references, and a table can be filled by a script. It is its own format, designed for its own ergonomics, never bent to suit readers that do not know it. **It is not meant to be compatible with CSV: adopting it is as simple as renaming a `.csv` to `.cells`, and that is the only bridge.** [SPEC.md](SPEC.md) is the whole format, and not final yet.
 
 ## From a CSV
 

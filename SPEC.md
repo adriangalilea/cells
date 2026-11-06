@@ -15,7 +15,7 @@ groceries,food,32.25=96.75 / 3,2,64.50=,no,2026-08-15
 
 `84.20=` is computed by its column's formula, `32.25=96.75 / 3` by its own: left of `=` what the file stores, right of it how it is computed ([A cell](#a-cell)).
 
-Cells is its own format, read by Cells readers. Its records borrow RFC 4180's quoting because it is the right rule for cells, never to stay readable by CSV tools; no rule here is bent for a reader that does not know Cells. Considered: staying readable by them, as Oils' TSV8 does with an empty first column on every row and a row of types an old reader takes for data. That reader still needs the file cleaned by hand, so every file would pay, on every row, for a compatibility nobody gets.
+**Cells is not meant to be compatible with CSV.** Adopting it is as simple as renaming a `.csv` to `.cells`; nothing promises the way back, and no CSV tool is a reader it serves. Cells is its own format, read by Cells readers. Its records borrow RFC 4180's quoting because it is the right rule for cells, never to stay readable by CSV tools; no rule here is bent for a reader that does not know Cells. Considered: staying readable by them, as Oils' TSV8 does with an empty first column on every row and a row of types an old reader takes for data. That reader still needs the file cleaned by hand, so every file would pay, on every row, for a compatibility nobody gets.
 
 ## The file
 
@@ -35,7 +35,7 @@ cost:EUR>=0        total:EUR=cost * qty
 ```
 
 1. **The name** is everything before the first `:`, spaces included (` item` and `item` are two names). A name may hold any character but `:`, and is at least one character. No two columns share a name.
-2. **`:`** says a type follows. A cell with no `:` is a plain column, its type inferred from its values (below). So every CSV is a cell with no types written.
+2. **`:`** says a type follows. A cell with no `:` is a plain column, its type inferred from its values (below). So every CSV is a Cells file with no types written.
 3. **The type** is everything after it up to its formula, and never empty. It never holds a `,` or a `"`; a name that holds one quotes the whole cell (`"price, net:EUR"`).
 4. **`=`** says a formula follows: the first `=` outside single quotes that closes no `>=` or `<=`.
 5. **The formula** is everything after it, spaces and tabs at its ends cut, and never empty ([Formulas](#formulas)). A formula that holds a `,` or a `"` (`ROUND(cost, 2)`) quotes the whole cell, as any field that holds one is quoted.
