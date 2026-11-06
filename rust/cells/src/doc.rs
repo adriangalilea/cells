@@ -1711,7 +1711,8 @@ impl Doc {
             let line = self.line(r);
             let fields = self.raw_fields(line);
             let regular = scan::record(line.as_bytes(), 0, strict).is_ok();
-            if same && regular && (plain || fields.len() <= width) && !(escapes && line.contains('=')) && !(unescapes && line.contains('=')) {
+            if same && regular && (plain || fields.len() <= width) && !(escapes && line.contains('=')) && !(unescapes && line.contains('='))
+            {
                 out.push_str(line);
                 continue;
             }
@@ -1776,7 +1777,8 @@ impl Doc {
         }
         self.edits.insert(row as u32, joined);
         let formulas = self.dialect == Dialect::Cells;
-        let origin = match (formulas.then(|| read::own_formula(text)).flatten(), text.is_empty() && self.columns[column].formula.is_some()) {
+        let origin = match (formulas.then(|| read::own_formula(text)).flatten(), text.is_empty() && self.columns[column].formula.is_some())
+        {
             (Some(""), _) | (None, true) => Origin::Formula,
             (Some(_), _) => Origin::Cell,
             (None, false) => Origin::Written,
@@ -2309,6 +2311,28 @@ impl Doc {
                 self.store(r as usize, k as usize, &text);
             }
         }
+    }
+
+    /// One stale cell given its formula's value (a client's fix for that cell).
+    pub fn fix_stale_at(&mut self, row: usize, column: usize) {
+        if let Some(text) = self.rendered.get(&(row as u32, column as u32)).cloned() {
+            self.store(row, column, &text);
+        }
+    }
+
+    /// The file's text with every computed cell's stored value dropped (`=` and its
+    /// formula kept): what two versions of a file are merged as, so a value that follows
+    /// from what was written never conflicts (`cells merge`, SPEC.md, Merging).
+    pub fn without_stored(&self) -> String {
+        let mut bare = self.clone();
+        let cells: Vec<(u32, u32)> = self.rendered.keys().copied().collect();
+        for (r, k) in cells {
+            let raw = bare.text(r as usize, k as usize).into_owned();
+            if read::split(raw.as_bytes()).is_some_and(|at| at > 0) {
+                bare.store(r as usize, k as usize, "");
+            }
+        }
+        bare.write()
     }
 
     /// One stale cell's value kept as the row's override: its `=` and formula dropped, its

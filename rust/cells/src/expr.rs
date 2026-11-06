@@ -544,7 +544,10 @@ impl Parser {
                 // A word in capitals is the language's: a name the file gave so is written
                 // quoted, so the two are never one another.
                 if matches!(t, Tok::Name(_)) && capitals(&first) && first != "TABLE" && !self.sym("(") {
-                    return Err(Fault::at(named, format!("{first} is in capitals, the language's: a name the file gave so is written quoted, \"{first}\"")));
+                    return Err(Fault::at(
+                        named,
+                        format!("{first} is in capitals, the language's: a name the file gave so is written quoted, \"{first}\""),
+                    ));
                 }
                 // The language's `TABLE`, never a quoted name that spells it.
                 let first = if matches!(t, Tok::Name(_)) && first == "TABLE" { THIS.to_owned() } else { first };
@@ -589,7 +592,10 @@ impl Parser {
                     if let Some(a) = self.place() {
                         if self.eat_sym(":") {
                             let Some(b) = self.place() else {
-                                return Err(self.fail(format!("a range ends at FIRST, THIS, LAST or a row by where it is (-1, +2), not {}", self.shown())));
+                                return Err(self.fail(format!(
+                                    "a range ends at FIRST, THIS, LAST or a row by where it is (-1, +2), not {}",
+                                    self.shown()
+                                )));
                             };
                             self.expect_sym("]")?;
                             let end = self.last();
@@ -639,6 +645,22 @@ pub fn parse(src: &str) -> Result<Expr, Fault> {
         return Err(p.stray(format!("{} is left over", p.shown())));
     }
     Ok(e)
+}
+
+/// Every word of `src` written in lower case that spells the language's (`sum`, `case`),
+/// where it is and in capitals: what a client writes in capitals, once it knows the word
+/// names nothing the file has.
+pub fn low_words(src: &str) -> Vec<(Sp, String)> {
+    let Ok(toks) = lex(src) else { return Vec::new() };
+    toks.into_iter()
+        .filter_map(|(t, sp)| match t {
+            Tok::Name(n) => {
+                let up = n.to_ascii_uppercase();
+                (up != n && language(&up)).then_some((sp, up))
+            }
+            _ => None,
+        })
+        .collect()
 }
 
 /// Every function a formula may call, the aggregates first: what a language server
@@ -952,7 +974,10 @@ impl Resolver<'_, '_> {
         }
         if self.named(name).is_some() {
             let says = shown(name);
-            return Err(Fault::at(at, format!("{says} is a table: a row by where it is reads a column ({says}['key'] finds a row by its key)")));
+            return Err(Fault::at(
+                at,
+                format!("{says} is a table: a row by where it is reads a column ({says}['key'] finds a row by its key)"),
+            ));
         }
         self.scope.column(None, name).ok_or_else(|| Fault::at(at, format!("no column \"{name}\"")))
     }
@@ -1802,7 +1827,11 @@ mod tests {
             let (ir, _) = parse(src).and_then(|e| resolve_column(&e, &One, &mut 0)).unwrap_or_else(|f| panic!("{src}: {}", f.why));
             let num = |s: &str| V::Num(Exact::parse(s));
             let mut r = Rows(
-                Vec::from([[num("10"), num("1"), V::Text("a".into())], [num("20"), V::Null, V::Text("b".into())], [num("30"), num("3"), V::Text("c".into())]]),
+                Vec::from([
+                    [num("10"), num("1"), V::Text("a".into())],
+                    [num("20"), V::Null, V::Text("b".into())],
+                    [num("30"), num("3"), V::Text("c".into())],
+                ]),
                 Vec::new(),
                 Vec::new(),
                 Vec::new(),
