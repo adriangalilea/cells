@@ -609,6 +609,7 @@ export const TOKEN_KINDS = [
   "error",
   "string",
   "code",
+  "table",
 ] as const
 
 export type TokenKind = (typeof TOKEN_KINDS)[number]

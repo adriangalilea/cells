@@ -18,7 +18,7 @@ const COLUMNS: u32 = 6;
 
 const TYPES: [&str; 13] = [
     "comment", "keyword", "type", "modifier", "operator", "string", "enumMember", "number", "variable", "column", "cell", "macro",
-    "property",
+    "namespace",
 ];
 
 fn of(name: &str) -> u32 {
@@ -48,10 +48,12 @@ fn served(t: &Token) -> Option<(u32, Option<u32>)> {
         Kind::Fence => (of("macro"), None),
         Kind::Reference if t.reads != u32::MAX => (of("column"), Some(t.reads)),
         Kind::Reference => (of("variable"), None),
-        // A table's name where the prelude names it has no column.
+        // A table, where the prelude names it (a name with no column) and where a formula
+        // reads it.
+        Kind::Table => (of("namespace"), None),
         Kind::Name => match column {
             Some(c) => (of("column"), Some(c)),
-            None => (of("property"), None),
+            None => (of("namespace"), None),
         },
         Kind::CellText
         | Kind::CellNumber

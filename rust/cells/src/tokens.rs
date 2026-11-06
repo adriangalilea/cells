@@ -11,7 +11,8 @@ use alloc::vec::Vec;
 use crate::Base;
 use crate::types::{self, BASES, EXPLICIT, NamedType, OPS, RESERVED, Type};
 
-/// What a span of the text is. A new kind goes last, and into `ALL`.
+/// What a span of the text is. A new kind goes last, and into `ALL` and the test that
+/// names the last.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 #[repr(u8)]
 pub enum Kind {
@@ -61,12 +62,15 @@ pub enum Kind {
     String,
     /// A script's code, inside its fence.
     Code,
+    /// A table a formula names, one the prelude imports or writes (`rates` in
+    /// `rates['2026-08-14'].eur`).
+    Table,
 }
 
 impl Kind {
     /// Every kind, in declaration order: a kind's number across a boundary (wasm) is its
     /// place here, and its name the one `name` gives.
-    pub const ALL: [Kind; 23] = [
+    pub const ALL: [Kind; 24] = [
         Kind::Fence,
         Kind::Comment,
         Kind::Keyword,
@@ -90,6 +94,7 @@ impl Kind {
         Kind::Error,
         Kind::String,
         Kind::Code,
+        Kind::Table,
     ];
 
     /// Its name in lower camel case (`cellNumber`), as a page or a language server's legend
@@ -119,6 +124,7 @@ impl Kind {
             Kind::Error => "error",
             Kind::String => "string",
             Kind::Code => "code",
+            Kind::Table => "table",
         }
     }
 }
@@ -161,10 +167,10 @@ fn unquoted(spelled: &str) -> String {
 }
 
 /// Each name of a formula among `tokens` (one table's, its header's names among them)
-/// given the column of the table it reads: a name standing alone or after `TABLE`'s
-/// `.` (its row between brackets or none) reads the column of that name; after any
-/// other `.` it is another table's.
-fn resolve(source: &str, tokens: &mut [Token]) {
+/// given what it names: standing alone, a column of this table (`reads`) or else one of
+/// the prelude's `tables` (`Table`); after `TABLE`'s `.` (its row between brackets or
+/// none), a column of this table; after any other `.`, another table's column.
+fn resolve(source: &str, tokens: &mut [Token], tables: &[String]) {
     let text = |t: &Token| &source[t.start as usize..t.end as usize];
     let names: Vec<(String, u32)> = tokens.iter().filter(|t| t.kind == Kind::Name).map(|t| (unquoted(text(t)), t.column)).collect();
     for i in 0..tokens.len() {
@@ -189,7 +195,7 @@ fn resolve(source: &str, tokens: &mut [Token]) {
                         }
                     }
                 }
-                j.checked_sub(1).is_some_and(|h| tokens[h].kind == Kind::Reference && text(&tokens[h]) == "TABLE")
+                j.checked_sub(1).is_some_and(|h| tokens[h].kind == Kind::Keyword && text(&tokens[h]) == "TABLE")
             }
             _ => true,
         };
@@ -197,6 +203,8 @@ fn resolve(source: &str, tokens: &mut [Token]) {
             let name = unquoted(text(&tokens[i]));
             if let Some(&(_, column)) = names.iter().find(|(n, _)| *n == name) {
                 tokens[i].reads = column;
+            } else if tables.contains(&name) {
+                tokens[i].kind = Kind::Table;
             }
         }
     }
@@ -294,7 +302,7 @@ pub fn tokens(source: &str) -> Vec<Token> {
     }
     // A formula may name a column the header has not reached yet: names resolve once
     // the table is read whole.
-    resolve(source, &mut out.tokens[table..]);
+    resolve(source, &mut out.tokens[table..], &tables);
     out.tokens
 }
 
@@ -576,6 +584,9 @@ fn schedule(source: &str, s: usize, e: usize, out: &mut Out) {
 
 /// A formula `s..e`, in the header's cell or a cell's own: its numbers, texts, names,
 /// keywords and operators.
+/// The file's own table and its rows by where they are, as a formula writes them.
+const ROWS: [&str; 4] = ["TABLE", "FIRST", "THIS", "LAST"];
+
 fn expression(source: &str, s: usize, e: usize, column: u32, out: &mut Out) {
     const KEYWORDS: [&str; 13] = ["and", "or", "not", "is", "null", "true", "false", "case", "when", "then", "else", "end", "in"];
     let b = source.as_bytes();
@@ -610,9 +621,15 @@ fn expression(source: &str, s: usize, e: usize, column: u32, out: &mut Out) {
             }
             let w = &source[start..i];
             let call = b.get(i) == Some(&b'(');
-            let kind = if call || KEYWORDS.iter().any(|k| k.eq_ignore_ascii_case(w)) { Kind::Keyword } else { Kind::Reference };
+            // The language's own words: a function, SQL's, and the table and its rows by
+            // where they are, in capitals as the language writes them.
+            let kind = if call || KEYWORDS.iter().any(|k| k.eq_ignore_ascii_case(w)) || ROWS.contains(&w) {
+                Kind::Keyword
+            } else {
+                Kind::Reference
+            };
             out.push(start, i, kind, column);
-        } else if matches!(c, b'+' | b'-' | b'*' | b'/' | b'(' | b')' | b'[' | b']' | b'.' | b',' | b'=' | b'<' | b'>' | b'!' | b'|') {
+        } else if matches!(c, b'+' | b'-' | b'*' | b'/' | b'(' | b')' | b'[' | b']' | b'.' | b',' | b'=' | b'<' | b'>' | b'!' | b'|' | b':') {
             i += 1;
             out.push(start, i, Kind::Operator, column);
         } else {
@@ -793,7 +810,7 @@ mod tests {
         for (i, k) in Kind::ALL.iter().enumerate() {
             assert_eq!(*k as usize, i, "{k:?}");
         }
-        assert_eq!(Kind::Code as usize + 1, Kind::ALL.len(), "a kind declared after Code is missing from ALL");
+        assert_eq!(Kind::Table as usize + 1, Kind::ALL.len(), "a kind declared after Table is missing from ALL");
     }
 
     #[test]
@@ -814,10 +831,17 @@ mod tests {
         // A quoted name, and one the header reaches only later.
         assert_eq!(reads("\"my \"\"x\"\"\""), [5]);
         assert_eq!(reads("later"), [7]);
-        // The table itself, another table, a row's word: none.
-        assert_eq!(reads("TABLE"), [NONE, NONE]);
-        assert_eq!(reads("accounts"), [NONE]);
-        assert_eq!(reads("FIRST"), [NONE]);
+        // The table itself and a row by where it is are the language's words; a table the
+        // prelude names is a table; a range's `:` an operator.
+        let kind_of = |spelled: &str| {
+            tokens(src).into_iter().filter(|t| &src[t.start as usize..t.end as usize] == spelled).map(|t| t.kind).collect::<Vec<_>>()
+        };
+        assert_eq!(kind_of("TABLE"), [Kind::Keyword, Kind::Keyword]);
+        assert_eq!(kind_of("FIRST"), [Kind::Keyword]);
+        assert_eq!(kind_of("THIS"), [Kind::Keyword]);
+        assert_eq!(kind_of("accounts"), [Kind::Name, Kind::Table], "the import's name, then the formula's");
+        assert!(kind_of(":").contains(&Kind::Operator), "{:?}", kind_of(":"));
+        assert!(tokens(src).iter().all(|t| t.kind != Kind::Error), "nothing in it is an error");
     }
 
     #[test]
