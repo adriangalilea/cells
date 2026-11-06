@@ -19,7 +19,18 @@ use super::text::Lines;
 const COLUMNS: u32 = 6;
 
 const TYPES: [&str; 13] = [
-    "comment", "keyword", "type", "modifier", "operator", "string", "enumMember", "number", "variable", "column", "cell", "macro",
+    "comment",
+    "keyword",
+    "type",
+    "modifier",
+    "operator",
+    "string",
+    "enumMember",
+    "number",
+    "variable",
+    "column",
+    "cell",
+    "macro",
     "namespace",
 ];
 
@@ -57,13 +68,9 @@ fn served(t: &Token) -> Option<(u32, Option<u32>)> {
             Some(c) => (of("column"), Some(c)),
             None => (of("namespace"), None),
         },
-        Kind::CellText
-        | Kind::CellNumber
-        | Kind::CellBool
-        | Kind::CellDate
-        | Kind::CellChoice
-        | Kind::CellLink
-        | Kind::CellId => (of("cell"), column),
+        Kind::CellText | Kind::CellNumber | Kind::CellBool | Kind::CellDate | Kind::CellChoice | Kind::CellLink | Kind::CellId => {
+            (of("cell"), column)
+        }
         Kind::Punct | Kind::Error | Kind::Code => return None,
     })
 }

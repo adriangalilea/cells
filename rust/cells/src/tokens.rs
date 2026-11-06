@@ -702,7 +702,8 @@ fn expression(source: &str, s: usize, e: usize, column: u32, out: &mut Out) {
                 Kind::Reference
             };
             out.push(start, i, kind, column);
-        } else if matches!(c, b'+' | b'-' | b'*' | b'/' | b'(' | b')' | b'[' | b']' | b'.' | b',' | b'=' | b'<' | b'>' | b'!' | b'|' | b':') {
+        } else if matches!(c, b'+' | b'-' | b'*' | b'/' | b'(' | b')' | b'[' | b']' | b'.' | b',' | b'=' | b'<' | b'>' | b'!' | b'|' | b':')
+        {
             i += 1;
             out.push(start, i, Kind::Operator, column);
         } else {
