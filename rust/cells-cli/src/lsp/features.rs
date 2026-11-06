@@ -10,8 +10,9 @@ use tower_lsp::lsp_types::{
     HoverContents, Location, MarkupContent, MarkupKind, Range, TextEdit, Url, WorkspaceEdit,
 };
 
+use cells::complete::{CompletionKind as Kind, HeaderCell, Spot, opened, shown, summary, written, written_key};
 use cells::expr::{self, Named};
-use cells::{Base, Column, Doc, Origin, Place, Span, Statement, Value};
+use cells::{Base, Column, Doc, Origin, Span, Statement};
 
 use super::folder::{File, Folder, Held, inline, names_main};
 use super::text::Lines;
@@ -28,111 +29,18 @@ fn shifted(s: Span, by: u32) -> Span {
     span(s.start + by, s.len)
 }
 
-// ---- where a place is ----
-
-/// A formula, and where its text is in the file.
-pub struct Formula<'a> {
-    pub src: &'a str,
-    pub base: u32,
-}
-
-/// What a place in a file is, in the terms a feature needs.
-pub enum Spot<'a> {
-    Prelude,
-    /// A header cell's name.
-    Name(usize, Span),
-    /// A header cell's type.
-    Type(usize, Span),
-    Formula(Formula<'a>),
-    Cell(usize, usize, Span),
-    Nothing,
-}
-
-/// A header cell's parts in the file: its name, its type, its formula.
-struct HeaderCell<'a> {
-    name: Span,
-    ty: Option<Span>,
-    formula: Option<(&'a str, u32)>,
-}
-
-/// A header cell's parts; a declared column's type and formula are its declaration's, in
-/// the prelude (SPEC.md, Columns).
-fn header_cell<'a>(file: &'a File, column: usize) -> HeaderCell<'a> {
-    let s = file.doc.header_span(column);
-    let raw = &file.text[s.start as usize..(s.start + s.len) as usize];
-    let (name, spelled) = cells::split_header(raw);
-    let name = span(s.start, name.len() as u32);
-    if let Some((_, declared)) = file.doc.declaration_span(column) {
-        let (ty, formula) = typed(file, declared);
-        return HeaderCell { name, ty: Some(ty), formula };
-    }
-    let Some(spelled) = spelled else { return HeaderCell { name, ty: None, formula: None } };
-    let at = |part: &str| s.start + (part.as_ptr() as usize - raw.as_ptr() as usize) as u32;
-    let (ty, formula) = cells::split_formula(spelled);
-    HeaderCell { name, ty: Some(span(at(ty), ty.len() as u32)), formula: formula.map(|f| (f, at(f))) }
-}
-
-/// A type and its formula at `s` in the file (what follows a header cell's or a
-/// declaration's `:`): the type's span, and the formula's text and where it starts.
-fn typed(file: &File, s: Span) -> (Span, Option<(&str, u32)>) {
-    let raw = &file.text[s.start as usize..(s.start + s.len) as usize];
-    let at = |part: &str| s.start + (part.as_ptr() as usize - raw.as_ptr() as usize) as u32;
-    let (ty, formula) = cells::split_formula(raw);
-    let ty = ty.trim_end_matches([' ', '\t']);
-    let formula = formula.map(|f| f.trim_start_matches([' ', '\t']));
-    (span(at(ty), ty.len() as u32), formula.map(|f| (f, at(f))))
-}
-
-/// A cell's own formula, right of its `=` (`32.25=96.75 / 3`): its text and where it
-/// starts. Nothing for a cell its column's formula computes (`84.20=`) or a written one.
-fn cell_formula(file: &File, row: usize, column: usize) -> Option<(&str, u32)> {
-    let s = file.doc.cell_span(row, column);
-    let raw = &file.text[s.start as usize..(s.start + s.len) as usize];
-    let at = cells::split_cell(raw)? + 1;
-    (!raw[at..].trim().is_empty()).then(|| (&raw[at..], s.start + at as u32))
-}
+// ---- where a place is: the engine's (cells::complete) ----
 
 pub fn spot(file: &File, at: usize) -> Spot<'_> {
-    let at = at as u32;
-    match file.doc.place(at) {
-        Place::Prelude => {
-            // A column's declaration is that column's: its name, its type, its formula.
-            for c in 0..file.doc.columns().len() {
-                let Some((name, declared)) = file.doc.declaration_span(c) else { continue };
-                if at >= name.start && at <= name.start + name.len {
-                    return Spot::Name(c, name);
-                }
-                if at >= declared.start && at <= declared.start + declared.len {
-                    return match typed(file, declared) {
-                        (_, Some((src, base))) if at >= base => Spot::Formula(Formula { src, base }),
-                        (ty, _) => Spot::Type(c, ty),
-                    };
-                }
-            }
-            Spot::Prelude
-        }
-        Place::Header(c) => {
-            let c = c as usize;
-            let h = header_cell(file, c);
-            // A declared column's header cell is its name alone; its type is in the prelude.
-            if file.doc.declaration_span(c).is_some() {
-                return Spot::Name(c, h.name);
-            }
-            match (h.ty, h.formula) {
-                (_, Some((src, base))) if at >= base => Spot::Formula(Formula { src, base }),
-                (Some(ty), _) if at >= ty.start => Spot::Type(c, ty),
-                _ => Spot::Name(c, h.name),
-            }
-        }
-        Place::Cell { row, column } => {
-            let (row, column) = (row as usize, column as usize);
-            match cell_formula(file, row, column) {
-                Some((src, base)) if at >= base && at <= base + src.len() as u32 => Spot::Formula(Formula { src, base }),
-                _ => Spot::Cell(row, column, file.doc.cell_span(row, column)),
-            }
-        }
-        Place::Unread | Place::Outside => Spot::Nothing,
-    }
+    cells::complete::spot(&file.doc, &file.text, at)
+}
+
+fn header_cell(file: &File, column: usize) -> HeaderCell<'_> {
+    cells::complete::header_cell(&file.doc, &file.text, column)
+}
+
+fn cell_formula(file: &File, row: usize, column: usize) -> Option<(&str, u32)> {
+    cells::complete::cell_formula(&file.doc, &file.text, row, column)
 }
 
 /// Every formula of a file, and where its text starts: its columns', then its cells'.
@@ -214,20 +122,6 @@ fn about(c: &Column) -> String {
         out.push_str(&format!("\n\n{}", said.join("; ")));
     }
     out
-}
-
-/// A cell's value as its column writes it, or `blank`.
-fn shown(c: &Column, row: usize) -> String {
-    match c.value(row) {
-        Value::Null => "blank".to_owned(),
-        v => c.form(v),
-    }
-}
-
-/// A row in a line: its first columns' values.
-fn summary(doc: &Doc, row: usize) -> String {
-    let cells: Vec<String> = doc.columns().iter().take(6).map(|c| format!("{} {}", c.name, shown(c, row))).collect();
-    cells.join(" · ")
 }
 
 /// The row of `held` a reference's text names, and its key column.
@@ -334,194 +228,42 @@ fn follow(folder: &Folder, file: &File, n: &Named, k: usize) -> Option<Followed>
 
 // ---- completion ----
 
-fn item(label: String, kind: CompletionItemKind, detail: String, range: Range) -> CompletionItem {
-    CompletionItem {
-        label: label.clone(),
-        kind: Some(kind),
-        detail: Some(detail),
-        text_edit: Some(CompletionTextEdit::Edit(TextEdit { range, new_text: label })),
-        ..CompletionItem::default()
-    }
-}
-
-fn ident(c: char) -> bool {
-    c.is_ascii_alphanumeric() || c == '_'
-}
-
-/// A name as a formula writes it: as it is, or quoted.
-/// A name as a formula writes it: bare when it is a word with a lower-case letter, quoted
-/// otherwise, so it is never the language's (a word in capitals).
-fn written(name: &str) -> String {
-    let plain = name.chars().next().is_some_and(|c| c.is_ascii_alphabetic() || c == '_')
-        && name.chars().all(ident)
-        && name.chars().any(|c| c.is_ascii_lowercase());
-    if plain { name.to_owned() } else { format!("\"{}\"", name.replace('"', "\"\"")) }
-}
-
+/// What completes at `at`, the engine's (`cells::complete`), the tables a file names
+/// reached through the folder as the editor has it.
 pub fn complete(folder: &Folder, file: &File, at: usize) -> Vec<CompletionItem> {
     let lines = Lines::new(&file.text);
-    let doc = &file.doc;
-    match spot(file, at) {
-        Spot::Cell(_, c, s) => {
-            let range = lines.range(s);
-            let col = &doc.columns()[c];
-            match &col.ty.base {
-                Base::Ref(targets) => {
-                    let mut out = Vec::new();
-                    for t in targets {
-                        let Some(held) = folder.held(file, &t.table) else { continue };
-                        let d = held.doc();
-                        let Some(k) = d.column(&t.column) else { continue };
-                        for row in 0..d.rows() {
-                            let key = d.text(row, k).into_owned();
-                            if key.is_empty() {
-                                continue;
-                            }
-                            let mut i = item(key, CompletionItemKind::VALUE, format!("{}: {}", t.table, summary(d, row)), range);
-                            if let Some(CompletionTextEdit::Edit(e)) = &mut i.text_edit {
-                                e.new_text = cells::quote(&e.new_text).into_owned();
-                            }
-                            out.push(i);
-                        }
-                    }
-                    out
-                }
-                Base::Choice(words) => {
-                    words.iter().map(|w| item(w.clone(), CompletionItemKind::ENUM_MEMBER, col.name.clone(), range)).collect()
-                }
-                Base::Bool { yes, no } => {
-                    [yes, no].iter().map(|w| item((*w).clone(), CompletionItemKind::VALUE, col.name.clone(), range)).collect()
-                }
-                _ => Vec::new(),
-            }
+    let held = |path: &[&str]| -> Option<Held> {
+        let (first, rest) = path.split_first()?;
+        let mut h = folder.held(file, first)?;
+        for name in rest {
+            h = folder.held(&h.file, name)?;
         }
-        Spot::Type(_, s) => {
-            // The word at the place, `.` included, so `accounts.a` is one.
-            let text = &file.text[s.start as usize..(s.start + s.len) as usize];
-            let here = at - s.start as usize;
-            let from = text[..here].rfind(|c: char| !(ident(c) || c == '.')).map_or(0, |i| i + 1);
-            let to = here + text[here..].find(|c: char| !(ident(c) || c == '.')).unwrap_or(text.len() - here);
-            let range = lines.range(span(s.start + from as u32, (to - from) as u32));
-            let mut out: Vec<CompletionItem> =
-                doc.named().iter().map(|t| item(t.name.clone(), CompletionItemKind::CLASS, t.ty.shorthand(), range)).collect();
-            for t in doc.tables() {
-                let Some(d) = &t.doc else { continue };
-                if let Some(key) = d.columns().iter().find(|c| c.ty.key) {
-                    out.push(item(
-                        format!("{}.{}", t.name, key.name),
-                        CompletionItemKind::REFERENCE,
-                        format!("a key of {}", t.name),
-                        range,
-                    ));
-                }
-            }
-            for b in ["text", "int", "num", "pct", "bool", "date", "time", "datetime", "url", "email", "id"] {
-                out.push(item(b.to_owned(), CompletionItemKind::KEYWORD, "a base".into(), range));
-            }
-            out
-        }
-        Spot::Formula(f) => formula_completions(folder, file, &f, at, &lines),
-        Spot::Name(..) | Spot::Prelude | Spot::Nothing => Vec::new(),
-    }
-}
-
-fn formula_completions(folder: &Folder, file: &File, f: &Formula, at: usize, lines: &Lines) -> Vec<CompletionItem> {
-    let here = at - f.base as usize;
-    let src = &f.src[..here];
-    let from = src.rfind(|c: char| !ident(c)).map_or(0, |i| i + 1);
-    let range = lines.range(span(f.base + from as u32, (here - from) as u32));
-    let columns = |doc: &Doc, detail: &str| -> Vec<CompletionItem> {
-        doc.columns()
-            .iter()
-            .map(|c| item(written(&c.name), CompletionItemKind::FIELD, format!("{detail}{}", c.ty.shorthand()), range))
-            .collect()
+        Some(h)
     };
-    // After a column's `[`: the rows by where they are from this one.
-    if let Some((name, open)) = opened(src)
-        && name != "TABLE"
-        && file.doc.column(name).is_some()
-    {
-        let range = lines.range(span(f.base + open as u32, (here - open) as u32));
-        let places = [
-            ("-1", "the row above"),
-            ("+1", "the row below"),
-            ("FIRST", "the first row"),
-            ("LAST", "the last row"),
-            ("FIRST:THIS", "the rows from the first to this one, an aggregate's"),
-            ("THIS:LAST", "the rows from this one to the last, an aggregate's"),
-        ];
-        return places.iter().map(|(p, d)| item((*p).into(), CompletionItemKind::KEYWORD, (*d).into(), range)).collect();
-    }
-    // Inside `TABLE[`, `fees[`: the table's rows, each by its key, found by its number too.
-    if let Some((name, open)) = opened(src) {
-        let Some(held) = folder.held(file, name) else { return Vec::new() };
-        let d = held.doc();
-        let Some(k) = d.columns().iter().position(|c| c.ty.key) else { return Vec::new() };
-        let range = lines.range(span(f.base + open as u32, (here - open) as u32));
-        return (0..d.rows())
-            .filter_map(|r| {
-                let key = d.text(r, k);
-                (!key.is_empty()).then(|| CompletionItem {
-                    filter_text: Some(format!("#{} {key}", r + 1)),
-                    sort_text: Some(format!("{r:010}")),
-                    ..item(written_key(&key), CompletionItemKind::VALUE, format!("#{} {}", r + 1, summary(d, r)), range)
-                })
-            })
-            .collect();
-    }
-    let before = src[..from].trim_end_matches([' ', '\t']);
-    if let Some(path) = before.strip_suffix('.') {
-        // `table['k'].`: the table's columns.
-        if let Some(open) = path.strip_suffix(']').and_then(|p| p.rfind('[').map(|i| &p[..i])) {
-            let name = &open[open.rfind(|c: char| !ident(c)).map_or(0, |i| i + 1)..];
-            return folder.held(file, name).map_or(Vec::new(), |h| columns(h.doc(), &format!("{name}: ")));
-        }
-        // `a.b.`: what the path leads to.
-        let start = path.rfind(|c: char| !(ident(c) || c == '.')).map_or(0, |i| i + 1);
-        let parts: Vec<(String, (u32, u32))> = path[start..].split('.').map(|p| (p.to_owned(), (0, 0))).collect();
-        let n = Named { parts, table: false, key: None };
-        return match follow(folder, file, &n, n.parts.len() - 1) {
-            Some(Followed::Table(h)) => columns(h.doc(), ""),
-            Some(Followed::Column(held, c)) => {
-                let doc = held.as_ref().map_or(&file.doc, |h| h.doc());
-                let Base::Ref(targets) = &doc.columns()[c].ty.base else { return Vec::new() };
-                let from = held.as_ref().map_or(file, |h| &h.file);
-                folder.held(from, &targets[0].table).map_or(Vec::new(), |h| columns(h.doc(), &format!("{}: ", targets[0].table)))
+    cells::complete::complete(&file.doc, &file.text, at, held)
+        .into_iter()
+        .map(|c| {
+            let range = lines.range(span(c.from, c.to - c.from));
+            CompletionItem {
+                label: c.label,
+                kind: Some(match c.kind {
+                    Kind::Value => CompletionItemKind::VALUE,
+                    Kind::EnumMember => CompletionItemKind::ENUM_MEMBER,
+                    Kind::Class => CompletionItemKind::CLASS,
+                    Kind::Reference => CompletionItemKind::REFERENCE,
+                    Kind::Keyword => CompletionItemKind::KEYWORD,
+                    Kind::Field => CompletionItemKind::FIELD,
+                    Kind::Module => CompletionItemKind::MODULE,
+                    Kind::Function => CompletionItemKind::FUNCTION,
+                }),
+                detail: Some(c.detail),
+                text_edit: Some(CompletionTextEdit::Edit(TextEdit { range, new_text: c.insert })),
+                filter_text: c.filter,
+                sort_text: c.sort,
+                ..CompletionItem::default()
             }
-            None => Vec::new(),
-        };
-    }
-    let mut out = columns(&file.doc, "");
-    out.push(item("TABLE".to_owned(), CompletionItemKind::MODULE, "this file's own table".into(), range));
-    for t in file.doc.tables() {
-        out.push(item(written(&t.name), CompletionItemKind::MODULE, "a table".into(), range));
-    }
-    for name in expr::FUNCTIONS {
-        out.push(item(name.to_owned(), CompletionItemKind::FUNCTION, "a function".into(), range));
-    }
-    for word in ["CASE", "WHEN", "THEN", "ELSE", "END", "AND", "OR", "NOT", "IS", "NULL", "TRUE", "FALSE", "OVER", "ORDER", "BY", "DESC"] {
-        out.push(item(word.to_owned(), CompletionItemKind::KEYWORD, "the language's".into(), range));
-    }
-    out
-}
-
-/// A key as a formula writes it: text in quotes, a `'` inside doubled.
-fn written_key(key: &str) -> String {
-    format!("'{}'", key.replace('\'', "''"))
-}
-
-/// The table a formula names before an `[` still open at its end, and where what
-/// follows the `[` starts: `this[`, `fees['ca`.
-fn opened(src: &str) -> Option<(&str, usize)> {
-    let open = src.rfind('[')?;
-    if src[open..].contains(']') {
-        return None;
-    }
-    let before = src[..open].trim_end_matches([' ', '\t']);
-    let name = &before[before.rfind(|c: char| !ident(c)).map_or(0, |i| i + 1)..];
-    // The language's `TABLE` is the file's own table, as the engine names it.
-    let name = if name == "TABLE" { cells::expr::THIS } else { name };
-    (!name.is_empty()).then_some((name, open + 1))
+        })
+        .collect()
 }
 
 // ---- #n ----

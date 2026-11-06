@@ -48,6 +48,14 @@ impl Held {
     }
 }
 
+/// A table held is its doc, as the engine's completions reach it.
+impl std::ops::Deref for Held {
+    type Target = Doc;
+    fn deref(&self) -> &Doc {
+        self.doc()
+    }
+}
+
 /// A path as the folder keys it: canonical when it exists.
 pub fn canonical(p: &Path) -> PathBuf {
     fs::canonicalize(p).unwrap_or_else(|_| p.to_path_buf())

@@ -23,6 +23,7 @@ extern crate std;
 
 pub mod arrow;
 pub mod column;
+pub mod complete;
 mod doc;
 pub mod exact;
 pub mod expr;
