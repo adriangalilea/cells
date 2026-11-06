@@ -1,6 +1,6 @@
 # Editors
 
-A `.cell` file in an editor takes two pieces from this repository: the tree-sitter grammar (`tree-sitter/`) for highlighting, and `cells lsp`, the language server, for everything that needs the engine.
+A `.cell` file in an editor takes two pieces from this repository: the tree-sitter grammar (`tree-sitter/`) for highlighting, and `cells lsp`, the language server, for everything that needs the engine, its colours included where the editor asks for them (Colour, below).
 
 ## The language server
 
@@ -16,7 +16,21 @@ A `.cell` file in an editor takes two pieces from this repository: the tree-sitt
 - **Go to definition** from a reference (the row it finds, in its file), a type's target (the key's header cell), a formula's name (its column, its table) and an import (its file).
 - **Rename** of a key or a column, followed through every file of the folder that names it: the key's references and the formulas that find its row; the column's formulas, and in other files the references and formulas that reach it. A column takes a name formulas write bare (letters, digits and `_`).
 
-Semantic tokens are not served: the grammar already colours every part.
+## Colour
+
+A table is read by its columns, so a file is coloured the way Rainbow CSV colours one: a column's name in the header and every cell under it share a colour, six in turn, whatever the cell spells (its kind is its header's type). A formula reads as a formula: its operators, functions and numbers in their own colours, and each name it reads in the colour of the column it names, so `=cost * qty` shows what it is computed from.
+
+What each part of a file is comes from one place, the engine's reading of it (`cells::tokens`): every span, what it is, the column it stands in, and for a name in a formula the column it reads. Every surface draws that reading:
+
+| Surface | Reads | State |
+|---|---|---|
+| the engine's `tokens` | the text alone, never refused: a broken file still has its spans | built; `reads`, the column a formula's name reads, owed |
+| `cells lsp` | semantic tokens: the kind, and the column as a modifier (`column1` to `column6`) | owed |
+| wasm, ui's `code` | the same tokens, drawn in a palette of ui's code themes, in code blocks, the editor views and inline code (a fragment read by its shape) | owed |
+| the C ABI, Swift | `cells_tokens`, as `Tokens.swift` draws them | built, without `reads` |
+| the TextMate and tree-sitter grammars | the text by pattern, where no engine runs (GitHub, an editor without the server): each column a scope its theme already colours, a name in a formula without its column | TextMate built; tree-sitter's rows still by kind |
+
+A grammar is the reading without the engine, so it is held to the engine's: each grammar's scopes over the examples agree with the engine's kinds (owed).
 
 ## Helix
 
