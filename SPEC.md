@@ -4,7 +4,7 @@
 
 Data and its logic, in one plain-text file. A cell, a `.cell` file, is a table whose header cells carry their column's type, `name:type`, and its formula when it computes, `name:type=formula`; its rows hold every value, the computed ones too, each beside how it is computed; it may open with a prelude, fenced by `---`, that names types, imports other files and holds tables of its own, written inline or filled by a script. One file, never a sidecar: the types and the logic travel with the data, and the data is all there to read in any editor. MIME type `text/vnd.cells`.
 
-```
+```cells
 ---
 type Category = travel|stay|food|gear
 ---
@@ -29,7 +29,7 @@ Cells is its own format, read by Cells readers. Its records borrow RFC 4180's qu
 
 ## A header cell
 
-```
+```text
 cost:EUR>=0        total:EUR=cost * qty
  ①  ②  ③            ①   ②  ③  ④  ⑤
 ```
@@ -91,7 +91,7 @@ A word that is none of these, no named type, no reference and not a choice is an
 
 `category:travel|stay|food|gear` is one of the words, written bare. A choice holding a reserved character (below) or a space or a tab, inside it or at its ends, is quoted with single quotes, a quote inside one doubled:
 
-```
+```cells
 mood:'yay!'|meh|'so-so?'|'it''s fine'
 ```
 
@@ -160,7 +160,7 @@ Inside a type, outside single quotes: `|` `/` `!` `?` `<` `>` `=` `..` `(` `)` `
 
 ## The prelude
 
-````
+````cells
 ---
 import accounts from "../accounts.cell"       // the shared accounts
 type Kind = card|transfer
@@ -185,11 +185,13 @@ The prelude is the work; the header and rows after it are what the file shows, a
 
 ### Imports
 
-```
+```cells
+---
 import accounts from "../accounts.cell"
 import { Kind, fees } from "./rates.cell"
 import vat from "https://example.com/es/vat.cell" with { sha256: "9c1e7f0a…" }
 import last_year from "./money.cell" with { rev: "a1b2c3d" }
+---
 ```
 
 - **The default import**, `import accounts from "…"`, names the other file's table: its key a type for a column (`to:accounts.account`), its columns read by a formula through a reference or by key.
@@ -208,7 +210,8 @@ Data has no versions to resolve: no ranges, no resolver, no lockfile. Considered
 
 ### Tables a script fills
 
-````
+````cells
+---
 eurusd = run every day at 18:00 in Europe/Madrid
 ```ts
 export default async function ({ last }) {
@@ -226,6 +229,7 @@ run:int!,at:datetime,outcome:ok|failed,error:text?
 9,2026-11-04T17:00:03Z,ok,
 12,2026-11-05T17:00:02Z,failed,HTTP 503
 ```
+---
 ````
 
 **`name = run <schedule>`**, then three fences, blank lines between them nothing ([Running](#running) says what runs them):
@@ -252,7 +256,7 @@ A trigger with a time of day (and `cron`) needs the zone: a file moves between m
 
 A formula computes a cell's value from what the file can read. It is written in a column's header cell, `total:EUR=cost * qty`, where it computes every cell of the column but the ones written, or in one cell, after the cell's `=` (`32.25=96.75 / 3`), where it computes that cell alone. Either way the file stores the value it gave, left of the cell's `=` ([A cell](#a-cell)).
 
-```
+```cells
 item:text!,cost:EUR>=0,qty:int>=1,total:EUR=cost * qty
 fuel,84.20,1,84.20=
 split dinner,32.25=96.75 / 3,1,32.25=
@@ -396,7 +400,7 @@ The use it is designed against is **plain text accounting done properly**: books
 ### Decided in direction, not yet written
 
 - **The filesystem as a graph database.** A folder of `.cell` files is a graph of typed tables, its edges the references: written today, a reference that breaks is a problem naming the file and row. A rename is followed through every file that references the key (the language server, `cells lsp`). What is not yet: tools that notice before a break lands (a warning on a key renamed in the other file, a writer refusing to save a dangling reference without saying so).
-  ```
+  ```text
   ~/books/
   ├── accounts.cell              account:text!,kind:assets|liabilities|expenses|income
   ├── vendors.cell               vendor:text!,name:text,vat_id:text?
@@ -422,7 +426,7 @@ The use it is designed against is **plain text accounting done properly**: books
 
 - **The query language.** Never one of ours. The candidates:
   - **SQL**, which every reader knows and which already runs over files (DuckDB reads a folder of CSV as tables); a folder of `.cell` is typed tables, so `amount` is a number and `date` a date:
-    ```
+    ```console
     $ cells sql ~/books "
       SELECT vendor, SUM(amount) FROM money
       WHERE account_to LIKE 'expenses:home:%' AND YEAR(date) = 2026
@@ -431,7 +435,7 @@ The use it is designed against is **plain text accounting done properly**: books
     `money` is every `money.cell` under the folder, one table, its words in capitals as a formula's are.
   - **GQL** (ISO/IEC 39075, 2024, Cypher's successor), the shape of the graph: following references from a movement to its account, an account to its parent, a vendor to everything it touched; awkward for sums and grouping, which are most of accounting.
   - **SQL/PGQ** (SQL:2023, property graph queries): GQL's `MATCH` inside SQL, so one query walks the graph and then sums and groups; DuckDB has it (`duckpgq`). The likely answer: the two standards, composed, nothing invented.
-    ```
+    ```console
     $ cells sql ~/books "
       FROM GRAPH_TABLE(books
         MATCH (m:money)-[:account_to]->(a:accounts)

@@ -11,7 +11,7 @@
 
 ## The files
 
-```
+```text
 books/
 ├── commodities.cell   what money is held in
 ├── accounts.cell      every account, once
@@ -24,7 +24,7 @@ books/
 
 `commodities.cell`:
 
-```
+```cells
 ---
 type Kind = currency|stock|fund|crypto|points
 ---
@@ -36,7 +36,7 @@ KITE,stock,0,Kite Works shares
 
 `accounts.cell`:
 
-```
+```cells
 ---
 import commodities from "./commodities.cell"
 type Kind = assets|liabilities|equity|income|expenses
@@ -59,7 +59,7 @@ The hierarchy is the name (`assets:bank:main` under `assets:bank`), as in every 
 
 `home/money.cell`:
 
-```
+```cells draft
 ---
 import accounts from "../accounts.cell"
 import commodities from "../commodities.cell"
@@ -92,7 +92,7 @@ r7s8t9v0,2026-09-21,single,950.00,EUR,expenses:home:rent,assets:bank:main,,,,,,c
 
 `balances.cell`:
 
-```
+```cells draft
 ---
 import accounts from "./accounts.cell"
 check balance_holds:

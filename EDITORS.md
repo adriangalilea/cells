@@ -48,7 +48,7 @@ Then `hx --grammar build`, and link the queries: `ln -s /path/to/cells/tree-sitt
 
 `cells merge` merges two versions of a file as SPEC.md, Merging, says: what was written merges as text, every computed value is computed again from the merged rows, so two branches that each add a row to a running balance never conflict on the balances. In the repository's `.gitattributes`:
 
-```
+```text
 *.cell merge=cells
 ```
 
