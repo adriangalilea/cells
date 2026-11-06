@@ -653,6 +653,48 @@ pub unsafe extern "C" fn cells_tokens(ptr: *mut u8, len: usize, cap: usize) -> *
     s.tokens.as_ptr()
 }
 
+/// A text's tables laid out as tables (`cells::tokens::layout`), for a view that aligns
+/// their columns without writing a byte (room from `cells_alloc(cap)`, `len` bytes of it
+/// written, which this call takes); `fold` the widest a cell is drawn, 0 for none. `u32`s:
+/// the pads' count, each pad's place in UTF-16 units and its width in characters, then
+/// each cut's start and end in units to the end. `cells_len` is their length in bytes;
+/// they live until the next `cells_layout`.
+///
+/// # Safety
+/// As `take`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn cells_layout(ptr: *mut u8, len: usize, cap: usize, fold: u32) -> *const u32 {
+    // SAFETY: the caller's promise.
+    let text = unsafe { take(ptr, len, cap) };
+    let (pads, cuts) = cells::tokens::layout(&text, (fold > 0).then_some(fold));
+    let mut wanted: Vec<u32> = pads.iter().map(|p| p.at).chain(cuts.iter().flat_map(|c| [c.start, c.end])).collect();
+    wanted.sort_unstable();
+    wanted.dedup();
+    let mut units = Vec::with_capacity(wanted.len());
+    let (mut byte, mut unit) = (0usize, 0u32);
+    let mut chars = text.chars();
+    for &w in &wanted {
+        while byte < w as usize {
+            let c = chars.next().expect("a place inside the text");
+            byte += c.len_utf8();
+            unit += c.len_utf16() as u32;
+        }
+        units.push(unit);
+    }
+    let at = |b: u32| units[wanted.binary_search(&b).unwrap()];
+    let s = shared();
+    s.tokens.clear();
+    s.tokens.push(pads.len() as u32);
+    for p in &pads {
+        s.tokens.extend([at(p.at), p.width]);
+    }
+    for c in &cuts {
+        s.tokens.extend([at(c.start), at(c.end)]);
+    }
+    s.len = s.tokens.len() * 4;
+    s.tokens.as_ptr()
+}
+
 /// Takes the text a page wrote into room from `cells_alloc`.
 ///
 /// # Safety
