@@ -1,0 +1,6 @@
+---
+cost: EUR
+cost: num
+---
+item:text,cost
+fuel,84.20

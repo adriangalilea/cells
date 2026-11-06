@@ -1,0 +1,12 @@
+{
+  "columns": [
+    { "name": "item", "type": "text" }
+  ],
+  "rows": [
+    { "item": { "text": "fuel" } }
+  ],
+  "problems": [],
+  "broken": [
+    { "at": "prelude line 1", "span": [4, 11] }
+  ]
+}

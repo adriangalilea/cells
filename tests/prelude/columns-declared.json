@@ -1,0 +1,15 @@
+{
+  "types": { "Money": "EUR>=0" },
+  "columns": [
+    { "name": "item", "type": "text!" },
+    { "name": "cost", "type": "Money" },
+    { "name": "qty", "type": "int>=1" },
+    { "name": "total", "type": "Money", "formula": "cost * qty" },
+    { "name": "price, net", "type": "EUR?" }
+  ],
+  "rows": [
+    { "item": { "text": "fuel" }, "cost": { "money": "84.20", "currency": "EUR" }, "qty": { "int": "1" }, "total": { "money": "84.20", "currency": "EUR", "from": "formula" }, "price, net": null },
+    { "item": { "text": "split dinner" }, "cost": { "money": "32.25", "currency": "EUR" }, "qty": { "int": "2" }, "total": { "money": "64.50", "currency": "EUR", "from": "formula" }, "price, net": { "money": "70.00", "currency": "EUR" } }
+  ],
+  "problems": []
+}

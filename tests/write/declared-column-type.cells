@@ -1,0 +1,6 @@
+---
+cost: EUR
+total: EUR = cost * 2
+---
+item:text!,cost,total
+fuel,84.20,168.40=

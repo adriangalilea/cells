@@ -6,6 +6,7 @@
 //! its own: the file's, and each written inline in its prelude. A record across a line
 //! break is left as written, and its table is measured without it.
 
+use alloc::format;
 use alloc::string::String;
 use alloc::vec::Vec;
 
@@ -57,6 +58,10 @@ fn tables(source: &str) -> Vec<(usize, usize)> {
             tabled[first..=last].fill(true);
         }
     }
+    // A column's declaration has its column too, and is the prelude's, never a table's line.
+    for line in declared_lines(source) {
+        tabled[line] = false;
+    }
     let mut out = Vec::new();
     let mut l = 0;
     while l < starts.len() {
@@ -73,6 +78,27 @@ fn tables(source: &str) -> Vec<(usize, usize)> {
         out.push((from, starts.get(l).map_or(source.len(), |&s| s)));
     }
     out
+}
+
+/// The prelude and the lines of its column declarations (SPEC.md, Columns), counted
+/// from the file's first line; none for a file with no prelude, or one never closed.
+fn prelude(source: &str) -> Option<(crate::prelude::Parsed, usize)> {
+    let bom = if source.starts_with('\u{feff}') { 3 } else { 0 };
+    let first = source[bom..].split_inclusive('\n').next()?;
+    if first.trim_end_matches(['\n', '\r']) != "---" {
+        return None;
+    }
+    crate::prelude::parse(source, bom).ok().map(|p| (p, bom))
+}
+
+fn declared_lines(source: &str) -> Vec<usize> {
+    let Some((parsed, _)) = prelude(source) else { return Vec::new() };
+    parsed
+        .statements
+        .iter()
+        .filter(|s| matches!(s, crate::prelude::Statement::Column { .. }))
+        .map(|s| s.line() as usize)
+        .collect()
 }
 
 fn records(source: &str, mut at: usize, end: usize) -> Vec<Record> {
@@ -136,10 +162,81 @@ fn ending(source: &str, record: &Record) -> &'static str {
 /// The prelude, a record across a line break, and every byte outside a table are written
 /// as read. Formatting twice is formatting once.
 pub fn formatted(source: &str, align: bool) -> String {
+    // What changes, in the file's order: each table's records, each declaration's line.
+    let mut edits: Vec<(usize, usize, String)> = declarations(source, align);
+    for (from, to) in tables(source) {
+        edits.push((from, to, table(source, from, to, align)));
+    }
+    edits.sort_by_key(|e| e.0);
     let mut out = String::with_capacity(source.len() + source.len() / 4);
     let mut pos = 0;
-    for (from, to) in tables(source) {
+    for (from, to, text) in edits {
         out.push_str(&source[pos..from]);
+        out.push_str(&text);
+        pos = to;
+    }
+    out.push_str(&source[pos..]);
+    out
+}
+
+/// The prelude's column declarations (SPEC.md, Columns) as formatting writes them, each
+/// line's place and its text: `name: type = formula`, aligned, every type at one column
+/// and every formula's `=` at one, or with `align` off a single space around each. A
+/// comment after a declaration is kept, one space before its `//`.
+fn declarations(source: &str, align: bool) -> Vec<(usize, usize, String)> {
+    let Some((parsed, bom)) = prelude(source) else { return Vec::new() };
+    let lines: Vec<(usize, &str)> = {
+        let mut at = bom;
+        source[bom..parsed.body]
+            .split_inclusive('\n')
+            .map(|l| {
+                let here = at;
+                at += l.len();
+                (here, l)
+            })
+            .collect()
+    };
+    // Each declaration: its line, its name as written, its type, its formula.
+    let mut found: Vec<(usize, String, &str, Option<&str>)> = Vec::new();
+    for s in &parsed.statements {
+        if let crate::prelude::Statement::Column { line, name, spelled } = s {
+            let (ty, formula) = crate::types::split_formula(spelled);
+            found.push((*line as usize, crate::doc::declared_name(name).into_owned(), ty, formula));
+        }
+    }
+    let chars = |s: &str| s.chars().count();
+    let name_w = found.iter().map(|d| chars(&d.1)).max().unwrap_or(0);
+    let type_w = found.iter().filter(|d| d.3.is_some()).map(|d| chars(d.2)).max().unwrap_or(0);
+    found
+        .into_iter()
+        .filter_map(|(line, name, ty, formula)| {
+            let &(at, raw) = lines.get(line)?;
+            let body = raw.trim_end_matches(['\n', '\r']);
+            let end = &raw[body.len()..];
+            let comment = &body[crate::prelude::uncomment(body).len()..];
+            let mut text = format!("{name}:");
+            let gap = |used: usize, to: usize| if align { to.saturating_sub(used).max(1) } else { 1 };
+            text.extend(core::iter::repeat_n(' ', gap(chars(&name) + 1, name_w + 2)));
+            text.push_str(ty);
+            if let Some(f) = formula {
+                text.extend(core::iter::repeat_n(' ', gap(chars(ty), type_w + 1)));
+                text.push_str("= ");
+                text.push_str(f);
+            }
+            if !comment.is_empty() {
+                text.push(' ');
+                text.push_str(comment);
+            }
+            text.push_str(end);
+            (text != raw).then_some((at, at + raw.len(), text))
+        })
+        .collect()
+}
+
+/// One table's records as formatting writes them.
+fn table(source: &str, from: usize, to: usize, align: bool) -> String {
+    let mut out = String::with_capacity(to - from + (to - from) / 4);
+    {
         let records = records(source, from, to);
         let starts = column_starts(source, &records, None);
         for r in &records {
@@ -166,9 +263,7 @@ pub fn formatted(source: &str, align: bool) -> String {
             }
             out.push_str(ending(source, r));
         }
-        pos = to;
     }
-    out.push_str(&source[pos..]);
     out
 }
 
@@ -290,6 +385,21 @@ mod tests {
             formatted(src, true),
             "\u{feff}---\nfees = ```cells\nkind:text!, pct:pct\ncard,       1.4\n```\ntype K = a|b\n---\na,      b\r\nlonger, 1\r\n\"x\ny\",2\n"
         );
+    }
+
+    #[test]
+    fn declarations_line_up_their_types_and_their_equals() {
+        let src = "---\ntype Money = EUR>=0\nitem:text!   // the key\ncost : Money\ntotal:Money=cost * qty\n\"price, net\": EUR?\n---\nitem,cost,total,\"price, net\"\nfuel,1,1=,\n";
+        assert_eq!(
+            formatted(src, true),
+            "---\ntype Money = EUR>=0\nitem:         text! // the key\ncost:         Money\ntotal:        Money = cost * qty\n\"price, net\": EUR?\n---\nitem,   cost,   total,  \"price, net\"\nfuel,   1,      1=,\n"
+        );
+        assert_eq!(
+            formatted(src, false),
+            "---\ntype Money = EUR>=0\nitem: text! // the key\ncost: Money\ntotal: Money = cost * qty\n\"price, net\": EUR?\n---\nitem,cost,total,\"price, net\"\nfuel,1,1=,\n"
+        );
+        let once = formatted(src, true);
+        assert_eq!(formatted(&once, true), once);
     }
 
     #[test]

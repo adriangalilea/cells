@@ -1,0 +1,5 @@
+---
+count: int>=1
+---
+item:text!,count
+fuel,2

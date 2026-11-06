@@ -471,6 +471,18 @@ fn read_in(bytes: Vec<u8>, dialect: Dialect, threads: usize, imports: &mut dyn I
     let mut scratch = Vec::new();
     let mut heads: Vec<Head> = Vec::with_capacity(fields.len());
     let mut naming = Vec::new();
+    // The columns the prelude declares, each once (SPEC.md, Columns): its line, its name,
+    // what follows its `:`, and whether a header cell names it.
+    let mut declared: Vec<(u32, &str, &str, bool)> = Vec::new();
+    for s in &doc.statements {
+        if let Statement::Column { line, name, spelled } = s {
+            if declared.iter().any(|d| d.1 == name) {
+                broken.push(error(At::PreludeLine(*line), format!("{name} is declared twice")));
+            } else {
+                declared.push((*line, name, spelled, false));
+            }
+        }
+    }
     for (j, &(s, e)) in fields.iter().enumerate() {
         let at = At::Column(j as u32 + 1);
         let cell = scan::text(src, s, e, &mut scratch);
@@ -492,6 +504,32 @@ fn read_in(bytes: Vec<u8>, dialect: Dialect, threads: usize, imports: &mut dyn I
             heads.push(Head { name: cell.to_owned(), spelled: None, ty: None, formula: None });
             continue;
         }
+        // A header cell that is a declared column's name alone reads as its declaration.
+        let (name, typed) = types::split_header(cell);
+        let declaration = declared.iter_mut().find(|d| d.1 == name);
+        if let Some(d) = declaration {
+            d.3 = true;
+            if typed.is_some() {
+                broken.push(error(
+                    At::PreludeLine(d.0),
+                    format!("{name} is declared here and typed in its header cell too: say it in one place"),
+                ));
+            } else {
+                let line = d.0;
+                match head(&format!("{name}:{}", d.2), j as u32 + 1, &doc.named, &doc.tables) {
+                    Ok(h) if heads.iter().any(|x| x.name == h.name) => {
+                        broken.push(error(at, format!("two columns are named {}", h.name)));
+                        heads.push(Head::text(cell));
+                    }
+                    Ok(h) => heads.push(h),
+                    Err((why, _)) => {
+                        broken.push(error(At::PreludeLine(line), why));
+                        heads.push(Head::text(cell));
+                    }
+                }
+                continue;
+            }
+        }
         match head(cell, j as u32 + 1, &doc.named, &doc.tables) {
             Ok(h) if heads.iter().any(|x| x.name == h.name) => {
                 broken.push(error(at, format!("two columns are named {}", h.name)));
@@ -502,6 +540,11 @@ fn read_in(bytes: Vec<u8>, dialect: Dialect, threads: usize, imports: &mut dyn I
                 broken.push(Error { at, why, within });
                 heads.push(Head::text(cell));
             }
+        }
+    }
+    for (line, name, _, named) in &declared {
+        if !named {
+            broken.push(error(At::PreludeLine(*line), format!("{name} is declared, and no header cell names it")));
         }
     }
     // A column and a prelude name spelled alike: a formula could mean either, so it is
@@ -671,6 +714,8 @@ fn settle_prelude(
         let at = At::PreludeLine(s.line());
         let mut fail = |why: String| broken.push(error(at, why));
         match s {
+            // A column's declaration names no type or table: the header settles it.
+            Statement::Column { .. } => {}
             Statement::Type { name, spelled, .. } => {
                 if !name.as_bytes().first().is_some_and(|c| c.is_ascii_uppercase()) {
                     fail(format!("a type's name starts with a capital letter, not \"{name}\""));
@@ -991,6 +1036,22 @@ impl Error {
     }
 }
 
+/// Where prelude line `n` (1-based inside the fences) is in `text`: its first byte, and
+/// the first of the line after it, its line break included.
+fn prelude_line(text: &str, n: u32) -> (usize, usize) {
+    let bom = if text.starts_with('\u{feff}') { 3 } else { 0 };
+    let mut lines = text[bom..].split_inclusive('\n');
+    let from = bom + lines.by_ref().take(n as usize).map(str::len).sum::<usize>();
+    (from, from + lines.next().map_or(0, str::len))
+}
+
+/// A column's name as its declaration writes it: quoted, `""` a quote inside, when it
+/// holds a `:`, a `,` or a `"`, or starts or ends with a space or a tab.
+pub(crate) fn declared_name(name: &str) -> Cow<'_, str> {
+    let edges = name.starts_with([' ', '\t']) || name.ends_with([' ', '\t']);
+    if edges || name.contains([':', ',', '"']) { Cow::Owned(format!("\"{}\"", name.replace('"', "\"\""))) } else { Cow::Borrowed(name) }
+}
+
 fn ending(s: &str) -> &str {
     if s.ends_with("\r\n") {
         "\r\n"
@@ -1063,6 +1124,42 @@ impl Doc {
         field_span(self.body, line, &self.raw_fields(line), column)
     }
 
+    /// Where column `column`'s declaration is in the text `write` gives now (SPEC.md,
+    /// Columns), when the prelude declares it: its name as written (quotes included),
+    /// and what follows its `:` (its type, then `=` and its formula), a comment cut.
+    pub fn declaration_span(&self, column: usize) -> Option<(Span, Span)> {
+        assert!(column < self.columns.len(), "column {column} is not stored");
+        let header = self.raw_fields(self.header_line());
+        let line = self.declaration(&self.columns[column].name, &scan::unquoted(header.get(column)?))?;
+        let text = self.write();
+        let (from, to) = prelude_line(&text, line);
+        let raw = &text[from..to];
+        let said = prelude::uncomment(raw.trim_end_matches(['\n', '\r']));
+        let lead = said.len() - said.trim_start_matches([' ', '\t']).len();
+        let name_end = if said[lead..].starts_with('"') {
+            let b = said.as_bytes();
+            let mut j = lead + 1;
+            while j < b.len() {
+                if b[j] == b'"' {
+                    if b.get(j + 1) == Some(&b'"') {
+                        j += 2;
+                        continue;
+                    }
+                    break;
+                }
+                j += 1;
+            }
+            j + 1
+        } else {
+            said.find(':')?.min(said.len())
+        };
+        let name = said[lead..name_end].trim_end_matches([' ', '\t']);
+        let colon = name_end + said[name_end..].find(':')?;
+        let spelled = said[colon + 1..].trim_matches([' ', '\t']);
+        let at = |part: &str| (from + (part.as_ptr() as usize - raw.as_ptr() as usize)) as u32;
+        Some((Span { start: at(name), len: name.len() as u32 }, Span { start: at(spelled), len: spelled.len() as u32 }))
+    }
+
     /// Where a cell is in the text `write` gives now: its text, inside its quotes; an
     /// empty span at its record's end for a field a short row leaves out.
     pub fn cell_span(&self, row: usize, column: usize) -> Span {
@@ -1078,15 +1175,17 @@ impl Doc {
         if at < self.body {
             return Place::Prelude;
         }
+        // A field runs to the separator after it, its padding included: a place in the
+        // spaces before a value is that value's field.
+        let sep = self.sep();
         let field = |start: u32, line: &str| {
             let fields = self.raw_fields(line);
-            let mut from = start;
             for (k, f) in fields.iter().enumerate() {
-                let end = from + f.len() as u32;
-                if at <= end {
+                let end = f.as_ptr() as usize - line.as_ptr() as usize + f.len();
+                let to = line[end..].find(sep).map_or(line.len(), |i| end + i);
+                if at <= start + to as u32 {
                     return Some(k as u32);
                 }
-                from = end + 1;
             }
             None
         };
@@ -1643,8 +1742,38 @@ impl Doc {
         let rows = self.rows();
         let blank = self.quote("");
         let heads = self.raw_fields(self.header_line());
+        // Each declared column's prelude line (SPEC.md, Columns): renamed with its column,
+        // gone with it, and as written otherwise.
+        let declared: Vec<Option<u32>> =
+            self.columns.iter().zip(&heads).map(|(c, h)| self.declaration(&c.name, &scan::unquoted(h))).collect();
+        let mut prelude = String::from(&self.source[..self.body as usize]);
+        let mut lines: Vec<(u32, Option<String>)> = Vec::new();
+        for (j, line) in declared.iter().enumerate() {
+            let Some(line) = *line else { continue };
+            let renamed = columns.iter().find_map(|c| match *c {
+                ColumnAt::Renamed(k, name) if k == j => Some(name),
+                _ => None,
+            });
+            let kept = columns.iter().any(|c| matches!(*c, ColumnAt::Kept(k) if k == j));
+            match (renamed, kept) {
+                (Some(name), _) => {
+                    let spelled = self.columns[j].spelled.as_deref().expect("a declared column has a type");
+                    let (ty, formula) = types::split_formula(spelled);
+                    let named = declared_name(name);
+                    lines.push((line, Some(formula.map_or_else(|| format!("{named}: {ty}"), |f| format!("{named}: {ty} = {f}")))));
+                }
+                (None, true) => {}
+                (None, false) => lines.push((line, None)),
+            }
+        }
+        lines.sort_by_key(|l| core::cmp::Reverse(l.0));
+        for (n, written) in lines {
+            let (from, to) = prelude_line(&prelude, n);
+            let end = ending(&prelude[from..to]).to_owned();
+            prelude.replace_range(from..to, &written.map_or(String::new(), |w| w + &end));
+        }
         let mut out = String::with_capacity(self.source.len() + 64);
-        out.push_str(&self.source[..self.body as usize]);
+        out.push_str(&prelude);
         for (k, c) in columns.iter().enumerate() {
             if k > 0 {
                 out.push_str(self.sep());
@@ -1657,6 +1786,8 @@ impl Doc {
                 ColumnAt::Renamed(j, name) => {
                     assert!(j < self.columns.len(), "column {j} is not stored");
                     let cell = match (&self.dialect, &self.columns[j].spelled) {
+                        // A declared column's header cell is its name alone.
+                        (Dialect::Cells, _) if declared[j].is_some() => name.to_owned(),
                         (Dialect::Cells, spelled) => {
                             assert!(!name.contains(':'), "a column's name holds no \":\" ({name})");
                             match spelled {
@@ -2069,7 +2200,7 @@ impl Doc {
         }
         let name = self.columns[column].name.clone();
         let cell = match spelled {
-            "" => name,
+            "" => name.clone(),
             s => {
                 let h = head(&format!("{name}:{s}"), column as u32 + 1, &self.named, &self.tables).map_err(|(why, within)| Error {
                     at,
@@ -2084,12 +2215,37 @@ impl Doc {
             }
         };
         let line = self.header_line().to_owned();
-        let header = self.with_field(&line, column, &scan::quote(&cell));
-        let mut text = String::with_capacity(self.source.len() + 32);
-        text.push_str(self.prelude_text());
-        text.push_str(&header);
-        let rest = self.write();
-        text.push_str(&rest[self.body as usize + self.header_line().len()..]);
+        let header_cell = scan::unquoted(self.raw_fields(&line)[column]).into_owned();
+        let text = match self.declaration(&name, &header_cell) {
+            // A declared column's type is its declaration's: that line written again (the
+            // form the file uses kept), or gone for a plain column.
+            Some(n) => {
+                let written = self.write();
+                let (from, to) = prelude_line(&written, n);
+                let declared = match cell.split_once(':') {
+                    None => String::new(),
+                    Some((_, spelled)) => {
+                        let (ty, formula) = types::split_formula(spelled);
+                        let named = declared_name(&name);
+                        let end = ending(&written[from..to]);
+                        match formula {
+                            Some(f) => format!("{named}: {ty} = {f}{end}"),
+                            None => format!("{named}: {ty}{end}"),
+                        }
+                    }
+                };
+                format!("{}{declared}{}", &written[..from], &written[to..])
+            }
+            None => {
+                let header = self.with_field(&line, column, &scan::quote(&cell));
+                let mut text = String::with_capacity(self.source.len() + 32);
+                text.push_str(self.prelude_text());
+                text.push_str(&header);
+                let rest = self.write();
+                text.push_str(&rest[self.body as usize + self.header_line().len()..]);
+                text
+            }
+        };
         let before = core::mem::take(&mut self.rendered);
         *self = self.unbroken(self.reread(text, 1)?, Some(at))?;
         // The computed cells the new type reaches stored again (SPEC.md, Writing).
@@ -2110,9 +2266,22 @@ impl Doc {
         })
     }
 
+    /// The prelude line declaring column `name` (SPEC.md, Columns), when its header cell
+    /// (`cell`, as written, unquoted) is its name alone and a declaration names it.
+    fn declaration(&self, name: &str, cell: &str) -> Option<u32> {
+        if cell != name {
+            return None;
+        }
+        self.statements.iter().find_map(|s| match s {
+            Statement::Column { line, name: n, .. } if n == name => Some(*line),
+            _ => None,
+        })
+    }
+
     /// The column formulas resolved against the columns and the tables. One that does not
     /// read, names what is not there, gives what its column cannot hold, or reads itself
-    /// through others is broken at its column, in `broken`, and leaves its cells blank.
+    /// through others is broken at its column (a declared one's at its prelude line), in
+    /// `broken`, and leaves its cells blank.
     fn resolve_formulas(&mut self, broken: &mut Vec<Error>) {
         let scope = DocScope { columns: &self.columns, tables: &self.tables };
         let mut formulas = Vec::with_capacity(self.columns.len());
@@ -2123,12 +2292,18 @@ impl Doc {
                 formulas.push(None);
                 continue;
             };
-            // Where the formula is in its header cell's text: after the type's `=`, its
-            // spaces cut.
+            // Where the formula is: a declared column's on its prelude line, any other's in
+            // its header cell's text, after the type's `=`, its spaces cut.
             let cell = scan::unquoted(header[k]);
-            let (_, written) = types::split_formula(&cell[c.name.len() + 1..]);
-            let written = written.expect("a column with a formula has one in its header cell");
-            let from = written.as_ptr() as usize - cell.as_ptr() as usize + (written.len() - written.trim_start_matches([' ', '\t']).len());
+            let declared = self.declaration(&c.name, &cell);
+            let from = match declared {
+                Some(_) => 0,
+                None => {
+                    let (_, written) = types::split_formula(&cell[c.name.len() + 1..]);
+                    let written = written.expect("a column with a formula has one in its header cell");
+                    written.as_ptr() as usize - cell.as_ptr() as usize + (written.len() - written.trim_start_matches([' ', '\t']).len())
+                }
+            };
             let resolved = expr::parse(f).and_then(|e| expr::resolve_column(&e, &scope, &mut aggregates)).and_then(|(ir, kind)| {
                 holds(&c.ty.base, kind).map_err(expr::Fault::whole)?;
                 Ok(ir)
@@ -2138,7 +2313,10 @@ impl Doc {
                 Err(fault) => {
                     let (s, l) = fault.at.unwrap_or((0, f.len() as u32));
                     let why = format!("{}: {}", c.name, fault.why);
-                    broken.push(Error { at: At::Column(k as u32 + 1), why, within: Some((from as u32 + s, l)) });
+                    broken.push(match declared {
+                        Some(line) => Error { at: At::PreludeLine(line), why, within: None },
+                        None => Error { at: At::Column(k as u32 + 1), why, within: Some((from as u32 + s, l)) },
+                    });
                     formulas.push(None);
                 }
             }

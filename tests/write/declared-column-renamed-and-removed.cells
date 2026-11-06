@@ -1,0 +1,6 @@
+---
+qty: int>=1
+note: text?
+---
+item:text!,qty,note
+fuel,2,by the door

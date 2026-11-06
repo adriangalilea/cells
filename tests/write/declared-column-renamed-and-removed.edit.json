@@ -1,0 +1,4 @@
+[
+  { "rename": "qty", "to": "count" },
+  { "remove": "note" }
+]

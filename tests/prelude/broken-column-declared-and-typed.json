@@ -1,0 +1,13 @@
+{
+  "columns": [
+    { "name": "item", "type": "text" },
+    { "name": "cost", "type": "num" }
+  ],
+  "rows": [
+    { "item": { "text": "fuel" }, "cost": { "num": "84.20" } }
+  ],
+  "problems": [],
+  "broken": [
+    { "at": "prelude line 1", "span": [4, 9] }
+  ]
+}

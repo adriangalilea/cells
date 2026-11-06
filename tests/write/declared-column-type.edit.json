@@ -1,0 +1,4 @@
+[
+  { "column": "total", "type": "EUR = cost * 3" },
+  { "column": "cost", "type": "" }
+]

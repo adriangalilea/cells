@@ -1,0 +1,11 @@
+---
+type Money = EUR>=0
+item: text!
+cost: Money
+qty:  int>=1
+total: Money = cost * qty
+"price, net": EUR?
+---
+item,cost,qty,total,"price, net"
+fuel,84.20,1,84.20=,
+split dinner,32.25,2,64.50=,70.00

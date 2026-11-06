@@ -147,6 +147,9 @@ const NONE: u32 = u32::MAX;
 
 struct Out {
     tokens: Vec<Token>,
+    /// Each column the prelude declares: its name, and its tokens' range, given their
+    /// column once the header says it.
+    declared: Vec<(String, core::ops::Range<usize>)>,
 }
 
 impl Out {
@@ -166,13 +169,13 @@ fn unquoted(spelled: &str) -> String {
     }
 }
 
-/// Each name of a formula among `tokens` (one table's, its header's names among them)
-/// given what it names: standing alone, a column of this table (`reads`) or else one of
+/// Each name of a formula among `tokens` (a table's, or a column's declaration) given
+/// what it names, its table's columns being `names`: standing alone, a column of this
+/// table (`reads`) or else one of
 /// the prelude's `tables` (`Table`); after `TABLE`'s `.` (its row between brackets or
 /// none), a column of this table; after any other `.`, another table's column.
-fn resolve(source: &str, tokens: &mut [Token], tables: &[String]) {
+fn resolve(source: &str, tokens: &mut [Token], tables: &[String], names: &[(String, u32)]) {
     let text = |t: &Token| &source[t.start as usize..t.end as usize];
-    let names: Vec<(String, u32)> = tokens.iter().filter(|t| t.kind == Kind::Name).map(|t| (unquoted(text(t)), t.column)).collect();
     for i in 0..tokens.len() {
         if tokens[i].kind != Kind::Reference {
             continue;
@@ -214,7 +217,7 @@ fn resolve(source: &str, tokens: &mut [Token], tables: &[String]) {
 /// breaks) is nothing.
 pub fn tokens(source: &str) -> Vec<Token> {
     let src = source.as_bytes();
-    let mut out = Out { tokens: Vec::new() };
+    let mut out = Out { tokens: Vec::new(), declared: Vec::new() };
     let mut at = if source.starts_with('\u{feff}') { 3 } else { 0 };
     let mut named: Vec<NamedType> = Vec::new();
     let mut tables: Vec<String> = Vec::new();
@@ -307,7 +310,20 @@ pub fn tokens(source: &str) -> Vec<Token> {
     }
     // A formula may name a column the header has not reached yet: names resolve once
     // the table is read whole.
-    resolve(source, &mut out.tokens[table..], &tables);
+    // The header's names, each with its column: a declared column's parts in the prelude
+    // take its column, and every formula's names resolve against them.
+    let text = |t: &Token| &source[t.start as usize..t.end as usize];
+    let names: Vec<(String, u32)> =
+        out.tokens[table..].iter().filter(|t| t.kind == Kind::Name).map(|t| (unquoted(text(t)), t.column)).collect();
+    for (name, range) in core::mem::take(&mut out.declared) {
+        if let Some(&(_, column)) = names.iter().find(|(n, _)| *n == name) {
+            for t in &mut out.tokens[range.clone()] {
+                t.column = column;
+            }
+        }
+        resolve(source, &mut out.tokens[range], &tables, &names);
+    }
+    resolve(source, &mut out.tokens[table..], &tables, &names);
     out.tokens
 }
 
@@ -496,12 +512,59 @@ fn statement(
             } else {
                 out.push(v, end, Kind::Error, NONE);
             }
+        } else if let Some((name_end, colon)) = declaration(source, i, end) {
+            // `name: type`, `name: type = formula`: a column, whose number the header says.
+            let first = out.tokens.len();
+            out.push(i, name_end, Kind::Name, NONE);
+            out.push(colon, colon + 1, Kind::Punct, NONE);
+            let rest = &source[colon + 1..end];
+            let (ty, formula) = types::split_formula(rest);
+            let ty_end = colon + 1 + ty.len();
+            type_parts(source, colon + 1, ty_end, NONE, named, tables, out);
+            if formula.is_some() {
+                out.push(ty_end, ty_end + 1, Kind::Punct, NONE);
+                expression(source, ty_end + 1, end, NONE, out);
+            }
+            out.declared.push((unquoted(source[i..name_end].trim_matches([' ', '\t'])), first..out.tokens.len()));
         } else {
             out.push(i, end, Kind::Error, NONE);
         }
     }
     out.push(said_end, e, Kind::Comment, NONE);
     opened
+}
+
+/// A column's declaration in `s..e` (SPEC.md, Columns): where its name ends and its `:`
+/// is; none for a statement whose first `:` is not before its first `=` (a table, a
+/// script). A quoted name holds anything, `""` a quote inside.
+fn declaration(source: &str, s: usize, e: usize) -> Option<(usize, usize)> {
+    let b = source.as_bytes();
+    let name_end = if b[s] == b'"' {
+        let mut j = s + 1;
+        loop {
+            match b.get(j) {
+                Some(b'"') if b.get(j + 1) == Some(&b'"') => j += 2,
+                Some(b'"') => break j + 1,
+                Some(_) if j < e => j += 1,
+                _ => return None,
+            }
+        }
+    } else {
+        let colon = source[s..e].find(':')? + s;
+        if source[s..e].find('=').is_some_and(|eq| s + eq < colon) {
+            return None;
+        }
+        let mut end = colon;
+        while end > s && matches!(b[end - 1], b' ' | b'\t') {
+            end -= 1;
+        }
+        end
+    };
+    let mut colon = name_end;
+    while colon < e && matches!(b[colon], b' ' | b'\t') {
+        colon += 1;
+    }
+    (colon < e && b[colon] == b':' && name_end > s).then_some((name_end, colon))
 }
 
 /// What follows `import` on its line: the names it takes, where from, its attributes.
@@ -852,6 +915,26 @@ mod tests {
         assert_eq!(kind_of("accounts"), [Kind::Name, Kind::Table], "the import's name, then the formula's");
         assert!(kind_of(":").contains(&Kind::Operator), "{:?}", kind_of(":"));
         assert!(tokens(src).iter().all(|t| t.kind != Kind::Error), "nothing in it is an error");
+    }
+
+    #[test]
+    fn a_declared_column_is_its_header_cells_column() {
+        let src = "---\ntype Money = EUR>=0\ncost: Money\ntotal: Money = cost * qty // why\n\"price, net\": EUR?\n---\nitem:text!,cost,qty:int,total,\"price, net\"\nfuel,1,2,2=,\n";
+        let t = tokens(src);
+        let at = |spelled: &str, from: usize| {
+            let start = src[from..].find(spelled).unwrap() + from;
+            *t.iter().find(|x| x.start as usize == start).unwrap_or_else(|| panic!("no token at {spelled}"))
+        };
+        // The declaration's name, and its type, take the column the header names it at.
+        assert_eq!((at("cost", 0).kind, at("cost", 0).column), (Kind::Name, 1));
+        assert_eq!((at("Money", src.find("cost:").unwrap()).kind, at("Money", src.find("cost:").unwrap()).column), (Kind::Type, 1));
+        assert_eq!(at("\"price, net\"", 0).column, 4);
+        // Its formula's names read the header's columns, a declared one and a typed one.
+        let formula = src.find("= cost").unwrap();
+        assert_eq!(at("cost", formula).reads, 1);
+        assert_eq!(at("qty", formula).reads, 2);
+        assert_eq!(at("total", src.find("---\nitem").unwrap()).column, 3, "the header's bare name");
+        assert!(t.iter().all(|x| x.kind != Kind::Error), "{t:?}");
     }
 
     #[test]

@@ -186,21 +186,21 @@ The prelude is the work; the header and rows after it are what the file shows, a
 
 ### Columns
 
-````cells draft
+````cells
 ---
 type Money = EUR>=0
-item: text!
-cost: Money
-qty: int>=1
-total: Money = cost * qty
+item:    text!
+cost:    Money
+qty:     int>=1
+total:   Money = cost * qty
 running: Money = running[-1] + total
 ---
-item,         cost,  qty, total,   running
-fuel,         84.20, 1,   84.20=,  84.20=
-split dinner, 32.25, 1,   32.25=,  116.45=
+item,           cost,   qty,    total,  running
+fuel,           84.20,  1,      84.20=, 84.20=
+split dinner,   32.25,  1,      32.25=, 116.45=
 ````
 
-**`name: type`**, or **`name: type = formula`**, declares a column of the file's table in the prelude, in a header cell's own grammar, spaces around its `:` and `=` being nothing as anywhere in the prelude. The header then names it alone (`total`), and the column is the declaration's: its type and its formula. A declaration names a column the header has, and a column is declared once: a header cell with a `:` whose column is declared too, a column declared twice, and a declaration whose name no header cell has, are each an error naming the line. A header name with no `:` and no declaration is a plain column, as ever. Declarations are statements, read in order, so a named type is above the columns that use it; a name that holds a `:`, a `,` or a `"` is quoted, `"price, net": EUR`. A table written inline declares its columns in its own header. Considered: the type and formula only in the header cell, so a column says where it is read how it is computed. The rows still say which cells are computed (`84.20=`), and a header of names lines up with its rows, which one of `cost:EUR>=0` and formulas never does; both forms read, and a writer keeps the one a file uses.
+**`name: type`**, or **`name: type = formula`**, declares a column of the file's table in the prelude, in a header cell's own grammar, spaces around its `:` and `=` being nothing as anywhere in the prelude. The header then names it alone (`total`), and the column is the declaration's: its type and its formula. A declaration names a column the header has, and a column is declared once: a header cell with a `:` whose column is declared too, a column declared twice, and a declaration whose name no header cell has, are each an error naming the line. A header name with no `:` and no declaration is a plain column, as ever. Declarations are statements, read in order, so a named type is above the columns that use it; a name that holds a `:`, a `,` or a `"` is quoted, `"price, net": EUR`. A table written inline declares its columns in its own header. Considered: the type and formula only in the header cell, so a column says where it is read how it is computed. The rows still say which cells are computed (`84.20=`), and a header of names lines up with its rows, which one of `cost:EUR>=0` and formulas never does; both forms read, and a writer keeps the one a file uses. A declared column's type changed is its declaration written again, its type made plain its declaration gone; renamed or removed, its declaration goes with it; what does not read in its type or its formula is an error naming its line. A new column is a header cell.
 
 ### Imports
 
@@ -392,7 +392,7 @@ A writer changing a type writes the shorthand, then its formula when it has one 
 
 - **A column starts where it starts on every line.** Each field but a line's last is its value, its comma, and spaces up to the next column's start. A column is as wide as its widest value plus its comma and one space, rounded up to a stop of four characters, so a value that grows within its stop moves nothing.
 - **A value wider than the cap, 32 characters, widens no column.** The value after it on its line starts one space after its comma, each later one at its own column's start as soon as the line has room, and the rest of the table is laid out as if it were not there, so one long note never moves the table.
-- **The prelude** is written as read, but a column's declarations ([Columns](#columns)) line up their `:` and their `=`.
+- **The prelude** is written as read, but its column declarations ([Columns](#columns)): `name: type = formula`, every type starting at one column and every formula's `=` at one, a comment after one kept a space after it.
 - **A file formatted is a function of its content**: formatting twice is formatting once, and `cells fmt --check` holds in CI.
 - **Alignment is a writer's setting, on by default.** `cells fmt --align off`, and the language server's `align` setting, write each field with no padding; reading never depends on which.
 

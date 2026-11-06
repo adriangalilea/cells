@@ -66,16 +66,73 @@ pub enum Statement {
     /// `name = run <schedule>`, its script's fence, and what the engine stored under it:
     /// the rows of its last run and the runs they came from.
     Run { line: u32, name: String, exported: bool, schedule: Schedule, code: Fenced, stored: Option<Fenced>, runs: Option<Fenced> },
+    /// `name: type`, `name: type = formula`: a column of the file's table, declared, its
+    /// header cell then its name alone. `spelled` is what follows its `:`, as a header
+    /// cell spells it after its own (its type, then `=` and its formula), spaces around
+    /// the `=` cut.
+    Column { line: u32, name: String, spelled: String },
 }
 
 impl Statement {
     pub fn line(&self) -> u32 {
         match self {
-            Statement::Type { line, .. } | Statement::Import { line, .. } | Statement::Table { line, .. } | Statement::Run { line, .. } => {
-                *line
-            }
+            Statement::Type { line, .. }
+            | Statement::Import { line, .. }
+            | Statement::Table { line, .. }
+            | Statement::Run { line, .. }
+            | Statement::Column { line, .. } => *line,
         }
     }
+}
+
+/// A column's declaration, `name: type` or `name: type = formula`: its name and what
+/// follows its `:`; none for a statement whose first `:` is not before its first `=` (a
+/// table, a script). A name holding a `:`, a `,` or a `"` is quoted, `""` a quote inside.
+fn column(said: &str) -> Result<Option<(String, String)>, String> {
+    let (name, rest) = if let Some(quoted) = said.strip_prefix('"') {
+        let mut name = String::new();
+        let mut chars = quoted.char_indices().peekable();
+        let rest = loop {
+            match chars.next() {
+                None => return Err("a column's quoted name is never closed".to_owned()),
+                Some((i, '"')) => {
+                    if chars.peek().is_some_and(|&(_, c)| c == '"') {
+                        chars.next();
+                        name.push('"');
+                        continue;
+                    }
+                    break &quoted[i + 1..];
+                }
+                Some((_, c)) => name.push(c),
+            }
+        };
+        match rest.trim_start_matches(BLANK).strip_prefix(':') {
+            Some(after) => (name, after),
+            None => return Err(format!("a column's quoted name is followed by its type: \"{name}\": type")),
+        }
+    } else {
+        let Some(colon) = said.find(':') else { return Ok(None) };
+        if said.find('=').is_some_and(|eq| eq < colon) {
+            return Ok(None);
+        }
+        let name = said[..colon].trim_matches(BLANK);
+        if name.contains([',', '"']) {
+            return Err(format!("a column whose name holds a `,` or a `\"` is quoted: \"{}\": …", name.replace('"', "\"\"")));
+        }
+        (name.to_owned(), &said[colon + 1..])
+    };
+    if name.is_empty() {
+        return Err("a column's declaration names it: name: type".to_owned());
+    }
+    let (ty, formula) = crate::types::split_formula(rest.trim_matches(BLANK));
+    let ty = ty.trim_matches(BLANK);
+    if ty.is_empty() {
+        return Err(format!("{name}: no type"));
+    }
+    Ok(Some(match formula {
+        Some(f) => (name, format!("{ty}={}", f.trim_matches(BLANK))),
+        None => (name, ty.to_owned()),
+    }))
 }
 
 /// The line with its `//` comment cut, outside single and double quotes.
@@ -268,11 +325,17 @@ fn statement(source: &str, lines: &[(usize, &str)], k: &mut usize) -> Result<Opt
         }
         return import(n, rest.trim_start_matches(BLANK)).map(Some);
     }
+    match column(said) {
+        Ok(Some(_)) if exported => return fail("export names a type or a table".to_owned()),
+        Ok(Some((name, spelled))) => return Ok(Some(Statement::Column { line: n, name, spelled })),
+        Ok(None) => {}
+        Err(why) => return fail(why),
+    }
     let Some((name, after)) = ident(said) else {
-        return fail("is no statement: a type, an import, or name = a table".to_owned());
+        return fail("is no statement: a type, an import, a column (name: type), or name = a table".to_owned());
     };
     let Some(value) = after.trim_start_matches(BLANK).strip_prefix('=') else {
-        return fail("is no statement: a type, an import, or name = a table".to_owned());
+        return fail("is no statement: a type, an import, a column (name: type), or name = a table".to_owned());
     };
     let value = value.trim_matches(BLANK);
     if let Some((ticks, lang, label)) = opening(value) {
@@ -321,7 +384,7 @@ fn statement(source: &str, lines: &[(usize, &str)], k: &mut usize) -> Result<Opt
     if exported {
         return fail("export names a type or a table".to_owned());
     }
-    fail(format!("{name} = … names a table (```cells) or a script (run): a computed column is a header cell, {name}:type=formula"))
+    fail(format!("{name} = … names a table (```cells) or a script (run): a column is declared with its type, {name}: type = formula"))
 }
 
 /// What follows `import`.
