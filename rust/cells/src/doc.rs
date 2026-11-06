@@ -1354,29 +1354,32 @@ impl Doc {
         &text[..text.len() - ending(text).len()]
     }
 
-    /// The file's text with its prelude edited: statement `at`'s lines replaced by `text`
-    /// (empty: taken out), or `text` written last when `at` is none, the prelude opened for
-    /// it in a file without one. `text` is lines joined by `\n`, written with the file's
-    /// line break. The host reads it again, following the imports a new line may name.
-    pub fn prelude_edited(&self, at: Option<usize>, text: &str) -> String {
+    /// The file's text with its prelude edited: prelude `lines` (1-based inside the
+    /// fences, a statement's from `statement_lines`, a script's code alone) replaced by
+    /// `text` (empty: taken out; an empty range: written before its line), or `text`
+    /// written last when `lines` is none, the prelude opened for it in a file without one.
+    /// `text` is lines joined by `\n`, written with the file's line break. The host reads
+    /// it again, following the imports a new line may name.
+    pub fn prelude_edited(&self, lines: Option<core::ops::Range<u32>>, text: &str) -> String {
         assert!(matches!(self.dialect, Dialect::Cells), "a plain file has no prelude");
         assert!(!text.contains('\r'), "a prelude edit's lines are joined by \\n");
         let nl = self.newline();
-        let lines: String = if text.is_empty() { String::new() } else { text.split('\n').map(|l| format!("{l}{nl}")).collect() };
+        let new: String = if text.is_empty() { String::new() } else { text.split('\n').map(|l| format!("{l}{nl}")).collect() };
         let written = self.write();
         let bom = if written.starts_with('\u{feff}') { 3 } else { 0 };
         let (prelude, rest) = written.split_at(self.body as usize);
         if prelude.len() == bom {
-            assert!(at.is_none(), "a file without a prelude has no statement {at:?}");
-            if lines.is_empty() {
+            assert!(lines.is_none(), "a file without a prelude has no lines {lines:?}");
+            if new.is_empty() {
                 return written;
             }
-            return format!("{}---{nl}{lines}---{nl}{rest}", &prelude[..bom]);
+            return format!("{}---{nl}{new}---{nl}{rest}", &prelude[..bom]);
         }
-        let (from, to) = match at {
-            Some(i) => {
-                let s = &self.spans[i];
-                (prelude_line(prelude, s.start).0, prelude_line(prelude, s.end - 1).1)
+        let (from, to) = match lines {
+            Some(r) => {
+                assert!(r.start >= 1 && r.start <= r.end, "prelude lines {r:?}");
+                let from = prelude_line(prelude, r.start).0;
+                (from, if r.is_empty() { from } else { prelude_line(prelude, r.end - 1).1 })
             }
             // before the closing `---`
             None => {
@@ -1384,7 +1387,7 @@ impl Doc {
                 (closing, closing)
             }
         };
-        format!("{}{lines}{}{rest}", &prelude[..from], &prelude[to..])
+        format!("{}{new}{}{rest}", &prelude[..from], &prelude[to..])
     }
 
     /// The tables the prelude names: written inline, filled by scripts, imported.
@@ -3250,10 +3253,19 @@ mod tests {
         assert_eq!(doc.statement_text(1), "fx = run every hour\r\n```ts\r\nx\r\n```");
         // replaced, taken out, written last, a file's text kept as it was around them
         assert_eq!(
-            doc.prelude_edited(Some(0), "type Kind = a|b|c"),
+            doc.prelude_edited(Some(doc.statement_lines(0)), "type Kind = a|b|c"),
             "---\r\ntype Kind = a|b|c\r\nfx = run every hour\r\n```ts\r\nx\r\n```\r\n\r\n---\r\nk:Kind\r\na\r\n"
         );
-        assert_eq!(doc.prelude_edited(Some(1), ""), "---\r\ntype Kind = a|b\r\n\r\n---\r\nk:Kind\r\na\r\n");
+        assert_eq!(doc.prelude_edited(Some(doc.statement_lines(1)), ""), "---\r\ntype Kind = a|b\r\n\r\n---\r\nk:Kind\r\na\r\n");
+        // a script's code alone, its fences kept; a line written before another
+        assert_eq!(
+            doc.prelude_edited(Some(4..5), "y\nz"),
+            "---\r\ntype Kind = a|b\r\nfx = run every hour\r\n```ts\r\ny\r\nz\r\n```\r\n\r\n---\r\nk:Kind\r\na\r\n"
+        );
+        assert_eq!(
+            doc.prelude_edited(Some(1..1), "// kinds"),
+            "---\r\n// kinds\r\ntype Kind = a|b\r\nfx = run every hour\r\n```ts\r\nx\r\n```\r\n\r\n---\r\nk:Kind\r\na\r\n"
+        );
         assert_eq!(
             doc.prelude_edited(None, "import accounts from \"accounts.cells\""),
             "---\r\ntype Kind = a|b\r\nfx = run every hour\r\n```ts\r\nx\r\n```\r\n\r\nimport accounts from \"accounts.cells\"\r\n---\r\nk:Kind\r\na\r\n"

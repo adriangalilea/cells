@@ -284,6 +284,12 @@ pub fn type_line(name: &str, spelled: &str, exported: bool) -> String {
     format!("{}type {name} = {spelled}", if exported { "export " } else { "" })
 }
 
+/// A script's first line, `rates = run every day at 18:00 in Europe/Madrid`, as a writer
+/// writes it: its fences follow it.
+pub fn run_line(name: &str, schedule: &str, exported: bool) -> String {
+    format!("{}{name} = run {schedule}", if exported { "export " } else { "" })
+}
+
 /// An import as a writer writes it: `import accounts from "accounts.cells"`, `import { A, b }
 /// from "…" with { sha256: "…" }`.
 pub fn import_line(default: Option<&str>, names: &[String], from: &str, with: &[(String, String)]) -> String {
@@ -633,6 +639,7 @@ mod tests {
             column_line("total", "EUR=cost * qty"),
             column_line("a:b", "int"),
         ];
+        assert_eq!(run_line("fx", "every hour", true), "export fx = run every hour");
         assert_eq!(lines[0], "export type Money = EUR>=0");
         assert_eq!(lines[3], "total: EUR = cost * qty");
         assert_eq!(lines[4], "\"a:b\": int");
