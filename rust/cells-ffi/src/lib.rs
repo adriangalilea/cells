@@ -448,9 +448,9 @@ pub unsafe extern "C" fn cells_columns(d: *mut CellsDoc) -> usize {
 pub enum CellsOrigin {
     /// Its text: written, or in a column with a formula, the row's override.
     CellsOriginWritten = 0,
-    /// Its column's formula.
+    /// Its column's formula: `84.20=`, or a field not stored yet.
     CellsOriginFormula = 1,
-    /// Its own formula, `` `=…` ``.
+    /// Its own formula, right of its `=`: `32.25=96.75 / 3`.
     CellsOriginCell = 2,
 }
 
@@ -684,6 +684,50 @@ pub unsafe extern "C" fn cells_set_cell(
             false
         }
     }
+}
+
+/// Every stale cell given its formula's value (`cells fix`); an override is never touched.
+///
+/// # Safety
+/// `d` is a live doc.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn cells_fix_stale(d: *mut CellsDoc) {
+    // SAFETY: the caller's promise.
+    unsafe { doc(d) }.doc.fix_stale();
+}
+
+/// One stale cell's stored value kept as its row's override: its `=` and formula dropped.
+/// False when the text it leaves cannot be written, `failure` then set.
+///
+/// # Safety
+/// `d` is a live doc; `row < cells_rows(d)`, `column < cells_stored(d)`; `failure` is null
+/// or writable.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn cells_keep_stale(d: *mut CellsDoc, row: usize, column: usize, failure: *mut CellsFailure) -> bool {
+    // SAFETY: the caller's promise.
+    let d = unsafe { doc(d) };
+    match d.doc.keep_stale(row, column) {
+        Ok(()) => true,
+        Err(e) => {
+            fail(failure, e);
+            false
+        }
+    }
+}
+
+/// `d` (the text a client holds now) as a write after `before` (the text as last written)
+/// leaves it: every computed cell the edits since reached stored, each row found in
+/// `before` by its written cells; a stale cell they did not reach left as read. What a
+/// client storing on save writes.
+///
+/// # Safety
+/// `d` and `before` are live docs, never the same one.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn cells_stored_since(d: *mut CellsDoc, before: *mut CellsDoc) {
+    assert!(d != before, "a file stored since itself changes nothing");
+    // SAFETY: the caller's promise: two live docs, distinct.
+    let (d, before) = unsafe { (doc(d), doc(before)) };
+    d.doc.stored_since(&before.doc);
 }
 
 /// One column's type rewritten in shorthand (`""` makes it plain). False when the type
@@ -1335,6 +1379,38 @@ mod tests {
     }
 
     #[test]
+    fn a_stale_cell_fixed_kept_and_stored_on_save() {
+        let head = "item:text,cost:EUR,qty:int,total:EUR=cost * qty\n";
+        let mut f = CellsFailure { at: CellsAt::CellsAtNone, number: 0, why: ptr::null_mut(), why_len: 0 };
+        // SAFETY: valid pointers throughout.
+        unsafe {
+            let src = format!("{head}fuel,90.00,1,84.20=\nmaps,4.00,2,8.00=\n");
+            let d = cells_read(src.as_ptr(), src.len(), 1, &mut f);
+            assert_eq!(cells_problem_count(d), 1);
+            assert_eq!(cells_problem(d, 0).kind, CellsKind::CellsKindStale);
+            assert_eq!(text(cells_describe(d, 0)), "row 1, total: the formula gives 90.00, the file stores 84.20");
+            let kept = cells_clone(d);
+            cells_fix_stale(d);
+            assert_eq!(text(cells_write(d)), format!("{head}fuel,90.00,1,90.00=\nmaps,4.00,2,8.00=\n"));
+            assert_eq!(cells_problem_count(d), 0);
+            assert!(cells_keep_stale(kept, 0, 3, &mut f));
+            assert_eq!(text(cells_write(kept)), format!("{head}fuel,90.00,1,84.20\nmaps,4.00,2,8.00=\n"));
+            cells_free(d);
+            cells_free(kept);
+
+            // Saved after a cost was edited in the buffer: its total stored, nothing else.
+            let was = format!("{head}fuel,84.20,1,84.20=\nmaps,4.00,2,8.00=\n");
+            let now = format!("{head}fuel,84.20,1,84.20=\nmaps,5.00,2,8.00=\n");
+            let before = cells_read(was.as_ptr(), was.len(), 1, &mut f);
+            let d = cells_read(now.as_ptr(), now.len(), 1, &mut f);
+            cells_stored_since(d, before);
+            assert_eq!(text(cells_write(d)), format!("{head}fuel,84.20,1,84.20=\nmaps,5.00,2,10.00=\n"));
+            cells_free(d);
+            cells_free(before);
+        }
+    }
+
+    #[test]
     fn a_plain_file_through_the_abi() {
         let src = b"a;a;c\n1;2\n3;4;5;6\n";
         let mut f = CellsFailure { at: CellsAt::CellsAtNone, number: 0, why: ptr::null_mut(), why_len: 0 };
@@ -1373,7 +1449,8 @@ mod tests {
             assert_eq!(text(cells_type_part(d, CellsOf::CellsOfColumn, 2, CellsPart::CellsPartFormula, 0)), "cost * qty");
             let spelled = "EUR=cost * 2";
             assert!(cells_set_type(d, 2, spelled.as_ptr() as *const c_char, spelled.len(), &mut f));
-            assert_eq!(text(cells_write(d)), "cost:EUR,qty:int,total:EUR=cost * 2\n2.50,4,\n");
+            // A write stores the computed values it reaches beside their `=`.
+            assert_eq!(text(cells_write(d)), "cost:EUR,qty:int,total:EUR=cost * 2\n2.50,4,5.00=\n");
             let bad = "EUR=cost *";
             assert!(!cells_set_type(d, 2, bad.as_ptr() as *const c_char, bad.len(), &mut f));
             assert_eq!((f.at, f.number), (CellsAt::CellsAtColumn, 3));
