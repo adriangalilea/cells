@@ -1,5 +1,0 @@
----
-import accounts from "./accounts.cell" with { sha256: "0000000000000000000000000000000000000000000000000000000000000000" }
----
-to:accounts.account
-rent

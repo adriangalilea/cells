@@ -1,5 +1,5 @@
 ---
-use ../accounts.cell
+use ../accounts.cells
 ---
 title:text
 Salt and Sky

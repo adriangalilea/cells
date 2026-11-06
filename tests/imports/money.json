@@ -14,6 +14,6 @@
     { "date": { "date": "2026-11-05" }, "amount": { "money": "30.00", "currency": "EUR" }, "from": { "ref": "bank" }, "to": { "ref": "coffee" }, "spending": { "from": "formula" }, "kind": null }
   ],
   "problems": [
-    { "row": 2, "column": "to", "kind": "reference", "span": [288, 6] }
+    { "row": 2, "column": "to", "kind": "reference", "span": [290, 6] }
   ]
 }

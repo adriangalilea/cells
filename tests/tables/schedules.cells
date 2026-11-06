@@ -1,5 +1,5 @@
 ---
-a = run every 15m, every hour, when ../money.cell changes
+a = run every 15m, every hour, when ../money.cells changes
 ```ts
 export default async () => []
 ```

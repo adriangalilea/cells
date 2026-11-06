@@ -1,6 +1,6 @@
 ---
 type Genre = novel|poetry
-import accounts.cell
+import accounts.cells
 ---
 title:text,genre:Genre
 Salt and Sky,novel

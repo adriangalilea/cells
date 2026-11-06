@@ -1,7 +1,7 @@
 // The TypeScript reader (ts/src/cells.ts) on a generated budget, under bun: the best of
 // five reads, as cells-bench prints its own.
 //
-//   bun rust/cells-bench/ts-read.ts rust/bench-data/budget-100000.cell
+//   bun rust/cells-bench/ts-read.ts rust/bench-data/budget-100000.cells
 
 import { read } from "../../ts/src/cells.ts"
 

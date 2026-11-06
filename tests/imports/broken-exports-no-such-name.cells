@@ -1,0 +1,5 @@
+---
+import { private } from "./exports.cells"
+---
+amount:EUR
+10

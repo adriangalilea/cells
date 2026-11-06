@@ -1,6 +1,6 @@
 ---
-import accounts from "./accounts.cell"
-import { Kind } from "./accounts.cell"
+import accounts from "./accounts.cells"
+import { Kind } from "./accounts.cells"
 ---
 date:date,amount:EUR>0,from:accounts.account,to:accounts.account,spending:bool=to.kind = 'expenses',kind:Kind?
 2026-11-01,950.00,bank,rent,,

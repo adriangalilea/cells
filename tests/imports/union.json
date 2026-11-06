@@ -9,7 +9,7 @@
     { "amount": { "money": "12.00", "currency": "EUR" }, "to": { "ref": "nowhere" } }
   ],
   "problems": [
-    { "row": 1, "column": "to", "kind": "reference", "span": [171, 4] },
-    { "row": 2, "column": "to", "kind": "reference", "span": [182, 7] }
+    { "row": 1, "column": "to", "kind": "reference", "span": [172, 4] },
+    { "row": 2, "column": "to", "kind": "reference", "span": [183, 7] }
   ]
 }

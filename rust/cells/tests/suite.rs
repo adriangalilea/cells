@@ -439,7 +439,7 @@ fn taken<T>(r: Result<T, cells::Error>, e: &Json) -> Result<Option<T>, String> {
     }
 }
 
-/// A case's file: a `.cell`, or under `plain/` a `.csv`, `.tsv` or `.txt`; never an
+/// A case's file: a `.cells`, or under `plain/` a `.csv`, `.tsv` or `.txt`; never an
 /// edit's `.out.` file.
 fn cases(dir: &Path, out: &mut Vec<PathBuf>) {
     let mut entries: Vec<_> = fs::read_dir(dir).unwrap().map(|e| e.unwrap().path()).collect();
@@ -451,7 +451,7 @@ fn cases(dir: &Path, out: &mut Vec<PathBuf>) {
         }
         let ext = p.extension().and_then(|e| e.to_str()).unwrap_or("");
         let plain = p.parent().is_some_and(|d| d.ends_with("plain"));
-        let case = if plain { matches!(ext, "csv" | "tsv" | "txt") } else { ext == "cell" };
+        let case = if plain { matches!(ext, "csv" | "tsv" | "txt") } else { ext == "cells" };
         let stem = p.file_stem().unwrap().to_string_lossy();
         if case && !stem.ends_with(".out") {
             out.push(p);
@@ -488,10 +488,10 @@ fn conformance() {
         std::env::var("Cells_SUITE").map(PathBuf::from).unwrap_or_else(|_| Path::new(env!("CARGO_MANIFEST_DIR")).join("../../tests"));
     let mut all = Vec::new();
     cases(&root, &mut all);
-    // Every `.cell` file by its path in the suite, for a case's imports to follow.
+    // Every `.cells` file by its path in the suite, for a case's imports to follow.
     let files: std::collections::BTreeMap<String, String> = all
         .iter()
-        .filter(|p| p.extension().is_some_and(|e| e == "cell"))
+        .filter(|p| p.extension().is_some_and(|e| e == "cells"))
         .filter_map(|p| Some((p.strip_prefix(&root).unwrap().to_string_lossy().into_owned(), String::from_utf8(fs::read(p).ok()?).ok()?)))
         .collect();
     let mut failed = 0;
@@ -502,7 +502,7 @@ fn conformance() {
         let ext = path.extension().unwrap().to_string_lossy();
         let edit = PathBuf::from(format!("{}.edit.json", stem.display()));
         let mut fails = Vec::new();
-        let plain = ext != "cell";
+        let plain = ext != "cells";
         let dialect = if plain { Dialect::Plain(cells::detect(&bytes)) } else { Dialect::Cells };
         let at = path.strip_prefix(&root).unwrap().to_string_lossy().into_owned();
         let read = match plain {

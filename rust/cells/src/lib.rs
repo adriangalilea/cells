@@ -53,7 +53,7 @@ pub use identity::{Change, Refused, RowAt, Version};
 pub use prelude::{Fenced, Schedule, Statement, Trigger};
 pub use scan::quote;
 
-/// Where a `.cell` file's cell splits, what it stores and how it is computed (SPEC.md, A
+/// Where a `.cells` file's cell splits, what it stores and how it is computed (SPEC.md, A
 /// cell): the byte of its first `=` with no `'` before it; nothing for a written value.
 pub fn split_cell(text: &str) -> Option<usize> {
     read::split(text.as_bytes())

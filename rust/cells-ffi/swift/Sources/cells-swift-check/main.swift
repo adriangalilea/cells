@@ -1,4 +1,4 @@
-// Reads a .cell file through the core's C ABI and walks its columns through the Arrow C
+// Reads a .cells file through the core's C ABI and walks its columns through the Arrow C
 // Data Interface, no copy: the rows, the problems, each column's Arrow format and nulls,
 // and the sum of every decimal column, read from the shared buffers.
 

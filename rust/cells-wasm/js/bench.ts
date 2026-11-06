@@ -2,7 +2,7 @@
 // generated budget: the best of five reads each. `read` leaves the values in the
 // module's memory; "+ rows" builds every row's object as the TypeScript reader does.
 //
-//   bun rust/cells-wasm/js/bench.ts rust/bench-data/budget-100000.cell
+//   bun rust/cells-wasm/js/bench.ts rust/bench-data/budget-100000.cells
 
 import { read as tsRead } from "../../../ts/src/cells.ts"
 import { read } from "./cells.ts"

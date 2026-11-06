@@ -1,5 +1,5 @@
 ---
-import shared from "./accounts.cell"
+import shared from "./accounts.cells"
 clients = ```cells
 account:text!
 salary:acme

@@ -20,7 +20,7 @@ type Dialect = import("./cells.ts").Dialect
 type ColumnAt = import("./cells.ts").ColumnAt
 const root = args[0] ?? join(import.meta.dir, "../../../tests")
 
-/** A case's file: a `.cell`, or under `plain/` a `.csv`, `.tsv` or `.txt`; never an
+/** A case's file: a `.cells`, or under `plain/` a `.csv`, `.tsv` or `.txt`; never an
  *  edit's `.out.` file. */
 function cases(dir: string): string[] {
   const plain = dir.endsWith("/plain")
@@ -30,7 +30,7 @@ function cases(dir: string): string[] {
       const p = join(dir, n)
       if (statSync(p).isDirectory()) return cases(p)
       if (n.includes(".out.")) return []
-      return (plain ? /\.(csv|tsv|txt)$/ : /\.cell$/).test(n) ? [p] : []
+      return (plain ? /\.(csv|tsv|txt)$/ : /\.cells$/).test(n) ? [p] : []
     })
 }
 
@@ -163,9 +163,9 @@ const text = (b: Uint8Array) => new TextDecoder("utf-8", { ignoreBOM: true }).de
 let passed = 0
 let failed = 0
 const all = cases(root)
-/** Every `.cell` file by its path in the suite, for a case's imports to follow. */
+/** Every `.cells` file by its path in the suite, for a case's imports to follow. */
 const files: Record<string, string> = {}
-for (const p of all) if (p.endsWith(".cell")) files[relative(root, p)] = readFileSync(p, "utf8")
+for (const p of all) if (p.endsWith(".cells")) files[relative(root, p)] = readFileSync(p, "utf8")
 /** The edits applied in order, and the file's text after them: as written, or after a
  *  last `as` edit the file written in that dialect. */
 function edited(start: Doc, edits: Record<string, unknown>[]): string {
@@ -220,7 +220,7 @@ for (const path of all) {
   const bytes = new Uint8Array(readFileSync(path))
   const ext = path.slice(path.lastIndexOf("."))
   const stem = path.slice(0, -ext.length)
-  const dialect: Dialect = ext === ".cell" ? "cells" : detect(bytes)
+  const dialect: Dialect = ext === ".cells" ? "cells" : detect(bytes)
   const fails: string[] = []
   let got: ReturnType<typeof readAs> | CellsError
   try {

@@ -147,7 +147,7 @@ fn main() {
             // plain, by its separator): what an edit costs a table.
             let bytes = fs::read(&args[2]).unwrap();
             let threads = std::thread::available_parallelism().unwrap().get();
-            let dialect = if args[2].ends_with(".cell") { cells::Dialect::Cells } else { cells::Dialect::Plain(cells::detect(&bytes)) };
+            let dialect = if args[2].ends_with(".cells") { cells::Dialect::Cells } else { cells::Dialect::Plain(cells::detect(&bytes)) };
             let doc = cells::read_as(bytes, dialect, threads).unwrap();
             println!("{} ({} rows, {dialect:?})", args[2], doc.rows());
             for c in 0..doc.columns().len() {

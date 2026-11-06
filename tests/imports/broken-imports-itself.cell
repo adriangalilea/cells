@@ -1,5 +1,0 @@
----
-import me from "./broken-imports-itself.cell"
----
-amount:EUR
-10

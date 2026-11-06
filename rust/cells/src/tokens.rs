@@ -892,10 +892,10 @@ mod tests {
 
     #[test]
     fn tables_scripts_and_formulas() {
-        let src = "---\nimport accounts from \"../accounts.cell\"\nfees = ```cells\nkind:text!,pct:pct\ncard,1.4\n```\nfx = run every day at 18:00 in Europe/Madrid\n```ts\nexport default () => []\n```\n```cells\nrate:num\n```\n---\nto:accounts.account,cost:EUR\nrent,32.25=96.75/3\n";
+        let src = "---\nimport accounts from \"../accounts.cells\"\nfees = ```cells\nkind:text!,pct:pct\ncard,1.4\n```\nfx = run every day at 18:00 in Europe/Madrid\n```ts\nexport default () => []\n```\n```cells\nrate:num\n```\n---\nto:accounts.account,cost:EUR\nrent,32.25=96.75/3\n";
         let t = shown(src);
         let kinds = |k: Kind| t.iter().filter(|x| x.1 == k).map(|x| x.0.as_str()).collect::<Vec<_>>();
-        assert_eq!(kinds(Kind::String), ["\"../accounts.cell\""]);
+        assert_eq!(kinds(Kind::String), ["\"../accounts.cells\""]);
         assert_eq!(kinds(Kind::Code), ["export default () => []"]);
         assert!(kinds(Kind::Name).contains(&"pct"), "{t:?}");
         assert_eq!(kinds(Kind::CellChoice), ["rent"]);
@@ -914,7 +914,7 @@ mod tests {
 
     #[test]
     fn a_formula_name_reads_its_column() {
-        let src = "---\nimport accounts from \"./a.cell\"\n---\nto:accounts.account,cost:EUR,qty:int,total:EUR=cost * qty,run:EUR=run[-1] + total,\"my \"\"x\"\"\",w:EUR=TABLE['k7'].cost + TABLE.qty + accounts.cost + SUM(total[FIRST:THIS]) + \"my \"\"x\"\"\" + later,later:num\nrent,2,3,6=qty * 2,,1,\n";
+        let src = "---\nimport accounts from \"./a.cells\"\n---\nto:accounts.account,cost:EUR,qty:int,total:EUR=cost * qty,run:EUR=run[-1] + total,\"my \"\"x\"\"\",w:EUR=TABLE['k7'].cost + TABLE.qty + accounts.cost + SUM(total[FIRST:THIS]) + \"my \"\"x\"\"\" + later,later:num\nrent,2,3,6=qty * 2,,1,\n";
         let reads = |name: &str| {
             tokens(src)
                 .into_iter()

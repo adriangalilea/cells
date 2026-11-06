@@ -1,5 +1,5 @@
 ---
-import { Rate, fees } from "./exports.cell"
+import { Rate, fees } from "./exports.cells"
 ---
 amount:EUR,kind:fees.kind,rate:Rate=fees[kind].pct
 120.00,card,

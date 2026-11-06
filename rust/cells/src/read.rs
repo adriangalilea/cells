@@ -30,7 +30,7 @@ pub(crate) struct Reading {
     pub candidates: u8,
 }
 
-/// Where a `.cell` file's cell splits (SPEC.md, A cell): the first `=` with no `'` before
+/// Where a `.cells` file's cell splits (SPEC.md, A cell): the first `=` with no `'` before
 /// it, what the file stores on its left and how it is computed on its right. Nothing for a
 /// written value, whose every `=` is written `'=`.
 #[inline]
@@ -53,7 +53,7 @@ pub(crate) fn own_formula(t: &str) -> Option<&str> {
     Some(t[at + 1..].trim_matches([' ', '\t']))
 }
 
-/// A written value's text as a `.cell` file holds it, each `'=` read back as `=`.
+/// A written value's text as a `.cells` file holds it, each `'=` read back as `=`.
 pub(crate) fn unescaped(t: &[u8], out: &mut Vec<u8>) {
     out.clear();
     for (i, &c) in t.iter().enumerate() {
@@ -64,7 +64,7 @@ pub(crate) fn unescaped(t: &[u8], out: &mut Vec<u8>) {
     }
 }
 
-/// Text as a `.cell` file writes a written value: each `=` after a `'`, so it never
+/// Text as a `.cells` file writes a written value: each `=` after a `'`, so it never
 /// reads as a computed cell (SPEC.md, A cell).
 pub(crate) fn escaped(t: &str) -> alloc::borrow::Cow<'_, str> {
     if !t.contains('=') {
@@ -174,7 +174,7 @@ impl<'a> Part<'a> {
 /// holding a control character is broken before its type is read: one whose span holds
 /// a start in `controls` (sorted, as the cells are), looked for only in a run whose batch
 /// has any (`CONTROLS`), so every other run's loop is as it would be without the rule.
-/// Where `formulas` (a `.cell` file's), a computed cell (`84.20=`, `32.25=96.75 / 3`, a
+/// Where `formulas` (a `.cells` file's), a computed cell (`84.20=`, `32.25=96.75 / 3`, a
 /// formula column's blank) is marked (`Why::Computed` for its column's formula,
 /// `Why::Formula` for its own), its value null until computed; a written value's `'=` is
 /// read as `=`.
@@ -337,7 +337,7 @@ impl Fields for Part<'_> {
         for f in self.field..self.ncols {
             self.cells[f * BATCH + self.batched] = (0, 0);
         }
-        // A short record is its blanks in a `.cell` file; a record too long is ragged in any.
+        // A short record is its blanks in a `.cells` file; a record too long is ragged in any.
         if self.field > self.ncols || self.lenient && self.field != self.ncols {
             self.problems.push(ragged(self.rows, self.field, self.ncols));
         }

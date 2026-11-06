@@ -1,0 +1,5 @@
+---
+import rates from "https://rates.example/eurusd.cells"
+---
+amount:EUR
+10

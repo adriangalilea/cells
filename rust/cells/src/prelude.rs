@@ -37,7 +37,7 @@ pub enum Trigger {
     Monthly(u8, u16),
     /// `cron 0 9 * * 1-5`, its five fields.
     Cron(String),
-    /// `when ../money.cell changes`.
+    /// `when ../money.cells changes`.
     Changes(String),
 }
 
@@ -344,12 +344,12 @@ fn import(line: u32, s: &str) -> Result<Statement, (u32, String)> {
         }
         s = rest[close + 1..].trim_start_matches(BLANK);
     } else {
-        let Some((n, rest)) = ident(s) else { return fail("import takes a name: import accounts from \"../accounts.cell\"") };
+        let Some((n, rest)) = ident(s) else { return fail("import takes a name: import accounts from \"../accounts.cells\"") };
         default = Some(n.to_owned());
         s = rest.trim_start_matches(BLANK);
     }
     let Some(rest) = s.strip_prefix("from").filter(|r| r.starts_with(BLANK)) else {
-        return fail("an import says where from: from \"../accounts.cell\"");
+        return fail("an import says where from: from \"../accounts.cells\"");
     };
     let (from, rest) =
         string(rest.trim_start_matches(BLANK)).ok_or((line, "where an import comes from is a quoted path or URL".to_owned()))?;
@@ -415,7 +415,7 @@ fn clock(s: &str) -> Result<u16, String> {
 /// What follows `run`: triggers joined by commas, then `in <zone>` for their times of day.
 pub fn schedule(s: &str) -> Result<Schedule, String> {
     if s.is_empty() {
-        return Err("run says when: every hour, every day at 18:00 in Europe/Madrid, when ../money.cell changes".to_owned());
+        return Err("run says when: every hour, every day at 18:00 in Europe/Madrid, when ../money.cells changes".to_owned());
     }
     let (body, zone) = match s.rfind(" in ") {
         Some(at) if !s[at + 4..].trim_matches(BLANK).contains(' ') => (&s[..at], Some(s[at + 4..].trim_matches(BLANK).to_owned())),
@@ -450,7 +450,7 @@ pub fn schedule(s: &str) -> Result<Schedule, String> {
             ["when", path, "changes"] => Trigger::Changes((*path).to_owned()),
             _ => {
                 return Err(format!(
-                    "\"{}\" is no schedule: every 15m, every day at 18:00, cron 0 9 * * 1-5, when ../x.cell changes",
+                    "\"{}\" is no schedule: every 15m, every day at 18:00, cron 0 9 * * 1-5, when ../x.cells changes",
                     part.trim_matches(BLANK)
                 ));
             }
@@ -469,7 +469,7 @@ mod tests {
 
     #[test]
     fn statements() {
-        let src = "---\ntype Kind = a|b // the kinds\nimport accounts from \"../accounts.cell\"\nimport { Rate } from \"https://x.example/r.cell\" with { sha256: \"ab\" }\n\nfees = ```cells\nkind:text!\n---\n```\nfx = run every day at 18:00 in Europe/Madrid\n```ts\nexport default () => []\n```\n```cells runs\nrun:int!\n```\n---\nh\n";
+        let src = "---\ntype Kind = a|b // the kinds\nimport accounts from \"../accounts.cells\"\nimport { Rate } from \"https://x.example/r.cells\" with { sha256: \"ab\" }\n\nfees = ```cells\nkind:text!\n---\n```\nfx = run every day at 18:00 in Europe/Madrid\n```ts\nexport default () => []\n```\n```cells runs\nrun:int!\n```\n---\nh\n";
         let Parsed { statements: s, broken, body } = parse(src, 0).unwrap();
         assert!(broken.is_empty());
         assert_eq!(&src[body..], "h\n");
@@ -490,6 +490,6 @@ mod tests {
         assert_eq!((open.broken[0].0, &"---\nx = ```cells\na\n---\nh\n"[open.body..]), (1, "h\n"));
         assert!(parse("---\ntype A = a|b\n", 0).is_err());
         assert!(schedule("every day at 18:00").is_err());
-        assert_eq!(schedule("every 15m, when ../m.cell changes").unwrap().triggers.len(), 2);
+        assert_eq!(schedule("every 15m, when ../m.cells changes").unwrap().triggers.len(), 2);
     }
 }

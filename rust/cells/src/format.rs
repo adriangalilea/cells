@@ -1,4 +1,4 @@
-//! What a file is: a `.cell` file read by the format's own law, or any other delimited text (a
+//! What a file is: a `.cells` file read by the format's own law, or any other delimited text (a
 //! `.csv`, a `.tsv`, plain text) read as the files people hold are, its separator found in
 //! its first lines.
 
@@ -45,7 +45,7 @@ impl Separator {
 /// How a file is read and written: Cells, or another dialect of delimited text.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum Dialect {
-    /// A `.cell` file (SPEC.md): fields separated by commas, a prelude, typed header cells,
+    /// A `.cells` file (SPEC.md): fields separated by commas, a prelude, typed header cells,
     /// and a broken grammar refused.
     Cells,
     /// Delimited text that is not Cells: the header's cells are its columns' names (types

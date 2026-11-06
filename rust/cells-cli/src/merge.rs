@@ -1,11 +1,11 @@
-//! `cells merge`: git's merge driver for `.cell` files (SPEC.md, Merging). Two versions
+//! `cells merge`: git's merge driver for `.cells` files (SPEC.md, Merging). Two versions
 //! merge as what was written: each version's computed values are dropped first, so a
 //! value that follows from the rows (a running balance below an inserted movement) never
 //! conflicts, the three texts are merged line by line by git's own merge, and the merged
 //! file's computed cells are computed and stored again. What still conflicts is what
 //! people wrote: a cell, the header, the prelude.
 //!
-//!   .gitattributes   *.cell merge=cells
+//!   .gitattributes   *.cells merge=cells
 //!   .git/config      [merge "cells"] driver = cells merge %O %A %B
 
 use std::fs;

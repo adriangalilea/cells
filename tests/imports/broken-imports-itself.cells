@@ -1,0 +1,5 @@
+---
+import me from "./broken-imports-itself.cells"
+---
+amount:EUR
+10

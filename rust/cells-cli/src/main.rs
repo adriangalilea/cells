@@ -14,7 +14,7 @@
 //!                                     their values
 //!   cells lsp                          the language server, on stdin and stdout
 //!
-//! A folder means every `.cell` under it, hidden folders (`.git`, the engine's `.cells`)
+//! A folder means every `.cells` file under it, hidden folders (`.git`, the engine's `.cells`)
 //! left out. Exit 0 when nothing is found (or every run succeeds), 1 when something is (or
 //! a run fails), 2 when the command cannot run (a path that does not exist, a file that
 //! cannot be read, a wrong argument).
@@ -35,7 +35,7 @@ use disk::Disk;
 
 const USAGE: &str = "cells check <file|folder>...\ncells fmt --check <file|folder>...\ncells fix <file|folder>...\ncells merge <base> <ours> <theirs>\ncells pin <file>...\ncells run <file> [script]\ncells show <file>\ncells lsp";
 
-/// Every `.cell` file a path names, sorted.
+/// Every `.cells` file a path names, sorted.
 fn files(path: &Path, out: &mut Vec<PathBuf>) -> Result<(), String> {
     let meta = fs::metadata(path).map_err(|e| format!("{}: {e}", path.display()))?;
     if meta.is_file() {
@@ -54,7 +54,7 @@ fn files(path: &Path, out: &mut Vec<PathBuf>) -> Result<(), String> {
             if !hidden {
                 files(&p, out)?;
             }
-        } else if p.extension().is_some_and(|e| e == "cell") {
+        } else if p.extension().is_some_and(|e| e == "cells") {
             out.push(p);
         }
     }

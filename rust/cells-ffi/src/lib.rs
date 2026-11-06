@@ -150,8 +150,8 @@ fn doc_or_fail(read: Result<Doc, cells::Error>, failure: *mut CellsFailure) -> *
 
 /// Reads the file as `cells_read` does, its imports followed through the files the caller
 /// holds: `count` paths, each with its text, by the path an import names read from `at`,
-/// the file's own path (`books/home/money.cell` importing `../accounts.cell` finds
-/// `books/accounts.cell`). An import of a file not held reads as unreachable.
+/// the file's own path (`books/home/money.cells` importing `../accounts.cells` finds
+/// `books/accounts.cells`). An import of a file not held reads as unreachable.
 ///
 /// # Safety
 /// As `cells_read`; `at` is UTF-8; `paths` and `texts` point at `count` strings of UTF-8.
@@ -388,7 +388,7 @@ pub unsafe extern "C" fn cells_reshaped(
 }
 
 /// The file written in a dialect (`sep` as for `cells_read_as`): a plain file's header the
-/// columns' names and every computed cell its value; a `.cell` file's header the `count`
+/// columns' names and every computed cell its value; a `.cells` file's header the `count`
 /// cells of `header` when `count` is not 0 (one a column), its prelude kept.
 ///
 /// # Safety
@@ -1357,14 +1357,14 @@ mod tests {
     #[test]
     fn imports_held_and_on_disk() {
         let accounts = "account:text!\nrent\nbank\n";
-        let money = "---\nimport accounts from \"../accounts.cell\"\n---\namount:EUR,to:accounts.account\n950,rent\n9,rnet\n";
+        let money = "---\nimport accounts from \"../accounts.cells\"\n---\namount:EUR,to:accounts.account\n950,rent\n9,rnet\n";
         let mut f = CellsFailure { at: CellsAt::CellsAtNone, number: 0, why: ptr::null_mut(), why_len: 0 };
         // SAFETY: valid pointers throughout.
         unsafe {
-            let paths = [lent("books/accounts.cell"), lent("books/home/money.cell")];
+            let paths = [lent("books/accounts.cells"), lent("books/home/money.cells")];
             let texts = [lent(accounts), lent(money)];
             let d =
-                cells_read_with(money.as_ptr(), money.len(), lent("books/home/money.cell"), paths.as_ptr(), texts.as_ptr(), 2, 1, &mut f);
+                cells_read_with(money.as_ptr(), money.len(), lent("books/home/money.cells"), paths.as_ptr(), texts.as_ptr(), 2, 1, &mut f);
             assert!(!d.is_null());
             assert_eq!(cells_problem_count(d), 1);
             assert_eq!(cells_problem(d, 0).kind, CellsKind::CellsKindReference);
@@ -1372,8 +1372,8 @@ mod tests {
 
             let dir = std::env::temp_dir().join(format!("cells-ffi-{}", std::process::id()));
             std::fs::create_dir_all(dir.join("home")).unwrap();
-            std::fs::write(dir.join("accounts.cell"), accounts).unwrap();
-            let at = dir.join("home/money.cell");
+            std::fs::write(dir.join("accounts.cells"), accounts).unwrap();
+            let at = dir.join("home/money.cells");
             let at = at.to_str().unwrap();
             let d = cells_read_at(money.as_ptr(), money.len(), lent(at), 1, &mut f);
             assert!(!d.is_null());

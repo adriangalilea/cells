@@ -22,7 +22,7 @@ pub fn dir(path: &str) -> &str {
 }
 
 /// `path` read from the folder `dir`, its `.` and `..` resolved: `join("books/home",
-/// "../accounts.cell")` is `books/accounts.cell`. A path from `/` keeps its root.
+/// "../accounts.cells")` is `books/accounts.cells`. A path from `/` keeps its root.
 pub fn join(dir: &str, path: &str) -> String {
     let rooted = path.starts_with('/') || (dir.starts_with('/') && !path.starts_with('/'));
     let mut parts: Vec<&str> = Vec::new();
@@ -105,30 +105,30 @@ mod tests {
 
     #[test]
     fn paths() {
-        assert_eq!(join("books/home", "../accounts.cell"), "books/accounts.cell");
-        assert_eq!(join("books", "./home/money.cell"), "books/home/money.cell");
-        assert_eq!(join("", "../x.cell"), "../x.cell");
+        assert_eq!(join("books/home", "../accounts.cells"), "books/accounts.cells");
+        assert_eq!(join("books", "./home/money.cells"), "books/home/money.cells");
+        assert_eq!(join("", "../x.cells"), "../x.cells");
         assert_eq!(join("/a/b", "../c"), "/a/c");
         assert_eq!(join("a", "/etc/x"), "/etc/x");
-        assert_eq!(dir("books/home/money.cell"), "books/home");
+        assert_eq!(dir("books/home/money.cells"), "books/home");
     }
 
     #[test]
     fn follows_and_refuses() {
         let mut files = BTreeMap::new();
-        files.insert("books/accounts.cell".to_owned(), "account:text!\nrent\nbank\n".to_owned());
+        files.insert("books/accounts.cells".to_owned(), "account:text!\nrent\nbank\n".to_owned());
         files.insert(
-            "books/home/money.cell".to_owned(),
-            "---\nimport accounts from \"../accounts.cell\"\n---\namount:EUR,to:accounts.account\n950,rent\n9,rnet\n".to_owned(),
+            "books/home/money.cells".to_owned(),
+            "---\nimport accounts from \"../accounts.cells\"\n---\namount:EUR,to:accounts.account\n950,rent\n9,rnet\n".to_owned(),
         );
-        let money = files["books/home/money.cell"].clone();
-        let doc = read_with(money.clone(), &mut Files::new(&files, "books/home/money.cell"), 1).unwrap();
+        let money = files["books/home/money.cells"].clone();
+        let doc = read_with(money.clone(), &mut Files::new(&files, "books/home/money.cells"), 1).unwrap();
         assert_eq!(doc.problems().len(), 1);
         assert_eq!(doc.describe(&doc.problems()[0]), "row 2, to: \"rnet\" is no key of accounts");
         // Read alone, the reference is unchecked.
         assert!(crate::read(money).unwrap().problems().is_empty());
-        files.insert("loop.cell".to_owned(), "---\nimport me from \"./loop.cell\"\n---\na\n".to_owned());
-        let looped = read_with(files["loop.cell"].clone(), &mut Files::new(&files, "loop.cell"), 1).unwrap();
+        files.insert("loop.cells".to_owned(), "---\nimport me from \"./loop.cells\"\n---\na\n".to_owned());
+        let looped = read_with(files["loop.cells"].clone(), &mut Files::new(&files, "loop.cells"), 1).unwrap();
         assert_eq!(looped.broken().iter().map(|e| e.at).collect::<Vec<_>>(), [crate::At::PreludeLine(1)]);
     }
 }

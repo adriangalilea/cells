@@ -391,33 +391,33 @@ for (const folder of FOLDERS) {
       plainFile(dir, file, has)
       continue
     }
-    if (!/^[a-z0-9]+(-[a-z0-9]+)*(\.edit\.json|\.out\.cell|\.cell|\.json)$/.test(file)) {
+    if (!/^[a-z0-9]+(-[a-z0-9]+)*(\.edit\.json|\.out\.cells|\.cells|\.json)$/.test(file)) {
       fault(path, "is not named as a case (lowercase words joined by -)")
       continue
     }
-    const stem = file.replace(/(\.edit\.json|\.out\.cell|\.cell|\.json)$/, "")
+    const stem = file.replace(/(\.edit\.json|\.out\.cells|\.cells|\.json)$/, "")
     if (folder === "write") {
       if (file.endsWith(".json") && !file.endsWith(".edit.json")) fault(path, "a write case has no .json")
-      else if (!has.has(`${stem}.cell`)) fault(path, `has no ${stem}.cell`)
-      if (file === `${stem}.cell`) {
+      else if (!has.has(`${stem}.cells`)) fault(path, `has no ${stem}.cells`)
+      if (file === `${stem}.cells`) {
         cases++
         bytes(path)
         if (!has.has(`${stem}.edit.json`)) fault(path, `has no ${stem}.edit.json`)
-        if (!has.has(`${stem}.out.cell`)) fault(path, `has no ${stem}.out.cell`)
+        if (!has.has(`${stem}.out.cells`)) fault(path, `has no ${stem}.out.cells`)
         if (stem.startsWith("error-")) fault(path, "a write case reads")
       }
-      if (file.endsWith(".out.cell")) bytes(path)
+      if (file.endsWith(".out.cells")) bytes(path)
       if (file.endsWith(".edit.json")) {
         const j = json(path)
         if (j !== undefined) edits(path, j)
       }
       continue
     }
-    if (file.endsWith(".edit.json") || file.endsWith(".out.cell")) {
+    if (file.endsWith(".edit.json") || file.endsWith(".out.cells")) {
       fault(path, "edits belong in write/")
       continue
     }
-    if (file.endsWith(".cell")) {
+    if (file.endsWith(".cells")) {
       cases++
       if (!has.has(`${stem}.json`)) fault(path, `has no ${stem}.json`)
       else {
@@ -429,7 +429,7 @@ for (const folder of FOLDERS) {
       }
       continue
     }
-    if (!has.has(`${stem}.cell`)) fault(path, `has no ${stem}.cell`)
+    if (!has.has(`${stem}.cells`)) fault(path, `has no ${stem}.cells`)
     const j = json(path)
     if (j === undefined) continue
     if (!isObject(j)) {

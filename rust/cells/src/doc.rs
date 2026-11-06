@@ -1,4 +1,4 @@
-//! A `.cell` file read: its source kept whole, its columns decoded, its problems by place,
+//! A `.cells` file read: its source kept whole, its columns decoded, its problems by place,
 //! and the edits that `write` lays over the source so every unchanged byte stays as read.
 
 use alloc::borrow::{Cow, ToOwned};
@@ -231,7 +231,7 @@ pub enum ColumnAt<'a> {
     Kept(usize),
     /// A stored column under a new name, its type kept.
     Renamed(usize, &'a str),
-    /// A new column: its header cell (`name`, or in a `.cell` file `name:type`) and its
+    /// A new column: its header cell (`name`, or in a `.cells` file `name:type`) and its
     /// cells, one a row, or none for a column of blanks.
     New(&'a str, &'a [&'a str]),
 }
@@ -327,7 +327,7 @@ impl Naming {
     }
 }
 
-/// A file read: a `.cell` file, or a plain one (`Dialect`).
+/// A file read: a `.cells` file, or a plain one (`Dialect`).
 #[derive(Clone, Debug)]
 pub struct Doc {
     dialect: Dialect,
@@ -374,7 +374,7 @@ pub struct Doc {
     candidates: Vec<u8>,
 }
 
-/// Reads a `.cell` file. A broken cell is a problem, and a broken grammar takes out only
+/// Reads a `.cells` file. A broken cell is a problem, and a broken grammar takes out only
 /// what it breaks (`Doc::broken`): a header cell that does not read is a column of text,
 /// a prelude statement that does not is left out, a column formula that does not compute
 /// leaves its cells blank, and a record that does not read ends the rows, those before
@@ -570,7 +570,7 @@ impl Head {
     }
 }
 
-/// A `.cell` header cell, column `n` (1-based): `name`, `name:type`, `name:type=formula`.
+/// A `.cells` header cell, column `n` (1-based): `name`, `name:type`, `name:type=formula`.
 /// Why not in words naming the column, and the part of the cell that does not read.
 fn head(cell: &str, n: u32, named: &[NamedType], tables: &[Table]) -> Result<Head, (String, Option<(u32, u32)>)> {
     let (name, spelled) = types::split_header(cell);
@@ -1581,7 +1581,7 @@ impl Doc {
     /// one the same under its new name (its type kept), a new one its header cell and its
     /// cells, quoted only where the file needs it. A short row's missing fields are
     /// written blank, and a ragged row's fields past the header are kept after the
-    /// columns. What inserting, removing, moving and renaming columns is. A `.cell` file
+    /// columns. What inserting, removing, moving and renaming columns is. A `.cells` file
     /// whose columns no longer read (two of one name, a computed column reading one taken
     /// out) is refused, this one untouched, and so is a new cell holding a control
     /// character, at its row.
@@ -1661,12 +1661,12 @@ impl Doc {
 
     /// The file written as `to`, another dialect or this one with other header cells: a
     /// plain file's header the columns' names and every computed cell its value, so the
-    /// numbers a person saw are in the file; a `.cell` file's header `header` when given
+    /// numbers a person saw are in the file; a `.cells` file's header `header` when given
     /// (each column's cell with its type, a plain file converted, its text that would read
     /// as a formula escaped), else the header as it is, and the prelude kept. A record is
     /// kept as written when the separator is the same and nothing joins it; otherwise it
     /// is written from its cells, quoted where `to` needs it (a plain file that quotes
-    /// every field still does). A `.cell` file holds no fields past its header's, so a
+    /// every field still does). A `.cells` file holds no fields past its header's, so a
     /// ragged row loses them there. The byte order mark, the line breaks and the final
     /// one are this file's.
     pub fn written_as(&self, to: Dialect, header: Option<&[&str]>) -> String {
@@ -1678,7 +1678,7 @@ impl Doc {
             assert_eq!(h.len(), width, "a header cell for each column");
         }
         let plain = matches!(to, Dialect::Plain(_));
-        // A `.cell` file's lines end in `\n` or `\r\n`, never a lone `\r`.
+        // A `.cells` file's lines end in `\n` or `\r\n`, never a lone `\r`.
         let nl = match self.newline() {
             "\r" if !plain => "\n",
             nl => nl,

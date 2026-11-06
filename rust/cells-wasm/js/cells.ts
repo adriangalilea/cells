@@ -562,7 +562,7 @@ export interface Files {
   files: Record<string, string>
 }
 
-/** A `.cell` file's text (or its bytes), read; its imports followed through `files` when
+/** A `.cells` file's text (or its bytes), read; its imports followed through `files` when
  *  given, else read alone (what it imports unchecked). */
 export function read(input: string | Uint8Array, files?: Files): Read {
   if (!files) return readAs(input, "cells")
@@ -852,7 +852,7 @@ export type ColumnAt = { kept: number; name?: string } | { header: string; cells
 
 /** The file with exactly `columns`, in their order, read again as a new doc (`doc` is
  *  untouched): inserting, removing, moving and renaming columns. Each kept column keeps
- *  every row's field as written; a `.cell` file whose columns no longer read (two of one
+ *  every row's field as written; a `.cells` file whose columns no longer read (two of one
  *  name, a formula reading one taken out) throws. */
 export function reshape(doc: Doc, columns: readonly ColumnAt[]): Read {
   const spec = new Spec()
@@ -866,7 +866,7 @@ export function reshape(doc: Doc, columns: readonly ColumnAt[]): Read {
 }
 
 /** The file written in another dialect: a plain file's header the columns' names and
- *  every computed cell its value; a `.cell` file's header `header` when given (each
+ *  every computed cell its value; a `.cells` file's header `header` when given (each
  *  column's cell with its type), its prelude kept. */
 export function writtenAs(doc: Doc, dialect: Dialect, header?: readonly string[]): string {
   const [p, len, cap] = put(new Spec().list(header ?? []).bytes())
