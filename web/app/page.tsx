@@ -1,5 +1,8 @@
 import { Fragment, Suspense } from "react"
+import { Ground } from "@/components/ground"
 import { Hero, Landing } from "@/components/hero"
+import { SiteFooter } from "@/components/site-footer"
+import { SiteHeader } from "@/components/site-header"
 import { Glass } from "@/components/ui/material-glass"
 import { Story } from "@/components/story"
 import { PRODUCT } from "@/lib/product"
@@ -71,20 +74,8 @@ const TRIES = [
 export default function Page() {
   return (
     <main>
-      <header className="relative z-10 mx-auto flex h-[4.5rem] max-w-6xl items-center justify-between px-6 text-[13px]">
-        <span className="font-medium tracking-tight">{PRODUCT.name.toLowerCase()}</span>
-        <nav className="flex gap-6 text-muted-foreground">
-          <a className="transition-colors hover:text-foreground" href="#story">
-            how it works
-          </a>
-          <a className="transition-colors hover:text-foreground" href={`${PRODUCT.repo}/blob/main/SPEC.md`}>
-            spec
-          </a>
-          <a className="transition-colors hover:text-foreground" href={PRODUCT.repo}>
-            github
-          </a>
-        </nav>
-      </header>
+      <Ground />
+      <SiteHeader />
 
       {/* The hero's stage sticks while its extra height scrolls by: over it the lid shuts,
           and the file's text leaves the screen for the block below (components/hero). */}
@@ -201,19 +192,7 @@ export default function Page() {
         </div>
       </section>
 
-      <footer className="mx-auto mt-48 flex max-w-6xl flex-col gap-3 border-t border-border px-6 py-10 text-[13px] text-muted-foreground md:flex-row md:justify-between">
-        <span>
-          {PRODUCT.name} · {PRODUCT.tagline}
-        </span>
-        <span className="flex gap-6">
-          <a className="hover:text-foreground" href={`${PRODUCT.repo}/blob/main/SPEC.md`}>
-            spec
-          </a>
-          <a className="hover:text-foreground" href={PRODUCT.repo}>
-            github
-          </a>
-        </span>
-      </footer>
+      <SiteFooter />
     </main>
   )
 }
