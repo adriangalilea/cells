@@ -22,6 +22,27 @@ export const TRIP_FILES = [
 /** The check's one problem, as the engine says it. */
 export const TRIP_PROBLEM = 'row 2, paid: "karla" is no key of people'
 
+/** The reveal's one file: the three tools at once, a spreadsheet's columns that compute, a
+ *  database's link to another file checked, and a script's table kept current. Read with
+ *  `people`. */
+export const ONE_FILE = {
+  name: `tokyo${ext}`,
+  text: `---
+import people from "./people${ext}"
+rates = run every day at 18:00 in Asia/Tokyo
+\`\`\`ts
+export default async () => (await fetch("https://api.example.com/jpy-eur")).json()
+\`\`\`
+\`\`\`cells
+on:date!,eur:num
+2026-11-03,0.0061
+\`\`\`
+---
+item,paid:people.name,cost:JPY,on:date,eur:EUR=cost * rates[on].eur,share:EUR=eur / 4
+ramen,ana,4800,2026-11-03,29.28=,7.32=
+`,
+}
+
 export const PROOFS = {
   folder: {
     lang: "console",

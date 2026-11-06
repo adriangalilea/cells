@@ -2,13 +2,14 @@ import { Fragment, Suspense } from "react"
 import { Ground } from "@/components/ground"
 import { Hero, Landing } from "@/components/hero"
 import { Playground } from "@/components/playground"
+import { CurrentScene, LinkedScene } from "@/components/reveal"
 import { SiteFooter } from "@/components/site-footer"
 import { SiteHeader } from "@/components/site-header"
 import { Story } from "@/components/story"
 import { Code as Block } from "@/components/ui/code"
 import { Glass } from "@/components/ui/material-glass"
 import { PRODUCT } from "@/lib/product"
-import { PROOFS } from "@/lib/proofs"
+import { ONE_FILE, PROOFS } from "@/lib/proofs"
 
 /** What each neighbour does, honestly, and what a Cells file does instead. */
 const ROWS = [
@@ -37,6 +38,17 @@ const ROWS = [
 /** Something written in a file, as the words beside it name it. */
 function Spelled({ children }: { children: React.ReactNode }) {
   return <code className="font-mono text-[0.92em] text-foreground">{children}</code>
+}
+
+/** One tool of the three: its name, what it is good at, and where it stops. */
+function Beat({ name, good, but }: { name: string; good: string; but: string }) {
+  return (
+    <div className="max-w-[40ch]">
+      <h2 className="text-[clamp(1.75rem,3vw,2.5rem)] leading-[1.1] font-medium tracking-[-0.03em]">{name}</h2>
+      <p className="mt-4 text-[17px] leading-relaxed text-foreground/85">{good}</p>
+      <p className="mt-3 text-[17px] leading-relaxed text-muted-foreground">{but}</p>
+    </div>
+  )
 }
 
 /** A section's small capitals over its heading. */
@@ -172,27 +184,56 @@ export default function Page() {
         </div>
       </section>
 
-      {/* The file the hero's screen let go of lands here first, its words beside it: three
-          tools named, then the one file they are. */}
+      {/* Three tools, one at a time, each shown doing what it is good at and said where it
+          stops; then the one file they are. The first is the window the hero's screen let
+          go of, landing here. */}
       <section className="mx-auto grid max-w-6xl items-center gap-10 px-6 md:mt-8 md:grid-cols-[auto_minmax(0,1fr)] md:gap-16">
         <Suspense>
           <Landing />
         </Suspense>
-        <div className="max-w-[40ch]">
-          <p className="text-[clamp(1.5rem,2.6vw,2.125rem)] leading-[1.2] font-medium tracking-[-0.025em] text-foreground/90">
-            A spreadsheet.
-            <br />A database.
-            <br />A script that keeps it current.
-          </p>
-          <p className="mt-6 text-[17px] leading-relaxed text-muted-foreground">Three tools you use today.</p>
-          <p className="mt-2 text-[clamp(1.25rem,2vw,1.625rem)] leading-snug font-medium tracking-[-0.02em]">
-            They are not three tools. It is one plain text file.
-          </p>
-          <a href="#story" className="mt-6 inline-block text-[15px] text-muted-foreground underline decoration-border underline-offset-4 hover:text-foreground">
-            See how, a step at a time
-          </a>
-        </div>
+        <Beat
+          name="A spreadsheet."
+          good="Type a number and every total follows. You can see into it and play with it."
+          but="But its formulas point at B7, and its file opens in one app."
+        />
       </section>
+
+      <section className="mx-auto mt-32 grid max-w-6xl items-center gap-10 px-6 md:grid-cols-[minmax(0,1fr)_minmax(0,1.3fr)] md:gap-16">
+        <Beat
+          name="A database."
+          good="Typed, linked and checked: a name that is no friend of the trip is caught where it is typed."
+          but="But to every plain-text tool it is a black box: no grep, no diff, nothing git can merge."
+        />
+        <Suspense>
+          <LinkedScene />
+        </Suspense>
+      </section>
+
+      <section className="mx-auto mt-32 grid max-w-6xl items-center gap-10 px-6 md:grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)] md:gap-16">
+        <Suspense>
+          <CurrentScene />
+        </Suspense>
+        <Beat
+          name="A script that keeps it current."
+          good="The day's rate, fetched every evening at 18:00, there when you open the table."
+          but="But it lives outside the data, on someone's machine, and only they know it runs."
+        />
+      </section>
+
+      <section className="mx-auto mt-40 max-w-3xl px-6 text-center">
+        <p className="text-[17px] text-muted-foreground">Three tools you use today.</p>
+        <h2 className="mt-3 text-balance text-[clamp(2rem,4vw,3.25rem)] leading-[1.05] font-medium tracking-[-0.035em]">
+          They are not three tools. It is one plain text file.
+        </h2>
+      </section>
+      <div className="mx-auto mt-10 max-w-3xl px-6">
+        <Block filename={ONE_FILE.name}>{ONE_FILE.text}</Block>
+        <p className="mt-6 text-center">
+          <a href="#story" className="text-[15px] text-muted-foreground underline decoration-border underline-offset-4 hover:text-foreground">
+            See it built from a CSV, a step at a time
+          </a>
+        </p>
+      </div>
 
       <div id="story" className="mt-24 scroll-mt-20 md:mt-32">
         <Suspense>

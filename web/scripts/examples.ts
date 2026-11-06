@@ -12,7 +12,7 @@ import { savedAt, textAt } from "@/lib/written"
 import { tableFrameAt } from "@/lib/table-session"
 import { editOf, story } from "@/lib/story"
 import { PRODUCT } from "@/lib/product"
-import { PROOFS, TRIP_FILES, TRIP_PROBLEM } from "@/lib/proofs"
+import { ONE_FILE, PROOFS, TRIP_FILES, TRIP_PROBLEM } from "@/lib/proofs"
 
 const engine = await loadEngine()
 const readFiles = (files: Parameters<typeof readWith>[1]) => readWith(engine, files)
@@ -111,6 +111,9 @@ for (const [name, frame] of Object.entries(HERO.checkpoints)) {
     if (r.broken.length || r.problems.length)
       fail(`proof ${name}`, [...r.broken.map((b) => b.why), ...r.problems.map((x) => x.why)].join("; "))
   }
+  const one = readFiles([ONE_FILE, TRIP_FILES[0] as (typeof TRIP_FILES)[number]])
+  if (one.broken.length || one.problems.length)
+    fail("proof one file", [...one.broken.map((b) => b.why), ...one.problems.map((x) => x.why)].join("; "))
   if (failed === before) console.log(`✓ proofs: the check's line is the engine's, every file shown reads whole`)
 }
 

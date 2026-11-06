@@ -34,6 +34,9 @@ export type TableStep =
   | { kind: "select"; row: number; column: string; delay?: number }
   /** Keys typed into the cursor's cell, then Enter: the cell is committed (`write`). */
   | { kind: "type"; text: string; delay?: number }
+  /** A file written from outside the app (a script on its schedule, a sync), its whole
+   *  new text: its window reads it again, no hand moving. */
+  | { kind: "written"; path: string; text: string; delay?: number }
 
 /** A commit, as the consumer writes it: `file`'s text with `value` in `cell`, read with
  *  the other files as they stand (a reference to one of them checked against it). */
@@ -129,6 +132,15 @@ export function tableTimeline(
         chapters.push({ start, title: step.text, code: true })
         break
       }
+      case "written":
+        if (!(step.path in texts))
+          throw new Error(
+            `table-session: ${step.path} is no file of the session`,
+          )
+        texts[step.path] = step.text
+        plan.texts = { ...texts }
+        chapters.push({ start, title: `${step.path} written` })
+        break
     }
     plan.end = end
     plans.push(plan)
@@ -161,6 +173,8 @@ export function tableFrameAt(t: TableTimeline, ms: number): TableFrame {
     } else if (s.kind === "select" && p.cell) {
       const { path, ...cell } = p.cell
       hand = { path, cell, draft: null }
+    } else if (s.kind === "written" && p.texts) {
+      Object.assign(texts, p.texts)
     } else if (s.kind === "type" && hand) {
       const at: NonNullable<TableFrame["hand"]> = hand
       if (ms >= p.end - TABLE_MS.commit && p.texts) {
