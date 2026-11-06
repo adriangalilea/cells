@@ -19,11 +19,13 @@ pub struct CellsDoc {
     spans: Vec<CellsSpan>,
     /// What `cells_complete` found last.
     completions: Vec<cells::complete::Completion>,
+    /// What `cells_hover` said last.
+    hovered: Option<cells::hover::Hover>,
 }
 
 impl CellsDoc {
     fn of(doc: Doc) -> *mut CellsDoc {
-        Box::into_raw(Box::new(CellsDoc { doc, out: String::new(), spans: Vec::new(), completions: Vec::new() }))
+        Box::into_raw(Box::new(CellsDoc { doc, out: String::new(), spans: Vec::new(), completions: Vec::new(), hovered: None }))
     }
 }
 
@@ -1377,19 +1379,72 @@ pub unsafe extern "C" fn cells_complete(d: *mut CellsDoc, text: *const c_char, l
     let d = unsafe { doc(d) };
     // SAFETY: the caller's promise.
     let text = unsafe { text_of(text, len) };
-    // A table by the names that reach it: the doc's own, then each one's own.
-    let held = |path: &[&str]| -> Option<std::sync::Arc<Doc>> {
+    let found = cells::complete::complete(&d.doc, text, at, held(&d.doc));
+    d.completions = found;
+    d.completions.len()
+}
+
+/// A table by the names that reach it: the doc's own, then each one's own.
+fn held(doc: &Doc) -> impl Fn(&[&str]) -> Option<std::sync::Arc<Doc>> + '_ {
+    move |path: &[&str]| {
         let (first, rest) = path.split_first()?;
-        let mut t = d.doc.tables().iter().find(|t| t.name == *first)?.doc.clone()?;
+        let mut t = doc.tables().iter().find(|t| t.name == *first)?.doc.clone()?;
         for name in rest {
             let next = t.tables().iter().find(|x| x.name == *name)?.doc.clone()?;
             t = next;
         }
         Some(t)
-    };
-    let found = cells::complete::complete(&d.doc, text, at, held);
-    d.completions = found;
-    d.completions.len()
+    }
+}
+
+/// What is said of byte `at` of `text`, the text `d` was read from: whether anything is
+/// (a column, a cell, a formula's name or function, a named type, a table), read with
+/// `cells_hovered` and `cells_hover_text` until the next `cells_hover` on the doc. The
+/// tables the text names are the ones `d` holds, as for `cells_complete`.
+///
+/// # Safety
+/// `d` is a live Cells doc read from `text`; `text` points at `len` bytes of UTF-8; `at`
+/// is at most `len`, on a character's first byte.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn cells_hover(d: *mut CellsDoc, text: *const c_char, len: usize, at: usize) -> bool {
+    // SAFETY: the caller's promise.
+    let d = unsafe { doc(d) };
+    // SAFETY: the caller's promise.
+    let text = unsafe { text_of(text, len) };
+    let said = cells::hover::hover(&d.doc, text, at, held(&d.doc));
+    d.hovered = said;
+    d.hovered.is_some()
+}
+
+/// The bytes of the text the last `cells_hover` spoke of.
+#[repr(C)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub struct CellsHover {
+    pub from: u32,
+    pub to: u32,
+}
+
+/// Where the last `cells_hover` spoke of.
+///
+/// # Safety
+/// `d` is a live doc whose last `cells_hover` returned true.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn cells_hovered(d: *mut CellsDoc) -> CellsHover {
+    // SAFETY: the caller's promise.
+    let h = unsafe { doc(d) }.hovered.as_ref().expect("cells_hovered after a cells_hover that said something");
+    CellsHover { from: h.from, to: h.to }
+}
+
+/// What the last `cells_hover` said, in plain lines, a paragraph a line.
+///
+/// # Safety
+/// `d` is a live doc whose last `cells_hover` returned true.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn cells_hover_text(d: *mut CellsDoc) -> CellsStr {
+    // SAFETY: the caller's promise.
+    let d = unsafe { doc(d) };
+    d.out = d.hovered.as_ref().expect("cells_hover_text after a cells_hover that said something").text();
+    CellsStr::of(&d.out)
 }
 
 /// Completion `i` of the last `cells_complete`.
@@ -1648,6 +1703,33 @@ mod tests {
                 .collect();
             let (c, _) = found.iter().find(|(_, l)| l == "Money").expect("the named type offered");
             assert_eq!((c.kind, c.from as usize, c.to as usize), (CellsCompletionKind::CellsCompletionClass, at - 2, at));
+            cells_free(d);
+        }
+    }
+
+    #[test]
+    fn hover() {
+        let src = "---\ntype Money = EUR>=0\n---\ncost:Money,total:EUR=ROUND(cost)\n2.00,2.00=\n";
+        let mut f = CellsFailure { at: CellsAt::CellsAtNone, number: 0, why: ptr::null_mut(), why_len: 0 };
+        let said = |d: *mut CellsDoc| {
+            // SAFETY: a live doc whose last hover said something.
+            let s = unsafe { cells_hover_text(d) };
+            // SAFETY: the text the doc holds.
+            String::from_utf8_lossy(unsafe { std::slice::from_raw_parts(s.ptr as *const u8, s.len) }).into_owned()
+        };
+        // SAFETY: valid pointers throughout; the doc released once.
+        unsafe {
+            let d = cells_read(src.as_ptr(), src.len(), 1, &mut f);
+            let at = src.find("ROUND").unwrap() + 1;
+            assert!(cells_hover(d, src.as_ptr() as *const c_char, src.len(), at));
+            assert!(said(d).starts_with("ROUND(x, digits)\n"), "{}", said(d));
+            let h = cells_hovered(d);
+            assert_eq!((h.from as usize, h.to as usize), (at - 1, at + 4));
+            let at = src.find("Money =").unwrap() + 1;
+            assert!(cells_hover(d, src.as_ptr() as *const c_char, src.len(), at));
+            assert_eq!(said(d), "type Money = EUR>=0");
+            // the prelude's `---` says nothing
+            assert!(!cells_hover(d, src.as_ptr() as *const c_char, src.len(), 1));
             cells_free(d);
         }
     }
