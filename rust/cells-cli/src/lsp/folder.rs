@@ -1,4 +1,4 @@
-//! A folder of `.cell` files as the editor has it: every file under its root, a file the
+//! A folder of `.cells` files as the editor has it: every file under its root, a file the
 //! editor holds open read as it holds it, each read with its imports followed, and where
 //! the tables a file names live.
 
@@ -74,7 +74,7 @@ impl Folder {
         Some(File { path: path.to_path_buf(), text, doc })
     }
 
-    /// Every `.cell` under the root (hidden folders left out, as `cells check` leaves
+    /// Every `.cells` file under the root (hidden folders left out, as `cells check` leaves
     /// them), and every file the editor holds open.
     pub fn files(&self) -> Vec<PathBuf> {
         let mut out: Vec<PathBuf> = self.open.keys().cloned().collect();
@@ -87,7 +87,7 @@ impl Folder {
                     if !hidden {
                         walk(&p, out);
                     }
-                } else if p.extension().is_some_and(|e| e == "cell") {
+                } else if p.extension().is_some_and(|e| e == "cells") {
                     out.push(canonical(&p));
                 }
             }

@@ -854,17 +854,17 @@ mod tests {
     use super::*;
 
     const ACCOUNTS: &str = "account:text!,kind:assets|expenses\nbank,assets\nrent,expenses\npower,expenses\n";
-    const MONEY: &str = "---\nimport accounts from \"../accounts.cell\"\n---\nid:text!,amount:EUR,to:accounts.account,note:text?,double:EUR=amount * 2\na1,950.00,rent,,1900.00=\na2,64.30,pwer,,128.60=\na3,8x,bank,expenses=accounts['rent'].kind,=\n";
+    const MONEY: &str = "---\nimport accounts from \"../accounts.cells\"\n---\nid:text!,amount:EUR,to:accounts.account,note:text?,double:EUR=amount * 2\na1,950.00,rent,,1900.00=\na2,64.30,pwer,,128.60=\na3,8x,bank,expenses=accounts['rent'].kind,=\n";
 
-    /// A folder of two files, `books/accounts.cell` and `books/home/money.cell`.
+    /// A folder of two files, `books/accounts.cells` and `books/home/money.cells`.
     fn books(name: &str) -> (Folder, PathBuf, PathBuf) {
         let root = std::env::temp_dir().join(format!("cells-lsp-{name}-{}", std::process::id()));
         fs::create_dir_all(root.join("home")).unwrap();
-        fs::write(root.join("accounts.cell"), ACCOUNTS).unwrap();
-        fs::write(root.join("home/money.cell"), MONEY).unwrap();
+        fs::write(root.join("accounts.cells"), ACCOUNTS).unwrap();
+        fs::write(root.join("home/money.cells"), MONEY).unwrap();
         let root = canonical(&root);
         let folder = Folder { root: Some(root.clone()), open: Arc::new(BTreeMap::new()) };
-        (folder, root.join("accounts.cell"), root.join("home/money.cell"))
+        (folder, root.join("accounts.cells"), root.join("home/money.cells"))
     }
 
     /// The byte where `what` is written in `text`, `nth` from 0.
