@@ -12,7 +12,7 @@ export const PRODUCT = {
   cli: "cells",
   tagline: "Programmable data.",
   /** Under the line, and the page's description wherever it is read. */
-  subline: "Logic and data in a single file. Open it in any editor.",
+  subline: "Logic and data in a single plain text file. Open it in any editor.",
   domain: "cellular.computer",
   repo: "https://github.com/adriangalilea/cells",
 } as const
