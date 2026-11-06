@@ -55,15 +55,32 @@ struct HeaderCell<'a> {
     formula: Option<(&'a str, u32)>,
 }
 
+/// A header cell's parts; a declared column's type and formula are its declaration's, in
+/// the prelude (SPEC.md, Columns).
 fn header_cell<'a>(file: &'a File, column: usize) -> HeaderCell<'a> {
     let s = file.doc.header_span(column);
     let raw = &file.text[s.start as usize..(s.start + s.len) as usize];
     let (name, spelled) = cells::split_header(raw);
     let name = span(s.start, name.len() as u32);
+    if let Some((_, declared)) = file.doc.declaration_span(column) {
+        let (ty, formula) = typed(file, declared);
+        return HeaderCell { name, ty: Some(ty), formula };
+    }
     let Some(spelled) = spelled else { return HeaderCell { name, ty: None, formula: None } };
     let at = |part: &str| s.start + (part.as_ptr() as usize - raw.as_ptr() as usize) as u32;
     let (ty, formula) = cells::split_formula(spelled);
     HeaderCell { name, ty: Some(span(at(ty), ty.len() as u32)), formula: formula.map(|f| (f, at(f))) }
+}
+
+/// A type and its formula at `s` in the file (what follows a header cell's or a
+/// declaration's `:`): the type's span, and the formula's text and where it starts.
+fn typed(file: &File, s: Span) -> (Span, Option<(&str, u32)>) {
+    let raw = &file.text[s.start as usize..(s.start + s.len) as usize];
+    let at = |part: &str| s.start + (part.as_ptr() as usize - raw.as_ptr() as usize) as u32;
+    let (ty, formula) = cells::split_formula(raw);
+    let ty = ty.trim_end_matches([' ', '\t']);
+    let formula = formula.map(|f| f.trim_start_matches([' ', '\t']));
+    (span(at(ty), ty.len() as u32), formula.map(|f| (f, at(f))))
 }
 
 /// A cell's own formula, right of its `=` (`32.25=96.75 / 3`): its text and where it
@@ -78,10 +95,29 @@ fn cell_formula(file: &File, row: usize, column: usize) -> Option<(&str, u32)> {
 pub fn spot(file: &File, at: usize) -> Spot<'_> {
     let at = at as u32;
     match file.doc.place(at) {
-        Place::Prelude => Spot::Prelude,
+        Place::Prelude => {
+            // A column's declaration is that column's: its name, its type, its formula.
+            for c in 0..file.doc.columns().len() {
+                let Some((name, declared)) = file.doc.declaration_span(c) else { continue };
+                if at >= name.start && at <= name.start + name.len {
+                    return Spot::Name(c, name);
+                }
+                if at >= declared.start && at <= declared.start + declared.len {
+                    return match typed(file, declared) {
+                        (_, Some((src, base))) if at >= base => Spot::Formula(Formula { src, base }),
+                        (ty, _) => Spot::Type(c, ty),
+                    };
+                }
+            }
+            Spot::Prelude
+        }
         Place::Header(c) => {
             let c = c as usize;
             let h = header_cell(file, c);
+            // A declared column's header cell is its name alone; its type is in the prelude.
+            if file.doc.declaration_span(c).is_some() {
+                return Spot::Name(c, h.name);
+            }
             match (h.ty, h.formula) {
                 (_, Some((src, base))) if at >= base => Spot::Formula(Formula { src, base }),
                 (Some(ty), _) if at >= ty.start => Spot::Type(c, ty),
@@ -698,7 +734,13 @@ pub fn definition(folder: &Folder, file: &File, at: usize) -> Option<Location> {
                 _ => None,
             })
         }
-        Spot::Name(..) | Spot::Nothing => None,
+        // A declared column's name: from its header cell to its declaration, and back.
+        Spot::Name(c, s) => {
+            let (declared, _) = doc.declaration_span(c)?;
+            let to = if s == declared { doc.header_span(c) } else { declared };
+            Some(Location { uri: uri(&file.path), range: Lines::new(&file.text).range(to) })
+        }
+        Spot::Nothing => None,
     }
 }
 
@@ -763,6 +805,10 @@ pub fn rename(folder: &Folder, file: &File, at: usize, to: &str) -> Result<Works
                 return Err(format!("a column is named {to} already"));
             }
             edit(file, header_cell(file, c).name, to.to_owned());
+            // A declared column's declaration, renamed with it.
+            if let Some((declared, _)) = file.doc.declaration_span(c) {
+                edit(file, declared, to.to_owned());
+            }
             for (src, base) in formulas(file) {
                 for n in expr::names(src).into_iter().flatten() {
                     let (name, (s, l)) = &n.parts[0];
@@ -895,6 +941,38 @@ mod tests {
         assert!(double.starts_with("`double:EUR` `=amount * 2`"), "{double}");
         let kind = said(hover(&folder, &file, at(MONEY, ".kind", 0) + 2).unwrap());
         assert_eq!(kind, "`kind:assets|expenses`");
+    }
+
+    #[test]
+    fn a_declared_column_answers_from_its_declaration() {
+        let (folder, _, money) = books("declared");
+        let text = "---\nqty: int>=1\ntotal: EUR = cost * qty\n---\nitem:text!,cost:EUR,qty,total\nfuel,2.00,3,6.00=\n";
+        let folder = Folder { open: Arc::new(BTreeMap::from([(money.clone(), text.to_owned())])), ..folder };
+        let file = folder.read(&money).unwrap();
+        assert!(diagnostics(&file).is_empty(), "{:?}", diagnostics(&file));
+        let lines = Lines::new(text);
+        // Hover on the declaration and on the header's bare name says the column.
+        let declared = said(hover(&folder, &file, at(text, "total:", 0)).unwrap());
+        assert!(declared.starts_with("`total:EUR` `=cost * qty`"), "{declared}");
+        let bare = said(hover(&folder, &file, at(text, "total\n", 0)).unwrap());
+        assert_eq!(declared, bare);
+        // Go to definition: the header's name to its declaration, and back.
+        let to = definition(&folder, &file, at(text, "total\n", 0)).unwrap();
+        assert_eq!(to.range, lines.range(span(at(text, "total:", 0) as u32, 5)));
+        let back = definition(&folder, &file, at(text, "total:", 0)).unwrap();
+        assert_eq!(back.range, lines.range(span(at(text, "total\n", 0) as u32, 5)));
+        // A formula's name in a declaration goes to the column it reads.
+        let qty = definition(&folder, &file, at(text, "qty\n---", 0)).unwrap();
+        assert_eq!(qty.range, lines.range(span(at(text, "qty,", 0) as u32, 3)));
+        // A rename follows the column into its declaration and every formula naming it.
+        let edit = rename(&folder, &file, at(text, "qty,", 0), "count").unwrap();
+        let mut edits = edit.changes.unwrap().into_values().next().unwrap();
+        edits.sort_by_key(|e| (e.range.start.line, e.range.start.character));
+        let renamed: Vec<(u32, &str)> = edits.iter().map(|e| (e.range.start.line, e.new_text.as_str())).collect();
+        assert_eq!(renamed, [(1, "count"), (2, "count"), (4, "count")]);
+        // Completion in a declared formula offers the columns.
+        let items = complete(&folder, &file, at(text, "cost * qty", 0));
+        assert!(items.iter().any(|i| i.label == "cost"), "{:?}", items.iter().map(|i| &i.label).collect::<Vec<_>>());
     }
 
     #[test]
