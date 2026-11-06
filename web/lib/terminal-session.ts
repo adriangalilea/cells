@@ -335,6 +335,13 @@ export const baselineOf = (face: MonoFace) =>
  *  screen's top-left corner, in px) `width` by `height` px, under the bar and its dots,
  *  in the palette, rounded and edged as the live window (its 1px hairline round it).
  *  The window's own size is the screen's plus the bar and the hairline. */
+/** The screen's inset in the window, px, as the live window's (terminal.tsx): its
+ *  first column's centre under the first dot's, as far again from the right edge. A
+ *  row that runs edge to edge (an editor's bars) reaches back through it. */
+export const screenInset = (fontSize: number, face: MonoFace) =>
+  (WINDOW.padX + WINDOW.dot / 2) * (fontSize / WINDOW.type) -
+  (face.ch * fontSize) / 2
+
 export function terminalWindowSvg(
   palette: TerminalPalette,
   {
@@ -347,7 +354,8 @@ export function terminalWindowSvg(
 ): string {
   const u = fontSize / WINDOW.type
   const bar = BAR_EM * fontSize
-  const w = width + 2
+  const inset = screenInset(fontSize, face)
+  const w = width + 2 * inset + 2
   const h = height + bar + 2
   const r = WINDOW.radius * u
   const dots = [0, 1, 2]
@@ -361,7 +369,7 @@ export function terminalWindowSvg(
   <rect width="${w}" height="${h}" rx="${r}" fill="${palette.bg}"/>
   <path d="M1 ${r}a${r - 1} ${r - 1} 0 0 1 ${r - 1} ${-(r - 1)}h${w - 2 * r}a${r - 1} ${r - 1} 0 0 1 ${r - 1} ${r - 1}v${bar - r + 1}h${-(w - 2)}z" fill="${palette.bar}"/>
   ${dots}
-  <g transform="translate(1 ${1 + bar})" font-size="${fontSize}" style="font-family: ${esc(face.family)}; white-space: pre" xml:space="preserve">${screen}</g>
+  <g transform="translate(${1 + inset} ${1 + bar})" font-size="${fontSize}" style="font-family: ${esc(face.family)}; white-space: pre" xml:space="preserve">${screen}</g>
   <rect x="0.5" y="0.5" width="${w - 1}" height="${h - 1}" rx="${r - 0.5}" fill="none" stroke="${palette.accent}" stroke-opacity="${EDGE_ALPHA}"/>
 </svg>
 `

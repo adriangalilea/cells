@@ -42,6 +42,7 @@ import {
   GEIST_MONO,
   LINE_HEIGHT,
   type MonoFace,
+  screenInset,
   type TerminalPalette,
   terminalPalette,
   terminalWindowSvg,
@@ -504,9 +505,16 @@ export function renderEditorSvg(
         `<rect x="${col * ch}" y="${y}" width="${w * ch}" height="${lh}" fill="${colour}"${extra}/>`,
       )
   }
+  // A bar (the bufferline, the status line) through the window's inset to its edges,
+  // as the live one reaches (terminal-editor's EDGE_TO_EDGE).
+  const inset = screenInset(fontSize, face)
+  const bar = (y: number) =>
+    out.push(
+      `<rect x="${-inset}" y="${y}" width="${columns * ch + 2 * inset}" height="${lh}" fill="${palette.bar}"/>`,
+    )
   let y = 0
   if (screen.buffers) {
-    fill(0, y, columns, palette.bar)
+    bar(y)
     let col = 0
     for (const b of screen.buffers) {
       const width = b.label.length + 2
@@ -596,7 +604,7 @@ export function renderEditorSvg(
   // The status line: the mode, the file, then at the right the counts and the place,
   // a column between each, as the live one lays them in a row.
   const { status } = screen
-  fill(0, y, columns, palette.bar)
+  bar(y)
   fill(
     0,
     y,

@@ -290,52 +290,78 @@ export function ogWordmarkCard(card: OgCard): string {
   )
 }
 
-/** The type of a stacked card's row of words, px: the name, and the line beside it on
- *  its baseline; and the gap from the still to the name's capitals, under the margins
- *  above and below so the two read as one block. */
-export const OG_STACK = { title: 60, line: 30, between: 28, gap: 36 } as const
+/** A stacked card's type, px: the name large over the still, the line small under it.
+ *  Its spaces in one unit, the name's gap to the still: the margin above the name the
+ *  golden ratio of it (`above`), so the name sits nearer what it names than the edge;
+ *  the line's space, around it, a share of it, so the line only breathes; and the least
+ *  the line's space may be, such that X's 2:1 crop (15 px off each end) still leaves it
+ *  a margin. */
+export const OG_STACK = {
+  title: 92,
+  line: 24,
+  above: (1 + Math.sqrt(5)) / 2,
+  lineShare: 0.5,
+  least: 28,
+} as const
 
-/** A still across the card's width (an editor, a terminal), the name and the line in a
- *  row under it: the thing itself first and as large as the card allows, what it is
- *  called beneath. The still and the row are centred on the card's height, inside its
- *  margin; a still too tall for it, or a line that will not fit beside the name,
+/** The name, a still across the card's width (an editor, a terminal) under it, and the
+ *  line small under that, centred: the thing itself as large as the card allows, what
+ *  it is called above it. Each part is placed as it is seen, words from their capitals'
+ *  top to their baseline (a line box's ascent and descent are empty space no reader
+ *  sees), and the height left over is shared in `OG_STACK`'s proportions: the margin
+ *  above the name, the name's gap to the still, the line's space above it and below it.
+ *  A line's space under `OG_STACK.least`, or a line that will not fit on one line,
  *  screams. */
 export function ogStackCard(card: OgCard & { still: string }): string {
   const width = OG.width - 2 * OG_PAD
   const height = width * rootOf(card.still).ratio
   const { title, line } = card.faces
-  const titleW = title.width(card.title) * OG_STACK.title
-  const room = width - titleW - OG_STACK.between
-  const lineLines = wrapWords(card.line, line, OG_STACK.line, room)
+  const lineLines = wrapWords(card.line, line, OG_STACK.line, width)
   if (lineLines.length > 1)
     throw new Error(
-      `og: the line takes ${lineLines.length} lines beside the name in ${Math.round(room)} px: say it shorter`,
+      `og: the line takes ${lineLines.length} lines in ${width} px: say it shorter`,
     )
-  // The row as it is seen, from its capitals' top to its baseline: a line box's ascent
-  // above the capitals and its descent below would sink the words and the block.
-  const rowH = OG_STACK.title * title.cap
-  const blockH = height + OG_STACK.gap + rowH
-  const top = (OG.height - blockH) / 2
-  // Inside the card's margin, which X's 2:1 crop (15 px off each end) leaves whole.
-  if (top < OG_PAD)
+  const titleCap = OG_STACK.title * title.cap
+  const lineCap = OG_STACK.line * line.cap
+  // The height left over in units of the name's gap: the margin above the name, the
+  // gap itself, the line's space above it and below it.
+  const gap =
+    (OG.height - (titleCap + height + lineCap)) /
+    (OG_STACK.above + 1 + 2 * OG_STACK.lineShare)
+  const lineSpace = gap * OG_STACK.lineShare
+  if (lineSpace < OG_STACK.least)
     throw new Error(
-      `og: the still and its row are ${Math.round(blockH)} px tall, more than the ${OG.height - 2 * OG_PAD} px inside the card's margin: give the still fewer rows or more columns`,
+      `og: the line's space is ${Math.round(lineSpace)} px, less than ${OG_STACK.least}: give the still fewer rows or more columns`,
     )
-  const baseline = top + height + OG_STACK.gap + rowH
+  const titleBase = gap * OG_STACK.above + titleCap
+  const stillTop = titleBase + gap
+  const lineBase = stillTop + height + lineSpace + lineCap
+  const lineW = (lineLines[0] ?? []).reduce(
+    (w, piece) => w + line.width(piece.text) * OG_STACK.line,
+    0,
+  )
   return svgOf(
-    `${ground(card.look, { x: OG.width / 2, y: top + height / 2 })}
-  ${placed(card.still, OG_PAD, top, width)}
-  ${wordsSvg(wrapWords([card.title], title, OG_STACK.title, titleW + 1), {
-    x: OG_PAD,
-    y: baseline,
-    size: OG_STACK.title,
-    leading: title.ascent + title.descent,
-    face: title,
-    ink: card.look.ink,
-  })}
+    `${ground(card.look, { x: OG.width / 2, y: stillTop + height / 2 })}
+  ${wordsSvg(
+    wrapWords(
+      [card.title],
+      title,
+      OG_STACK.title,
+      title.width(card.title) * OG_STACK.title + 1,
+    ),
+    {
+      x: OG_PAD,
+      y: titleBase,
+      size: OG_STACK.title,
+      leading: title.ascent + title.descent,
+      face: title,
+      ink: card.look.ink,
+    },
+  )}
+  ${placed(card.still, OG_PAD, stillTop, width)}
   ${wordsSvg(lineLines, {
-    x: OG_PAD + titleW + OG_STACK.between,
-    y: baseline,
+    x: (OG.width - lineW) / 2,
+    y: lineBase,
     size: OG_STACK.line,
     leading: OG_TYPE.leading,
     face: line,

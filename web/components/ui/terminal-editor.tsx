@@ -159,6 +159,13 @@ function useColumns(): [React.RefObject<HTMLSpanElement | null>, number] {
 
 const nameOf = (path: string) => path.split("/").at(-1) as string
 
+/** A bar (the bufferline, the status line) through the window's inset to its edges, as
+ *  a terminal extends a row's ground into its padding; what it holds stays on the grid. */
+const EDGE_TO_EDGE: React.CSSProperties = {
+  marginInline: "calc(-1 * var(--terminal-inset, 0px))",
+  paddingInline: "var(--terminal-inset, 0px)",
+}
+
 /** An edit played in the terminal: the frame at the instant drawn as helix. Its
  *  playable, for the driver: `codeTimeline(files, steps).playable`. */
 export function TerminalEditor({
@@ -244,7 +251,11 @@ export function TerminalEditor({
         <div
           data-slot="terminal-editor-bufferline"
           className="flex overflow-hidden"
-          style={{ background: palette.bar, height: `${LINE_HEIGHT}em` }}
+          style={{
+            background: palette.bar,
+            height: `${LINE_HEIGHT}em`,
+            ...EDGE_TO_EDGE,
+          }}
         >
           {screen.buffers.map((b) => {
             const look = {
@@ -398,7 +409,7 @@ export function TerminalEditor({
       <div
         data-slot="terminal-editor-status"
         className="flex gap-[1ch]"
-        style={{ background: palette.bar }}
+        style={{ background: palette.bar, ...EDGE_TO_EDGE }}
       >
         <span
           data-slot="terminal-editor-mode"

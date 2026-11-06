@@ -179,7 +179,20 @@ function TerminalWindow({
         <PaletteContext.Provider value={palette}>
           <div
             data-slot="terminal-screen"
-            style={{ flex: 1, minHeight: 0, overflow: "hidden" }}
+            // The grid inset so its first column's centre stands under the first dot's
+            // (an editor's diagnostic mark centred below it), and as far from the right
+            // edge, so no line ends on the frame. `--terminal-inset` is it, for a row
+            // that runs edge to edge (an editor's bars) to reach back through it, as a
+            // terminal extends a row's ground into its padding.
+            style={
+              {
+                flex: 1,
+                minHeight: 0,
+                overflow: "hidden",
+                "--terminal-inset": `calc(${em(WINDOW.padX + WINDOW.dot / 2)} - 0.5ch)`,
+                paddingInline: "var(--terminal-inset)",
+              } as React.CSSProperties
+            }
           >
             {children}
           </div>
