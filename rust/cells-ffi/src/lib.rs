@@ -1298,6 +1298,19 @@ pub unsafe extern "C" fn cells_statement_part(d: *mut CellsDoc, i: usize, part: 
     CellsStr::of(&d.out)
 }
 
+/// What a cell of `column` may hold (a choice's words, a boolean's two, a reference's
+/// keys), each followed by U+001F, which no value holds; empty for any other type.
+///
+/// # Safety
+/// `d` is a live doc; `column < cells_columns(d)`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn cells_offers(d: *mut CellsDoc, column: usize) -> CellsStr {
+    // SAFETY: the caller's promise.
+    let d = unsafe { doc(d) };
+    d.out = d.doc.offers(column).into_iter().map(|o| o + "\u{1f}").collect();
+    CellsStr::of(&d.out)
+}
+
 /// The file's text with its prelude edited: prelude lines `from..to` (1-based inside the
 /// fences: a statement's, a script's code alone) replaced by `text` (empty: taken out;
 /// `from == to`: written before line `from`), or `text` written last when `from` is 0, a

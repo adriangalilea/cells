@@ -1523,6 +1523,36 @@ impl Doc {
         fields.get(column).map_or(Cow::Borrowed(""), |raw| scan::unquoted(raw))
     }
 
+    /// What a cell of `column` may hold, for a host offering it as the cell is typed: a
+    /// choice's words, a boolean's two, a reference's keys (every row of the column it
+    /// names, in the table's order, each once; none for a table not reached); empty for
+    /// any other type.
+    pub fn offers(&self, column: usize) -> Vec<String> {
+        let ty = &self.columns[column].ty;
+        match &ty.base {
+            Base::Choice(words) => words.clone(),
+            Base::Bool { yes, no } => alloc::vec![yes.clone(), no.clone()],
+            Base::Ref(targets) => {
+                let mut out: Vec<String> = Vec::new();
+                for t in targets {
+                    let Some(doc) = self.tables.iter().find(|x| x.name == t.table).and_then(|x| x.doc.as_ref()) else {
+                        continue;
+                    };
+                    let Some(k) = doc.columns.iter().position(|c| c.name == t.column) else { continue };
+                    for row in 0..doc.rows() {
+                        let key = doc.text(row, k);
+                        let key = key.trim_matches([' ', '\t']);
+                        if !key.is_empty() && !out.iter().any(|o| o == key) {
+                            out.push(key.to_owned());
+                        }
+                    }
+                }
+                out
+            }
+            _ => Vec::new(),
+        }
+    }
+
     /// Every stored cell's text in a row, as `text` gives each, the record scanned once:
     /// what a host that keeps its own rows (a table editing the file) takes.
     pub fn texts(&self, row: usize) -> Vec<Cow<'_, str>> {
@@ -3245,6 +3275,18 @@ pub fn compose(like: &Doc, header: &[&str], rows: &[Vec<&str>]) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn offers() {
+        let accounts = "account:text!\nbank\nrent\nfood\n";
+        let money = "---\nimport accounts from \"./accounts.cells\"\ntype Kind = in|out\n---\nto:accounts.account,kind:Kind,paid:yes/no,note:text\nrent,in,yes,x\n";
+        let held = BTreeMap::from([("accounts.cells".to_owned(), accounts.to_owned())]);
+        let doc = read_with(money, &mut crate::files::Files::new(&held, "money.cells"), 1).unwrap();
+        assert_eq!(doc.offers(0), ["bank", "rent", "food"]);
+        assert_eq!(doc.offers(1), ["in", "out"]);
+        assert_eq!(doc.offers(2), ["yes", "no"]);
+        assert!(doc.offers(3).is_empty());
+    }
 
     #[test]
     fn prelude_edited() {
