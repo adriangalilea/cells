@@ -234,7 +234,9 @@ const type = [
 // A quoted cell closes on this line, its last quote ending the cell; one
 // that does not is the multi-line string rule's, below.
 const CLOSED = raw`"(?:[^"]|"")*"(?=,|$)`
-const headerCell = raw`(?:(${CLOSED})|([^:,\r\n"][^:,\r\n]*)?(?:(:)([^,\r\n]*))?)`
+// A header cell quoted (its formula holds a `,` or a `"`) is read as a bare one inside
+// its quotes: its name up to the first `:`, then its type and formula.
+const headerCell = raw`(?:(")((?:[^":\r\n]|"")*)(?:(:)((?:[^"\r\n]|"")*))?(")(?=,|$)|([^:,\r\n"][^:,\r\n]*)?(?:(:)([^,\r\n]*))?)`
 const rowCell = raw`(${CLOSED}|(?!")[^,\r\n]*)`
 
 function cycle(cell: string, groupsPerCell: number, captureCell: (column: number) => Record<number, unknown>) {
@@ -251,11 +253,15 @@ function cycle(cell: string, groupsPerCell: number, captureCell: (column: number
   return { match, captures }
 }
 
-const header = cycle(headerCell, 4, (column) => ({
-  0: { name: `${RAINBOW[column]} string.quoted.double.name.cells` },
+const header = cycle(headerCell, 8, (column) => ({
+  0: { name: S.stringBegin },
   1: { name: RAINBOW[column] },
   2: { name: S.colon },
   3: { name: S.type, patterns: [{ include: "#type" }] },
+  4: { name: S.stringEnd },
+  5: { name: RAINBOW[column] },
+  6: { name: S.colon },
+  7: { name: S.type, patterns: [{ include: "#type" }] },
 }))
 
 // A cell is classified by its spelling alone, the whole cell: `12 apples` is
@@ -266,6 +272,17 @@ const whole = (body: string) => raw`(?<=^|,)[ \t]*(?:${body})[ \t]*$`
 // own formula (32.25=96.75 / 3): the first `=` that is no `'=` splits what the file
 // stores from how it is computed.
 const value = [
+  {
+    comment: "A quoted computed cell (its own formula holds a `,`): the same parts inside its quotes.",
+    match: whole(raw`(")((?:'=|""|[^="])*?)(?<!')(=)((?:""|[^"])*)(")`),
+    captures: {
+      1: { name: S.stringBegin },
+      2: { name: "meta.stored.cells", patterns: [{ include: "#written" }] },
+      3: { name: S.formulaMark },
+      4: { name: S.formula, patterns: [{ include: "#formula" }] },
+      5: { name: S.stringEnd },
+    },
+  },
   {
     match: whole(raw`(")((?:[^"]|"")*)(")`),
     name: S.string,

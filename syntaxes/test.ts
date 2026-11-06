@@ -21,8 +21,9 @@ rates = run every day at 18:00 in Europe/Madrid
 export default async () => []
 \`\`\`
 ---
-item:text!,category:Category,cost:EUR>=0,paid:yes/no,on:date(DD/MM/YYYY),note:text?,score:0..10,to:accounts.account,x:one of a b key,y:bool si no optional,z:num between 0 and 100,w:num min 1,total:EUR=ABS(cost) * (score - 1),fee:EUR(6),running:EUR=running[-1] + total,cum:EUR=SUM(total[FIRST:THIS]),low:num=round(cost),memo:text
+item:text!,category:Category,cost:EUR>=0,paid:yes/no,on:date(DD/MM/YYYY),note:text?,score:0..10,to:accounts.account,x:one of a b key,y:bool si no optional,z:num between 0 and 100,w:num min 1,total:EUR=ABS(cost) * (score - 1),fee:EUR(6),running:EUR=running[-1] + total,cum:EUR=SUM(total[FIRST:THIS]),low:num=round(cost),memo:text,"vat:EUR=ROUND(cost, 2)","my ""best"" item"
 fuel,travel,32.25=96.75 / 3,yes,14/08/2026,"a ""b""",7,assets:bank,a,si,2026-08-14T10:00:00Z,https://example.com,84.20=,0.001200,84.20=,=SUM(TABLE.total),84=,'=> see invoice
+maps,stay,"2.10=ROUND(6.30 / 3, 2)"
 a,"two
 lines",b
 `
@@ -131,6 +132,15 @@ const EXPECT: [string, string][] = [
   ["THIS", "variable.language.cells"],
   // a word in lower case is a name, never a function
   ["round", "variable.other.property.cells"],
+  // a quoted header cell reads as a bare one inside its quotes: its name, type, formula
+  ['"', "punctuation.definition.string.begin.cells"],
+  ["vat", "meta.column.1.cells"],
+  ["EUR", "support.type.currency.cells"],
+  ["ROUND", "support.function.formula.cells"],
+  ["cost", "variable.other.property.cells"],
+  ["2", "constant.numeric.cells"],
+  ['"', "punctuation.definition.string.end.cells"],
+  ['my ""best"" item', "meta.column.2.cells"],
   // a row: every cell in its column's colour, typed spellings scoped inside it
   ["fuel", "meta.column.1.cells"],
   ["travel", "meta.column.2.cells"],
@@ -157,6 +167,13 @@ const EXPECT: [string, string][] = [
   ["TABLE", "variable.language.cells"],
   // a text's `=`, written `'=`
   ["'=", "constant.character.escape.cells"],
+  // a quoted cell holding its own formula: the same parts inside its quotes
+  ['"', "punctuation.definition.string.begin.cells"],
+  ["2.10", "meta.stored.cells"],
+  ["=", "punctuation.definition.formula.cells"],
+  ["ROUND", "support.function.formula.cells"],
+  ["6.30", "constant.numeric.cells"],
+  ['"', "punctuation.definition.string.end.cells"],
   // a quoted field across a line break stays one string
   ["two", "string.quoted.double.cells"],
   ["lines", "string.quoted.double.cells"],
