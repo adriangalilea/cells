@@ -291,17 +291,17 @@ export function ogWordmarkCard(card: OgCard): string {
 }
 
 /** A stacked card's type, px: the name large over the still, the line small under it.
- *  Its spaces in one unit, the name's gap to the still: the margin above the name the
- *  golden ratio of it (`above`), so the name sits nearer what it names than the edge;
- *  the line's space, around it, a share of it, so the line only breathes; and the least
- *  the line's space may be, such that X's 2:1 crop (15 px off each end) still leaves it
- *  a margin. */
+ *  Its spaces in one unit, the name's gap to the still: the line's gap to the still a
+ *  share of it (`lineShare`), so the line only breathes; and at each end the margin the
+ *  golden ratio of the gap beside it (`margin`), so the name and the line each sit
+ *  nearer the still than the card's edge. The least the line's gap may be keeps X's 2:1
+ *  crop (15 px off each end) from taking its margin. */
 export const OG_STACK = {
   title: 92,
   line: 24,
-  above: (1 + Math.sqrt(5)) / 2,
+  margin: (1 + Math.sqrt(5)) / 2,
   lineShare: 0.5,
-  least: 28,
+  least: 20,
 } as const
 
 /** The name, a still across the card's width (an editor, a terminal) under it, and the
@@ -309,8 +309,8 @@ export const OG_STACK = {
  *  it is called above it. Each part is placed as it is seen, words from their capitals'
  *  top to their baseline (a line box's ascent and descent are empty space no reader
  *  sees), and the height left over is shared in `OG_STACK`'s proportions: the margin
- *  above the name, the name's gap to the still, the line's space above it and below it.
- *  A line's space under `OG_STACK.least`, or a line that will not fit on one line,
+ *  above the name, its gap to the still, the line's gap to the still, the margin below
+ *  it. A line's gap under `OG_STACK.least`, or a line that will not fit on one line,
  *  screams. */
 export function ogStackCard(card: OgCard & { still: string }): string {
   const width = OG.width - 2 * OG_PAD
@@ -323,19 +323,19 @@ export function ogStackCard(card: OgCard & { still: string }): string {
     )
   const titleCap = OG_STACK.title * title.cap
   const lineCap = OG_STACK.line * line.cap
-  // The height left over in units of the name's gap: the margin above the name, the
-  // gap itself, the line's space above it and below it.
+  // The height left over in units of the name's gap: the margin above the name and
+  // the gap itself, then the line's gap and the margin below it, the same proportion.
   const gap =
     (OG.height - (titleCap + height + lineCap)) /
-    (OG_STACK.above + 1 + 2 * OG_STACK.lineShare)
-  const lineSpace = gap * OG_STACK.lineShare
-  if (lineSpace < OG_STACK.least)
+    ((1 + OG_STACK.margin) * (1 + OG_STACK.lineShare))
+  const lineGap = gap * OG_STACK.lineShare
+  if (lineGap < OG_STACK.least)
     throw new Error(
-      `og: the line's space is ${Math.round(lineSpace)} px, less than ${OG_STACK.least}: give the still fewer rows or more columns`,
+      `og: the line's gap is ${Math.round(lineGap)} px, less than ${OG_STACK.least}: give the still fewer rows or more columns`,
     )
-  const titleBase = gap * OG_STACK.above + titleCap
+  const titleBase = gap * OG_STACK.margin + titleCap
   const stillTop = titleBase + gap
-  const lineBase = stillTop + height + lineSpace + lineCap
+  const lineBase = stillTop + height + lineGap + lineCap
   const lineW = (lineLines[0] ?? []).reduce(
     (w, piece) => w + line.width(piece.text) * OG_STACK.line,
     0,
