@@ -1,11 +1,13 @@
 // Every scope the TextMate grammar promises, read back through Shiki (the
 // Oniguruma engine VS Code and GitHub use). Each expectation is a piece of
 // text and a scope its token must carry, found in order through the file, so
-// a scope landing on the wrong occurrence fails too.
+// a scope landing on the wrong occurrence fails too. The inline grammar is held
+// the same way over fragments, one at a time.
 //
 //   bun run test.ts
 
 import { createHighlighter } from "shiki"
+import inline from "./cells-inline.tmLanguage.json"
 import grammar from "./cells.tmLanguage.json"
 
 const FIXTURE = `---
@@ -180,22 +182,67 @@ const EXPECT: [string, string][] = [
   ['"', "punctuation.definition.string.end.cells"],
 ]
 
-const h = await createHighlighter({ themes: ["github-dark"], langs: [grammar as never, "typescript"] })
+// Fragments as prose quotes them in inline code, each read alone by cells-inline: the
+// shape decides where it enters the grammar.
+const INLINE: [string, [string, string][]][] = [
+  [
+    "cost:EUR>=0",
+    [
+      ["cost", "meta.column.1.cells"],
+      ["EUR", "support.type.currency.cells"],
+      [">=", "keyword.operator.comparison.cells"],
+    ],
+  ],
+  [
+    "=SUM(total[FIRST:THIS])",
+    [
+      ["=", "punctuation.definition.formula.cells"],
+      ["SUM", "support.function.formula.cells"],
+      ["FIRST", "variable.language.cells"],
+    ],
+  ],
+  [
+    "32.25=96.75 / 3",
+    [
+      ["32.25", "constant.numeric.cells"],
+      ["=", "punctuation.definition.formula.cells"],
+      ["/", "keyword.operator.arithmetic.cells"],
+    ],
+  ],
+  ["84.20=", [["84.20", "constant.numeric.cells"], ["=", "punctuation.definition.formula.cells"]]],
+  [
+    "running[-1] + total",
+    [
+      ["running", "variable.other.property.cells"],
+      ["-1", "constant.numeric.cells"],
+      ["+", "keyword.operator.arithmetic.cells"],
+    ],
+  ],
+  ["2026-08-14", [["2026-08-14", "constant.other.symbol.date.cells"]]],
+  ["yes", [["yes", "constant.language.boolean.cells"]]],
+  // a text opening with its escaped `=` is a value, not an expression
+  ["'=> see", [["'=", "constant.character.escape.cells"]]],
+]
 
-function tokens(code: string): { text: string; scopes: string[] }[] {
+const h = await createHighlighter({
+  themes: ["github-dark"],
+  langs: [grammar as never, inline as never, "typescript"],
+})
+
+function tokens(code: string, lang = "cells"): { text: string; scopes: string[] }[] {
   const out: { text: string; scopes: string[] }[] = []
-  for (const line of h.codeToTokens(code, { lang: "cells", theme: "github-dark", includeExplanation: true }).tokens)
+  for (const line of h.codeToTokens(code, { lang, theme: "github-dark", includeExplanation: true }).tokens)
     for (const token of line)
       for (const e of token.explanation ?? [])
         out.push({ text: e.content, scopes: e.scopes.map((s) => s.scopeName) })
   return out
 }
 
-function check(label: string, code: string): number {
-  const got = tokens(code)
+function check(label: string, code: string, expect = EXPECT, lang = "cells"): number {
+  const got = tokens(code, lang)
   let at = 0
   let failures = 0
-  for (const [text, scope] of EXPECT) {
+  for (const [text, scope] of expect) {
     const found = got.findIndex((t, i) => i >= at && t.text === text && t.scopes.includes(scope))
     if (found < 0) {
       const near = got.slice(at).find((t) => t.text === text)
@@ -203,10 +250,13 @@ function check(label: string, code: string): number {
       failures++
     } else at = found + 1
   }
-  console.log(`${label}: ${EXPECT.length - failures}/${EXPECT.length}`)
+  if (failures || expect === EXPECT) console.log(`${label}: ${expect.length - failures}/${expect.length}`)
   return failures
 }
 
 // The same file with CRLF line endings must scope the same.
-const failures = check("lf", FIXTURE) + check("crlf", FIXTURE.replaceAll("\n", "\r\n"))
+let failures = check("lf", FIXTURE) + check("crlf", FIXTURE.replaceAll("\n", "\r\n"))
+const inlineFailures = INLINE.reduce((n, [code, expect]) => n + check(`inline ${code}`, code, expect, "cells-inline"), 0)
+console.log(`inline: ${INLINE.length} fragments${inlineFailures ? `, ${inlineFailures} wrong` : ""}`)
+failures += inlineFailures
 process.exit(failures === 0 ? 0 : 1)
