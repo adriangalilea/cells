@@ -22,6 +22,7 @@ groceries,food,32.25=96.75 / 3,2,64.50=,no,2026-08-15
 - **Text.** A file is UTF-8; one that is not (a Latin-1 export, a byte that begins no character) is an error naming the file. A byte order mark before its first line is no part of that line, and a writer writes it back.
 - **Control characters** are Unicode's Cc, U+0000 to U+001F, U+007F and U+0080 to U+009F, but for tab, `\n` and `\r`. They show nothing, so `INV-0042` and `INV-0042` with a NUL after it would be two keys that look one: no part of a file holds one unseen. One in a cell breaks the cell ([Reading](#reading)); one in a header cell, its name or its type, is an error naming the column; one in a prelude line, a comment or a fence's content included, is an error naming the line. A message names the character by its code point, `U+0000`, never by the character.
 - **Records** are RFC 4180: fields separated by `,`, a field holding `,`, `"` or a line break is quoted, `""` is a quote inside one. A quoted field opens with `"` and closes at a lone `"`, which the end of the file, a `,` or a line ending follows; text after the closing quote, a `"` inside a field that did not open with one, and a quoted field never closed are errors naming the record (the header, or the row). Inside quotes every character is the field's, line breaks included; a control character quoted is still one.
+- **Padding.** Spaces and tabs at either end of an unquoted field are no part of it, in the header and in every row, so a table can be laid out as one ([Formatting](#formatting)) and reads the same aligned or not. A value whose own ends are spaces is quoted (`" item"`): inside quotes every character is the field's.
 - **Lines** end in `\n` or `\r\n`. Each line's ending is kept as read, so a file may mix them, and so is whether the file ends in a line break: one at the very end closes the last record and opens none. A `\r` that is not followed by `\n`, outside quotes, is an error naming its record.
 - **The prelude** opens when the file's first line is exactly `---` and closes at the next line that is exactly `---` outside a fence ([The prelude](#the-prelude)); between them, the format's own language. It is optional; a file with none starts at its header. A prelude that opens and never closes is an error. A `---` on any other line is no fence: after the prelude it is the header (one column named `---`), below the header it is a row.
 - **The header** is the first line after the prelude. Every other line is a row. A file with no line after its prelude (an empty file, or a prelude alone) has no columns and no rows.
@@ -34,7 +35,7 @@ cost:EUR>=0        total:EUR=cost * qty
  ①  ②  ③            ①   ②  ③  ④  ⑤
 ```
 
-1. **The name** is everything before the first `:`, spaces included (` item` and `item` are two names). A name may hold any character but `:`, and is at least one character. No two columns share a name.
+1. **The name** is everything before the first `:`, the field's padding aside (` item` and `item` are one name; quoted, `" item:text"` is the name ` item`). A name may hold any character but `:`, and is at least one character. No two columns share a name.
 2. **`:`** says a type follows. A cell with no `:` is a plain column, its type inferred from its values (below). So every CSV is a Cells file with no types written.
 3. **The type** is everything after it up to its formula, and never empty. It never holds a `,` or a `"`; a name that holds one quotes the whole cell (`"price, net:EUR"`).
 4. **`=`** says a formula follows: the first `=` outside single quotes that closes no `>=` or `<=`.
@@ -76,7 +77,7 @@ A type opens with what the column holds: a base, a currency, a named type, a cho
 | any ISO 4217 code, `EUR`, `USD`, `JPY` | `84.20` | an amount of money in that currency, a number |
 | `id` | `k7m2q9xa` | a row's identity: eight characters of Crockford's base 32 in lower case (`0-9`, `a-z` but `i l o u`), assigned by the engine, never typed by a person |
 
-A cell is read exactly as written: never trimmed, never folded in case. ` 12` is not an `int`, `TRUE` is not a `bool`.
+A cell is read as written, its padding aside: never folded in case, never coerced. `TRUE` is not a `bool`; quoted, `" 12"` is not an `int`.
 
 - **`datetime`** is `YYYY-MM-DDTHH:mm:ss`, then a fraction of a second of one to nine digits or none, then `Z` or an offset `+HH:mm` or `-HH:mm` (hours `00` to `23`). `T` and `Z` are capitals, the seconds are always written, the offset never left out: a time with no offset is no instant. Its value is the instant, so `2026-08-14T14:30:00+02:00` and `2026-08-14T12:30:00Z` are one value.
 - **`url`** is a scheme (a letter, then letters, digits, `+`, `-` or `.`), `:`, then at least one character, each a letter, a digit, one of `-._~:/?#[]@!$&'()*+,;=`, or `%` and two hexadecimal digits. No space, nothing outside ASCII: a URL with other characters writes them percent-encoded. `mailto:ada@example.com` is a URL; `example.com` and `//example.com/a` are not.
@@ -177,11 +178,29 @@ The prelude is the work; the header and rows after it are what the file shows, a
 
 - **`//`** starts a comment to the line's end, outside single and double quotes and outside fences (`type Path = 'a//b'|c`, `"https://example.com/r.cells"`).
 - **A fence** opens with three backticks or more and its language, `` ```cells ``, and closes at the first line that is as many backticks and nothing else, spaces and tabs aside. What it holds is its language's, so a `//` or a `---` inside one is no comment and no end of the prelude's. A fence never closed is an error naming the line it opens on.
-- **A computed column** is no statement: `total = cost * qty` is an error naming its line. It is a header cell, `total:EUR=cost * qty` ([Formulas](#formulas)).
+- **A column** is declared with a `:`, `total: Money = cost * qty` ([Columns](#columns)); `total = cost * qty`, with no type, is no statement and an error naming its line.
 
 ### Named types
 
 **`type Name = <type>`** names a type for any header cell to use: `category:Category`. A name is ASCII letters, digits and `_`, starting with a capital letter (`type category = …` is refused), and never a currency code. A name is defined once; it may name another named type defined above it, never one below it or itself. A header cell may add to a named type what it does not already say: `cost:Cost?`, `cost:Money>=0`. **`export type Name = <type>`** names one another file may import.
+
+### Columns
+
+````cells draft
+---
+type Money = EUR>=0
+item: text!
+cost: Money
+qty: int>=1
+total: Money = cost * qty
+running: Money = running[-1] + total
+---
+item,         cost,  qty, total,   running
+fuel,         84.20, 1,   84.20=,  84.20=
+split dinner, 32.25, 1,   32.25=,  116.45=
+````
+
+**`name: type`**, or **`name: type = formula`**, declares a column of the file's table in the prelude, in a header cell's own grammar, spaces around its `:` and `=` being nothing as anywhere in the prelude. The header then names it alone (`total`), and the column is the declaration's: its type and its formula. A declaration names a column the header has, and a column is declared once: a header cell with a `:` whose column is declared too, a column declared twice, and a declaration whose name no header cell has, are each an error naming the line. A header name with no `:` and no declaration is a plain column, as ever. Declarations are statements, read in order, so a named type is above the columns that use it; a name that holds a `:`, a `,` or a `"` is quoted, `"price, net": EUR`. A table written inline declares its columns in its own header. Considered: the type and formula only in the header cell, so a column says where it is read how it is computed. The rows still say which cells are computed (`84.20=`), and a header of names lines up with its rows, which one of `cost:EUR>=0` and formulas never does; both forms read, and a writer keeps the one a file uses.
 
 ### Imports
 
@@ -359,13 +378,25 @@ A result the type breaks (a negative `net` in an `EUR>=0` column, `2.5` in an `i
 
 ## Writing
 
-A writer round-trips: a file read and written with nothing changed is the same bytes. A changed cell is written in its column's form (its format, its pair's words, a text's `=` as `'=`, quoted only when CSV needs it); everything else is written as it was read, the header's spelling (shorthand or explicit), each line's ending, the byte order mark and the prelude included. A cell set past the end of a short row writes the blank fields before it.
+A writer round-trips: a file read and written with nothing changed is the same bytes. A changed cell is written in its column's form (its format, its pair's words, a text's `=` as `'=`, quoted only when CSV needs it); everything else is written as it was read, the header's spelling (shorthand or explicit), each line's ending, the byte order mark and the prelude included. A cell set past the end of a short row writes the blank fields before it. A changed field keeps its line aligned when it fits, its padding taking up the difference; one wider pushes its line, and laying the table out again is formatting's ([Formatting](#formatting)).
 
 - **A write stores what it changes.** A writer computes every computed cell its change reaches (the cells whose formulas read what it changed, and theirs in turn) and stores each value left of its `=`, in the column's form; a computed cell stored nowhere yet (a blank field of a computed column, a lone `=`, `=96.75 / 3`) is stored on any write. One pass is all of it: a cycle is refused, so the cells are computed in the order their reads need, each once, and what the pass stores is what a second would. A cell the change does not reach is written as read.
 - **A stale cell is left as read** by a write that did not cause it ([Reading](#reading)): what a person wrote is never overwritten unasked. It is resolved one of two ways, each one write: store the formula's value (a client's fix, and `cells fix`, for every stale cell of a file at once), or keep the stored value as the row's override, the `=` and its formula dropped.
 - **A write never stores into a written cell**: an override stays as it was written, whatever the formula would give.
 
 A writer changing a type writes the shorthand, then its formula when it has one (`total:EUR>=0=cost * qty * 2`), and rewrites no written cell: a cell the new type breaks is reported, not changed, the computed cells it reaches are stored again, and a change after which a formula no longer reads (one a column it reads no longer holds the kind it needs) is refused, naming the column changed. A writer never writes a control character into a cell it changes or adds: text holding one is refused, naming the row, and the file is left as it was. A cell read with one is written back as read, as every unchanged byte is. A file written as a plain one (a `.csv`) writes each cell's value alone, its `=` and its formula dropped, so the numbers a person saw are in the file.
+
+### Formatting
+
+`cells fmt` writes a file as the format's standard lays it out, and so does a language server's formatting on save: every table's columns aligned, each table on its own (the file's, and each written inline in the prelude).
+
+- **A column starts where it starts on every line.** Each field but a line's last is its value, its comma, and spaces up to the next column's start. A column is as wide as its widest value plus its comma and one space, rounded up to a stop of four characters, so a value that grows within its stop moves nothing.
+- **A value wider than the cap, 32 characters, widens no column.** Its line resumes at the first column start after it, and the rest of the table is laid out as if it were not there, so one long note never moves the table.
+- **The prelude** is written as read, but a column's declarations ([Columns](#columns)) line up their `:` and their `=`.
+- **A file formatted is a function of its content**: formatting twice is formatting once, and `cells fmt --check` holds in CI.
+- **Alignment is a writer's setting, on by default.** `cells fmt --align off`, and the language server's `align` setting, write each field with no padding; reading never depends on which.
+
+The cost, said plainly: a value made wider than its column's stop re-pads that column on every line of its table, so a one-value edit can show as a whole-column diff. Each part of the format keeps that rare or invisible. The stops let a value grow by up to four characters before anything moves; the cap keeps one long value from moving the rest; `cells merge` merges by value, so padding never conflicts ([Merging](#merging)); and `cells diff`, git's textconv for `*.cells`, compares two versions with their padding taken out, so a diff shows the values that changed and nothing else ([EDITORS.md](EDITORS.md)). A host that runs no textconv (a code host's web view) has its own "ignore whitespace". A person who would rather have the smallest diff than the aligned file turns alignment off.
 
 ### Merging
 
@@ -445,7 +476,7 @@ The use it is designed against is **plain text accounting done properly**: books
     ```
 - **The command line beyond `check`, `fix`, `fmt --check`, `merge`, `pin`, `run` and `show`**: `cells sql` (above), and what else a folder-as-database needs (a visualisation of the graph, a rename followed through every file).
 - **The block's name.** "Prelude" reads well in prose, but to a programmer a prelude is the standard definitions a language loads into every file unasked (Haskell's `Prelude`, Rust's `std::prelude`), where this block is one file's own, explicit declarations. The candidates: frontmatter (the shape everyone knows and searches for; Astro puts code in its own, and calls it "component frontmatter" beside its "component script"; the one risk, a tool reading a `---` at a file's top as YAML, is met only in Markdown), preamble (LaTeX's exact role, imports and definitions before the body, but it needs explaining), or keeping prelude. A rename reaches the spec, the engine's messages, both grammars' names, the language server and ui, so it is made once and whole, with no alias kept, when it is decided.
-- **Words about a column and a title for the table.** A header cell has no room for a description without bloating it; the prelude is the natural place, its syntax for them open.
+- **Words about a column and a title for the table.** A header cell has no room for a description without bloating it; a column's declaration in the prelude ([Columns](#columns)) is the natural place, its syntax for them open.
 - **Strictness.** A broken cell and a broken grammar load and are reported ([Reading](#reading)); whether a reader may also be asked to refuse a file is not decided.
 - **Narrowing a reference** to some of the rows it names (`from` an account of kind `assets` or `income`): in the header cell (`from:accounts.account(kind=assets|income)`), or as a `check`, which keeps the header readable where the rule spans two files.
 - **Provenance: what was known on a date, and who may write what.** Two problems. A run replaces a corrected row, so the rate a report used before the correction lives only in git. And anyone can edit a block the engine owns, or a file a process owns: locks on a Mac are advisory, so the engine can only detect an edit, never prevent one. The candidates, none decided:
