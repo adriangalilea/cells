@@ -1,8 +1,7 @@
 # TODO
 
-## Next, after the format's rearchitecture lands (README, Being built)
+## Next
 
-- **The story in the new format**: each act's rows storing their computed values beside `=`, appearing in Helix as each save lands; the euros step's override a plain value; `running[-1] + total` its step; every claim in `scripts/examples.ts` against the new engine; the hero's files too.
 - **The window under the hero takes typing** as a text box does (click to place the caret, type, arrows, backspace, no modes), its colours and the engine's problems live; the Helix-faithful "your turn" below stays the bigger version.
 - **A blinking caret** in ui's terminal-editor while idle, solid while keys land.
 - **The extension lit** in a code frame's or a window's title (`groceries.cell`), and the header's names bold through `registerLanguage`'s styles (ui).

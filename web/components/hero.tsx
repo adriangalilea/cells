@@ -2,7 +2,7 @@
 
 // THE HERO: a MacBook at night, open on the format revealed a step at a time.
 // Helix, the full height of the screen on the left, opens accounts.cell then money.cell;
-// the Cells window and the terminal stack on the right. One clock (lib/hero `HERO.playable`)
+// the Cells window and the terminal stack on the right. One clock (lib/hero's `playable`)
 // drives it all: `Playback` plays it in view and round again; every window reads its own
 // moment from the hero's through a `Playhead`, so each ui piece keeps its clock's meaning.
 //
@@ -21,8 +21,9 @@ import { Playback, Playhead, usePlayhead } from "@/components/ui/playback"
 import { Terminal } from "@/components/ui/terminal"
 import { TerminalEditor } from "@/components/ui/terminal-editor"
 import { useCellsDiagnose } from "@/components/use-cells-diagnose"
-import { type CodeStep, codeFrameAt, codeTimeline } from "@/lib/code-session"
-import { HERO } from "@/lib/hero"
+import { useEngine } from "@/components/use-engine"
+import { type CodeStep, codeFrameAt } from "@/lib/code-session"
+import { hero } from "@/lib/hero"
 import { savedAt } from "@/lib/written"
 import { type Art, LID_MS, sceneClock, type Timeline } from "@/lib/macos-session"
 import { PRODUCT } from "@/lib/product"
@@ -44,7 +45,8 @@ const SHUT_FROM = MAC_CLOCK.starts[1] as number
 if (MAC_CLOCK.total < SHUT_FROM + LID_MS) throw new Error("hero: the Mac's story ends before its lid has shut")
 const NO_ART: Art = { icon: "", glyphs: {} }
 
-const EDIT = codeTimeline(HERO.files, HERO.steps)
+/** The hero, its saves as the engine writes them. */
+const useHero = () => hero(useEngine())
 
 /** The editor's accent, the terminal's phosphor: the site's cold edge light. */
 export const ACCENT = "#7fdcf0"
@@ -70,15 +72,16 @@ const share = (ms: number, from: number, length: number) => Math.min(1, Math.max
  *  re-reads a file when the editor writes it, never while it is being typed), read with
  *  the other as written; and the editor's own moment. */
 function useFiles(ms: number) {
-  const editAt = share(ms, HERO.edit.from, HERO.edit.duration)
-  const editMs = editAt * EDIT.total
-  const front = codeFrameAt(EDIT, editMs).active ?? HERO.accounts
-  const other = front === HERO.money ? HERO.accounts : HERO.money
+  const h = useHero()
+  const editAt = share(ms, h.edit.from, h.edit.duration)
+  const editMs = editAt * h.timeline.total
+  const front = codeFrameAt(h.timeline, editMs).active ?? h.accounts
+  const other = front === h.money ? h.accounts : h.money
   return {
     editAt,
     name: front,
-    text: savedAt(EDIT, front, editMs),
-    others: [{ name: other, text: savedAt(EDIT, other, editMs) }],
+    text: savedAt(h.timeline, front, editMs),
+    others: [{ name: other, text: savedAt(h.timeline, other, editMs) }],
   }
 }
 
@@ -88,7 +91,7 @@ function useFiles(ms: number) {
 function Editor({
   size,
   rows = ROWS + 1,
-  steps = HERO.steps,
+  steps,
   onOpen,
   className,
 }: {
@@ -98,10 +101,11 @@ function Editor({
   onOpen?: (path: string) => void
   className?: string
 }) {
+  const h = useHero()
   const diagnose = useCellsDiagnose()
   return (
     <Terminal alt="" accent={ACCENT} size={size} className={className}>
-      <TerminalEditor files={HERO.files} steps={steps} rows={rows} bufferline="always" diagnose={diagnose} onOpen={onOpen} />
+      <TerminalEditor files={h.files} steps={steps ?? h.steps} rows={rows} bufferline="always" diagnose={diagnose} onOpen={onOpen} />
     </Terminal>
   )
 }
@@ -112,7 +116,8 @@ function Editor({
  *  or the file `front` names, its tab pressed (`onOpen`). */
 export function EditorWindow({ width, front, onOpen }: { width: number; front?: string; onOpen?: (path: string) => void }) {
   // A file pressed is the edit's next step: the frame drawn is still the edit's.
-  const steps = React.useMemo(() => (front ? [...HERO.steps, { kind: "open" as const, path: front }] : HERO.steps), [front])
+  const h = useHero()
+  const steps = React.useMemo(() => (front ? [...h.steps, { kind: "open" as const, path: front }] : h.steps), [h, front])
   return (
     <div style={{ width, height: (width * WINDOW_H) / WINDOW_W }}>
       <div style={{ width: WINDOW_W, height: WINDOW_H, transform: `scale(${width / WINDOW_W})`, transformOrigin: "0 0" }}>
@@ -143,7 +148,8 @@ export function Landing() {
 }
 
 function Scene({ lid }: { lid: number }) {
-  const ms = usePlayhead(undefined).at * HERO.total
+  const h = useHero()
+  const ms = usePlayhead(undefined).at * h.total
   const files = useFiles(ms)
   const macMs = SHUT_FROM + lid * LID_MS
   return (
@@ -154,7 +160,7 @@ function Scene({ lid }: { lid: number }) {
         device="macbook"
         captions={false}
         front={PRODUCT.name}
-        alt={`A MacBook at night. In Helix, ${HERO.accounts} lists three accounts; ${HERO.money} imports it, starts as a plain table, and is given a type, a reference to accounts and a formula, the ${PRODUCT.name} window beside it reading each change. A movement to coffee, which accounts does not have, is named on its row, and ${PRODUCT.cli} check names it too; coffee is added to ${HERO.accounts} and the check passes.`}
+        alt={`A MacBook at night. In Helix, ${h.accounts} lists three accounts; ${h.money} imports it, starts as a plain table, and is given a type, a reference to accounts and a formula, the ${PRODUCT.name} window beside it reading each change. A movement to coffee, which accounts does not have, is named on its row, and ${PRODUCT.cli} check names it too; coffee is added to ${h.accounts} and the check passes.`}
       >
         {/* Night over the desktop picture: the windows are the brightest thing. */}
         <div aria-hidden className="absolute inset-0 bg-[radial-gradient(120%_90%_at_70%_100%,rgb(8_12_20/0.2),rgb(4_6_10/0.6))]" />
@@ -175,10 +181,10 @@ function Scene({ lid }: { lid: number }) {
           others={files.others}
           className="absolute top-[36px] left-[562px] h-[300px] w-[386px]"
         />
-        <Playhead progress={share(ms, HERO.terminal.from, HERO.terminal.duration)}>
+        <Playhead progress={share(ms, h.terminal.from, h.terminal.duration)}>
           {/* Down to the editor's foot: the two columns end on one line. */}
           <div className="absolute top-[346px] bottom-[12px] left-[562px] w-[386px] [&>*]:h-full">
-            <Terminal alt="" accent={ACCENT} size="9.5px" session={HERO.session} rows={5} className="h-full" />
+            <Terminal alt="" accent={ACCENT} size="9.5px" session={h.session} rows={5} className="h-full" />
           </div>
         </Playhead>
       </Macos>
@@ -189,12 +195,13 @@ function Scene({ lid }: { lid: number }) {
 /** The same moments on a phone's width, where a Mac's screen would be too small to read:
  *  no machine, the windows stacked, the same clock. */
 function Stacked() {
-  const ms = usePlayhead(undefined).at * HERO.total
+  const h = useHero()
+  const ms = usePlayhead(undefined).at * h.total
   const files = useFiles(ms)
   return (
     <div
       role="img"
-      aria-label={`In Helix, ${HERO.money} imports ${HERO.accounts} and is given its types and a formula; the ${PRODUCT.name} table names coffee as no key of accounts until it is added, and ${PRODUCT.cli} check passes.`}
+      aria-label={`In Helix, ${h.money} imports ${h.accounts} and is given its types and a formula; the ${PRODUCT.name} table names coffee as no key of accounts until it is added, and ${PRODUCT.cli} check passes.`}
       className="space-y-3"
     >
       <Playhead progress={files.editAt}>
@@ -202,8 +209,8 @@ function Stacked() {
         <Editor size="clamp(7px,2.35vw,10px)" rows={11} />
       </Playhead>
       <CellsWindow name={files.name} text={files.text} others={files.others} className="h-[188px]" />
-      <Playhead progress={share(ms, HERO.terminal.from, HERO.terminal.duration)}>
-        <Terminal alt="" accent={ACCENT} size="clamp(7px,2.35vw,10px)" session={HERO.session} rows={4} />
+      <Playhead progress={share(ms, h.terminal.from, h.terminal.duration)}>
+        <Terminal alt="" accent={ACCENT} size="clamp(7px,2.35vw,10px)" session={h.session} rows={4} />
       </Playhead>
     </div>
   )
@@ -212,6 +219,7 @@ function Stacked() {
 /** The hero: played in view and round again; any frame still with `?still=0.62` (a
  *  README's picture, one moment looked at); the Mac shut under reduced motion. */
 export function Hero() {
+  const h = useHero()
   const reduced = useReducedMotion()
   const still = useStill()
   const narrow = useNarrow()
@@ -223,7 +231,7 @@ export function Hero() {
   if (narrow) {
     if (still !== null || reduced) return <Playhead progress={still ?? 1}>{<Stacked />}</Playhead>
     return (
-      <Playback playable={HERO.playable} playing>
+      <Playback playable={h.playable} playing>
         <Stacked />
       </Playback>
     )
@@ -237,7 +245,7 @@ export function Hero() {
           <Scene lid={reduced ? 1 : lid} />
         </Playhead>
       ) : (
-        <Playback playable={HERO.playable} playing>
+        <Playback playable={h.playable} playing>
           <Scene lid={0} />
         </Playback>
       )}

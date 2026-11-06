@@ -76,8 +76,10 @@ export type CodeStep = (
       length: number
       text: string
     }
-  /** The file in front saved: VS Code's ⌘S, a modal editor's `:w`. */
-  | { kind: "save" }
+  /** The file in front saved: VS Code's ⌘S, a modal editor's `:w`. `formatted`, the
+   *  text a language server's formatting on save leaves it as: what it changes lands
+   *  as the write does, every other character stays. */
+  | { kind: "save"; formatted?: string }
   /** What the language server says of a place: `text` (its type, its docs),
    *  with the diagnostics there. */
   | { kind: "hover"; line: number; column: number; text: string }
@@ -399,6 +401,74 @@ function offsetOf(
   return at + column - 1
 }
 
+/** A diff that size or larger screams: the longest common run is a table of it. */
+const DIFF_CELLS = 4_000_000
+
+/** The edits that make `live` read `to`, each at an offset of `live`, in order: what
+ *  both start and end with kept, the rest by their longest common run of characters.
+ *  Throws on a change too wide to diff (DIFF_CELLS). */
+function changes(
+  live: readonly Char[],
+  to: readonly string[],
+): { from: number; length: number; text: string[] }[] {
+  let head = 0
+  while (head < live.length && head < to.length && live[head]?.ch === to[head])
+    head++
+  let tail = 0
+  while (
+    tail < live.length - head &&
+    tail < to.length - head &&
+    live[live.length - 1 - tail]?.ch === to[to.length - 1 - tail]
+  )
+    tail++
+  const a = live.slice(head, live.length - tail).map((c) => c.ch)
+  const b = to.slice(head, to.length - tail)
+  const w = b.length + 1
+  if ((a.length + 1) * w >= DIFF_CELLS)
+    throw new Error(
+      `code-session: a formatted save changes ${a.length} characters into ${b.length}, too wide to diff`,
+    )
+  // run[i * w + j]: the longest common run of a[i..] and b[j..].
+  const run = new Uint32Array((a.length + 1) * w)
+  for (let i = a.length - 1; i >= 0; i--)
+    for (let j = b.length - 1; j >= 0; j--)
+      run[i * w + j] =
+        a[i] === b[j]
+          ? (run[(i + 1) * w + j + 1] as number) + 1
+          : Math.max(
+              run[(i + 1) * w + j] as number,
+              run[i * w + j + 1] as number,
+            )
+  const out: { from: number; length: number; text: string[] }[] = []
+  let open: { from: number; length: number; text: string[] } | null = null
+  const edit = () => {
+    open ??= { from: head + i, length: 0, text: [] }
+    return open
+  }
+  let i = 0
+  let j = 0
+  while (i < a.length || j < b.length) {
+    if (i < a.length && j < b.length && a[i] === b[j]) {
+      if (open) out.push(open)
+      open = null
+      i++
+      j++
+    } else if (
+      j < b.length &&
+      (i === a.length ||
+        (run[i * w + j + 1] as number) >= (run[(i + 1) * w + j] as number))
+    ) {
+      edit().text.push(b[j] as string)
+      j++
+    } else {
+      edit().length++
+      i++
+    }
+  }
+  if (open) out.push(open)
+  return out
+}
+
 /** Keys typed from `first` (ms) on, a newline's indentation landing with it. */
 function keysOf(text: string, first: number): { chars: Char[]; keys: number } {
   const chars: Char[] = []
@@ -575,7 +645,23 @@ export function codeTimeline(
         break
       }
       case "save": {
-        plans.push({ kind: "save", path: front("save") })
+        const path = front("save")
+        if (s.formatted !== undefined) {
+          const landed = at + SAVE_KEY_MS * 3
+          const live = standing(fileOf(path))
+          for (const e of changes(live, [...s.formatted])) {
+            for (const c of live.slice(e.from, e.from + e.length))
+              c.died = landed
+            const placed = e.text.map((ch) => ({
+              ch,
+              born: landed,
+              died: Infinity,
+            }))
+            insert(path, live[e.from + e.length] ?? null, placed)
+          }
+          snapshot(path, landed)
+        }
+        plans.push({ kind: "save", path })
         took = SAVE_MS
         break
       }

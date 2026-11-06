@@ -16,18 +16,15 @@ import { Terminal } from "@/components/ui/terminal"
 import { TerminalEditor } from "@/components/ui/terminal-editor"
 import { type WalkthroughMoment, type WalkthroughSteps, WalkthroughScroll } from "@/components/ui/walkthrough"
 import { useCellsDiagnose } from "@/components/use-cells-diagnose"
+import { useEngine } from "@/components/use-engine"
 import { codeTimeline } from "@/lib/code-session"
-import { editOf, plain, STORY, type StoryAct } from "@/lib/story"
+import { editOf, plain, type StoryAct, story } from "@/lib/story"
 import { walkthroughTimeline } from "@/lib/walkthrough-session"
 import { savedAt } from "@/lib/written"
 
-/** The editor's rows: the longest file the story writes, its imports' bufferline, and
- *  room under the last line. */
-const ROWS = Math.max(...STORY.map((a) => a.end.text.split("\n").length)) + 2
-
 /** One act, played: Helix on its edit at the step's progress, the Cells window on the file
- *  as Helix last wrote it. */
-function ActView({ act, p }: { act: StoryAct; p: number }) {
+ *  as Helix last wrote it. `rows`, the editor's: the same for every act. */
+function ActView({ act, p, rows }: { act: StoryAct; p: number; rows: number }) {
   const edit = React.useMemo(() => editOf(act), [act])
   const timeline = React.useMemo(() => codeTimeline(edit.files, edit.steps), [edit])
   const diagnose = useCellsDiagnose()
@@ -37,7 +34,7 @@ function ActView({ act, p }: { act: StoryAct; p: number }) {
     <div className="grid gap-4">
       <Playhead progress={p}>
         <Terminal alt="" accent={ACCENT} size="clamp(11px,0.95vw,13.5px)">
-          <TerminalEditor files={edit.files} steps={edit.steps} rows={ROWS} bufferline="multiple" diagnose={diagnose} />
+          <TerminalEditor files={edit.files} steps={edit.steps} rows={rows} bufferline="multiple" diagnose={diagnose} />
         </Terminal>
       </Playhead>
       <CellsWindow name={edit.path} text={text} others={act.others} light={p >= 1 ? act.light : undefined} className="h-[13rem]" />
@@ -69,24 +66,31 @@ function Told({ text }: { text: string }) {
   return text.split("`").map((part, i) => (i % 2 ? <Code key={i} text={part} /> : part))
 }
 
-const STEPS: WalkthroughSteps = STORY.map((act) => {
-  const edit = editOf(act)
-  return {
-    title: plain(act.lead),
-    heading: <Told text={act.lead} />,
-    words: act.rest && (
-      <p>
-        <Told text={act.rest} />
-      </p>
-    ),
-    // The step plays as long as its edit: the editor's clock is the step's.
-    play: codeTimeline(edit.files, edit.steps).total,
-    view: ({ p }: WalkthroughMoment) => <ActView act={act} p={p} />,
-  }
-})
+/** A step per act. */
+function stepsOf(acts: StoryAct[]): WalkthroughSteps {
+  // The editor's rows: the longest file the story writes, its imports' bufferline, and
+  // room under the last line.
+  const rows = Math.max(...acts.map((a) => a.end.text.split("\n").length)) + 2
+  return acts.map((act) => {
+    const edit = editOf(act)
+    return {
+      title: plain(act.lead),
+      heading: <Told text={act.lead} />,
+      words: act.rest && (
+        <p>
+          <Told text={act.rest} />
+        </p>
+      ),
+      // The step plays as long as its edit: the editor's clock is the step's.
+      play: codeTimeline(edit.files, edit.steps).total,
+      view: ({ p }: WalkthroughMoment) => <ActView act={act} p={p} rows={rows} />,
+    }
+  })
+}
 
 export function Story() {
-  const timeline = React.useMemo(() => walkthroughTimeline(STEPS), [])
+  const engine = useEngine()
+  const timeline = React.useMemo(() => walkthroughTimeline(stepsOf(story(engine))), [engine])
   return (
     <section aria-label="how it works" className="relative">
       {/* A scrim over the ground for the story's whole stage, fading in and out at its

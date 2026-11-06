@@ -391,6 +391,21 @@
           }
         },
         {
+          "comment": "A currency's scale, EUR(6): its digits after the point.",
+          "match": "(\\()\\s*(\\d+)\\s*(\\))",
+          "captures": {
+            "1": {
+              "name": "punctuation.section.parens.cells punctuation.section.parens.begin.cells"
+            },
+            "2": {
+              "name": "constant.numeric.cells"
+            },
+            "3": {
+              "name": "punctuation.section.parens.cells punctuation.section.parens.end.cells"
+            }
+          }
+        },
+        {
           "comment": "A format: how the file writes a date or a time.",
           "match": "(\\()([^)]*)(\\))",
           "captures": {
@@ -714,23 +729,81 @@
           "name": "variable.other.property.cells"
         },
         {
+          "comment": "A range of rows by where they are, total[FIRST:THIS], cost[-2:+2].",
+          "match": "(\\[)\\s*(FIRST|THIS|LAST|[+-]\\d+)\\s*(:)\\s*(FIRST|THIS|LAST|[+-]\\d+)\\s*(\\])",
+          "captures": {
+            "1": {
+              "name": "punctuation.section.brackets.cells"
+            },
+            "2": {
+              "patterns": [
+                {
+                  "match": "FIRST|THIS|LAST",
+                  "name": "variable.language.cells"
+                },
+                {
+                  "match": "[+-]\\d+",
+                  "name": "constant.numeric.cells"
+                }
+              ]
+            },
+            "3": {
+              "name": "keyword.operator.range.cells"
+            },
+            "4": {
+              "patterns": [
+                {
+                  "match": "FIRST|THIS|LAST",
+                  "name": "variable.language.cells"
+                },
+                {
+                  "match": "[+-]\\d+",
+                  "name": "constant.numeric.cells"
+                }
+              ]
+            },
+            "5": {
+              "name": "punctuation.section.brackets.cells"
+            }
+          }
+        },
+        {
+          "comment": "A row by where it is from this one, running[-1].",
+          "match": "(\\[)\\s*([+-]\\d+)\\s*(\\])",
+          "captures": {
+            "1": {
+              "name": "punctuation.section.brackets.cells"
+            },
+            "2": {
+              "name": "constant.numeric.cells"
+            },
+            "3": {
+              "name": "punctuation.section.brackets.cells"
+            }
+          }
+        },
+        {
           "match": "(?:\\d+(?:\\.\\d+)?|\\.\\d+)(?:[eE][+-]?\\d+)?",
           "name": "constant.numeric.cells"
         },
         {
-          "match": "(?i)\\b(?:true|false)\\b",
+          "match": "\\b(?:TRUE|FALSE)\\b",
           "name": "constant.language.boolean.cells"
         },
         {
-          "match": "(?i)\\b(?:null)\\b",
+          "match": "\\b(?:NULL)\\b",
           "name": "constant.language.null.cells"
         },
         {
-          "match": "(?i)\\b(?:and|or|not|is|case|when|then|else|end)\\b",
+          "match": "\\b(?:TABLE|FIRST|THIS|LAST)\\b",
+          "name": "variable.language.cells"
+        },
+        {
+          "match": "\\b(?:AND|OR|NOT|IS|CASE|WHEN|THEN|ELSE|END|OVER|ORDER|BY|DESC)\\b",
           "name": "keyword.operator.word.formula.cells"
         },
         {
-          "match": "\\b([A-Za-z_][A-Za-z0-9_]*)(?=\\()",
+          "match": "\\b[A-Z][A-Z0-9_]*(?=\\s*\\()",
           "name": "support.function.formula.cells"
         },
         {
@@ -762,25 +835,57 @@
     "value": {
       "patterns": [
         {
-          "comment": "A cell's own formula, `=96.75 / 3` between backticks.",
-          "match": "(?<=^|,)[ \\t]*(?:(\\x60=)(.*)(\\x60))[ \\t]*$",
+          "match": "(?<=^|,)[ \\t]*(?:(\")((?:[^\"]|\"\")*)(\"))[ \\t]*$",
+          "name": "string.quoted.double.cells",
           "captures": {
             "1": {
-              "name": "punctuation.definition.formula.cells"
+              "name": "punctuation.definition.string.begin.cells"
             },
             "2": {
+              "patterns": [
+                {
+                  "match": "\"\"",
+                  "name": "constant.character.escape.cells"
+                }
+              ]
+            },
+            "3": {
+              "name": "punctuation.definition.string.end.cells"
+            }
+          }
+        },
+        {
+          "comment": "A computed cell: what the file stores, `=`, then its own formula or none (its column's).",
+          "match": "(?<=^|,)[ \\t]*((?:'=|[^=])*?)(?<!')(=)(.*)$",
+          "captures": {
+            "1": {
+              "name": "meta.stored.cells",
+              "patterns": [
+                {
+                  "include": "#written"
+                }
+              ]
+            },
+            "2": {
+              "name": "punctuation.definition.formula.cells"
+            },
+            "3": {
               "name": "meta.formula.cells",
               "patterns": [
                 {
                   "include": "#formula"
                 }
               ]
-            },
-            "3": {
-              "name": "punctuation.definition.formula.cells"
             }
           }
         },
+        {
+          "include": "#written"
+        }
+      ]
+    },
+    "written": {
+      "patterns": [
         {
           "match": "(?<=^|,)[ \\t]*(?:(\")((?:[^\"]|\"\")*)(\"))[ \\t]*$",
           "name": "string.quoted.double.cells",
@@ -828,6 +933,11 @@
         {
           "match": "(?<=^|,)[ \\t]*(?:[^\\s@,\"]+@[^\\s@,\"]+\\.[^\\s@,\"]+)[ \\t]*$",
           "name": "markup.underline.link.cells"
+        },
+        {
+          "comment": "A text's `=`, written `'=`.",
+          "match": "'=",
+          "name": "constant.character.escape.cells"
         }
       ]
     },

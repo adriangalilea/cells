@@ -90,3 +90,23 @@ export function readFiles(engine: Engine, files: readonly StoryFile[]): ViewTabl
     r.doc.free()
   }
 }
+
+/** A `.cell` file read through its imports (`others`). */
+const readCell = (engine: Engine, file: StoryFile, others: readonly StoryFile[]) =>
+  engine.read(file.text, { at: file.name, files: Object.fromEntries(others.map((f) => [f.name, f.text])) })
+
+/** `now` as the language server's formatting writes it on save, `saved` the file as last
+ *  written (`cells lsp`, SPEC.md Writing): every computed value the edits since reached,
+ *  and every one stored nowhere yet, stored beside its `=`; a stale cell they did not
+ *  reach left as it is. A plain `.csv` is written as typed: nothing in it computes. */
+export function savedAs(engine: Engine, saved: StoryFile, now: StoryFile, others: readonly StoryFile[]): string {
+  if (now.name.endsWith(".csv")) return now.text
+  const before = readCell(engine, saved, others)
+  const after = readCell(engine, now, others)
+  try {
+    return engine.write(engine.storedSince(after.doc, before.doc))
+  } finally {
+    before.doc.free()
+    after.doc.free()
+  }
+}

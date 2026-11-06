@@ -3,14 +3,17 @@
 // a plain table; a type is typed into its header, then a reference to accounts, then a
 // formula, each changing what the Cells window beside it reads. A movement to an account
 // that does not exist is typed and named on its row; `:w`, and the terminal's check names
-// it too. Back in accounts.cell the account is added, `:w`, and the check passes. One
-// clock for all of it (`HERO.playable`), so a player, a playback and a fixed progress draw the
-// same frames.
+// it too. Back in accounts.cell the account is added, `:w`, and the check passes. Each
+// `:w` writes what the language server's formatting writes (the formula's values stored
+// beside their `=`), so the hero is made with the engine (`hero`). One clock for all of
+// it (`playable`), so a player, a playback and a fixed progress draw the same frames.
 
 import type { Playable } from "@/lib/playable"
-import { type CodeFile, type CodeStep, codeTimeline, TYPE_MS } from "@/lib/code-session"
+import { type CodeFile, type CodeStep, codeFrameAt, codeTimeline, TYPE_MS } from "@/lib/code-session"
 import { PRODUCT } from "@/lib/product"
 import { parseSession, sessionTimeline } from "@/lib/terminal-session"
+import { type Engine, savedAs } from "@/lib/view"
+import { savedAt, textAt } from "@/lib/written"
 
 const accounts = `accounts${PRODUCT.extension}`
 const money = `money${PRODUCT.extension}`
@@ -82,52 +85,88 @@ const STEPS: CodeStep[] = [
   { kind: "open", path: money, delay: 900 },
 ]
 
-const edit = codeTimeline(FILES, STEPS)
-const at = (step: number) => OPENING + (edit.ends[step] as number)
-const savedTypo = at(9)
-const savedFixed = at(12)
+/** STEPS with each save written as the language server's formatting writes it: the file
+ *  in front as Helix holds it then, against the file as it last saved it. */
+function formatted(engine: Engine): CodeStep[] {
+  const steps: CodeStep[] = []
+  for (const s of STEPS) {
+    if (s.kind !== "save") {
+      steps.push(s)
+      continue
+    }
+    const t = codeTimeline(FILES, steps)
+    const path = codeFrameAt(t, t.total).active as string
+    const other = path === money ? accounts : money
+    const was = { name: path, text: savedAt(t, path, t.total) }
+    const now = { name: path, text: textAt(t, path, t.total) }
+    steps.push({ ...s, formatted: savedAs(engine, was, now, [{ name: other, text: savedAt(t, other, t.total) }]) })
+  }
+  return steps
+}
 
-/** The terminal's session: the first check after the first save, the second after the
- *  second, its pause (`@ms`) keeping them apart on the one clock. */
-const terminalFrom = savedTypo + TO_TERMINAL
-const pause = savedFixed + TO_TERMINAL - (terminalFrom + firstCheck)
-const SESSION = `${FIRST}\n@${Math.round(pause)} ${SECOND}`
-const session = sessionTimeline(parseSession(SESSION))
-const total = Math.max(terminalFrom + session.total, OPENING + edit.total) + HOLD_MS
+function tell(engine: Engine) {
+  const steps = formatted(engine)
+  const edit = codeTimeline(FILES, steps)
+  const at = (step: number) => OPENING + (edit.ends[step] as number)
+  const savedTypo = at(9)
+  const savedFixed = at(12)
 
-const typo = MONEY.replace("date,amount,to", `date,amount${AMOUNT_TYPE},to${TO_TYPE}${FORMULA}`).replace(/\n$/, `\n${ROW}\n`)
+  /** The terminal's session: the first check after the first save, the second after the
+   *  second, its pause (`@ms`) keeping them apart on the one clock. */
+  const terminalFrom = savedTypo + TO_TERMINAL
+  const pause = savedFixed + TO_TERMINAL - (terminalFrom + firstCheck)
+  const session = `${FIRST}\n@${Math.round(pause)} ${SECOND}`
+  const played = sessionTimeline(parseSession(session))
+  const total = Math.max(terminalFrom + played.total, OPENING + edit.total) + HOLD_MS
 
-export const HERO = {
-  accounts,
-  money,
-  files: FILES,
-  steps: STEPS,
-  session: SESSION,
-  opening: OPENING,
-  /** The whole loop, ms. */
-  total,
-  terminal: { from: terminalFrom, duration: session.total },
-  edit: { from: OPENING, duration: edit.total },
-  playable: {
-    duration: total,
-    chapters: [
-      { start: 0, title: "the screen" },
-      { start: OPENING, title: `${accounts}, a list` },
-      { start: at(1), title: `${money}, a plain table` },
-      { start: at(1), title: "a type, a reference, a formula" },
-      { start: at(7), title: "an account that does not exist" },
-      { start: savedTypo, title: `${PRODUCT.cli} check names the row` },
-      { start: at(11) - (ACCOUNT.length + 1) * TYPE_MS, title: "the account added" },
-      { start: savedFixed, title: `${PRODUCT.cli} check passes` },
-    ],
-  } satisfies Playable,
-  /** The files at three moments, and what the engine must say of money.cell read with
-   *  accounts.cell (scripts/examples.ts asserts it). */
-  checkpoints: {
-    plain: { money: MONEY, accounts: ACCOUNTS, problems: [] as string[] },
-    typo: { money: typo, accounts: ACCOUNTS, problems: [`row 3, to: "${ACCOUNT}" is no key of accounts`] },
-    fixed: { money: typo, accounts: ACCOUNTS.replace(/\n$/, `\n${ACCOUNT}\n`), problems: [] as string[] },
-  },
-  /** What `cells check` prints for the typo, which the terminal shows. */
-  failing: FAILING,
+  const filesAt = (ms: number) => ({ money: savedAt(edit, money, ms), accounts: savedAt(edit, accounts, ms) })
+  return {
+    accounts,
+    money,
+    files: FILES,
+    steps,
+    /** The edit, timed. */
+    timeline: edit,
+    session,
+    opening: OPENING,
+    /** The whole loop, ms. */
+    total,
+    terminal: { from: terminalFrom, duration: played.total },
+    edit: { from: OPENING, duration: edit.total },
+    playable: {
+      duration: total,
+      chapters: [
+        { start: 0, title: "the screen" },
+        { start: OPENING, title: `${accounts}, a list` },
+        { start: at(1), title: `${money}, a plain table` },
+        { start: at(1), title: "a type, a reference, a formula" },
+        { start: at(7), title: "an account that does not exist" },
+        { start: savedTypo, title: `${PRODUCT.cli} check names the row` },
+        { start: at(11) - (ACCOUNT.length + 1) * TYPE_MS, title: "the account added" },
+        { start: savedFixed, title: `${PRODUCT.cli} check passes` },
+      ],
+    } satisfies Playable,
+    /** The files as written at three moments, and what the engine must say of money.cell
+     *  read with accounts.cell (scripts/examples.ts asserts it). */
+    checkpoints: {
+      plain: { money: MONEY, accounts: ACCOUNTS, problems: [] as string[] },
+      typo: { ...filesAt(savedTypo - OPENING), problems: [`row 3, to: "${ACCOUNT}" is no key of accounts`] },
+      fixed: { ...filesAt(edit.total), problems: [] as string[] },
+    },
+    /** What `cells check` prints for the typo, which the terminal shows. */
+    failing: FAILING,
+  }
+}
+
+export type Hero = ReturnType<typeof tell>
+
+const made = new WeakMap<Engine, Hero>()
+
+/** The hero, its saves as the engine writes them: made once. */
+export function hero(engine: Engine): Hero {
+  const had = made.get(engine)
+  if (had) return had
+  const h = tell(engine)
+  made.set(engine, h)
+  return h
 }

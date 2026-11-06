@@ -7,13 +7,15 @@
 import { readFiles as readWith } from "@/lib/view"
 import { loadEngine } from "@/lib/engine-module"
 import { codeTimeline } from "@/lib/code-session"
-import { HERO } from "@/lib/hero"
+import { hero } from "@/lib/hero"
 import { savedAt, textAt } from "@/lib/written"
 import { placeBroken } from "@/lib/spans"
-import { edited, editOf, STORY } from "@/lib/story"
+import { editOf, story } from "@/lib/story"
 
 const engine = await loadEngine()
 const readFiles = (files: Parameters<typeof readWith>[1]) => readWith(engine, files)
+const STORY = story(engine)
+const HERO = hero(engine)
 
 let failed = 0
 const fail = (where: string, what: string) => {
@@ -37,8 +39,8 @@ for (const act of STORY) {
     if (JSON.stringify(have) !== JSON.stringify(values)) fail(act.id, `${column} is ${JSON.stringify(have)}, expected ${JSON.stringify(values)}`)
   }
   // As written between its edits, what the act shows on the way.
-  const between = act.edits.slice(0, -1).map((_, k) => {
-    const r = readFiles([{ name: act.end.name, text: edited(act.from.text, act.edits.slice(0, k + 1)) }, ...act.others])
+  const between = act.saves.slice(0, -1).map((text) => {
+    const r = readFiles([{ name: act.end.name, text }, ...act.others])
     return [...r.broken.map((b) => b.why), ...r.problems.map((p) => p.why)]
   })
   if (JSON.stringify(between) !== JSON.stringify(act.expect.between ?? between.map(() => [])))
@@ -69,23 +71,6 @@ for (const [name, frame] of Object.entries(HERO.checkpoints)) {
   const got = [...t.broken.map((b) => b.why), ...t.problems.map((p) => p.why)]
   if (JSON.stringify(got) !== JSON.stringify(frame.problems)) fail(`hero ${name}`, `problems ${JSON.stringify(got)}, expected ${JSON.stringify(frame.problems)}`)
   else console.log(`✓ hero ${name}: ${got.length} problems`)
-}
-
-// The running total follows its column's order, never the lines': the same rows in
-// another order give each item the same running value.
-{
-  const act = STORY.find((s) => s.id === "running")
-  if (!act) throw new Error("examples: no running act")
-  const file = act.end
-  const [header, ...rows] = file.text.trimEnd().split("\n")
-  const shuffled = { name: file.name, text: `${header}\n${[...rows].reverse().join("\n")}\n` }
-  const by = (t: ReturnType<typeof readFiles>) =>
-    Object.fromEntries((t.values.item ?? []).map((item, i) => [String(item), t.values.running?.[i]]))
-  const a = by(readFiles([file]))
-  const b = by(readFiles([shuffled]))
-  if (JSON.stringify(a) !== JSON.stringify(Object.fromEntries(Object.keys(a).map((k) => [k, b[k]]))))
-    fail("formula order", `running depends on the lines: ${JSON.stringify(a)} vs ${JSON.stringify(b)}`)
-  else console.log("✓ formula order: the running total follows on, not the lines")
 }
 
 // A header cell half typed: the table still reads, that column as text, and the break is

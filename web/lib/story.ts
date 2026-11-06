@@ -5,13 +5,16 @@
 // played. components/story.tsx tells it on ui's walkthrough, a step per act, pinned while
 // the page scrolls.
 //
-// Every state of the file is read by the real engine when the page builds and again in the
-// reader's browser; `bun scripts/examples.ts` times every step and asserts what each act
-// claims (its problems, its computed values), so an act can never show something the
+// Every state of the file is the engine's: each `:w` writes what the language server's
+// formatting writes (every computed value the edit reached stored beside its `=`), so the
+// story is made with the engine (`story`), read by it when the page builds and again in
+// the reader's browser; `bun scripts/examples.ts` times every step and asserts what each
+// act claims (its problems, its computed values), so an act can never show something the
 // engine does not do.
 
 import type { CodeFile, CodeStep } from "@/lib/code-session"
 import { PRODUCT } from "@/lib/product"
+import { type Engine, savedAs } from "@/lib/view"
 
 const ext = PRODUCT.extension
 
@@ -46,7 +49,11 @@ export interface StoryAct {
   /** The file as the act finds it, and as it leaves it. */
   from: StoryFile
   end: StoryFile
+  /** Each a change typed into the file as the save before wrote it. */
   edits: StoryEdit[]
+  /** The file's text as each edit's save writes it, the engine's formatting: the last is
+   *  `end`'s. */
+  saves: string[]
   /** The files it imports, as they stand. */
   others: StoryFile[]
   light?: StoryLit
@@ -57,16 +64,12 @@ export interface StoryAct {
   expect: { problems: string[]; values?: Record<string, (string | number | null)[]>; between?: string[][] }
 }
 
-/** `text` with `edits` made, whole. */
-export function edited(text: string, edits: readonly StoryEdit[]): string {
-  let out = text
-  for (const e of edits) {
-    const i = out.indexOf(e.after)
-    if (i < 0) throw new Error(`story: "${e.after}" is not in the text it is written into`)
-    const at = i + e.after.length
-    out = out.slice(0, at) + e.insert + out.slice(at + (e.remove ?? 0))
-  }
-  return out
+/** `text` with `e` made. */
+function edited(text: string, e: StoryEdit): string {
+  const i = text.indexOf(e.after)
+  if (i < 0) throw new Error(`story: "${e.after}" is not in the text it is written into`)
+  const at = i + e.after.length
+  return text.slice(0, at) + e.insert + text.slice(at + (e.remove ?? 0))
 }
 
 /** Told words as plain text, their backticks gone: a step's name to assistive tech. */
@@ -84,8 +87,9 @@ const LOOK_MS = 700
 
 /** An act as an edit in an editor (ui's code-session): its file opened under the name it
  *  leaves with, on the text it finds, beside the files it imports; each change typed
- *  where it goes (what it takes away selected and typed over), then written (`:w`), so
- *  what reads the file reads each change as the editor writes it. */
+ *  where it goes (what it takes away selected and typed over), then written (`:w`), the
+ *  language server's formatting storing what it reached as the write lands, so what
+ *  reads the file reads each change as the editor writes it. */
 export function editOf(act: StoryAct): { files: CodeFile[]; steps: CodeStep[]; path: string } {
   const path = act.end.name
   let text = act.from.text
@@ -96,13 +100,14 @@ export function editOf(act: StoryAct): { files: CodeFile[]; steps: CodeStep[]; p
     const at = i + e.after.length
     const { line, column } = placeOf(text, at)
     const delay = k === 0 ? LOOK_MS : undefined
+    const formatted = act.saves[k] as string
     steps.push(
       e.remove
         ? { kind: "replace", line, column, length: e.remove, text: e.insert, delay }
         : { kind: "type", line, column, text: e.insert, delay },
-      { kind: "save" },
+      { kind: "save", formatted },
     )
-    text = text.slice(0, at) + e.insert + text.slice(at + (e.remove ?? 0))
+    text = formatted
   }
   if (text !== act.end.text) throw new Error(`story: ${act.id}'s edit does not leave the file it claims`)
   return { files: [{ path, text: act.from.text }, ...act.others.map((o) => ({ path: o.name, text: o.text }))], steps, path }
@@ -122,16 +127,24 @@ interface Script {
   expect: StoryAct["expect"]
 }
 
-/** The scripts played in order on one file: each starts where the one before ended. */
-function chain(name: string, text: string, scripts: Script[]): StoryAct[] {
+/** The scripts played in order on one file: each starts where the one before ended, and
+ *  each edit is typed into the file as the save before wrote it. */
+function chain(engine: Engine, name: string, text: string, scripts: Script[]): StoryAct[] {
   let from = { name, text }
   let others: StoryFile[] = []
   return scripts.map((s) => {
     others = [...others, ...(s.imports ?? [])]
     const edits = s.edits ?? []
-    const end = { name: s.rename ?? from.name, text: edited(from.text, edits) }
-    const act = { id: s.id, lead: s.lead, rest: s.rest, from, end, edits, others, light: s.light, expect: s.expect }
-    from = end
+    const named = s.rename ?? from.name
+    const saves: string[] = []
+    let saved = { name: named, text: from.text }
+    for (const e of edits) {
+      const now = { name: named, text: edited(saved.text, e) }
+      saved = { name: named, text: savedAs(engine, saved, now, others) }
+      saves.push(saved.text)
+    }
+    const act = { id: s.id, lead: s.lead, rest: s.rest, from, end: saved, edits, saves, others, light: s.light, expect: s.expect }
+    from = saved
     return act
   })
 }
@@ -145,7 +158,19 @@ cafe,treats
 `,
 }
 
-export const STORY: StoryAct[] = chain(
+const made = new WeakMap<Engine, StoryAct[]>()
+
+/** The story, its files as the engine writes them: made once. */
+export function story(engine: Engine): StoryAct[] {
+  const had = made.get(engine)
+  if (had) return had
+  const acts = tell(engine)
+  made.set(engine, acts)
+  return acts
+}
+
+const tell = (engine: Engine): StoryAct[] => chain(
+  engine,
   "groceries.csv",
   `item,on,cost,qty
 fuel,2026-11-01,84.20,1
@@ -188,7 +213,7 @@ coffee,2026-11-03,2.10,3
     {
       id: "formula",
       lead: "Columns can compute",
-      rest: "A formula in the header fills the column for every row. Nothing is stored.",
+      rest: "A formula in the header fills the column. Each value is written beside its `=`, so every reader sees it.",
       edits: [{ after: "qty", insert: ",total:EUR=cost * qty" }],
       light: { column: "total" },
       expect: { problems: [], values: { total: [84.2, 193.5, 6.3] } },
@@ -196,16 +221,16 @@ coffee,2026-11-03,2.10,3
     {
       id: "running",
       lead: "Formulas can see other rows",
-      rest: "A running total adds up in the order you name, whatever the order of the lines.",
-      edits: [{ after: "total:EUR=cost * qty", insert: ",running:EUR=sum(total) over (order by on)" }],
+      rest: "A row is named by where it is: `[-1]` is the one above.",
+      edits: [{ after: "total:EUR=cost * qty", insert: ",running:EUR=running[-1] + total" }],
       light: { column: "running" },
       expect: { problems: [], values: { running: [84.2, 277.7, 284] } },
     },
     {
       id: "cell",
       lead: "A cell can hold its own formula",
-      rest: "The file keeps the formula. Every reader sees its result.",
-      edits: [{ after: "2026-11-03,", remove: 4, insert: "`=6.30 / 3`" }],
+      rest: "The file keeps the formula and its value.",
+      edits: [{ after: "2026-11-03,", remove: 4, insert: "=6.30 / 3" }],
       light: { column: "cost", row: 2 },
       expect: { problems: [], values: { cost: [84.2, 96.75, 2.1] } },
     },
@@ -216,10 +241,10 @@ coffee,2026-11-03,2.10,3
       imports: [ACCOUNTS],
       edits: [
         { after: "", insert: `---\nimport accounts from "./${ACCOUNTS.name}"\n---\n` },
-        { after: "qty", insert: ",to:accounts.account" },
-        { after: "84.20,1", insert: ",car" },
-        { after: "96.75,2", insert: ",food" },
-        { after: "3`,3", insert: ",cafe" },
+        { after: "running[-1] + total", insert: ",to:accounts.account" },
+        { after: "84.20=,84.20=", insert: ",car" },
+        { after: "277.70=", insert: ",food" },
+        { after: "284.00=", insert: ",cafe" },
       ],
       light: { column: "to" },
       expect: {
@@ -237,7 +262,7 @@ coffee,2026-11-03,2.10,3
       id: "reads",
       lead: "Formulas follow those links",
       rest: "A column can read any field of the row it points at.",
-      edits: [{ after: "over (order by on)", insert: ",kind:text=to.kind" }],
+      edits: [{ after: "to:accounts.account", insert: ",kind:text=to.kind" }],
       light: { column: "kind" },
       expect: { problems: [], values: { kind: ["needs", "needs", "treats"] } },
     },
@@ -245,7 +270,7 @@ coffee,2026-11-03,2.10,3
       id: "key",
       lead: "A broken link screams",
       rest: "Right where it is written, and what depends on it is left empty.",
-      edits: [{ after: "96.75,2,", remove: 4, insert: "fodo" }],
+      edits: [{ after: "277.70=,", remove: 4, insert: "fodo" }],
       light: { column: "to", row: 1 },
       expect: { problems: ['row 2, to: "fodo" is no key of accounts'], values: { kind: ["needs", null, "treats"] } },
     },
