@@ -31,6 +31,13 @@ export interface TableLight {
   row?: number
 }
 
+/** A hand in a window: its cursor (a data row from 0, a column by name) and the text it
+ *  is typing into that cell, none between keys. */
+export interface CellsScene {
+  cursor: { row: number; column: string } | null
+  draft: string | null
+}
+
 /** A file as a table: its columns, its rows, its problems by cell. */
 export function CellsTable({
   name,
@@ -38,6 +45,7 @@ export function CellsTable({
   others = NONE,
   label,
   light,
+  scene,
   className,
 }: {
   name: string
@@ -45,10 +53,22 @@ export function CellsTable({
   others?: { name: string; text: string }[]
   label: string
   light?: TableLight
+  /** A hand in the window (ui's table-session `sceneOf`): its cursor, a data row and a
+   *  column by name, and what it is typing. */
+  scene?: CellsScene | null
   className?: string
 }) {
   const read = useRead(name, text, others)
-  const rows = React.useMemo<Row[]>(() => read.rows.map((cells, i) => ({ id: String(i), cells })), [read])
+  // The hand on the row after the last is on a new row, shown empty until its first
+  // cell is written, as an app's new row is.
+  const adding = scene?.cursor?.row === read.rows.length
+  const rows = React.useMemo<Row[]>(
+    () => [...read.rows.map((cells, i) => ({ id: String(i), cells })), ...(adding ? [{ id: String(read.rows.length), cells: [] }] : [])],
+    [read, adding],
+  )
+  const at = scene?.cursor ? read.columns.findIndex((c) => c.name === scene.cursor?.column) : -1
+  if (scene?.cursor && at < 0) throw new Error(`cells-window: no column ${scene.cursor.column} for the hand`)
+  const tableScene = scene ? { cursor: scene.cursor ? { row: String(scene.cursor.row), column: String(at) } : null, draft: scene.draft } : undefined
   const problems = React.useMemo(() => {
     const m = new Map<string, string>()
     for (const p of read.problems) m.set(`${p.row}:${p.at}`, p.reason)
@@ -103,6 +123,7 @@ export function CellsTable({
         lines="rows"
         interactive={false}
         lit={lit}
+        scene={tableScene}
         className={className}
       />
     </div>
@@ -133,6 +154,7 @@ export function CellsWindow({
   text,
   others = NONE,
   light,
+  scene,
   className,
 }: {
   name: string
@@ -141,6 +163,8 @@ export function CellsWindow({
   others?: { name: string; text: string }[]
   /** A column or a cell lit, the rest dimmed. */
   light?: TableLight
+  /** A hand working in it (ui's table-session `sceneOf`). */
+  scene?: CellsScene | null
   className?: string
 }) {
   const now = useRead(name, text, others)
@@ -160,7 +184,7 @@ export function CellsWindow({
       <div className="flex h-full flex-col">
         <div className="min-h-0 flex-1 overflow-hidden">
           {/* The table's own type size: its columns are counted in its characters. */}
-          <CellsTable name={name} text={text} others={others} label={name} light={light} className="h-full text-[11px]" />
+          <CellsTable name={name} text={text} others={others} label={name} light={light} scene={scene} className="h-full text-[11px]" />
         </div>
         <div
           data-slot="cells-window-problems"

@@ -9,7 +9,7 @@ import { loadEngine } from "@/lib/engine-module"
 import { codeTimeline } from "@/lib/code-session"
 import { hero } from "@/lib/hero"
 import { savedAt, textAt } from "@/lib/written"
-import { placeBroken } from "@/lib/spans"
+import { tableFrameAt } from "@/lib/table-session"
 import { editOf, story } from "@/lib/story"
 import { PRODUCT } from "@/lib/product"
 import { PROOFS, TRIP_FILES, TRIP_PROBLEM } from "@/lib/proofs"
@@ -75,48 +75,28 @@ for (const [name, frame] of Object.entries(HERO.checkpoints)) {
   else console.log(`✓ hero ${name}: ${got.length} problems`)
 }
 
-// A header cell half typed: the table still reads, that column as text, and the break is
-// placed on the characters the engine names.
+// The VAT is there as the amount lands: the new row's, computed and stored.
 {
-  const half = HERO.checkpoints.typo.money.replace("to:accounts.account", "to:accounts.a")
-  const t = readFiles(heroFiles({ money: half, accounts: HERO.checkpoints.typo.accounts }))
-  const placed = placeBroken(half, t.broken)
-  const line = half.split("\n")[(placed[0]?.line ?? 1) - 1] ?? ""
-  const marked = placed[0] ? line.slice(placed[0].from, placed[0].to) : ""
-  if (t.rows.length !== 3 || t.broken.length !== 1 || !t.columns.some((c) => c.name === "to") || !marked.includes("accounts.a"))
-    fail("hero header", `a half-typed header: ${t.rows.length} rows, breaks ${JSON.stringify(t.broken)}, marked "${marked}"`)
-  else console.log(`✓ hero header: half typed, the table reads, "${marked}" marked: ${t.broken[0]?.why}`)
+  const t = readFiles(heroFiles(HERO.checkpoints.vat))
+  const vat = t.columns.find((c) => c.name === "vat")
+  const got = vat ? t.rows[2]?.[t.columns.indexOf(vat)]?.shown : undefined
+  if (got !== "0.66") fail("hero vat", `the new row's vat is ${got}, the hero shows 0.66`)
+  else console.log("✓ hero vat: 3.80's VAT computed as it lands, 0.66")
 }
 
-// The edit as played ends where the checkpoints say it does.
-const played = codeTimeline(HERO.files, HERO.steps)
-const end = played.total
-if (textAt(played, HERO.money, end) !== HERO.checkpoints.fixed.money || textAt(played, HERO.accounts, end) !== HERO.checkpoints.fixed.accounts)
-  fail("hero edit", "the played edit does not end on the fixed checkpoint")
-else console.log("✓ hero edit: the played edit ends on the fixed checkpoint")
-
-// What the Cells window reads is the file as written: at every save of the edit, both
-// files read whole (no half-typed header, no value computed from half a formula).
+// Every frame the windows draw reads whole: no commit leaves a file the app cannot read.
 {
-  let saves = 0
-  for (const [i, s] of played.steps.entries()) {
-    if (s.kind !== "save") continue
-    saves++
-    const ms = played.ends[i] as number
-    const t = readFiles([
-      { name: HERO.money, text: savedAt(played, HERO.money, ms) },
-      { name: HERO.accounts, text: savedAt(played, HERO.accounts, ms) },
-    ])
-    if (t.broken.length) fail("hero saves", `save ${saves} breaks: ${t.broken.map((b) => b.why).join("; ")}`)
+  const t = HERO.timeline
+  let commits = 0
+  for (const p of t.plans) {
+    if (p.step.kind !== "type") continue
+    commits++
+    const f = tableFrameAt(t, p.end + 1)
+    const r = readFiles(heroFiles({ money: f.texts[HERO.money] as string, accounts: f.texts[HERO.accounts] as string }))
+    if (r.broken.length) fail("hero commits", `commit ${commits} breaks: ${r.broken.map((b) => b.why).join("; ")}`)
   }
-  console.log(`✓ hero saves: the ${saves} saved states all read whole`)
+  console.log(`✓ hero commits: the ${commits} commits all read whole`)
 }
-
-// The terminal's failing check is the CLI's line for the typo: the file's name, then the
-// engine's problem.
-const typo = readFiles(heroFiles(HERO.checkpoints.typo)).problems.map((p) => `${HERO.money} ${p.why}`)
-if (JSON.stringify(typo) !== JSON.stringify([HERO.failing])) fail("hero terminal", `prints ${JSON.stringify([HERO.failing])}, the engine says ${JSON.stringify(typo)}`)
-else console.log("✓ hero terminal: the check's line is the engine's")
 
 // The landing's proofs: the check's line is the engine's on the folder it names, and every
 // Cells file shown reads whole.

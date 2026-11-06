@@ -1,19 +1,17 @@
-// THE HERO, as data: ten seconds or so on a Mac, the format revealed a step at a time.
-// accounts.cells is open first: a plain list. Then money.cells, which imports it, starts as
-// a plain table; a type is typed into its header, then a reference to accounts, then a
-// formula, each changing what the Cells window beside it reads. A movement to an account
-// that does not exist is typed and named on its row; `:w`, and the terminal's check names
-// it too. Back in accounts.cells the account is added, `:w`, and the check passes. Each
-// `:w` writes what the language server's formatting writes (the formula's values stored
-// beside their `=`), so the hero is made with the engine (`hero`). One clock for all of
-// it (`playable`), so a player, a playback and a fixed progress draw the same frames.
+// THE HERO, as data: someone at work in Cells on a Mac, two windows of the app open:
+// money.cells, the month's movements, and accounts.cells, the accounts they go to. A
+// movement is typed into a new row, cell by cell, each cell written by the engine as the
+// app writes it: the VAT is there as the amount lands. It is paid to coffee, an account
+// accounts.cells does not have, and the cell is flagged where it is. In accounts.cells
+// coffee is added, and the flag in money.cells is gone: the two files are one database.
+// One clock (`playable`), ui's table-session, so a player, a playback and a fixed
+// progress draw the same frames; the money window is the one that leaves the screen for
+// the page (components/hero).
 
 import type { Playable } from "@/lib/playable"
-import { type CodeFile, type CodeStep, codeTimeline, TYPE_MS } from "@/lib/code-session"
 import { PRODUCT } from "@/lib/product"
-import { parseSession, sessionTimeline } from "@/lib/terminal-session"
-import type { Engine } from "@/lib/view"
-import { saveAfter, savedAt } from "@/lib/written"
+import { type TableFile, type TableStep, type TableTimeline, tableFrameAt, tableTimeline } from "@/lib/table-session"
+import { type Engine, writeCell } from "@/lib/view"
 
 const accounts = `accounts${PRODUCT.extension}`
 const money = `money${PRODUCT.extension}`
@@ -26,136 +24,81 @@ food
 const MONEY = `---
 import accounts from "./${accounts}"
 ---
-date,amount,to
-2026-11-01,950.00,rent
-2026-11-03,42.50,food
+date,amount:EUR>0,to:accounts.account?,vat:EUR=amount * 21 / 121
+2026-11-01,950.00,rent,164.88=
+2026-11-03,42.50,food,7.38=
 `
-/** The header's line, and where each part is typed into it. */
-const HEADER = 4
-const AMOUNT_TYPE = ":EUR>0"
-const TO_TYPE = ":accounts.account"
-const FORMULA = ",vat:EUR=amount * 21 / 121"
-/** The movement typed at the file's end, and the account that makes it whole. */
-const ROW = "2026-11-05,3.80,coffee"
-const ACCOUNT = "coffee"
+/** The movement typed, a cell at a time, into the row after the last; and the account it
+ *  names, which accounts.cells is given. */
+const ROW = 2
+const MOVEMENT = { date: "2026-11-05", amount: "3.80", to: "coffee" } as const
+const ACCOUNT_ROW = 3
 
-/** What the engine says of the saved files with the row and no account (`cells check`'s
- *  own words; it prints nothing when nothing is wrong, and exits 0). */
-const FAILING = `${money} row 3, to: "${ACCOUNT}" is no key of accounts`
-const FIRST = `$ ${PRODUCT.cli} check ${money}\n${FAILING}`
-const SECOND = `$ ${PRODUCT.cli} check ${money} && echo ok\nok`
-
-/** The screen as it is found, ms, before the edit starts: a beat to see the three windows. */
-const OPENING = 600
-/** From a save to the terminal's command starting to type. */
-const TO_TERMINAL = 150
-/** The failure on screen, read, before the hand goes back to the files. */
-const READ_MS = 1100
+/** The windows as they are found, ms, before the hand moves: a beat to see both. */
+const OPENING = 900
+/** A cell written, looked at before the next is chosen. */
+const LOOK_MS = 700
+/** The flag read before the hand goes to the other window. */
+const READ_MS = 1300
 /** The last frame held before the loop starts again. */
 const HOLD_MS = 2600
 
-const firstCheck = sessionTimeline(parseSession(FIRST)).total
-
-const FILES: CodeFile[] = [
-  { path: accounts, text: ACCOUNTS },
+const FILES: TableFile[] = [
   { path: money, text: MONEY },
-]
-/** How long a saved change holds before the next is typed: the Cells window reads the file
- *  when it is written, and the change is looked at. */
-const LOOK_MS = 900
-
-const STEPS: CodeStep[] = [
-  { kind: "open", path: accounts },
-  { kind: "open", path: money, delay: 900 },
-  // The header, a part at a time, each saved: a type, a reference, a formula.
-  { kind: "type", line: HEADER, column: "date,amount".length + 1, text: AMOUNT_TYPE, delay: 700 },
-  { kind: "save", delay: 200 },
-  { kind: "type", line: HEADER, text: TO_TYPE, delay: LOOK_MS },
-  { kind: "save", delay: 200 },
-  { kind: "type", line: HEADER, text: FORMULA, delay: LOOK_MS },
-  { kind: "save", delay: 200 },
-  // A movement to an account accounts.cells does not have.
-  { kind: "type", line: 6, text: `\n${ROW}`, delay: LOOK_MS },
-  { kind: "save", delay: 200 },
-  // While the check runs and is read: then accounts.cells, and the account.
-  { kind: "open", path: accounts, delay: TO_TERMINAL + firstCheck + READ_MS },
-  { kind: "type", line: 4, text: `\n${ACCOUNT}`, delay: 300 },
-  { kind: "save", delay: 250 },
-  // money.cells back in front, whole: the file the page goes on with.
-  { kind: "open", path: money, delay: 900 },
+  { path: accounts, text: ACCOUNTS },
 ]
 
+// The amount first: the row it makes has its VAT at once, and every other cell may wait.
+const STEPS: TableStep[] = [
+  { kind: "select", row: ROW, column: "amount", delay: OPENING },
+  { kind: "type", text: MOVEMENT.amount },
+  { kind: "select", row: ROW, column: "date", delay: LOOK_MS },
+  { kind: "type", text: MOVEMENT.date },
+  { kind: "select", row: ROW, column: "to", delay: 200 },
+  { kind: "type", text: MOVEMENT.to },
+  { kind: "open", path: accounts, delay: READ_MS },
+  { kind: "select", row: ACCOUNT_ROW, column: "account", delay: 200 },
+  { kind: "type", text: MOVEMENT.to },
+  { kind: "open", path: money, delay: LOOK_MS },
+]
 
-/** STEPS with each save written as the language server's formatting writes it. */
-function formatted(engine: Engine): CodeStep[] {
-  const steps: CodeStep[] = []
-  for (const s of STEPS) steps.push(s.kind === "save" ? { ...saveAfter(engine, FILES, steps), delay: s.delay } : s)
-  return steps
+export interface Hero {
+  money: string
+  accounts: string
+  files: TableFile[]
+  timeline: TableTimeline
+  /** The whole loop, ms: the hand's session, then the last frame held. */
+  total: number
+  playable: Playable
+  /** The files at the moments the hero claims something of, for scripts/examples.ts. */
+  checkpoints: Record<"vat" | "flagged" | "fixed", { money: string; accounts: string; problems: string[] }>
 }
-
-function tell(engine: Engine) {
-  const steps = formatted(engine)
-  const edit = codeTimeline(FILES, steps)
-  const at = (step: number) => OPENING + (edit.ends[step] as number)
-  const savedTypo = at(9)
-  const savedFixed = at(12)
-
-  /** The terminal's session: the first check after the first save, the second after the
-   *  second, its pause (`@ms`) keeping them apart on the one clock. */
-  const terminalFrom = savedTypo + TO_TERMINAL
-  const pause = savedFixed + TO_TERMINAL - (terminalFrom + firstCheck)
-  const session = `${FIRST}\n@${Math.round(pause)} ${SECOND}`
-  const played = sessionTimeline(parseSession(session))
-  const total = Math.max(terminalFrom + played.total, OPENING + edit.total) + HOLD_MS
-
-  const filesAt = (ms: number) => ({ money: savedAt(edit, money, ms), accounts: savedAt(edit, accounts, ms) })
-  return {
-    accounts,
-    money,
-    files: FILES,
-    steps,
-    /** The edit, timed. */
-    timeline: edit,
-    session,
-    opening: OPENING,
-    /** The whole loop, ms. */
-    total,
-    terminal: { from: terminalFrom, duration: played.total },
-    edit: { from: OPENING, duration: edit.total },
-    playable: {
-      duration: total,
-      chapters: [
-        { start: 0, title: "the screen" },
-        { start: OPENING, title: `${accounts}, a list` },
-        { start: at(1), title: `${money}, a plain table` },
-        { start: at(1), title: "a type, a reference, a formula" },
-        { start: at(7), title: "an account that does not exist" },
-        { start: savedTypo, title: `${PRODUCT.cli} check names the row` },
-        { start: at(11) - (ACCOUNT.length + 1) * TYPE_MS, title: "the account added" },
-        { start: savedFixed, title: `${PRODUCT.cli} check passes` },
-      ],
-    } satisfies Playable,
-    /** The files as written at three moments, and what the engine must say of money.cells
-     *  read with accounts.cells (scripts/examples.ts asserts it). */
-    checkpoints: {
-      plain: { money: MONEY, accounts: ACCOUNTS, problems: [] as string[] },
-      typo: { ...filesAt(savedTypo - OPENING), problems: [`row 3, to: "${ACCOUNT}" is no key of accounts`] },
-      fixed: { ...filesAt(edit.total), problems: [] as string[] },
-    },
-    /** What `cells check` prints for the typo, which the terminal shows. */
-    failing: FAILING,
-  }
-}
-
-export type Hero = ReturnType<typeof tell>
 
 const made = new WeakMap<Engine, Hero>()
 
-/** The hero, its saves as the engine writes them: made once. */
+/** The hero, every commit written by the engine: made once. */
 export function hero(engine: Engine): Hero {
   const had = made.get(engine)
   if (had) return had
-  const h = tell(engine)
+  const timeline = tableTimeline(FILES, STEPS, (file, cell, value, others) => writeCell(engine, file, cell, value, others))
+  // Each checkpoint the instant its step's commit has landed.
+  const after = (step: number) => {
+    const f = tableFrameAt(timeline, (timeline.plans[step]?.end as number) + 1)
+    return { money: f.texts[money] as string, accounts: f.texts[accounts] as string }
+  }
+  const h: Hero = {
+    money,
+    accounts,
+    files: FILES,
+    timeline,
+    total: timeline.total + HOLD_MS,
+    playable: { duration: timeline.total + HOLD_MS, chapters: timeline.playable.chapters },
+    checkpoints: {
+      vat: { ...after(1), problems: [] },
+      flagged: { ...after(5), problems: [`row 3, to: "${MOVEMENT.to}" is no key of accounts`] },
+      fixed: { ...after(8), problems: [] },
+    },
+  }
   made.set(engine, h)
   return h
 }

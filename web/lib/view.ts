@@ -110,3 +110,30 @@ export function savedAs(engine: Engine, saved: StoryFile, now: StoryFile, others
     after.doc.free()
   }
 }
+
+/** A cell written by hand in the app (ui's table-session `write`): `value` set in the
+ *  cell, a row one past the last first added as a blank record, as an app's new row is,
+ *  and the file written, every computed value the change reaches stored beside its `=`. */
+export function writeCell(
+  engine: Engine,
+  file: { path: string; text: string },
+  cell: { row: number; column: string },
+  value: string,
+  others: readonly { path: string; text: string }[],
+): string {
+  const files = others.map((o) => ({ name: o.path, text: o.text }))
+  let text = file.text
+  const probe = readCell(engine, { name: file.path, text }, files)
+  const rows = probe.rows.length
+  const width = probe.columns.length
+  probe.doc.free()
+  if (cell.row > rows) throw new Error(`view: row ${cell.row} is past the new row ${rows}`)
+  if (cell.row === rows) text = `${text.endsWith("\n") || text === "" ? text : `${text}\n`}${",".repeat(width - 1)}\n`
+  const r = readCell(engine, { name: file.path, text }, files)
+  try {
+    engine.setCell(r.doc, cell.row, cell.column, value)
+    return engine.write(r.doc)
+  } finally {
+    r.doc.free()
+  }
+}

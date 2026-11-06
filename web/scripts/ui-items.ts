@@ -19,6 +19,7 @@ export const UI_ITEMS = [
   "shimmer",
   "table",
   "table-of-contents",
+  "table-session",
   "terminal",
   "terminal-editor",
   "terminal-editor-screen",

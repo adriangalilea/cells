@@ -1,40 +1,34 @@
 "use client"
 
-// THE HERO: a MacBook at night, open on the format revealed a step at a time.
-// Helix, the full height of the screen on the left, opens accounts.cells then money.cells;
-// the Cells window and the terminal stack on the right. One clock (lib/hero's `playable`)
-// drives it all: `Playback` plays it in view and round again; every window reads its own
-// moment from the hero's through a `Playhead`, so each ui piece keeps its clock's meaning.
+// THE HERO: a MacBook at night, someone at work in Cells. Two windows of the app: money,
+// the month's movements, large on the left, and accounts on the right. A movement is
+// typed into a new row, the VAT is there as the amount lands, coffee is flagged as no
+// account, and once accounts has it the flag is gone (lib/hero, ui's table-session). One
+// clock: `Playback` plays it in view and round again; each window draws the session's
+// frame at the hero's moment, the hand (its cursor, what it types) in the one in front.
 //
-// As the reader scrolls past it, the editor's window lifts out of the screen toward them
+// As the reader scrolls past it, the money window lifts out of the screen toward them
 // and lands as the page's first block (`Landing`), in one move, while the lid folds shut
-// behind it (the Mac's own lid, its timeline's last step, driven by the scroll). The
-// windows keep one layout throughout; only their contents change. The Cells window shows
-// the file in front in the editor, as last saved. Reduced motion: the Mac shut and the
-// window already in place. A phone stacks the windows and nothing flies.
+// behind it (the Mac's own lid, its timeline's last step, driven by the scroll). Reduced
+// motion: the Mac shut and the window already in place. A phone stacks the windows and
+// nothing flies.
 
 import * as React from "react"
 import { createPortal } from "react-dom"
 import { CellsWindow } from "@/components/cells-window"
 import { Macos } from "@/components/ui/macos"
 import { Playback, Playhead, usePlayhead } from "@/components/ui/playback"
-import { Terminal } from "@/components/ui/terminal"
-import { TerminalEditor } from "@/components/ui/terminal-editor"
-import { useCellsDiagnose } from "@/components/use-cells-diagnose"
 import { useEngine } from "@/components/use-engine"
-import { type CodeStep, codeFrameAt } from "@/lib/code-session"
 import { hero } from "@/lib/hero"
-import { saveAfter, savedAt } from "@/lib/written"
-import "@/lib/cells-code"
 import { type Art, LID_MS, sceneClock, type Timeline } from "@/lib/macos-session"
 import { PRODUCT } from "@/lib/product"
-import { LINE_HEIGHT } from "@/lib/terminal-session"
+import { sceneOf, tableFrameAt } from "@/lib/table-session"
 
 /** The Mac's own story: open from the first frame, the same layout for the whole hero (its
  *  windows change only their contents), and shut only by the scroll. */
 const WORLD = { battery: 82, charging: false, lid: "open" as const, asleep: false, heat: false }
 const MAC: Timeline = {
-  app: "Terminal",
+  app: PRODUCT.name,
   chord: "",
   steps: [
     { kind: "world", world: WORLD },
@@ -46,135 +40,60 @@ const SHUT_FROM = MAC_CLOCK.starts[1] as number
 if (MAC_CLOCK.total < SHUT_FROM + LID_MS) throw new Error("hero: the Mac's story ends before its lid has shut")
 const NO_ART: Art = { icon: "", glyphs: {} }
 
-/** The hero, its saves as the engine writes them. */
+/** The hero, its commits as the engine writes them. */
 const useHero = () => hero(useEngine())
 
-/** The editor's accent, the terminal's phosphor: the site's cold edge light. */
+/** The site's cold edge light: the accent of every terminal and editor on the page. */
 export const ACCENT = "#7fdcf0"
-/** The editor's window on the Mac's stage (960 by 600, ui macos): 36 from the top (under
- *  the menu bar), 12 from the foot, the three windows' one inset. */
+/** The windows on the Mac's stage (960 by 600, ui macos): 36 from the top (under the menu
+ *  bar), 12 from the foot and the sides, 12 between them. The money window, the one that
+ *  flies, the full height on the left; accounts on the right. */
 const INSET = 12
 const TOP = 36
-const WINDOW_W = 540
+const WINDOW_W = 560
 const WINDOW_H = 600 - TOP - INSET
-/** Helix's rows: the screen's full height. */
-const ROWS = 26
-/** The window's height in its own type, from ui's terminal and terminal-editor: the bar
- *  (30/13 em), the bufferline, the text's top padding (0.5 em), the rows, the status and
- *  command lines; plus its 1px border above and below. */
-const EDITOR_EM = 30 / 13 + 0.5 + (ROWS + 3) * LINE_HEIGHT
-/** The type size that makes ROWS fill the window to its foot, status line last. */
-const EDITOR_SIZE = `${(WINDOW_H - 2) / EDITOR_EM}px`
+const SIDE = { left: INSET + WINDOW_W + INSET, width: 960 - (INSET + WINDOW_W + INSET) - INSET, height: 300 }
 
-const share = (ms: number, from: number, length: number) => Math.min(1, Math.max(0, (ms - from) / length))
-
-/** What the Cells window shows at the hero's instant: the file in front in the editor (it
- *  follows the editor, never ahead of it), as last written (an app watching the folder
- *  re-reads a file when the editor writes it, never while it is being typed), read with
- *  the other as written; and the editor's own moment. */
-function useFiles(ms: number) {
+/** Every window's file and the hand at the hero's instant. */
+function useFrame(ms: number) {
   const h = useHero()
-  const editAt = share(ms, h.edit.from, h.edit.duration)
-  const editMs = editAt * h.timeline.total
-  const front = codeFrameAt(h.timeline, editMs).active ?? h.accounts
-  const other = front === h.money ? h.accounts : h.money
+  const f = tableFrameAt(h.timeline, Math.min(ms, h.timeline.total))
+  const file = (path: string) => ({ name: path, text: f.texts[path] as string })
   return {
-    editAt,
-    name: front,
-    text: savedAt(h.timeline, front, editMs),
-    others: [{ name: other, text: savedAt(h.timeline, other, editMs) }],
+    money: file(h.money),
+    accounts: file(h.accounts),
+    scene: (path: string) => sceneOf(f, path),
   }
 }
 
-/** Helix in its window: ui's terminal-editor with its bufferline (always there, so the
- *  rows never move) and the engine as its language server, every file's text at the
- *  instant read together (components/use-cells-diagnose). `rows` counts the bufferline's. */
-function Editor({
-  size,
-  rows = ROWS + 1,
-  steps,
-  onOpen,
-  onEdit,
-  className,
-}: {
-  size: string
-  rows?: number
-  steps?: CodeStep[]
-  onOpen?: (path: string) => void
-  onEdit?: (step: CodeStep) => void
-  className?: string
-}) {
+/** The money window as the page keeps it once the hand is done: the window that leaves
+ *  the Mac, at its stage size, scaled to `width` as a whole, so the flight between the
+ *  two is a move and a scale and nothing else. */
+function MoneyWindow({ width }: { width: number }) {
   const h = useHero()
-  const diagnose = useCellsDiagnose()
-  return (
-    <Terminal
-      alt={onEdit ? "Helix on the hero's files: type into it" : ""}
-      interactive={onEdit !== undefined}
-      accent={ACCENT}
-      size={size}
-      className={className}
-    >
-      <TerminalEditor files={h.files} steps={steps ?? h.steps} rows={rows} bufferline="always" diagnose={diagnose} onOpen={onOpen} onEdit={onEdit} />
-    </Terminal>
-  )
-}
-
-/** The editor window the Mac's screen lets go of, as the page keeps it: the very window
- *  (its stage size, its type, its rows), scaled to `width` as a whole, so the flight
- *  between the two is a move and a scale and nothing else. money.cells as the edit left it,
- *  then what the reader did to it (`added`: a tab pressed, a key typed), each the edit's
- *  next step, handed back through `onStep`, so the frame drawn is still the edit's. */
-export function EditorWindow({
-  width,
-  added = NO_STEPS,
-  onStep,
-}: {
-  width: number
-  added?: CodeStep[]
-  onStep?: (step: CodeStep) => void
-}) {
-  const h = useHero()
-  const steps = React.useMemo(() => [...h.steps, ...added], [h, added])
-  const open = React.useMemo(() => onStep && ((path: string) => onStep({ kind: "open", path })), [onStep])
+  const end = h.checkpoints.fixed
   return (
     <div style={{ width, height: (width * WINDOW_H) / WINDOW_W }}>
       <div style={{ width: WINDOW_W, height: WINDOW_H, transform: `scale(${width / WINDOW_W})`, transformOrigin: "0 0" }}>
-        <Playhead progress={1}>
-          <Editor size={EDITOR_SIZE} steps={steps} onOpen={open} onEdit={onStep} className="h-full" />
-        </Playhead>
+        <CellsWindow name={h.money} text={end.money} others={[{ name: h.accounts, text: end.accounts }]} className="h-full" />
       </div>
     </div>
   )
 }
 
-const NO_STEPS: CodeStep[] = []
-
 /** The landing's width on the page: the window a little larger than on the Mac. */
 const LANDING_W = 600
 
 /** Where the window the Mac lets go of lands: the page's first block. On a phone the hero
- *  already shows the editor, stacked, and nothing flies, so there is none. */
+ *  already shows the windows, stacked, and nothing flies, so there is none. */
 export function Landing() {
   const narrow = useNarrow()
-  const engine = useEngine()
-  const h = useHero()
-  const [added, setAdded] = React.useState<CodeStep[]>(NO_STEPS)
-  // An edit is written as it lands, as an editor formatting on save writes it: every
-  // computed value it reaches stored beside its `=`, so `vat` follows the amount typed.
-  const step = React.useCallback(
-    (s: CodeStep) =>
-      setAdded((a) => {
-        const next = [...a, s]
-        return s.kind === "type" || s.kind === "replace" ? [...next, saveAfter(engine, h.files, [...h.steps, ...next])] : next
-      }),
-    [engine, h],
-  )
   if (narrow) return null
   return (
     // Before it knows the width (the server's HTML) a phone collapses it rather than
-    // `display: none`, so the editor in it can still measure its columns.
+    // `display: none`.
     <div data-hero-landing className="overflow-hidden rounded-[10px] max-md:invisible max-md:h-0" style={{ width: LANDING_W }}>
-      <EditorWindow width={LANDING_W} added={added} onStep={step} />
+      <MoneyWindow width={LANDING_W} />
     </div>
   )
 }
@@ -182,7 +101,7 @@ export function Landing() {
 function Scene({ lid }: { lid: number }) {
   const h = useHero()
   const ms = usePlayhead(undefined).at * h.total
-  const files = useFiles(ms)
+  const f = useFrame(ms)
   const macMs = SHUT_FROM + lid * LID_MS
   return (
     <Playhead progress={macMs / MAC_CLOCK.total}>
@@ -192,33 +111,21 @@ function Scene({ lid }: { lid: number }) {
         device="macbook"
         captions={false}
         front={PRODUCT.name}
-        alt={`A MacBook at night. In Helix, ${h.accounts} lists three accounts; ${h.money} imports it, starts as a plain table, and is given a type, a reference to accounts and a formula, the ${PRODUCT.name} window beside it reading each change. A movement to coffee, which accounts does not have, is named on its row, and ${PRODUCT.cli} check names it too; coffee is added to ${h.accounts} and the check passes.`}
+        alt={`A MacBook at night, two ${PRODUCT.name} windows open: ${h.money} and ${h.accounts}. A movement of 3.80 is typed into a new row and its VAT appears; it is paid to coffee, which ${h.accounts} does not have, and the cell is flagged; coffee is added in ${h.accounts}, and the flag in ${h.money} is gone.`}
       >
         {/* Night over the desktop picture: the windows are the brightest thing. */}
         <div aria-hidden className="absolute inset-0 bg-[radial-gradient(120%_90%_at_70%_100%,rgb(8_12_20/0.2),rgb(4_6_10/0.6))]" />
-        <Playhead progress={files.editAt}>
-          {/* Gone from the screen while it flies (components/hero useDeparture): one window,
-              never two. */}
-          <div
-            data-slot="hero-editor-window"
-            className="absolute"
-            style={{ top: TOP, left: INSET, width: WINDOW_W, height: WINDOW_H, visibility: lid > 0 ? "hidden" : undefined }}
-          >
-            <Editor size={EDITOR_SIZE} className="h-full" />
-          </div>
-        </Playhead>
-        <CellsWindow
-          name={files.name}
-          text={files.text}
-          others={files.others}
-          className="absolute top-[36px] left-[562px] h-[300px] w-[386px]"
-        />
-        <Playhead progress={share(ms, h.terminal.from, h.terminal.duration)}>
-          {/* Down to the editor's foot: the two columns end on one line. */}
-          <div className="absolute top-[346px] bottom-[12px] left-[562px] w-[386px] [&>*]:h-full">
-            <Terminal alt="" accent={ACCENT} size="9.5px" session={h.session} rows={5} className="h-full" />
-          </div>
-        </Playhead>
+        {/* Gone from the screen while it flies (useDeparture): one window, never two. */}
+        <div
+          data-slot="hero-app-window"
+          className="absolute"
+          style={{ top: TOP, left: INSET, width: WINDOW_W, height: WINDOW_H, visibility: lid > 0 ? "hidden" : undefined }}
+        >
+          <CellsWindow name={f.money.name} text={f.money.text} others={[f.accounts]} scene={f.scene(h.money)} className="h-full" />
+        </div>
+        <div className="absolute" style={{ top: TOP, left: SIDE.left, width: SIDE.width, height: SIDE.height }}>
+          <CellsWindow name={f.accounts.name} text={f.accounts.text} scene={f.scene(h.accounts)} className="h-full" />
+        </div>
       </Macos>
     </Playhead>
   )
@@ -229,21 +136,15 @@ function Scene({ lid }: { lid: number }) {
 function Stacked() {
   const h = useHero()
   const ms = usePlayhead(undefined).at * h.total
-  const files = useFiles(ms)
+  const f = useFrame(ms)
   return (
     <div
       role="img"
-      aria-label={`In Helix, ${h.money} imports ${h.accounts} and is given its types and a formula; the ${PRODUCT.name} table names coffee as no key of accounts until it is added, and ${PRODUCT.cli} check passes.`}
+      aria-label={`Two ${PRODUCT.name} windows: a movement typed into ${h.money}, its VAT computed, coffee flagged as no account until ${h.accounts} has it.`}
       className="space-y-3"
     >
-      <Playhead progress={files.editAt}>
-        {/* The longest file is 8 lines: the phone's editor is no taller than it needs. */}
-        <Editor size="clamp(7px,2.35vw,10px)" rows={11} />
-      </Playhead>
-      <CellsWindow name={files.name} text={files.text} others={files.others} className="h-[188px]" />
-      <Playhead progress={share(ms, h.terminal.from, h.terminal.duration)}>
-        <Terminal alt="" accent={ACCENT} size="clamp(7px,2.35vw,10px)" session={h.session} rows={4} />
-      </Playhead>
+      <CellsWindow name={f.money.name} text={f.money.text} others={[f.accounts]} scene={f.scene(h.money)} className="h-[200px]" />
+      <CellsWindow name={f.accounts.name} text={f.accounts.text} scene={f.scene(h.accounts)} className="h-[170px]" />
     </div>
   )
 }
@@ -285,10 +186,10 @@ export function Hero() {
       {departs &&
         mounted &&
         createPortal(
-          // Hidden by visibility, never display: laid out while it waits, so the editor in it
-          // has measured its columns before it is first seen.
+          // Hidden by visibility, never display: laid out while it waits, so its table has
+          // measured its columns before it is first seen.
           <div ref={flight} aria-hidden className="pointer-events-none fixed top-0 left-0 z-30 origin-top-left rounded-[10px] will-change-transform" style={{ visibility: "hidden" }}>
-            <EditorWindow width={WINDOW_W} />
+            <MoneyWindow width={WINDOW_W} />
           </div>,
           document.body,
         )}
@@ -307,7 +208,7 @@ const LAND_AT = 0.12
 const LIFT = 0.06
 
 /** THE DEPARTURE: the scroll past the hero, read every frame. Returns how far the lid has
- *  shut (0..1, over the sticky stage's extra scroll). The editor's window lifts out of the
+ *  shut (0..1, over the sticky stage's extra scroll). The money window lifts out of the
  *  screen toward the reader and lands on the page, in ONE continuous move over one
  *  progress: from the first pixel of scroll to the landing slot reaching LAND_AT. The
  *  flying window (`flight`) is the landing's own component at the Mac window's stage
@@ -341,7 +242,7 @@ function useDeparture(
         lastLid = shut
         setLid(shut)
       }
-      const window = hero.querySelector<HTMLElement>("[data-slot=hero-editor-window]")
+      const window = hero.querySelector<HTMLElement>("[data-slot=hero-app-window]")
       if (!window) return
       const l = landing.getBoundingClientRect()
       // The journey is the scroll from the stage starting to move to the slot reaching
