@@ -1,0 +1,14 @@
+{
+  "columns": [
+    { "name": "item", "type": "text" },
+    { "name": "VAT", "type": "num" },
+    { "name": "total", "type": "num", "formula": "VAT * 2" }
+  ],
+  "rows": [
+    { "item": { "text": "fuel" }, "VAT": { "num": "21" }, "total": { "from": "formula" } }
+  ],
+  "problems": [],
+  "broken": [
+    { "at": "column 3", "span": [28, 3] }
+  ]
+}

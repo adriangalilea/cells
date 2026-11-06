@@ -5,7 +5,9 @@
   ],
   "rows": [
     { "item": { "text": "rail pass" }, "cost": { "money": "1200", "currency": "JPY" } },
-    { "item": { "text": "noodles per gram" }, "cost": { "money": "1200.5", "currency": "JPY" } }
+    { "item": { "text": "noodles per gram" }, "cost": null }
   ],
-  "problems": []
+  "problems": [
+    { "row": 1, "column": "cost", "kind": "type", "span": [52, 6] }
+  ]
 }

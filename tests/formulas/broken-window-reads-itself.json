@@ -1,7 +1,7 @@
 {
   "columns": [
     { "name": "id", "type": "text!" },
-    { "name": "balance", "type": "EUR", "formula": "sum(balance) over (order by id)" }
+    { "name": "balance", "type": "EUR", "formula": "SUM(balance) OVER (ORDER BY id)" }
   ],
   "rows": [
     { "id": { "text": "a" }, "balance": { "from": "formula" } }

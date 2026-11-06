@@ -2,9 +2,9 @@
   "columns": [
     { "name": "item", "type": "text" },
     { "name": "cost", "type": "EUR" },
-    { "name": "share", "type": "pct", "formula": "round(cost * 100 / sum(cost), 1)" },
-    { "name": "above_average", "type": "bool", "formula": "cost > avg(cost)" },
-    { "name": "rank_top", "type": "bool", "formula": "cost = max(cost)" }
+    { "name": "share", "type": "pct", "formula": "ROUND(cost * 100 / SUM(cost), 1)" },
+    { "name": "above_average", "type": "bool", "formula": "cost > AVG(cost)" },
+    { "name": "rank_top", "type": "bool", "formula": "cost = MAX(cost)" }
   ],
   "rows": [
     { "item": { "text": "rent" }, "cost": { "money": "950.00", "currency": "EUR" }, "share": { "pct": "77.6", "from": "formula" }, "above_average": { "bool": true, "from": "formula" }, "rank_top": { "bool": true, "from": "formula" } },

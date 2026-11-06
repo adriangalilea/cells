@@ -30,27 +30,47 @@ pub(crate) struct Reading {
     pub candidates: u8,
 }
 
-/// What a cell's text is to a `.cell` file: a formula (`` `=cost*qty` ``), text written
-/// with its first backtick doubled so it reads as no formula (`` ``=x` `` is `` `=x` ``),
-/// or plain text.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum Said {
-    Plain,
-    Formula,
-    Escaped,
+/// Where a `.cell` file's cell splits (SPEC.md, A cell): the first `=` with no `'` before
+/// it, what the file stores on its left and how it is computed on its right. Nothing for a
+/// written value, whose every `=` is written `'=`.
+#[inline]
+pub(crate) fn split(t: &[u8]) -> Option<usize> {
+    let mut from = 0;
+    while let Some(k) = t[from..].iter().position(|&c| c == b'=') {
+        let at = from + k;
+        if at == 0 || t[at - 1] != b'\'' {
+            return Some(at);
+        }
+        from = at + 1;
+    }
+    None
 }
 
-#[inline]
-pub(crate) fn said(t: &[u8]) -> Said {
-    if t.first() != Some(&b'`') || t.last() != Some(&b'`') {
-        return Said::Plain;
+/// What a cell's own formula is, right of its `=`, spaces and tabs at its ends cut: empty
+/// when its column's formula computes it.
+pub(crate) fn own_formula(t: &str) -> Option<&str> {
+    let at = split(t.as_bytes())?;
+    Some(t[at + 1..].trim_matches([' ', '\t']))
+}
+
+/// A written value's text as a `.cell` file holds it, each `'=` read back as `=`.
+pub(crate) fn unescaped(t: &[u8], out: &mut Vec<u8>) {
+    out.clear();
+    for (i, &c) in t.iter().enumerate() {
+        if c == b'\'' && t.get(i + 1) == Some(&b'=') {
+            continue;
+        }
+        out.push(c);
     }
-    let ticks = t.iter().take_while(|&&c| c == b'`').count();
-    match (ticks, t.get(ticks)) {
-        (1, Some(b'=')) if t.len() >= 3 => Said::Formula,
-        (2.., Some(b'=')) => Said::Escaped,
-        _ => Said::Plain,
+}
+
+/// Text as a `.cell` file writes a written value: each `=` after a `'`, so it never
+/// reads as a computed cell (SPEC.md, A cell).
+pub(crate) fn escaped(t: &str) -> alloc::borrow::Cow<'_, str> {
+    if !t.contains('=') {
+        return alloc::borrow::Cow::Borrowed(t);
     }
+    alloc::borrow::Cow::Owned(t.replace('=', "'="))
 }
 
 /// A part of the body read: its records and columns and the problems in them.
@@ -154,8 +174,10 @@ impl<'a> Part<'a> {
 /// holding a control character is broken before its type is read: one whose span holds
 /// a start in `controls` (sorted, as the cells are), looked for only in a run whose batch
 /// has any (`CONTROLS`), so every other run's loop is as it would be without the rule.
-/// A cell's formula, a formula column's blank, are marked (`Why::Formula`,
-/// `Why::Computed`) where `formulas` (a `.cell` file's), its value null until computed.
+/// Where `formulas` (a `.cell` file's), a computed cell (`84.20=`, `32.25=96.75 / 3`, a
+/// formula column's blank) is marked (`Why::Computed` for its column's formula,
+/// `Why::Formula` for its own), its value null until computed; a written value's `'=` is
+/// read as `=`.
 #[allow(clippy::too_many_arguments)]
 #[inline(always)]
 fn each<const CONTROLS: bool>(
@@ -173,6 +195,7 @@ fn each<const CONTROLS: bool>(
     mut put: impl FnMut(Option<&[u8]>, &mut Run) -> Result<(), Why>,
 ) {
     let mut next = 0;
+    let mut plain = Vec::new();
     for (k, &(s, e)) in cells.iter().enumerate() {
         let row = base + k as u32;
         let mut text = scan::text(src, s, e, scratch);
@@ -188,17 +211,16 @@ fn each<const CONTROLS: bool>(
             }
             continue;
         }
-        if formulas && text[0] == b'`' {
-            match said(text) {
-                Said::Formula => {
-                    let _ = put(None, &mut run);
-                    valid.push(false);
-                    problems.push(Problem { row, column: c, why: Why::Formula });
-                    continue;
-                }
-                Said::Escaped => text = &text[1..],
-                Said::Plain => {}
+        if formulas && text.contains(&b'=') {
+            if let Some(at) = split(text) {
+                let own = text[at + 1..].iter().any(|&c| c != b' ' && c != b'\t');
+                let _ = put(None, &mut run);
+                valid.push(false);
+                problems.push(Problem { row, column: c, why: if own { Why::Formula } else { Why::Computed } });
+                continue;
             }
+            unescaped(text, &mut plain);
+            text = &plain;
         }
         if CONTROLS {
             while next < controls.len() && controls[next] < s {

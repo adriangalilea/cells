@@ -1,4 +1,4 @@
 note:text
 ---
-type Kind = a|b
+type Kind '= a|b
 ---

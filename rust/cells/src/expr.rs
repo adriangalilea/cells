@@ -111,9 +111,53 @@ pub enum Expr {
     Case(Vec<(Expr, Expr)>, Option<Box<Expr>>),
     /// A function, its name where it is written.
     Call(String, Vec<Expr>, Sp),
-    /// A window: an aggregate or `lag` over the file's rows in an order (each key, and
-    /// whether it descends), `over` where it is written.
+    /// A window: an aggregate or `LAG` over the file's rows in an order (each key, and
+    /// whether it descends), `OVER` where it is written.
     Over(Box<Expr>, Vec<(Expr, bool)>, Sp),
+    /// `running[-1]`, `cost[FIRST].kind`: a column on a row by where it is from this one,
+    /// then the references followed from it; the column's name where it is written.
+    At(String, Place, Vec<String>, Sp),
+    /// `total[FIRST:THIS]`: a column on the rows from one place to another, an aggregate's
+    /// argument; the column's name where it is written.
+    Range(String, Place, Place, Sp),
+}
+
+/// A row by where it is from the row being computed, in the order of the file's lines.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Place {
+    First,
+    This,
+    Last,
+    /// That many lines below (or above, when negative).
+    By(i64),
+}
+
+impl Place {
+    /// The row it is from `row` in a table of `rows`: past the rows when outside them.
+    fn row(self, row: usize, rows: usize) -> i64 {
+        match self {
+            Place::First => 0,
+            Place::This => row as i64,
+            Place::Last => rows as i64 - 1,
+            Place::By(n) => row as i64 + n,
+        }
+    }
+
+    /// Where it is from this row, `FIRST` before every row and `LAST` after: what says
+    /// whether a range holds the row it is computed on.
+    fn reach(self) -> i128 {
+        match self {
+            Place::First => i128::MIN,
+            Place::This => 0,
+            Place::Last => i128::MAX,
+            Place::By(n) => n as i128,
+        }
+    }
+}
+
+/// Whether a range from `a` to `b` holds the row it is read on.
+fn holds_this(a: Place, b: Place) -> bool {
+    a.reach() <= 0 && 0 <= b.reach()
 }
 
 /// Where a part of a formula is in its text: its first byte and its length.
@@ -152,7 +196,31 @@ enum Tok {
     Sym(&'static str),
 }
 
-const SYMS: [&str; 18] = ["||", "<>", "!=", "<=", ">=", "+", "-", "*", "/", "(", ")", "[", "]", ",", ".", "=", "<", ">"];
+const SYMS: [&str; 19] = ["||", "<>", "!=", "<=", ">=", "+", "-", "*", "/", "(", ")", "[", "]", ",", ".", "=", "<", ">", ":"];
+
+/// The language's own words, written in capitals and only so (SPEC.md, The language): a
+/// word in lower case is always a name the file gave.
+pub const KEYWORDS: [&str; 22] = [
+    "AND", "OR", "NOT", "IS", "NULL", "TRUE", "FALSE", "CASE", "WHEN", "THEN", "ELSE", "END", "OVER", "ORDER", "BY", "ASC", "DESC",
+    "TABLE", "FIRST", "THIS", "LAST", "LAG",
+];
+
+/// Whether `w` is one of the language's words or functions.
+fn language(w: &str) -> bool {
+    KEYWORDS.contains(&w) || FUNCTIONS.contains(&w)
+}
+
+/// A word written in capitals: no lower-case letter, and a letter.
+fn capitals(w: &str) -> bool {
+    w.bytes().any(|c| c.is_ascii_uppercase()) && !w.bytes().any(|c| c.is_ascii_lowercase())
+}
+
+/// What a name in lower case that spells one of the language's words says: the word is
+/// written in capitals.
+fn spelled_low(w: &str) -> Option<String> {
+    let up = w.to_ascii_uppercase();
+    (up != w && language(&up)).then(|| format!("\"{w}\" is a name: the language is written in capitals, {up}"))
+}
 
 /// The formula's tokens, each with where it is written.
 fn lex(src: &str) -> Result<Vec<(Tok, Sp)>, Fault> {
@@ -211,7 +279,7 @@ fn lex(src: &str) -> Result<Vec<(Tok, Sp)>, Fault> {
             // `#3`, a row by where a screen shows it: input an app or the language server
             // turns into the row's key, never what a file holds.
             let end = i + 1 + b[i + 1..].iter().take_while(|d| d.is_ascii_digit()).count();
-            let why = format!("{} is a row by where it shows, which a file never holds: write its key, this['…']", &src[i..end]);
+            let why = format!("{} is a row by where it shows, which a file never holds: write its key, TABLE['…']", &src[i..end]);
             return Err(Fault::at(sp(i, end), why));
         } else {
             let ch = src[i..].chars().next().unwrap();
@@ -253,8 +321,9 @@ impl Parser {
         matches!(self.peek(), Some(Tok::Sym(x)) if *x == s)
     }
 
+    /// Whether the next token is the language's word `w`, written as it is, in capitals.
     fn word(&self, w: &str) -> bool {
-        matches!(self.peek(), Some(Tok::Name(x)) if x.eq_ignore_ascii_case(w))
+        matches!(self.peek(), Some(Tok::Name(x)) if x == w)
     }
 
     fn eat_sym(&mut self, s: &str) -> bool {
@@ -273,6 +342,36 @@ impl Parser {
         if self.eat_sym(s) { Ok(()) } else { Err(self.fail(format!("a {s} was expected, not {}", self.shown()))) }
     }
 
+    /// Why the next token stands where nothing can: what `what` says, or, for a name in
+    /// lower case that spells the language's word, that the word is in capitals.
+    fn stray(&self, what: String) -> Fault {
+        match self.peek() {
+            Some(Tok::Name(n)) => self.fail(spelled_low(n).unwrap_or(what)),
+            _ => self.fail(what),
+        }
+    }
+
+    /// A row by where it is, inside a column's `[…]`: `-1`, `+2`, `FIRST`, `THIS`, `LAST`;
+    /// nothing when what is there is a key.
+    fn place(&mut self) -> Option<Place> {
+        let p = match (self.toks.get(self.at), self.toks.get(self.at + 1)) {
+            (Some(Tok::Name(w)), _) if w == "FIRST" => (Place::First, 1),
+            (Some(Tok::Name(w)), _) if w == "THIS" => (Place::This, 1),
+            (Some(Tok::Name(w)), _) if w == "LAST" => (Place::Last, 1),
+            (Some(Tok::Sym(s @ ("-" | "+"))), Some(Tok::Num(n))) if !n.contains('.') => {
+                let n: i64 = n.parse().ok()?;
+                (Place::By(if *s == "-" { -n } else { n }), 2)
+            }
+            _ => return None,
+        };
+        // A place stands alone in its brackets, or at an end of a range.
+        if !matches!(self.toks.get(self.at + p.1), Some(Tok::Sym("]" | ":"))) {
+            return None;
+        }
+        self.at += p.1;
+        Some(p.0)
+    }
+
     fn shown(&self) -> String {
         match self.peek() {
             None => "the end".to_owned(),
@@ -285,7 +384,7 @@ impl Parser {
 
     fn or(&mut self) -> Result<Expr, Fault> {
         let mut a = self.and()?;
-        while self.eat_word("or") {
+        while self.eat_word("OR") {
             let op = self.last();
             a = Expr::Bin(Bin::Or, Box::new(a), Box::new(self.and()?), op);
         }
@@ -294,7 +393,7 @@ impl Parser {
 
     fn and(&mut self) -> Result<Expr, Fault> {
         let mut a = self.not()?;
-        while self.eat_word("and") {
+        while self.eat_word("AND") {
             let op = self.last();
             a = Expr::Bin(Bin::And, Box::new(a), Box::new(self.not()?), op);
         }
@@ -302,7 +401,7 @@ impl Parser {
     }
 
     fn not(&mut self) -> Result<Expr, Fault> {
-        if self.eat_word("not") {
+        if self.eat_word("NOT") {
             return Ok(Expr::Not(Box::new(self.not()?)));
         }
         self.compare()
@@ -310,10 +409,10 @@ impl Parser {
 
     fn compare(&mut self) -> Result<Expr, Fault> {
         let a = self.concat()?;
-        if self.eat_word("is") {
-            let negated = self.eat_word("not");
-            if !self.eat_word("null") {
-                return Err(self.fail(format!("is takes null, not {}", self.shown())));
+        if self.eat_word("IS") {
+            let negated = self.eat_word("NOT");
+            if !self.eat_word("NULL") {
+                return Err(self.stray(format!("IS takes NULL, not {}", self.shown())));
             }
             return Ok(Expr::IsNull(Box::new(a), negated));
         }
@@ -407,37 +506,48 @@ impl Parser {
                 }
                 Ok(e)
             }
-            Tok::Name(n) if n.eq_ignore_ascii_case("true") || n.eq_ignore_ascii_case("false") => {
+            Tok::Name(n) if n == "TRUE" || n == "FALSE" => {
                 self.at += 1;
-                Ok(Expr::Bool(n.eq_ignore_ascii_case("true")))
+                Ok(Expr::Bool(n == "TRUE"))
             }
-            Tok::Name(n) if n.eq_ignore_ascii_case("null") => {
+            Tok::Name(n) if n == "NULL" => {
                 self.at += 1;
                 Ok(Expr::Null)
             }
-            Tok::Name(n) if n.eq_ignore_ascii_case("case") => {
+            Tok::Name(n) if n == "CASE" => {
                 let case = self.here();
                 self.at += 1;
                 let mut arms = Vec::new();
-                while self.eat_word("when") {
+                while self.eat_word("WHEN") {
                     let w = self.or()?;
-                    if !self.eat_word("then") {
-                        return Err(self.fail(format!("when takes then, not {}", self.shown())));
+                    if !self.eat_word("THEN") {
+                        return Err(self.stray(format!("WHEN takes THEN, not {}", self.shown())));
                     }
                     arms.push((w, self.or()?));
                 }
                 if arms.is_empty() {
-                    return Err(Fault::at(case, "case takes when".to_owned()));
+                    return Err(Fault::at(case, "CASE takes WHEN".to_owned()));
                 }
-                let otherwise = if self.eat_word("else") { Some(Box::new(self.or()?)) } else { None };
-                if !self.eat_word("end") {
-                    return Err(self.fail(format!("case closes with end, not {}", self.shown())));
+                let otherwise = if self.eat_word("ELSE") { Some(Box::new(self.or()?)) } else { None };
+                if !self.eat_word("END") {
+                    return Err(self.stray(format!("CASE closes with END, not {}", self.shown())));
                 }
                 Ok(Expr::Case(arms, otherwise))
+            }
+            // The language's other words stand only where they belong.
+            Tok::Name(n) if KEYWORDS.contains(&n.as_str()) && !matches!(n.as_str(), "TABLE" | "LAG") => {
+                Err(self.fail(format!("{n} cannot stand there")))
             }
             Tok::Name(_) | Tok::Quoted(_) => {
                 let named = self.here();
                 let first = self.name()?;
+                // A word in capitals is the language's: a name the file gave so is written
+                // quoted, so the two are never one another.
+                if matches!(t, Tok::Name(_)) && capitals(&first) && first != "TABLE" && !self.sym("(") {
+                    return Err(Fault::at(named, format!("{first} is in capitals, the language's: a name the file gave so is written quoted, \"{first}\"")));
+                }
+                // The language's `TABLE`, never a quoted name that spells it.
+                let first = if matches!(t, Tok::Name(_)) && first == "TABLE" { THIS.to_owned() } else { first };
                 if matches!(t, Tok::Name(_)) && self.eat_sym("(") {
                     let mut args = Vec::new();
                     if !self.eat_sym(")") {
@@ -449,21 +559,21 @@ impl Parser {
                             self.expect_sym(",")?;
                         }
                     }
-                    let call = Expr::Call(first.to_ascii_lowercase(), args, named);
+                    let call = Expr::Call(first, args, named);
                     let over = self.here();
-                    if !self.eat_word("over") {
+                    if !self.eat_word("OVER") {
                         return Ok(call);
                     }
                     self.expect_sym("(")?;
-                    if !(self.eat_word("order") && self.eat_word("by")) {
-                        return Err(self.fail(format!("over takes order by: over (order by date), not {}", self.shown())));
+                    if !(self.eat_word("ORDER") && self.eat_word("BY")) {
+                        return Err(self.stray(format!("OVER takes ORDER BY: OVER (ORDER BY date), not {}", self.shown())));
                     }
                     let mut order = Vec::new();
                     loop {
                         let key = self.or()?;
-                        let descending = self.eat_word("desc");
+                        let descending = self.eat_word("DESC");
                         if !descending {
-                            self.eat_word("asc");
+                            self.eat_word("ASC");
                         }
                         order.push((key, descending));
                         if !self.eat_sym(",") {
@@ -474,6 +584,25 @@ impl Parser {
                     return Ok(Expr::Over(Box::new(call), order, over));
                 }
                 if self.eat_sym("[") {
+                    // A row by where it is (`running[-1]`), or a range of them
+                    // (`total[FIRST:THIS]`); anything else is a key (`fees['card']`).
+                    if let Some(a) = self.place() {
+                        if self.eat_sym(":") {
+                            let Some(b) = self.place() else {
+                                return Err(self.fail(format!("a range ends at FIRST, THIS, LAST or a row by where it is (-1, +2), not {}", self.shown())));
+                            };
+                            self.expect_sym("]")?;
+                            let end = self.last();
+                            return Ok(Expr::Range(first, a, b, (named.0, end.0 + end.1 - named.0)));
+                        }
+                        self.expect_sym("]")?;
+                        let mut rest = Vec::new();
+                        while self.eat_sym(".") {
+                            rest.push(self.name()?);
+                        }
+                        let end = self.last();
+                        return Ok(Expr::At(first, a, rest, (named.0, end.0 + end.1 - named.0)));
+                    }
                     let key = self.or()?;
                     self.expect_sym("]")?;
                     let mut rest = Vec::new();
@@ -481,7 +610,8 @@ impl Parser {
                         rest.push(self.name()?);
                     }
                     if rest.is_empty() {
-                        return Err(Fault::at(named, format!("{first}[…] names a row: a column follows, {first}[…].column")));
+                        let says = shown(&first);
+                        return Err(Fault::at(named, format!("{says}[…] names a row: a column follows, {says}[…].column")));
                     }
                     return Ok(Expr::Lookup(first, Box::new(key), rest, named));
                 }
@@ -506,7 +636,7 @@ pub fn parse(src: &str) -> Result<Expr, Fault> {
     }
     let e = p.or()?;
     if p.peek().is_some() {
-        return Err(p.fail(format!("{} is left over", p.shown())));
+        return Err(p.stray(format!("{} is left over", p.shown())));
     }
     Ok(e)
 }
@@ -514,7 +644,7 @@ pub fn parse(src: &str) -> Result<Expr, Fault> {
 /// Every function a formula may call, the aggregates first: what a language server
 /// completes.
 pub const FUNCTIONS: [&str; 15] =
-    ["sum", "avg", "min", "max", "count", "round", "floor", "ceil", "abs", "coalesce", "nullif", "length", "lower", "upper", "trim"];
+    ["SUM", "AVG", "MIN", "MAX", "COUNT", "ROUND", "FLOOR", "CEIL", "ABS", "COALESCE", "NULLIF", "LENGTH", "LOWER", "UPPER", "TRIM"];
 
 /// A name a formula reads, each part where it is written: `cost`; `to.kind`, a column
 /// and what its reference leads to; `fees['card'].pct`, a table (`table`) and a column of
@@ -593,6 +723,17 @@ pub fn names(src: &str) -> Result<Vec<Named>, Fault> {
                 stack.extend(order.iter().rev().map(|(k, _)| k));
                 stack.push(call);
             }
+            // The column, then past its `[…]`, the names its references lead to.
+            Expr::At(name, _, rest, s) => {
+                let mut k = at(*s);
+                while toks[k].0 != Tok::Sym("]") {
+                    k += 1;
+                }
+                let mut all = Vec::from([(name.clone(), toks[at(*s)].1)]);
+                all.extend(parts(k + 1, rest.len(), false));
+                out.push(Named { parts: all, table: false, key: None });
+            }
+            Expr::Range(name, _, _, s) => out.push(Named { parts: Vec::from([(name.clone(), toks[at(*s)].1)]), table: false, key: None }),
             Expr::Num(_) | Expr::Text(_) | Expr::Bool(_) | Expr::Null => {}
         }
     }
@@ -627,8 +768,15 @@ pub enum F {
 /// index in the scope.
 pub type Table = Option<usize>;
 
-/// The name a formula reads the file's own table by, whatever the file is named.
-pub const THIS: &str = "this";
+/// The file's own table, as a parsed formula holds the language's `TABLE`: never a name a
+/// file can give, since a header's names hold no control character, so a column named
+/// `"TABLE"`, quoted, is never it.
+pub const THIS: &str = "\u{1}TABLE";
+
+/// A name as a message shows it: the file's own table as the formula writes it.
+pub fn shown(name: &str) -> &str {
+    if name == THIS { "TABLE" } else { name }
+}
 
 /// A formula resolved: every name a place, every kind checked.
 #[derive(Clone, Debug, PartialEq)]
@@ -636,6 +784,12 @@ pub enum Ir {
     Const(V),
     /// A column of the row in context.
     Col(usize),
+    /// A column of the file's own table on a row by where it is from the row in context;
+    /// past the rows, 0 for a number (`zero`), else null.
+    At(usize, Place, bool),
+    /// An aggregate of a column of the file's own table over the rows from one place to
+    /// another, clipped by the rows; its slot keeps the running sums a range reads.
+    Span(Agg, usize, Place, Place, usize),
     /// A key, looked up in each target in turn (its table, the key column, the column
     /// read on the row found).
     Follow(Box<Ir>, Vec<(Table, usize, usize)>),
@@ -703,13 +857,14 @@ impl Resolver<'_, '_> {
             Expr::Path(path, at) => self.path(path, *at, table)?,
             Expr::Lookup(name, key, rest, at) => {
                 let fail = |why: String| Fault::at(*at, why);
+                let says = shown(name);
                 if self.scope.column(table, name).is_some() && self.named(name).is_some() {
-                    return Err(fail(format!("{name} names a column and a table, so it means neither")));
+                    return Err(fail(format!("{says} names a column and a table, so it means neither")));
                 }
-                let t = self.named(name).ok_or_else(|| fail(format!("no table \"{name}\"")))?;
-                let k = self.scope.key(t).ok_or_else(|| fail(format!("{name} has no key, so no row is found by one")))?;
+                let t = self.named(name).ok_or_else(|| fail(format!("no table \"{says}\"")))?;
+                let k = self.scope.key(t).ok_or_else(|| fail(format!("{says} has no key, so no row is found by one")))?;
                 let (key, _) = self.at(key, table, inside)?;
-                let (col, kind) = self.scope.column(t, &rest[0]).ok_or_else(|| fail(format!("{name} has no column \"{}\"", rest[0])))?;
+                let (col, kind) = self.scope.column(t, &rest[0]).ok_or_else(|| fail(format!("{says} has no column \"{}\"", rest[0])))?;
                 let ir = Ir::Follow(Box::new(key), Vec::from([(t, k, col)]));
                 self.follow(ir, t, col, kind, &rest[1..], &rest[0], *at)?
             }
@@ -779,26 +934,49 @@ impl Resolver<'_, '_> {
             }
             Expr::Call(name, args, at) => self.call(name, *at, args, table, inside)?,
             Expr::Over(call, order, at) => self.window(call, order, *at, table, inside)?,
+            Expr::At(name, place, rest, at) => {
+                let (col, kind) = self.placed(name, table, *at)?;
+                let ir = Ir::At(col, *place, kind == K::Num);
+                self.follow(ir, None, col, kind, rest, name, *at)?
+            }
+            Expr::Range(name, _, _, at) => {
+                return Err(Fault::at(*at, format!("{name}[…:…] is rows of a column, an aggregate's: SUM({name}[FIRST:THIS])")));
+            }
         })
+    }
+
+    /// The column a row by where it is reads: one of the file's own, on a row of it.
+    fn placed(&self, name: &str, table: Table, at: Sp) -> Result<(usize, K), Fault> {
+        if table.is_some() {
+            return Err(Fault::at(at, format!("{name}[…] is a row by where it is, and only the file's own rows are read so")));
+        }
+        if self.named(name).is_some() {
+            let says = shown(name);
+            return Err(Fault::at(at, format!("{says} is a table: a row by where it is reads a column ({says}['key'] finds a row by its key)")));
+        }
+        self.scope.column(None, name).ok_or_else(|| Fault::at(at, format!("no column \"{name}\"")))
     }
 
     fn window(&mut self, call: &Expr, order: &[(Expr, bool)], at: Sp, table: Table, inside: bool) -> Result<(Ir, K), Fault> {
         let fail = |why: String| Fault::at(at, why);
         let Expr::Call(name, args, named) = call else { unreachable!("over follows a call") };
         if !self.windows {
-            return Err(fail("a window is a column's formula's: over (order by …) reads the column's rows in order".to_owned()));
+            return Err(fail("a window is a column's formula's: OVER (ORDER BY …) reads the column's rows in order".to_owned()));
         }
         if inside || table.is_some() {
             return Err(fail("a window inside an aggregate or another table".to_owned()));
         }
         let win = match name.as_str() {
-            "sum" => Win::Agg(Agg::Sum),
-            "avg" => Win::Agg(Agg::Avg),
-            "min" => Win::Agg(Agg::Min),
-            "max" => Win::Agg(Agg::Max),
-            "count" => Win::Agg(Agg::Count),
-            "lag" => Win::Lag,
-            _ => return Err(Fault::at(*named, format!("{name} is no window: sum, avg, min, max, count, lag"))),
+            "SUM" => Win::Agg(Agg::Sum),
+            "AVG" => Win::Agg(Agg::Avg),
+            "MIN" => Win::Agg(Agg::Min),
+            "MAX" => Win::Agg(Agg::Max),
+            "COUNT" => Win::Agg(Agg::Count),
+            "LAG" => Win::Lag,
+            _ => {
+                let why = spelled_low(name).unwrap_or_else(|| format!("{name} is no window: SUM, AVG, MIN, MAX, COUNT, LAG"));
+                return Err(Fault::at(*named, why));
+            }
         };
         if args.len() != 1 {
             return Err(Fault::at(*named, format!("{name} takes one value")));
@@ -822,7 +1000,7 @@ impl Resolver<'_, '_> {
         Ok((Ir::Window(win, Box::new(arg), keys, slot), kind))
     }
 
-    /// A table by the name a formula reads it by: `this`, the file's own, or one the
+    /// A table by the name a formula reads it by: `TABLE`, the file's own, or one the
     /// prelude names.
     fn named(&self, name: &str) -> Option<Table> {
         if name == THIS { Some(None) } else { self.scope.table(name).map(Some) }
@@ -830,32 +1008,33 @@ impl Resolver<'_, '_> {
 
     fn path(&mut self, path: &[String], at: Sp, table: Table) -> Result<(Ir, K), Fault> {
         let first = &path[0];
+        let says = shown(first);
         let column = self.scope.column(table, first);
         let named = self.named(first);
         if column.is_some() && named.is_some() {
-            return Err(Fault::at(at, format!("{first} names a column and a table, so it means neither")));
+            return Err(Fault::at(at, format!("{says} names a column and a table, so it means neither")));
         }
         if let Some((col, kind)) = column {
             return self.follow(Ir::Col(col), table, col, kind, &path[1..], first, at);
         }
-        // Inside an aggregate over the table: `sum(fees.pct)`, `sum(this.amount)`.
+        // Inside an aggregate over the table: `SUM(fees.pct)`, `SUM(TABLE.amount)`.
         if let Some(t) = named
             && t == table
             && let Some(name) = path.get(1)
         {
-            let (col, kind) = self.scope.column(table, name).ok_or_else(|| Fault::at(at, format!("{first} has no column \"{name}\"")))?;
+            let (col, kind) = self.scope.column(table, name).ok_or_else(|| Fault::at(at, format!("{says} has no column \"{name}\"")))?;
             return self.follow(Ir::Col(col), table, col, kind, &path[2..], name, at);
         }
         if named.is_some() {
             return Err(Fault::at(
                 at,
                 match path.get(1) {
-                    Some(c) => format!("{first}.{c} is a whole column: read one row ({first}[key].{c}) or all of them (sum({first}.{c}))"),
-                    None => format!("{first} is a table, not a value"),
+                    Some(c) => format!("{says}.{c} is a whole column: read one row ({says}[key].{c}) or all of them (SUM({says}.{c}))"),
+                    None => format!("{says} is a table, not a value"),
                 },
             ));
         }
-        Err(Fault::at(at, format!("no column \"{first}\"")))
+        Err(Fault::at(at, spelled_low(first).unwrap_or_else(|| format!("no column \"{first}\""))))
     }
 
     /// `ir`, column `col` of `table` read, then each name of `rest` followed through the
@@ -896,12 +1075,15 @@ impl Resolver<'_, '_> {
 
     fn call(&mut self, name: &str, at: Sp, args: &[Expr], table: Table, inside: bool) -> Result<(Ir, K), Fault> {
         let fail = |why: String| Fault::at(at, why);
+        if let Some(why) = spelled_low(name) {
+            return Err(fail(why));
+        }
         let agg = match name {
-            "sum" => Some(Agg::Sum),
-            "avg" => Some(Agg::Avg),
-            "min" => Some(Agg::Min),
-            "max" => Some(Agg::Max),
-            "count" => Some(Agg::Count),
+            "SUM" => Some(Agg::Sum),
+            "AVG" => Some(Agg::Avg),
+            "MIN" => Some(Agg::Min),
+            "MAX" => Some(Agg::Max),
+            "COUNT" => Some(Agg::Count),
             _ => None,
         };
         if let Some(agg) = agg {
@@ -910,6 +1092,21 @@ impl Resolver<'_, '_> {
             }
             if args.len() != 1 {
                 return Err(fail(format!("{name} takes one value")));
+            }
+            // A range of a column's rows, `SUM(total[FIRST:THIS])`.
+            if let Expr::Range(col, a, b, span) = &args[0] {
+                let (c, k) = self.placed(col, table, *span)?;
+                let kind = match agg {
+                    Agg::Sum | Agg::Avg => {
+                        number(k, name).map_err(fail)?;
+                        K::Num
+                    }
+                    Agg::Count => K::Num,
+                    Agg::Min | Agg::Max => k,
+                };
+                let slot = *self.aggregates;
+                *self.aggregates += 1;
+                return Ok((Ir::Span(agg, c, *a, *b, slot), kind));
             }
             let over = over(&args[0], self.scope);
             let (arg, k) = self.at(&args[0], over, true)?;
@@ -936,50 +1133,51 @@ impl Resolver<'_, '_> {
             if n.contains(&args.len()) { Ok(()) } else { Err(fail(format!("{name} takes {} values, not {}", n.end(), args.len()))) }
         };
         let (f, k) = match name {
-            "round" => {
+            "ROUND" => {
                 arity(1..=2)?;
                 kinds.iter().try_for_each(|k| number(*k, name)).map_err(fail)?;
                 (F::Round, K::Num)
             }
-            "abs" | "floor" | "ceil" => {
+            "ABS" | "FLOOR" | "CEIL" => {
                 arity(1..=1)?;
                 number(kinds[0], name).map_err(fail)?;
                 (
                     match name {
-                        "abs" => F::Abs,
-                        "floor" => F::Floor,
+                        "ABS" => F::Abs,
+                        "FLOOR" => F::Floor,
                         _ => F::Ceil,
                     },
                     K::Num,
                 )
             }
-            "coalesce" => {
+            "COALESCE" => {
                 if args.is_empty() {
-                    return Err(fail("coalesce takes values".to_owned()));
+                    return Err(fail("COALESCE takes values".to_owned()));
                 }
                 let mut k = K::Null;
                 for x in &kinds {
-                    k = k.meet(*x).ok_or_else(|| fail(format!("coalesce of {} and {}", k.word(), x.word())))?;
+                    k = k.meet(*x).ok_or_else(|| fail(format!("COALESCE of {} and {}", k.word(), x.word())))?;
                 }
                 (F::Coalesce, k)
             }
-            "nullif" => {
+            "NULLIF" => {
                 arity(2..=2)?;
                 kinds[0].meet(kinds[1]).ok_or_else(|| fail(format!("{} and {} are not compared", kinds[0].word(), kinds[1].word())))?;
                 (F::Nullif, kinds[0])
             }
-            "lower" | "upper" | "trim" | "length" => {
+            "LOWER" | "UPPER" | "TRIM" | "LENGTH" => {
                 arity(1..=1)?;
                 if !matches!(kinds[0], K::Text | K::Null) {
                     return Err(fail(format!("{name} takes text, not {}", kinds[0].word())));
                 }
                 match name {
-                    "lower" => (F::Lower, K::Text),
-                    "upper" => (F::Upper, K::Text),
-                    "trim" => (F::Trim, K::Text),
+                    "LOWER" => (F::Lower, K::Text),
+                    "UPPER" => (F::Upper, K::Text),
+                    "TRIM" => (F::Trim, K::Text),
                     _ => (F::Length, K::Num),
                 }
             }
+            "LAG" => return Err(fail("LAG is a window's: LAG(balance) OVER (ORDER BY date)".to_owned())),
             _ => return Err(fail(format!("no function {name}"))),
         };
         Ok((Ir::Call(f, out), k))
@@ -1029,6 +1227,10 @@ pub trait Source {
     /// A window being evaluated, or its values, one a row, and the rows its order does not
     /// tell apart, each with one it ties with.
     fn remember_window(&mut self, slot: usize, values: Option<Evaluated>);
+    /// A range's running sums so far: entry `i` the sum and the count of its column's
+    /// non-null values on rows before `i`, entry 0 nothing. They grow as rows are read, in
+    /// the rows' order, so a range of a column's own rows above reads no row below it.
+    fn running(&mut self, slot: usize) -> &mut Vec<(Exact, i64)>;
 }
 
 /// A window evaluated: its value on each row, and each row its order does not place,
@@ -1080,6 +1282,74 @@ pub fn eval(ir: &Ir, table: Table, row: usize, src: &mut dyn Source) -> V {
     match ir {
         Ir::Const(v) => v.clone(),
         Ir::Col(k) => src.cell(table, row, *k),
+        Ir::At(k, place, zero) => {
+            let n = src.rows(None);
+            let r = place.row(row, n);
+            if r < 0 || r >= n as i64 {
+                // Past the rows: a number reads 0, as an empty cell does in a sheet's sums.
+                return if *zero { V::Num(Exact::from_int(0)) } else { V::Null };
+            }
+            src.cell(None, r as usize, *k)
+        }
+        Ir::Span(agg, k, a, b, slot) => {
+            let n = src.rows(None);
+            let lo = a.row(row, n).max(0);
+            let hi = b.row(row, n).min(n as i64 - 1);
+            if lo > hi {
+                return match agg {
+                    Agg::Count => V::Num(Exact::from_int(0)),
+                    _ => V::Null,
+                };
+            }
+            let (lo, hi) = (lo as usize, hi as usize);
+            match agg {
+                Agg::Sum | Agg::Avg | Agg::Count => {
+                    // The running sums up to the range's end, read row by row in order.
+                    loop {
+                        let have = src.running(*slot).len();
+                        if have > hi + 1 {
+                            break;
+                        }
+                        if have == 0 {
+                            src.running(*slot).push((Exact::from_int(0), 0));
+                            continue;
+                        }
+                        let v = src.cell(None, have - 1, *k);
+                        let (s, c) = src.running(*slot)[have - 1].clone();
+                        let next = match v {
+                            V::Num(x) => (s.add(&x), c + 1),
+                            V::Null => (s, c),
+                            _ => (s, c + 1),
+                        };
+                        src.running(*slot).push(next);
+                    }
+                    let (s1, c1) = src.running(*slot)[hi + 1].clone();
+                    let (s0, c0) = src.running(*slot)[lo].clone();
+                    let (sum, count) = (s1.sub(&s0), c1 - c0);
+                    match agg {
+                        Agg::Count => V::Num(Exact::from_int(count)),
+                        _ if count == 0 => V::Null,
+                        Agg::Sum => V::Num(sum),
+                        _ => sum.div(&Exact::from_int(count)).map_or(V::Null, V::Num),
+                    }
+                }
+                Agg::Min | Agg::Max => {
+                    let mut acc: Option<V> = None;
+                    for r in lo..=hi {
+                        let v = src.cell(None, r, *k);
+                        if v == V::Null {
+                            continue;
+                        }
+                        let want = if *agg == Agg::Min { Ordering::Less } else { Ordering::Greater };
+                        acc = Some(match acc {
+                            Some(a) if order(&v, &a) != Some(want) => a,
+                            _ => v,
+                        });
+                    }
+                    acc.unwrap_or(V::Null)
+                }
+            }
+        }
         Ir::Follow(key, targets) => {
             let k = eval(key, table, row, src);
             if k == V::Null {
@@ -1373,6 +1643,18 @@ pub fn reads(ir: &Ir, table: Table, out: &mut Vec<usize>) {
                 out.push(*k)
             }
         }
+        // Another row of a column is no read of the row's own cell: `running[-1]` in
+        // `running`'s formula reads the line above. Only a place that is this row is.
+        Ir::At(k, place, _) => {
+            if matches!(place, Place::This | Place::By(0)) {
+                out.push(*k)
+            }
+        }
+        Ir::Span(_, k, a, b, _) => {
+            if holds_this(*a, *b) {
+                out.push(*k)
+            }
+        }
         Ir::Follow(key, _) => reads(key, table, out),
         Ir::Agg(_, over, arg, _) => reads(arg, *over, out),
         Ir::Window(_, arg, order, _) => {
@@ -1421,7 +1703,7 @@ mod tests {
         }
     }
 
-    struct Rows(Vec<[V; 3]>, Vec<Option<V>>, Vec<Option<Option<Vec<V>>>>);
+    struct Rows(Vec<[V; 3]>, Vec<Option<V>>, Vec<Option<Option<Vec<V>>>>, Vec<Vec<(Exact, i64)>>);
 
     impl Source for Rows {
         fn cell(&mut self, _: Table, row: usize, column: usize) -> V {
@@ -1451,6 +1733,12 @@ mod tests {
             self.2.resize(slot + 1, None);
             self.2[slot] = Some(values.map(|(v, _)| v));
         }
+        fn running(&mut self, slot: usize) -> &mut Vec<(Exact, i64)> {
+            if self.3.len() <= slot {
+                self.3.resize(slot + 1, Vec::new());
+            }
+            &mut self.3[slot]
+        }
     }
 
     fn run(src: &str) -> String {
@@ -1462,6 +1750,7 @@ mod tests {
                 [V::Num(Exact::parse("84.20")), V::Num(Exact::parse("2")), V::Text("fuel".into())],
                 [V::Num(Exact::parse("10")), V::Null, V::Text("maps".into())],
             ]),
+            Vec::new(),
             Vec::new(),
             Vec::new(),
         );
@@ -1477,24 +1766,71 @@ mod tests {
     #[test]
     fn sql() {
         assert_eq!(run("cost * qty"), "168.40");
-        assert_eq!(run("round(cost / 3, 2)"), "28.07");
-        assert_eq!(run("case when qty > 1 then 'many' else 'one' end"), "'many'");
+        assert_eq!(run("ROUND(cost / 3, 2)"), "28.07");
+        assert_eq!(run("CASE WHEN qty > 1 THEN 'many' ELSE 'one' END"), "'many'");
         assert_eq!(run("item || ' x' || qty"), "'fuel x2'");
-        assert_eq!(run("sum(cost)"), "94.20");
-        assert_eq!(run("count(qty)"), "1");
-        assert_eq!(run("coalesce(null, 3)"), "3");
-        assert_eq!(run("upper(item)"), "'FUEL'");
+        assert_eq!(run("SUM(cost)"), "94.20");
+        assert_eq!(run("COUNT(qty)"), "1");
+        assert_eq!(run("COALESCE(NULL, 3)"), "3");
+        assert_eq!(run("UPPER(item)"), "'FUEL'");
         assert_eq!(run("1 / 0"), "null");
-        assert_eq!(run("not (qty = 2) or false"), "false");
-        assert_eq!(run("null and false"), "false");
-        assert_eq!(run("qty is not null"), "true");
+        assert_eq!(run("NOT (qty = 2) OR FALSE"), "false");
+        assert_eq!(run("NULL AND FALSE"), "false");
+        assert_eq!(run("qty IS NOT NULL"), "true");
         assert_eq!(run("-cost + 0.20"), "-84.00");
-        assert_eq!(run("floor(-2.5)"), "-3");
-        assert_eq!(run("ceil(2.1)"), "3");
-        for bad in ["cost +", "cost * item", "item and true", "nope", "sum(sum(cost))", "case when 1 then 2 end", "'open"] {
+        assert_eq!(run("FLOOR(-2.5)"), "-3");
+        assert_eq!(run("CEIL(2.1)"), "3");
+        for bad in ["cost +", "cost * item", "item AND TRUE", "nope", "SUM(SUM(cost))", "CASE WHEN 1 THEN 2 END", "'open"] {
             let refused = parse(bad).and_then(|e| resolve(&e, &One, &mut 0).map(|_| ()));
             assert!(refused.is_err(), "{bad} should not resolve");
         }
+    }
+
+    #[test]
+    fn the_language_is_written_in_capitals() {
+        let why = |src: &str| parse(src).and_then(|e| resolve(&e, &One, &mut 0).map(|_| ())).unwrap_err().why;
+        assert_eq!(why("sum(cost)"), "\"sum\" is a name: the language is written in capitals, SUM");
+        assert_eq!(why("cost is null"), "\"is\" is a name: the language is written in capitals, IS");
+        assert_eq!(why("case"), "\"case\" is a name: the language is written in capitals, CASE");
+        assert!(why("VAT * 2").contains("written quoted, \"VAT\""), "{}", why("VAT * 2"));
+        assert!(why("FIRST").contains("cannot stand there"));
+    }
+
+    #[test]
+    fn rows_by_where_they_are() {
+        let column = |src: &str| -> Vec<V> {
+            let (ir, _) = parse(src).and_then(|e| resolve_column(&e, &One, &mut 0)).unwrap_or_else(|f| panic!("{src}: {}", f.why));
+            let num = |s: &str| V::Num(Exact::parse(s));
+            let mut r = Rows(
+                Vec::from([[num("10"), num("1"), V::Text("a".into())], [num("20"), V::Null, V::Text("b".into())], [num("30"), num("3"), V::Text("c".into())]]),
+                Vec::new(),
+                Vec::new(),
+                Vec::new(),
+            );
+            (0..3).map(|row| eval(&ir, None, row, &mut r)).collect()
+        };
+        let num = |s: &str| V::Num(Exact::parse(s));
+        assert_eq!(column("cost[-1]"), [num("0"), num("10"), num("20")]);
+        assert_eq!(column("item[+1]"), [V::Text("b".into()), V::Text("c".into()), V::Null]);
+        assert_eq!(column("cost[FIRST] + cost[LAST]"), [num("40"), num("40"), num("40")]);
+        assert_eq!(column("SUM(cost[FIRST:THIS])"), [num("10"), num("30"), num("60")]);
+        assert_eq!(column("SUM(cost[-1:+1])"), [num("30"), num("60"), num("50")]);
+        assert_eq!(column("COUNT(qty[FIRST:THIS])"), [num("1"), num("1"), num("2")]);
+        assert_eq!(column("MAX(cost[THIS:LAST])"), [num("30"), num("30"), num("30")]);
+        assert_eq!(column("SUM(cost[FIRST:-1])"), [V::Null, num("10"), num("30")]);
+        for bad in ["cost[FIRST:THIS]", "ROUND(cost[FIRST:THIS])", "nope[-1]", "SUM(nope[FIRST:THIS])", "cost[FIRST:+x]"] {
+            assert!(parse(bad).and_then(|e| resolve_column(&e, &One, &mut 0).map(|_| ())).is_err(), "{bad} should not resolve");
+        }
+        // A range holding the row it is read on reads that row's cell; one of rows above
+        // does not.
+        let reads_of = |src: &str| {
+            let (ir, _) = parse(src).and_then(|e| resolve_column(&e, &One, &mut 0)).unwrap();
+            let mut out = Vec::new();
+            reads(&ir, None, &mut out);
+            out
+        };
+        assert_eq!(reads_of("SUM(cost[FIRST:THIS])"), [0]);
+        assert_eq!(reads_of("SUM(cost[FIRST:-1]) + cost[-1]"), Vec::<usize>::new());
     }
 
     #[test]
@@ -1503,7 +1839,7 @@ mod tests {
         let column = |src: &str, rows: Vec<[V; 3]>| -> Vec<V> {
             let (ir, _) = parse(src).and_then(|e| resolve_column(&e, &One, &mut 0)).unwrap_or_else(|f| panic!("{src}: {}", f.why));
             let n = rows.len();
-            let mut r = Rows(rows, Vec::new(), Vec::new());
+            let mut r = Rows(rows, Vec::new(), Vec::new(), Vec::new());
             (0..n).map(|row| eval(&ir, None, row, &mut r)).collect()
         };
         let num = |s: &str| V::Num(Exact::parse(s));
@@ -1514,10 +1850,10 @@ mod tests {
                 [num("30"), num("2"), V::Text("b".into())],
             ])
         };
-        assert_eq!(column("sum(cost) over (order by qty)", rows()), [num("60"), num("20"), num("50")]);
-        assert_eq!(column("sum(cost) over (order by item desc)", rows()), [num("10"), num("60"), num("40")]);
-        assert_eq!(column("lag(cost) over (order by qty)", rows()), [num("30"), V::Null, num("20")]);
-        assert_eq!(column("count(cost) over (order by qty)", rows()), [num("3"), num("1"), num("2")]);
+        assert_eq!(column("SUM(cost) OVER (ORDER BY qty)", rows()), [num("60"), num("20"), num("50")]);
+        assert_eq!(column("SUM(cost) OVER (ORDER BY item DESC)", rows()), [num("10"), num("60"), num("40")]);
+        assert_eq!(column("LAG(cost) OVER (ORDER BY qty)", rows()), [num("30"), V::Null, num("20")]);
+        assert_eq!(column("COUNT(cost) OVER (ORDER BY qty)", rows()), [num("3"), num("1"), num("2")]);
         // A tie the order does not break: neither row has a value, nor the one after them
         // for lag.
         let tied = || {
@@ -1527,18 +1863,18 @@ mod tests {
                 [num("5"), num("2"), V::Text("c".into())],
             ])
         };
-        assert_eq!(column("sum(cost) over (order by qty)", tied()), [V::Null, V::Null, num("35")]);
-        assert_eq!(column("lag(cost) over (order by qty)", tied()), [V::Null, V::Null, V::Null]);
+        assert_eq!(column("SUM(cost) OVER (ORDER BY qty)", tied()), [V::Null, V::Null, num("35")]);
+        assert_eq!(column("LAG(cost) OVER (ORDER BY qty)", tied()), [V::Null, V::Null, V::Null]);
         // Only a column's formula holds one.
-        assert!(parse("sum(cost) over (order by qty)").and_then(|e| resolve(&e, &One, &mut 0)).is_err());
+        assert!(parse("SUM(cost) OVER (ORDER BY qty)").and_then(|e| resolve(&e, &One, &mut 0)).is_err());
     }
 
     #[test]
     fn every_function_named_resolves() {
         for f in FUNCTIONS {
             let call = match f {
-                "lower" | "upper" | "trim" | "length" => format!("{f}(item)"),
-                "round" | "nullif" | "coalesce" => format!("{f}(cost, 1)"),
+                "LOWER" | "UPPER" | "TRIM" | "LENGTH" => format!("{f}(item)"),
+                "ROUND" | "NULLIF" | "COALESCE" => format!("{f}(cost, 1)"),
                 _ => format!("{f}(cost)"),
             };
             let resolved = parse(&call).and_then(|e| resolve(&e, &One, &mut 0));
@@ -1548,10 +1884,20 @@ mod tests {
 
     #[test]
     fn names_are_where_they_are_written() {
-        let src = "cost * \"the qty\" + fees['card'].pct + to.kind";
+        let src = "cost * \"the qty\" + fees['card'].pct + to.kind + SUM(total[FIRST:THIS]) + to[-1].kind";
         let got: Vec<Vec<&str>> =
             names(src).unwrap().iter().map(|n| n.parts.iter().map(|(_, (s, l))| &src[*s as usize..(s + l) as usize]).collect()).collect();
-        assert_eq!(got, [Vec::from(["cost"]), Vec::from(["\"the qty\""]), Vec::from(["fees", "pct"]), Vec::from(["to", "kind"])]);
+        assert_eq!(
+            got,
+            [
+                Vec::from(["cost"]),
+                Vec::from(["\"the qty\""]),
+                Vec::from(["fees", "pct"]),
+                Vec::from(["to", "kind"]),
+                Vec::from(["total"]),
+                Vec::from(["to", "kind"])
+            ]
+        );
         let fees = &names(src).unwrap()[2];
         assert!(fees.table);
         assert_eq!(fees.key.as_ref().map(|(k, (s, l))| (k.as_str(), &src[*s as usize..(s + l) as usize])), Some(("card", "'card'")));
@@ -1565,6 +1911,6 @@ mod tests {
         }
         assert_eq!(at("cost + nope"), Some("nope"));
         assert_eq!(at("cost * item"), Some("*"));
-        assert_eq!(at("round(cost) + sum(sum(cost))"), Some("sum"));
+        assert_eq!(at("ROUND(cost) + SUM(SUM(cost))"), Some("SUM"));
     }
 }

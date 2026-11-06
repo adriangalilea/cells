@@ -1,0 +1,14 @@
+{
+  "columns": [
+    { "name": "day", "type": "int" },
+    { "name": "amount", "type": "num" },
+    { "name": "total", "type": "num", "formula": "amount[FIRST:THIS]" }
+  ],
+  "rows": [
+    { "day": { "int": "1" }, "amount": { "num": "10" }, "total": { "from": "formula" } }
+  ],
+  "problems": [],
+  "broken": [
+    { "at": "column 3", "span": [29, 18] }
+  ]
+}

@@ -1,0 +1,2 @@
+item:text,VAT:num,total:num=VAT * 2
+fuel,21,

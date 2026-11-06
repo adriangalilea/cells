@@ -2,7 +2,7 @@
   "columns": [
     { "name": "item", "type": "text!" },
     { "name": "cost", "type": "num" },
-    { "name": "total", "type": "num", "formula": "sum(fees.pct) + cost" }
+    { "name": "total", "type": "num", "formula": "SUM(fees.pct) + cost" }
   ],
   "rows": [
     { "item": { "text": "fuel" }, "cost": { "num": "10" }, "total": { "num": "12.5", "from": "formula" } }

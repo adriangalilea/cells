@@ -354,6 +354,11 @@ fn apply(doc: &mut Doc, edits: &Json) -> Result<String, String> {
             let header: Option<Vec<&str>> = e.get("header").map(|h| h.array().iter().map(Json::str).collect());
             return Ok(doc.written_as(dialect, header.as_deref()));
         }
+        // `cells fix`: every stale cell given its formula's value.
+        if e.get("fix").is_some() {
+            doc.fix_stale();
+            continue;
+        }
         let stored: Vec<ColumnAt> = (0..doc.columns().len()).map(ColumnAt::Kept).collect();
         let reshaped = if let Some(Json::Number(at)) = e.get("insert") {
             let cells: Vec<&str> = e.get("cells").map(|c| c.array().iter().map(Json::str).collect()).unwrap_or_default();

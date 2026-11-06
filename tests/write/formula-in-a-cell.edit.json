@@ -1,4 +1,4 @@
 [
-  { "row": 0, "column": "cost", "text": "`=96.75/3`" },
-  { "row": 0, "column": "note", "value": { "text": "`=x`" } }
+  { "row": 0, "column": "cost", "text": "=96.75/3" },
+  { "row": 0, "column": "note", "value": { "text": "=x" } }
 ]

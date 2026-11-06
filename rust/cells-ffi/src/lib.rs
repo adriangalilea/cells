@@ -505,6 +505,8 @@ pub enum CellsKind {
     CellsKindFormula = 4,
     /// A reference to no row, or to rows of two tables.
     CellsKindReference = 5,
+    /// A computed cell storing another value than its formula gives.
+    CellsKindStale = 6,
 }
 
 /// A cell that breaks its type, by place.
@@ -540,6 +542,7 @@ pub unsafe extern "C" fn cells_problem(d: *mut CellsDoc, i: usize) -> CellsProbl
         cells::Kind::Ragged => CellsKind::CellsKindRagged,
         cells::Kind::Formula => CellsKind::CellsKindFormula,
         cells::Kind::Reference => CellsKind::CellsKindReference,
+        cells::Kind::Stale => CellsKind::CellsKindStale,
     };
     CellsProblem { row: p.row, column: p.column, kind }
 }

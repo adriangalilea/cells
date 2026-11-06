@@ -1,0 +1,15 @@
+{
+  "columns": [
+    { "name": "call", "type": "text!" },
+    { "name": "fee", "type": "EUR(6)>=0" },
+    { "name": "total", "type": "EUR", "formula": "SUM(fee)" }
+  ],
+  "rows": [
+    { "call": { "text": "c1" }, "fee": { "money": "0.004", "currency": "EUR" }, "total": { "money": "0.01", "currency": "EUR", "from": "formula" } },
+    { "call": { "text": "c2" }, "fee": { "money": "0.006", "currency": "EUR" }, "total": { "money": "0.01", "currency": "EUR", "from": "formula" } },
+    { "call": { "text": "c3" }, "fee": null, "total": { "money": "0.01", "currency": "EUR", "from": "formula" } }
+  ],
+  "problems": [
+    { "row": 2, "column": "fee", "kind": "type", "span": [80, 9] }
+  ]
+}

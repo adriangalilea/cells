@@ -1,0 +1,4 @@
+day:int,amount:EUR,running:EUR=SUM(amount[FIRST:THIS]),near:EUR=SUM(amount[-1:+1]),seen:int=COUNT(amount[FIRST:THIS]),top:EUR=MAX(amount[THIS:LAST]),before:EUR=SUM(running[FIRST:-1])
+1,10.00,10.00=,30.00=,1=,20.00=,=
+2,20.00,30.00=,35.00=,2=,20.00=,10.00=
+3,5.00,35.00=,25.00=,3=,5.00=,40.00=

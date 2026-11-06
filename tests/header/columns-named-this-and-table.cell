@@ -1,0 +1,3 @@
+item:text!,this:num,TABLE:num,"both:num=this + ""TABLE""",all:num=SUM(TABLE.this)
+fuel,3,4,7=,8=
+maps,5,1,6=,8=

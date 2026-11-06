@@ -2,10 +2,10 @@
   "columns": [
     { "name": "id", "type": "text!" },
     { "name": "amount", "type": "EUR" },
-    { "name": "share", "type": "num", "formula": "amount / sum(this.amount)" },
-    { "name": "second", "type": "EUR", "formula": "this['k2'].amount" },
-    { "name": "none", "type": "EUR", "formula": "this['zz'].amount" },
-    { "name": "all", "type": "EUR", "formula": "sum(amount)" }
+    { "name": "share", "type": "num", "formula": "amount / SUM(TABLE.amount)" },
+    { "name": "second", "type": "EUR", "formula": "TABLE['k2'].amount" },
+    { "name": "none", "type": "EUR", "formula": "TABLE['zz'].amount" },
+    { "name": "all", "type": "EUR", "formula": "SUM(amount)" }
   ],
   "rows": [
     { "id": { "text": "k1" }, "amount": { "money": "30.00", "currency": "EUR" }, "share": { "num": "0.3", "from": "formula" }, "second": { "money": "70.00", "currency": "EUR", "from": "formula" }, "none": { "from": "formula" }, "all": { "money": "100.00", "currency": "EUR", "from": "formula" } },

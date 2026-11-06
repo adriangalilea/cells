@@ -12,9 +12,9 @@
     { "item": { "text": "wrong kind" }, "cost": { "from": "cell" }, "qty": { "int": "1" }, "total": { "from": "formula" } }
   ],
   "problems": [
-    { "row": 0, "column": "cost", "kind": "formula", "span": [63, 0] },
-    { "row": 1, "column": "cost", "kind": "formula", "span": [78, 5] },
-    { "row": 2, "column": "cost", "kind": "formula", "span": [99, 12] },
-    { "row": 3, "column": "cost", "kind": "formula", "span": [126, 8] }
+    { "row": 0, "column": "cost", "kind": "formula", "span": [62, 0] },
+    { "row": 1, "column": "cost", "kind": "formula", "span": [76, 5] },
+    { "row": 2, "column": "cost", "kind": "formula", "span": [97, 10] },
+    { "row": 3, "column": "cost", "kind": "formula", "span": [123, 6] }
   ]
 }

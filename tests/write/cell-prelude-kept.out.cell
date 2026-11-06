@@ -8,5 +8,5 @@ market
 ```
 ---
 item:text!,category:Category,cost:EUR,qty:int,total:EUR=cost * qty
-fuel,travel,84.20,1,
-groceries,food,96.75,3,
+fuel,travel,84.20,1,84.20=
+groceries,food,96.75,3,290.25=

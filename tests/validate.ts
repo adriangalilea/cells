@@ -42,7 +42,7 @@ const TAGS = new Set([
   "choice",
   "ref",
 ])
-const KINDS = ["type", "missing", "key", "ragged", "formula", "reference"]
+const KINDS = ["type", "missing", "key", "ragged", "formula", "reference", "stale"]
 const FROM = ["formula", "cell"]
 const AT = /^(the file|the header|the prelude|column [1-9]\d*|prelude line [1-9]\d*|row [1-9]\d*)$/
 const DECIMAL = /^-?(0|[1-9]\d*)(\.\d+)?$/
@@ -230,7 +230,8 @@ function readsCase(path: string, j: { [k: string]: Json }, plain: boolean) {
     const v = isObject(cell) && Object.keys(cell).every((k) => k === "from") ? null : cell
     if (p.kind === "key" && v === null) fault(path, `${what} is a duplicate key on a null value`)
     if (p.kind === "reference" && v === null) fault(path, `${what} is a reference to no row on a null value`)
-    if (!["key", "ragged", "reference"].includes(p.kind) && v !== null) fault(path, `${what} is ${p.kind}, but the value is not null`)
+    if (!["key", "ragged", "reference", "stale"].includes(p.kind) && v !== null) fault(path, `${what} is ${p.kind}, but the value is not null`)
+    if (p.kind === "stale" && (v === null || v.from === undefined)) fault(path, `${what} is stale, but its value is no formula's`)
   })
 }
 
@@ -287,6 +288,11 @@ function edits(path: string, j: Json) {
       keysAre(path, what, e, ["rename", "to"])
       named(what, e.rename)
       if (typeof e.to !== "string" || e.to === "") fault(path, `${what}: "to" is not a name`)
+      return
+    }
+    if ("fix" in e) {
+      keysAre(path, what, e, ["fix"])
+      if (e.fix !== true) fault(path, `${what}: "fix" is true`)
       return
     }
     if (typeof e.column !== "string" || e.column === "") fault(path, `${what} names no column`)

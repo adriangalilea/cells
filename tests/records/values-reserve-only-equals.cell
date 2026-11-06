@@ -8,4 +8,5 @@ mark:text!,note:text
 ---,dashes
 (x),parentheses
 a..b,dots
->=0,a bound
+>'=0,a bound
+'=,an equals sign

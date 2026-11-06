@@ -1,5 +1,5 @@
 item:text,cost:EUR,qty:int,total:EUR=cost * qty
-broken,`=cost *`,1,
-missing,`=price * 2`,1,
-itself,`=total + 1`,2,
-wrong kind,`='ten'`,1,
+broken,=cost *,1,=
+missing,=price * 2,1,=
+itself,=total + 1,2,=
+wrong kind,='ten',1,=

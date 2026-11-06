@@ -1,0 +1,17 @@
+{
+  "columns": [
+    { "name": "day", "type": "int" },
+    { "name": "amount", "type": "EUR" },
+    { "name": "running", "type": "EUR", "formula": "SUM(amount[FIRST:THIS])" },
+    { "name": "near", "type": "EUR", "formula": "SUM(amount[-1:+1])" },
+    { "name": "seen", "type": "int", "formula": "COUNT(amount[FIRST:THIS])" },
+    { "name": "top", "type": "EUR", "formula": "MAX(amount[THIS:LAST])" },
+    { "name": "before", "type": "EUR", "formula": "SUM(running[FIRST:-1])" }
+  ],
+  "rows": [
+    { "day": { "int": "1" }, "amount": { "money": "10.00", "currency": "EUR" }, "running": { "money": "10.00", "currency": "EUR", "from": "formula" }, "near": { "money": "30.00", "currency": "EUR", "from": "formula" }, "seen": { "int": "1", "from": "formula" }, "top": { "money": "20.00", "currency": "EUR", "from": "formula" }, "before": { "from": "formula" } },
+    { "day": { "int": "2" }, "amount": { "money": "20.00", "currency": "EUR" }, "running": { "money": "30.00", "currency": "EUR", "from": "formula" }, "near": { "money": "35.00", "currency": "EUR", "from": "formula" }, "seen": { "int": "2", "from": "formula" }, "top": { "money": "20.00", "currency": "EUR", "from": "formula" }, "before": { "money": "10.00", "currency": "EUR", "from": "formula" } },
+    { "day": { "int": "3" }, "amount": { "money": "5.00", "currency": "EUR" }, "running": { "money": "35.00", "currency": "EUR", "from": "formula" }, "near": { "money": "25.00", "currency": "EUR", "from": "formula" }, "seen": { "int": "3", "from": "formula" }, "top": { "money": "5.00", "currency": "EUR", "from": "formula" }, "before": { "money": "40.00", "currency": "EUR", "from": "formula" } }
+  ],
+  "problems": []
+}

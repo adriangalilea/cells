@@ -244,6 +244,9 @@ pub struct Type {
     pub min: Option<Bound>,
     pub max: Option<Bound>,
     pub format: Option<Format>,
+    /// A currency's scale given in parentheses, `EUR(6)`: the digits after the point its
+    /// amounts hold, in place of the currency's minor unit.
+    pub digits: Option<u8>,
     /// `!`: present in every row and unique.
     pub key: bool,
     /// `?`: may be blank.
@@ -263,7 +266,17 @@ pub struct NamedType {
 
 impl Type {
     pub fn plain(base: Base) -> Type {
-        Type { base, min: None, max: None, format: None, key: false, optional: false, named: None, inferred: false }
+        Type { base, min: None, max: None, format: None, digits: None, key: false, optional: false, named: None, inferred: false }
+    }
+
+    /// An amount's scale (SPEC.md, Bases): the scale given (`EUR(6)`), else its currency's
+    /// minor unit; nothing for a number that is no amount, or a unit with no minor unit
+    /// and none given (the metals, `XDR`), which keeps every digit.
+    pub fn scale(&self) -> Option<u8> {
+        match &self.base {
+            Base::Money(cur) => self.digits.or_else(|| cur.minor_unit().map(|d| d as u8)),
+            _ => None,
+        }
     }
 
     pub fn inferred(base: Base) -> Type {
@@ -291,6 +304,11 @@ impl Type {
             out.push('(');
             out.push_str(&f.spelled);
             out.push(')');
+        }
+        if let Some(d) = self.digits
+            && under.is_none_or(|t| t.digits.is_none())
+        {
+            out.push_str(&format!("({d})"));
         }
         match (min, max) {
             (Some(a), Some(b)) if under.is_none() && self.base == Base::Num && a.inclusive && b.inclusive => {
@@ -717,9 +735,22 @@ fn check(ty: &mut Type, format: Option<&str>) -> Result<(), String> {
             }
         }
     }
+    if let Some(f) = format
+        && matches!(ty.base, Base::Money(_))
+    {
+        // A currency's parentheses are its scale: a whole number of digits after the point.
+        let d: u8 = f
+            .trim_matches([' ', '\t'])
+            .parse()
+            .ok()
+            .filter(|d| *d <= 18)
+            .ok_or_else(|| format!("a currency's scale is a whole number from 0 to 18, the digits after the point: not ({f})"))?;
+        ty.digits = Some(d);
+        return check(ty, None);
+    }
     if let Some(f) = format {
         if !matches!(ty.base, Base::Date | Base::Time) {
-            return Err("only a date or a time takes a format".to_owned());
+            return Err("only a date or a time takes a format, and a currency its scale".to_owned());
         }
         let f = Format::parse(f)?;
         let date = [Piece::Year, Piece::Month, Piece::Day];

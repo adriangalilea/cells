@@ -13,7 +13,8 @@
     { "mark": { "text": "---" }, "note": { "text": "dashes" } },
     { "mark": { "text": "(x)" }, "note": { "text": "parentheses" } },
     { "mark": { "text": "a..b" }, "note": { "text": "dots" } },
-    { "mark": { "text": ">=0" }, "note": { "text": "a bound" } }
+    { "mark": { "text": ">=0" }, "note": { "text": "a bound" } },
+    { "mark": { "text": "=" }, "note": { "text": "an equals sign" } }
   ],
   "problems": []
 }

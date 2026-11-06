@@ -1,0 +1,14 @@
+{
+  "columns": [
+    { "name": "item", "type": "text!" },
+    { "name": "this", "type": "num" },
+    { "name": "TABLE", "type": "num" },
+    { "name": "both", "type": "num", "formula": "this + \"TABLE\"" },
+    { "name": "all", "type": "num", "formula": "SUM(TABLE.this)" }
+  ],
+  "rows": [
+    { "item": { "text": "fuel" }, "this": { "num": "3" }, "TABLE": { "num": "4" }, "both": { "num": "7", "from": "formula" }, "all": { "num": "8", "from": "formula" } },
+    { "item": { "text": "maps" }, "this": { "num": "5" }, "TABLE": { "num": "1" }, "both": { "num": "6", "from": "formula" }, "all": { "num": "8", "from": "formula" } }
+  ],
+  "problems": []
+}

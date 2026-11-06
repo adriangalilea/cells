@@ -1,0 +1,15 @@
+{
+  "columns": [
+    { "name": "call", "type": "text!" },
+    { "name": "fee", "type": "text?" },
+    { "name": "cost", "type": "text?" }
+  ],
+  "rows": [
+    { "call": { "text": "c1" }, "fee": { "text": "0.001" }, "cost": { "text": "2.00" } }
+  ],
+  "problems": [],
+  "broken": [
+    { "at": "column 2", "span": [15, 8] },
+    { "at": "column 3", "span": [29, 7] }
+  ]
+}

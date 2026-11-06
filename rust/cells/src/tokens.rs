@@ -156,11 +156,19 @@ pub fn tokens(source: &str) -> Vec<Token> {
                 Some(None) => Kind::CellText,
                 None => Kind::Error,
             };
-            if kind != Kind::Error && crate::read::said(&src[s..e]) == crate::read::Said::Formula {
-                // `` `=formula` ``: its backticks and `=`, and the formula's parts.
-                out.push(s, s + 2, Kind::Punct, k as u32);
-                expression(source, s + 2, e - 1, k as u32, &mut out);
-                out.push(e - 1, e, Kind::Punct, k as u32);
+            if kind != Kind::Error
+                && let Some(split) = crate::read::split(&src[s..e])
+            {
+                // `84.20=`, `32.25=96.75 / 3`: what is stored as its column's values are,
+                // the `=`, and the formula's parts.
+                let at = s + split;
+                if at > s {
+                    out.push(s, at, kind, k as u32);
+                }
+                out.push(at, at + 1, Kind::Punct, k as u32);
+                if at + 1 < e {
+                    expression(source, at + 1, e, k as u32, &mut out);
+                }
                 continue;
             }
             out.push(s, e, kind, k as u32);
@@ -648,7 +656,7 @@ mod tests {
 
     #[test]
     fn tables_scripts_and_formulas() {
-        let src = "---\nimport accounts from \"../accounts.cell\"\nfees = ```cells\nkind:text!,pct:pct\ncard,1.4\n```\nfx = run every day at 18:00 in Europe/Madrid\n```ts\nexport default () => []\n```\n```cells\nrate:num\n```\n---\nto:accounts.account,cost:EUR\nrent,`=96.75/3`\n";
+        let src = "---\nimport accounts from \"../accounts.cell\"\nfees = ```cells\nkind:text!,pct:pct\ncard,1.4\n```\nfx = run every day at 18:00 in Europe/Madrid\n```ts\nexport default () => []\n```\n```cells\nrate:num\n```\n---\nto:accounts.account,cost:EUR\nrent,32.25=96.75/3\n";
         let t = shown(src);
         let kinds = |k: Kind| t.iter().filter(|x| x.1 == k).map(|x| x.0.as_str()).collect::<Vec<_>>();
         assert_eq!(kinds(Kind::String), ["\"../accounts.cell\""]);
@@ -656,7 +664,7 @@ mod tests {
         assert!(kinds(Kind::Name).contains(&"pct"), "{t:?}");
         assert_eq!(kinds(Kind::CellChoice), ["rent"]);
         assert_eq!(kinds(Kind::Number), ["18:00", "96.75", "3"]);
-        assert_eq!(kinds(Kind::CellNumber), ["1.4"]);
+        assert_eq!(kinds(Kind::CellNumber), ["1.4", "32.25"]);
         assert!(kinds(Kind::Error).is_empty(), "{t:?}");
     }
 

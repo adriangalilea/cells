@@ -1,4 +1,4 @@
-item:text,cost:EUR,"share:pct=round(cost * 100 / sum(cost), 1)",above_average:bool=cost > avg(cost),rank_top:bool=cost = max(cost)
-rent,950.00,,,
-power,64.30,,,
-food,210.00,,,
+item:text,cost:EUR,"share:pct=ROUND(cost * 100 / SUM(cost), 1)",above_average:bool=cost > AVG(cost),rank_top:bool=cost = MAX(cost)
+rent,950.00,77.6=,true=,true=
+power,64.30,5.3=,false=,false=
+food,210.00,17.2=,false=,false=

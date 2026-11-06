@@ -1,6 +1,6 @@
 label:text!,link:url
 plain,https://example.com/a
-port query fragment,http://localhost:8080/p?q=1&r=2#top
+port query fragment,http://localhost:8080/p?q'=1&r'=2#top
 mail,mailto:ada@example.com
 urn,urn:example:seed-42
 file,file:///tmp/notes.txt

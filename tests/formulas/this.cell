@@ -1,3 +1,3 @@
-id:text!,amount:EUR,share:num=amount / sum(this.amount),second:EUR=this['k2'].amount,none:EUR=this['zz'].amount,all:EUR=sum(amount)
-k1,30.00,,,,
-k2,70.00,,,,
+id:text!,amount:EUR,share:num=amount / SUM(TABLE.amount),second:EUR=TABLE['k2'].amount,none:EUR=TABLE['zz'].amount,all:EUR=SUM(amount)
+k1,30.00,0.3=,70.00=,=,100.00=
+k2,70.00,0.7=,70.00=,=,100.00=

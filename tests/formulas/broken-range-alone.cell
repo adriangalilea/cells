@@ -1,0 +1,2 @@
+day:int,amount:num,total:num=amount[FIRST:THIS]
+1,10,

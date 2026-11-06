@@ -187,6 +187,8 @@ pub enum Why {
     /// A number past 38 digits at its column's scale, a whole number past `i64`, an
     /// instant past `i64` at its column's unit.
     OutOfRange,
+    /// An amount with more digits after the point than its column's scale.
+    PastScale,
     /// Under the type's lower bound (a value, or a text's length).
     Below,
     /// Over its upper bound.
@@ -215,6 +217,9 @@ pub enum Why {
     /// (`Ambiguous`).
     Absent,
     Ambiguous,
+    /// A computed cell that stores another value than its formula gives (SPEC.md,
+    /// Reading): its value is what the formula gives, its stored text kept as written.
+    Stale,
 }
 
 /// What a problem is: the suite's kinds.
@@ -229,6 +234,8 @@ pub enum Kind {
     Formula,
     /// A reference to no row, or to rows of two tables.
     Reference,
+    /// A computed cell storing another value than its formula gives.
+    Stale,
 }
 
 impl Kind {
@@ -240,6 +247,7 @@ impl Kind {
             Kind::Ragged => "ragged",
             Kind::Formula => "formula",
             Kind::Reference => "reference",
+            Kind::Stale => "stale",
         }
     }
 }
@@ -252,6 +260,7 @@ impl Why {
             Why::Ragged { .. } => Kind::Ragged,
             Why::Formula | Why::Computed => Kind::Formula,
             Why::Absent | Why::Ambiguous => Kind::Reference,
+            Why::Stale => Kind::Stale,
             _ => Kind::Type,
         }
     }
@@ -292,6 +301,8 @@ pub(crate) enum Decoder {
     Num {
         min: Option<Bound>,
         max: Option<Bound>,
+        /// An amount's scale: the most digits after the point a written value holds.
+        scale: Option<u8>,
     },
     Pct {
         min: Option<Bound>,
@@ -320,7 +331,8 @@ impl Decoder {
             Base::Email => Decoder::Email,
             Base::Id => Decoder::Id,
             Base::Int => Decoder::Int { min, max },
-            Base::Num | Base::Money(_) => Decoder::Num { min, max },
+            Base::Num => Decoder::Num { min, max, scale: None },
+            Base::Money(_) => Decoder::Num { min, max, scale: ty.scale() },
             Base::Pct => Decoder::Pct { min, max },
             Base::Bool { yes, no } => Decoder::Bool { yes: yes.as_bytes().into(), no: no.as_bytes().into() },
             Base::Choice(words) => Decoder::Choice(words.iter().map(|w| w.as_bytes().into()).collect()),
@@ -584,7 +596,7 @@ pub(crate) fn decode(d: &Decoder, b: &mut Building, text: &[u8], run: &mut Run) 
             None if is_digits(text) => return Err(Why::OutOfRange),
             None => return Err(Why::NotInt),
         },
-        (Decoder::Num { min, max } | Decoder::Pct { min, max }, Building::Decimal { values, scale }) => {
+        (Decoder::Num { min, max, .. } | Decoder::Pct { min, max }, Building::Decimal { values, scale }) => {
             let pct = matches!(d, Decoder::Pct { .. });
             let bare = if pct { text.strip_suffix(b"%").unwrap_or(text) } else { text };
             let x = Decimal::parse(bare).map_err(|e| match e {
@@ -592,6 +604,13 @@ pub(crate) fn decode(d: &Decoder, b: &mut Building, text: &[u8], run: &mut Run) 
                 NumberError::Syntax => Why::NotNumber,
                 NumberError::Range => Why::OutOfRange,
             })?;
+            // An amount holds no more digits after the point than its column's scale: a
+            // zero that changes nothing is no digit.
+            if let Decoder::Num { scale: Some(most), .. } = d
+                && x.normal().scale > *most
+            {
+                return Err(Why::PastScale);
+            }
             bounded(x, min, max)?;
             if x.scale > *scale {
                 raise(values, (x.scale - *scale) as u32, DECIMAL_LIMIT, run);

@@ -1,0 +1,4 @@
+day:int,amount:EUR,running:EUR=running[-1] + amount,change:EUR=amount - amount[-1],next:EUR=amount[+1],first:EUR=amount[FIRST],last:EUR=amount[LAST],day_before:int=day[-1]
+1,10.00,10.00=,10.00=,20.00=,10.00=,5.00=,0=
+2,20.00,30.00=,10.00=,5.00=,10.00=,5.00=,1=
+3,5.00,35.00=,-15.00=,0.00=,10.00=,5.00=,2=

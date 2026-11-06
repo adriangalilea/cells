@@ -1,0 +1,4 @@
+item:text,cost:EUR,qty:int,total:EUR=cost * qty,running:EUR=running[-1] + total
+fuel,84.20,1,84.20=,84.20=
+tickets,12.50,3,37.50=,121.70=
+tent,10.00,1,99.00=,131.70=

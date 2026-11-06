@@ -1,4 +1,4 @@
 note:text,code:text?
-=> see invoice,=x
-``=x`,```=y`
-`=` alone,`plain`
+'=> see invoice,'=x
+a'=b,''=y
+'=' alone,x '= y

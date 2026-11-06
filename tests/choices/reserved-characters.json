@@ -18,6 +18,6 @@
     { "shelf": { "text": "B3" }, "mark": null }
   ],
   "problems": [
-    { "row": 11, "column": "mark", "kind": "type", "span": [157, 1] }
+    { "row": 11, "column": "mark", "kind": "type", "span": [158, 1] }
   ]
 }

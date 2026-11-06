@@ -1,4 +1,4 @@
 item:text,cost:EUR,qty:int
 fuel,84.20,1
-split dinner,`=96.75/3`,1
-twice,"`=round(qty * 2.25, 1)`",`=1 + 1`
+split dinner,32.25=96.75/3,1
+twice,"4.50=ROUND(qty * 2.25, 1)",2=1 + 1

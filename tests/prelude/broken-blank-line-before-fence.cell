@@ -1,6 +1,6 @@
 
 ---
-type Kind = a|b
+type Kind '= a|b
 ---
 kind:Kind
 a

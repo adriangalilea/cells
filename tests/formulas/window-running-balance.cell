@@ -1,4 +1,4 @@
-id:text!,date:date,amount:EUR,balance:EUR=sum(amount) over (order by date),before:EUR=lag(balance) over (order by date)
-c,2026-07-03,-20.00,,
-a,2026-07-01,100.00,,
-b,2026-07-02,50.00,,
+id:text!,date:date,amount:EUR,balance:EUR=SUM(amount) OVER (ORDER BY date),before:EUR=LAG(balance) OVER (ORDER BY date)
+c,2026-07-03,-20.00,130.00=,150.00=
+a,2026-07-01,100.00,100.00=,=
+b,2026-07-02,50.00,150.00=,100.00=

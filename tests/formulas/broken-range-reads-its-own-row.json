@@ -1,0 +1,13 @@
+{
+  "columns": [
+    { "name": "day", "type": "int" },
+    { "name": "running", "type": "num", "formula": "SUM(running[FIRST:THIS])" }
+  ],
+  "rows": [
+    { "day": { "int": "1" }, "running": { "from": "formula" } }
+  ],
+  "problems": [],
+  "broken": [
+    { "at": "column 2", "span": [8, 36] }
+  ]
+}

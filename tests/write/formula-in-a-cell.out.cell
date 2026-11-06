@@ -1,2 +1,2 @@
 item:text,cost:EUR,note:text?
-dinner,`=96.75/3`,``=x`
+dinner,32.25=96.75/3,'=x

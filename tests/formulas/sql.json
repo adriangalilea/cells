@@ -3,11 +3,11 @@
     { "name": "item", "type": "text" },
     { "name": "cost", "type": "EUR" },
     { "name": "qty", "type": "int?" },
-    { "name": "size", "type": "text", "formula": "case when cost > 50 then 'big' else 'small' end" },
-    { "name": "label", "type": "text", "formula": "item || ' x' || coalesce(qty, 0)" },
-    { "name": "dear", "type": "yes/no", "formula": "cost >= 80 and qty is not null" },
-    { "name": "rounded", "type": "EUR", "formula": "round(cost / 3, 2)" },
-    { "name": "loud", "type": "text", "formula": "upper(item)" }
+    { "name": "size", "type": "text", "formula": "CASE WHEN cost > 50 THEN 'big' ELSE 'small' END" },
+    { "name": "label", "type": "text", "formula": "item || ' x' || COALESCE(qty, 0)" },
+    { "name": "dear", "type": "yes/no", "formula": "cost >= 80 AND qty IS NOT NULL" },
+    { "name": "rounded", "type": "EUR", "formula": "ROUND(cost / 3, 2)" },
+    { "name": "loud", "type": "text", "formula": "UPPER(item)" }
   ],
   "rows": [
     { "item": { "text": "fuel" }, "cost": { "money": "84.20", "currency": "EUR" }, "qty": { "int": "1" }, "size": { "text": "big", "from": "formula" }, "label": { "text": "fuel x1", "from": "formula" }, "dear": { "bool": true, "from": "formula" }, "rounded": { "money": "28.07", "currency": "EUR", "from": "formula" }, "loud": { "text": "FUEL", "from": "formula" } },

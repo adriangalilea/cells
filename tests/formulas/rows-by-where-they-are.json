@@ -1,0 +1,18 @@
+{
+  "columns": [
+    { "name": "day", "type": "int" },
+    { "name": "amount", "type": "EUR" },
+    { "name": "running", "type": "EUR", "formula": "running[-1] + amount" },
+    { "name": "change", "type": "EUR", "formula": "amount - amount[-1]" },
+    { "name": "next", "type": "EUR", "formula": "amount[+1]" },
+    { "name": "first", "type": "EUR", "formula": "amount[FIRST]" },
+    { "name": "last", "type": "EUR", "formula": "amount[LAST]" },
+    { "name": "day_before", "type": "int", "formula": "day[-1]" }
+  ],
+  "rows": [
+    { "day": { "int": "1" }, "amount": { "money": "10.00", "currency": "EUR" }, "running": { "money": "10.00", "currency": "EUR", "from": "formula" }, "change": { "money": "10.00", "currency": "EUR", "from": "formula" }, "next": { "money": "20.00", "currency": "EUR", "from": "formula" }, "first": { "money": "10.00", "currency": "EUR", "from": "formula" }, "last": { "money": "5.00", "currency": "EUR", "from": "formula" }, "day_before": { "int": "0", "from": "formula" } },
+    { "day": { "int": "2" }, "amount": { "money": "20.00", "currency": "EUR" }, "running": { "money": "30.00", "currency": "EUR", "from": "formula" }, "change": { "money": "10.00", "currency": "EUR", "from": "formula" }, "next": { "money": "5.00", "currency": "EUR", "from": "formula" }, "first": { "money": "10.00", "currency": "EUR", "from": "formula" }, "last": { "money": "5.00", "currency": "EUR", "from": "formula" }, "day_before": { "int": "1", "from": "formula" } },
+    { "day": { "int": "3" }, "amount": { "money": "5.00", "currency": "EUR" }, "running": { "money": "35.00", "currency": "EUR", "from": "formula" }, "change": { "money": "-15.00", "currency": "EUR", "from": "formula" }, "next": { "money": "0.00", "currency": "EUR", "from": "formula" }, "first": { "money": "10.00", "currency": "EUR", "from": "formula" }, "last": { "money": "5.00", "currency": "EUR", "from": "formula" }, "day_before": { "int": "2", "from": "formula" } }
+  ],
+  "problems": []
+}

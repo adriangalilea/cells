@@ -5,8 +5,8 @@
   ],
   "rows": [
     { "note": { "text": "=> see invoice" }, "code": { "text": "=x" } },
-    { "note": { "text": "`=x`" }, "code": { "text": "``=y`" } },
-    { "note": { "text": "`=` alone" }, "code": { "text": "`plain`" } }
+    { "note": { "text": "a=b" }, "code": { "text": "'=y" } },
+    { "note": { "text": "=' alone" }, "code": { "text": "x = y" } }
   ],
   "problems": []
 }
