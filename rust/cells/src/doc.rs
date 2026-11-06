@@ -1175,7 +1175,7 @@ impl Doc {
 
     /// A cell's text as this file writes it.
     fn quote<'a>(&self, text: &'a str) -> Cow<'a, str> {
-        scan::quote_in(text, self.dialect.separator().byte(), self.quotes_all)
+        scan::quote_in(text, self.dialect.records(), self.quotes_all)
     }
 
     /// Every column, in the header's order.
@@ -1684,7 +1684,7 @@ impl Doc {
             nl => nl,
         };
         let (sep, all) = (to.separator().byte(), plain && self.quotes_all);
-        let quote = |t: &str| scan::quote_in(t, sep, all).into_owned();
+        let quote = |t: &str| scan::quote_in(t, to.records(), all).into_owned();
         let sep_text = [sep];
         let sep_text = core::str::from_utf8(&sep_text).unwrap();
         let computes = plain && self.computes();
@@ -2940,7 +2940,13 @@ pub fn compose(like: &Doc, header: &[&str], rows: &[Vec<&str>]) -> String {
             out.push_str(&like.quote(c));
         }
     };
-    line(&mut out, header);
+    if like.dialect == Dialect::Cells && out.trim_start_matches('\u{feff}').is_empty() && header == ["---"] {
+        // A Cells file whose first line is `---` opens a prelude: a header that would be one
+        // is quoted.
+        out.push_str("\"---\"");
+    } else {
+        line(&mut out, header);
+    }
     for r in rows {
         out.push_str(nl);
         line(&mut out, r);

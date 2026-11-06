@@ -1,0 +1,16 @@
+{
+  "columns": [
+    { "name": "item", "type": "text!" },
+    { "name": "note", "type": "text" }
+  ],
+  "rows": [
+    { "item": { "text": "fuel" }, "note": { "text": "two spaces before" } },
+    { "item": { "text": "fuel" }, "note": { "text": "a different key" } },
+    { "item": { "text": "fuel" }, "note": { "text": "two spaces after" } }
+  ],
+  "problems": [
+    { "row": 0, "column": "item", "kind": "key", "span": [22, 4] },
+    { "row": 1, "column": "item", "kind": "key", "span": [48, 4] },
+    { "row": 2, "column": "item", "kind": "key", "span": [69, 4] }
+  ]
+}

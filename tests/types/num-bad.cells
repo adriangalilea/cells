@@ -10,4 +10,4 @@ two points,1.2.3
 two signs,--1
 underscore,1_000
 hex,0x10
-leading space, 1
+leading space," 1"

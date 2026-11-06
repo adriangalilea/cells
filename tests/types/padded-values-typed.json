@@ -1,0 +1,14 @@
+{
+  "columns": [
+    { "name": "label", "type": "text!" },
+    { "name": "done", "type": "bool" },
+    { "name": "note", "type": "text" },
+    { "name": "qty", "type": "int" }
+  ],
+  "rows": [
+    { "label": { "text": "padded int" }, "done": { "bool": true }, "note": { "text": "plain" }, "qty": { "int": "12" } },
+    { "label": { "text": "padded bool" }, "done": { "bool": true }, "note": { "text": "plain" }, "qty": { "int": "12" } },
+    { "label": { "text": "padded text" }, "done": { "bool": true }, "note": { "text": "by the gate" }, "qty": { "int": "12" } }
+  ],
+  "problems": []
+}

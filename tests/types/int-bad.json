@@ -21,10 +21,10 @@
     { "row": 2, "column": "qty", "kind": "type", "span": [54, 3] },
     { "row": 3, "column": "qty", "kind": "type", "span": [65, 5] },
     { "row": 4, "column": "qty", "kind": "type", "span": [86, 4] },
-    { "row": 5, "column": "qty", "kind": "type", "span": [105, 2] },
-    { "row": 6, "column": "qty", "kind": "type", "span": [112, 4] },
-    { "row": 7, "column": "qty", "kind": "type", "span": [128, 1] },
-    { "row": 8, "column": "qty", "kind": "type", "span": [142, 1] },
-    { "row": 9, "column": "qty", "kind": "type", "span": [157, 5] }
+    { "row": 5, "column": "qty", "kind": "type", "span": [106, 2] },
+    { "row": 6, "column": "qty", "kind": "type", "span": [114, 4] },
+    { "row": 7, "column": "qty", "kind": "type", "span": [130, 1] },
+    { "row": 8, "column": "qty", "kind": "type", "span": [144, 1] },
+    { "row": 9, "column": "qty", "kind": "type", "span": [159, 5] }
   ]
 }

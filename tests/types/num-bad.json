@@ -29,6 +29,6 @@
     { "row": 8, "column": "weight", "kind": "type", "span": [172, 3] },
     { "row": 9, "column": "weight", "kind": "type", "span": [187, 5] },
     { "row": 10, "column": "weight", "kind": "type", "span": [197, 4] },
-    { "row": 11, "column": "weight", "kind": "type", "span": [216, 2] }
+    { "row": 11, "column": "weight", "kind": "type", "span": [217, 2] }
   ]
 }

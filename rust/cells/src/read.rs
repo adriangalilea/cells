@@ -379,7 +379,7 @@ pub(crate) fn body<'a>(src: &'a [u8], from: usize, decoders: &[CellRead], how: R
 
 pub(crate) fn sequential<'a>(src: &'a [u8], from: usize, decoders: &[CellRead], how: Records) -> Result<Part<'a>, Stopped> {
     let mut part = Part::new(src, from, src.len(), decoders, how.lenient);
-    match scan::fast(src, from, src.len(), how.sep, &mut part) {
+    match scan::fast(src, from, src.len(), how.sep, how.padded(), &mut part) {
         Ok(()) => {}
         Err(Stop::Irregular) => {
             part = Part::new(src, from, src.len(), decoders, how.lenient);
@@ -439,7 +439,7 @@ fn parallel<'a>(src: &'a [u8], from: usize, decoders: &[CellRead], how: Records,
                 let (a, b) = (w[0], w[1]);
                 s.spawn(move || {
                     let mut part = Part::new(src, a, b, decoders, how.lenient);
-                    scan::fast(src, a, b, how.sep, &mut part)?;
+                    scan::fast(src, a, b, how.sep, how.padded(), &mut part)?;
                     part.finish();
                     Ok(part)
                 })

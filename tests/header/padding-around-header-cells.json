@@ -1,0 +1,11 @@
+{
+  "columns": [
+    { "name": "item", "type": "text!" },
+    { "name": "cost", "type": "EUR>=0" },
+    { "name": "total", "type": "EUR", "formula": "cost * 2" }
+  ],
+  "rows": [
+    { "item": { "text": "fuel" }, "cost": { "money": "84.20", "currency": "EUR" }, "total": { "money": "168.40", "currency": "EUR", "from": "formula" } }
+  ],
+  "problems": []
+}

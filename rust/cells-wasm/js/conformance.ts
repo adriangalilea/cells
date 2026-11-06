@@ -137,7 +137,8 @@ function hosted(doc: Doc): string[] {
       if (row[k] !== c.text(r)) f.push(`cells()[${r}][${k}] ${JSON.stringify(row[k])}, text says ${JSON.stringify(c.text(r))}`)
     }),
   )
-  const header = stored.map((c) => (c.spelled ? `${c.name}:${c.spelled}` : c.name))
+  // A column the header typed keeps its `:`, its type empty or not; an inferred one is its name.
+  const header = stored.map((c) => (c.inferred ? c.name : `${c.name}:${c.spelled}`))
   const composed = compose(doc, header, cells)
   // What did not read is written back as it was, after the rows.
   if (doc.unread !== "" && !composed.endsWith(doc.unread)) f.push("compose loses what the file did not read")

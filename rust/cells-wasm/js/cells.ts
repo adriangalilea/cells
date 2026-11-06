@@ -874,9 +874,16 @@ export function writtenAs(doc: Doc, dialect: Dialect, header?: readonly string[]
 }
 
 /** A cell's text in a file's form: quoted when it holds the separator, `"` or a line
- *  break, or always in a plain file that quotes every field (the core's `scan::quote_in`). */
-function quoter(separator: Separator, all: boolean): (text: string) => string {
-  return (text) => (all || text.includes(separator) || /["\r\n]/.test(text) ? `"${text.replaceAll('"', '""')}"` : text)
+ *  break, in a Cells file when it starts or ends with a space or a tab (which would read
+ *  as padding), or always in a plain file that quotes every field (the core's
+ *  `scan::quote_in`). */
+function quoter(dialect: Dialect, all: boolean): (text: string) => string {
+  const separator = dialect === "cells" ? "," : dialect
+  const padded = dialect === "cells"
+  return (text) =>
+    all || text.includes(separator) || /["\r\n]/.test(text) || (padded && /^[ \t]|[ \t]$/.test(text))
+      ? `"${text.replaceAll('"', '""')}"`
+      : text
 }
 
 /** A file written from cells, for a host that keeps its own rows (a table editing the
@@ -890,6 +897,7 @@ export function compose(
     prelude: string
     newline: "\n" | "\r\n" | "\r"
     trailing: boolean
+    dialect: Dialect
     separator: Separator
     quotesAll: boolean
     unread: string
@@ -899,9 +907,13 @@ export function compose(
 ): string {
   // A header that did not read leaves nothing but what follows the prelude.
   if (header.length === 0 && like.unread !== "") return like.prelude + like.unread
-  const quote = quoter(like.separator, like.quotesAll)
+  const quote = quoter(like.dialect, like.quotesAll)
   const parts: string[] = new Array(rows.length + 1)
   parts[0] = header.map(quote).join(like.separator)
+  // A Cells file whose first line is `---` opens a prelude: a header that would be one is
+  // quoted. A byte order mark alone is no prelude, and no part of the first line.
+  const bom = String.fromCharCode(0xfeff)
+  if (like.dialect === "cells" && (like.prelude === "" || like.prelude === bom) && parts[0] === "---") parts[0] = '"---"'
   for (let r = 0; r < rows.length; r++) parts[r + 1] = (rows[r] as readonly string[]).map(quote).join(like.separator)
   const end = like.unread !== "" ? like.newline + like.unread : like.trailing ? like.newline : ""
   return like.prelude + parts.join(like.newline) + end

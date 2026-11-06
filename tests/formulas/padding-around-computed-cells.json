@@ -1,0 +1,13 @@
+{
+  "columns": [
+    { "name": "item", "type": "text!" },
+    { "name": "cost", "type": "EUR" },
+    { "name": "total", "type": "EUR", "formula": "cost * 2" }
+  ],
+  "rows": [
+    { "item": { "text": "fuel" }, "cost": { "money": "84.20", "currency": "EUR" }, "total": { "money": "168.40", "currency": "EUR", "from": "formula" } },
+    { "item": { "text": "maps" }, "cost": { "money": "12.00", "currency": "EUR" }, "total": { "money": "24.00", "currency": "EUR", "from": "formula" } },
+    { "item": { "text": "split" }, "cost": { "money": "32.25", "currency": "EUR", "from": "cell" }, "total": { "money": "64.50", "currency": "EUR", "from": "formula" } }
+  ],
+  "problems": []
+}

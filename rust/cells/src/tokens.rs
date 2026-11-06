@@ -274,7 +274,12 @@ pub fn tokens(source: &str) -> Vec<Token> {
         let (fields, next) = record(src, at);
         for (k, &(s, e)) in fields.iter().enumerate() {
             if k > 0 {
-                out.push(s - 1, s, Kind::Punct, k as u32);
+                // The comma before it, behind its padding.
+                let mut comma = s;
+                while comma > 0 && matches!(src[comma - 1], b' ' | b'\t') {
+                    comma -= 1;
+                }
+                out.push(comma - 1, comma, Kind::Punct, k as u32);
             }
             let kind = match columns.get(k) {
                 Some(Some(t)) => cell_kind(&t.base),
@@ -420,6 +425,11 @@ fn record(src: &[u8], at: usize) -> (Vec<(usize, usize)>, usize) {
     let mut fields = Vec::new();
     let mut i = at;
     loop {
+        // A field's padding is no part of it: its span starts after the spaces and tabs
+        // before it, a quote among them, and ends before those after it.
+        while i < src.len() && matches!(src[i], b' ' | b'\t') {
+            i += 1;
+        }
         let start = i;
         if i < src.len() && src[i] == b'"' {
             i += 1;
@@ -438,7 +448,7 @@ fn record(src: &[u8], at: usize) -> (Vec<(usize, usize)>, usize) {
         while i < src.len() && !matches!(src[i], b',' | b'\n' | b'\r') {
             i += 1;
         }
-        fields.push((start, i));
+        fields.push(crate::scan::trimmed(src, start, i));
         if i < src.len() && src[i] == b',' {
             i += 1;
             continue;

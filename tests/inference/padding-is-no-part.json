@@ -1,0 +1,10 @@
+{
+  "columns": [
+    { "name": "count", "type": "int?", "inferred": true }
+  ],
+  "rows": [
+    { "count": { "int": "12" } },
+    { "count": { "int": "12" } }
+  ],
+  "problems": []
+}

@@ -1,0 +1,2 @@
+  item:text!  ,  cost:EUR>=0 ,	total:EUR=cost * 2
+fuel,84.20,168.40=

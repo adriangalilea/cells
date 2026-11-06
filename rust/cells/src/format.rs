@@ -65,9 +65,9 @@ impl Dialect {
     }
 
     /// A cell's text as a new file in this dialect writes it: quoted only when it holds
-    /// the separator, `"` or a line break.
+    /// the separator, `"` or a line break, or in a Cells file starts or ends with padding.
     pub fn quote(self, text: &str) -> alloc::borrow::Cow<'_, str> {
-        crate::scan::quote_in(text, self.separator().byte(), false)
+        crate::scan::quote_in(text, self.records(), false)
     }
 
     pub(crate) fn records(self) -> Records {

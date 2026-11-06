@@ -19,6 +19,13 @@ pub(crate) struct Records {
 
 impl Records {
     pub const CELLS: Records = Records { sep: b',', lenient: false };
+
+    /// Whether a field's spaces and tabs at its ends are padding, no part of it: a Cells
+    /// file's records, never a plain file's (read as CSV readers read it) nor one whose
+    /// separator is a tab.
+    pub fn padded(self) -> bool {
+        !self.lenient && self.sep == b','
+    }
 }
 
 /// Where a reading stopped short.
@@ -244,8 +251,10 @@ pub(crate) fn controls(src: &[u8], from: usize, to: usize, out: &mut alloc::vec:
 
 /// Reads the records of `src[from..to]`, `from` a record's start, fields separated by
 /// `sep`. `to` is a record's start too, or the input's end, where a record without a line
-/// break ends.
-pub(crate) fn fast<F: Fields>(src: &[u8], from: usize, to: usize, sep: u8, out: &mut F) -> Result<(), Stop> {
+/// break ends. `padded` (a Cells file's reading): the spaces and tabs at a field's ends
+/// are no part of its span; a quote after padding, or padding after a closing quote, is
+/// out of RFC 4180's places, and `scalar` reads it.
+pub(crate) fn fast<F: Fields>(src: &[u8], from: usize, to: usize, sep: u8, padded: bool, out: &mut F) -> Result<(), Stop> {
     debug_assert!(to <= src.len() && to <= u32::MAX as usize);
     let mut inside = 0u64; // all ones while the block before ended inside quotes
     let mut prev = 1u64; // the byte before is a separator, a quote, or the start
@@ -285,7 +294,7 @@ pub(crate) fn fast<F: Fields>(src: &[u8], from: usize, to: usize, sep: u8, out: 
             if c == b'\n' && p == skip {
                 continue;
             }
-            let (a, b) = span(src, field, p, q, pos);
+            let (a, b) = span(src, field, p, q, pos, padded);
             out.field(a, b)?;
             match c {
                 b'\n' => {
@@ -310,20 +319,40 @@ pub(crate) fn fast<F: Fields>(src: &[u8], from: usize, to: usize, sep: u8, out: 
         return Err(Stop::Irregular);
     }
     if field < to || out.open() {
-        let (a, b) = span(src, field, to, 0, usize::MAX);
+        let (a, b) = span(src, field, to, 0, usize::MAX, padded);
         out.field(a, b)?;
         out.record(to as u32);
     }
     Ok(())
 }
 
+/// Whether a byte is padding: a space or a tab.
+#[inline(always)]
+fn padding(c: u8) -> bool {
+    c == b' ' || c == b'\t'
+}
+
+/// `start..end` without the padding at its ends.
+#[inline(always)]
+pub(crate) fn trimmed(src: &[u8], mut start: usize, mut end: usize) -> (usize, usize) {
+    while start < end && padding(src[start]) {
+        start += 1;
+    }
+    while end > start && padding(src[end - 1]) {
+        end -= 1;
+    }
+    (start, end)
+}
+
 /// A field's span as `fast` hands it on: a quoted field with no `""` inside as its text
 /// alone, quotes cut, so `text` returns it as it is; any other field raw. `q` is the quotes
 /// of the block at `pos`, which says it at once for a field that starts in that block.
 #[inline(always)]
-fn span(src: &[u8], field: usize, end: usize, q: u64, pos: usize) -> (u32, u32) {
+fn span(src: &[u8], field: usize, end: usize, q: u64, pos: usize, pad: bool) -> (u32, u32) {
     if field >= end || src[field] != b'"' {
-        return (field as u32, end as u32);
+        // Unquoted: a quote that follows padding never reaches here (`fast` stops).
+        let (a, b) = if pad { trimmed(src, field, end) } else { (field, end) };
+        return (a as u32, b as u32);
     }
     let clean = if field >= pos {
         // Quotes strictly inside: bits field+1 ..= end-2 of the block.
@@ -339,19 +368,30 @@ fn span(src: &[u8], field: usize, end: usize, q: u64, pos: usize) -> (u32, u32) 
 
 /// Reads the records of `src[from..to]` byte by byte: a field opening with `"` is quoted
 /// to its closing quote, `""` a quote inside; any other quote, text after a closing quote,
-/// a quote never closed and a lone `\r` stop it. Read leniently, none of them stops it: a
-/// field runs on to its separator, a quote never closed to the end, and a lone `\r` ends
-/// its line.
+/// a quote never closed and a lone `\r` stop it. A Cells file's field is padded: the
+/// spaces and tabs at its ends, a quoted one's around its quotes, are no part of its span.
+/// Read leniently (a plain file), nothing is padding and none of them stops it: a field
+/// runs on to its separator, a quote never closed to the end, and a lone `\r` ends its
+/// line.
 pub(crate) fn scalar<F: Fields>(src: &[u8], from: usize, to: usize, how: Records, out: &mut F) -> Result<(), Stop> {
     let Records { sep, lenient } = how;
+    let pad = how.padded();
     let ends = |c: u8| c == sep || c == b'\n' || c == b'\r';
     let mut i = from;
     if i >= to {
         return Ok(());
     }
     loop {
+        if pad {
+            while i < to && padding(src[i]) {
+                i += 1;
+            }
+        }
         let start = i;
-        if src[i] == b'"' {
+        // Where the field's span ends: a quoted field's at its closing quote, before any
+        // padding after it.
+        let mut end = None;
+        if i < to && src[i] == b'"' {
             i += 1;
             loop {
                 if i >= to {
@@ -370,10 +410,17 @@ pub(crate) fn scalar<F: Fields>(src: &[u8], from: usize, to: usize, how: Records
                 }
                 i += 1;
             }
+            end = Some(i);
+            if pad {
+                while i < to && padding(src[i]) {
+                    i += 1;
+                }
+            }
             if i < to && !ends(src[i]) {
                 if !lenient {
                     return Err(Stop::AfterQuote);
                 }
+                end = None;
                 while i < to && !ends(src[i]) {
                     i += 1;
                 }
@@ -389,7 +436,12 @@ pub(crate) fn scalar<F: Fields>(src: &[u8], from: usize, to: usize, how: Records
         if i < to && src[i] == b'\r' && (i + 1 >= to || src[i + 1] != b'\n') && !lenient {
             return Err(Stop::Return);
         }
-        out.field(start as u32, i as u32)?;
+        let end = match end {
+            Some(e) => e,
+            None if pad => trimmed(src, start, i).1,
+            None => i,
+        };
+        out.field(start as u32, end as u32)?;
         if i >= to {
             out.record(to as u32);
             return Ok(());
@@ -519,15 +571,20 @@ pub(crate) fn unquoted(raw: &str) -> alloc::borrow::Cow<'_, str> {
     Cow::Owned(alloc::string::String::from_utf8(t).unwrap())
 }
 
-/// A cell's text in the file's form: quoted only when it holds `,`, `"` or a line break.
+/// A cell's text in the file's form: quoted only when it holds `,`, `"` or a line break,
+/// or starts or ends with a space or a tab, which would be read as padding.
 pub fn quote(text: &str) -> alloc::borrow::Cow<'_, str> {
-    quote_in(text, b',', false)
+    quote_in(text, Records::CELLS, false)
 }
 
-/// A cell's text in a file whose fields are separated by `sep`: quoted when it holds
-/// `sep`, `"` or a line break, or always when `all` (a file that quotes every field).
-pub(crate) fn quote_in(text: &str, sep: u8, all: bool) -> alloc::borrow::Cow<'_, str> {
-    if !all && !text.bytes().any(|c| c == sep || matches!(c, b'"' | b'\n' | b'\r')) {
+/// A cell's text in a file of `how`'s records: quoted when it holds the separator, `"` or
+/// a line break, in a Cells file when it starts or ends with a space or a tab (padding,
+/// read as no part of it), or always when `all` (a file that quotes every field).
+pub(crate) fn quote_in(text: &str, how: Records, all: bool) -> alloc::borrow::Cow<'_, str> {
+    let sep = how.sep;
+    let b = text.as_bytes();
+    let edges = how.padded() && (b.first().is_some_and(|&c| padding(c)) || b.last().is_some_and(|&c| padding(c)));
+    if !all && !edges && !b.iter().any(|&c| c == sep || matches!(c, b'"' | b'\n' | b'\r')) {
         return alloc::borrow::Cow::Borrowed(text);
     }
     let mut s = alloc::string::String::with_capacity(text.len() + 2);
@@ -575,7 +632,7 @@ mod tests {
     fn both_in(src: &str, how: Records) -> (Result<Collect, Stop>, Result<Collect, Stop>) {
         let b = src.as_bytes();
         let mut f = Collect::default();
-        let fr = fast(b, 0, b.len(), how.sep, &mut f).map(|_| f);
+        let fr = fast(b, 0, b.len(), how.sep, how.padded(), &mut f).map(|_| f);
         let mut s = Collect::default();
         let sr = scalar(b, 0, b.len(), how, &mut s).map(|_| s);
         (fr, sr)

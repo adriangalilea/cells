@@ -1,0 +1,4 @@
+item:text!,cost:EUR,total:EUR=cost * 2
+fuel,  84.20 ,  168.40=
+maps,	12.00,=
+split,  32.25=96.75 / 3  ,64.50=
