@@ -78,6 +78,15 @@ export type CodeStep = (
     }
   /** The caret moved to a place in the file in front: a click, an arrow key. */
   | { kind: "place"; line: number; column?: number }
+  /** The text between two places of the file in front selected, the caret at `to`: a
+   *  drag, select all. It holds until the next step, which a key typed over it, a
+   *  Backspace or a Delete (`keyStep`) makes a `replace` of it. */
+  | {
+      kind: "select"
+      line: number
+      column: number
+      to: { line: number; column: number }
+    }
   /** The file in front saved: VS Code's ⌘S, a modal editor's `:w`. `formatted`, the
    *  text a language server's formatting on save leaves it as: what it changes lands
    *  as the write does, every other character stays. */
@@ -275,6 +284,9 @@ type Plan =
       before: Char | null
     }
   | { kind: "place"; path: string; caret: Char | null }
+  /** Where the selection began and where its caret is, each the character after the
+   *  place (none at the file's end), so an edit before it never moves what it holds. */
+  | { kind: "select"; path: string; anchor: Char | null; head: Char | null }
   | { kind: "save"; path: string }
   | { kind: "hover"; path: string; caret: Char | null; text: string }
   | {
@@ -658,6 +670,15 @@ export function codeTimeline(
         took = PLACE_MS
         break
       }
+      case "select": {
+        const path = front("a select")
+        const anchor = charAt(path, s.line, s.column)
+        const head = charAt(path, s.to.line, s.to.column)
+        carets[path] = head
+        plans.push({ kind: "select", path, anchor, head })
+        took = PLACE_MS
+        break
+      }
       case "save": {
         const path = front("save")
         if (s.formatted !== undefined) {
@@ -978,6 +999,15 @@ export function codeFrameAt(timeline: CodeTimeline, ms: number): CodeFrame {
         carets[plan.path] = plan.caret
         placed[plan.path] = from
         break
+      case "select":
+        carets[plan.path] = plan.head
+        placed[plan.path] = from
+        // Held until the next step begins, as a selection stands until the next key.
+        if (ms < (timeline.starts[i + 1] ?? Number.POSITIVE_INFINITY)) {
+          mode = "select"
+          selection = { first: plan.anchor, after: plan.head }
+        }
+        break
       case "save": {
         const landed = from + SAVE_KEY_MS * 3
         if (ms < landed) {
@@ -1105,7 +1135,11 @@ export function codeFrameAt(timeline: CodeTimeline, ms: number): CodeFrame {
     keyed,
     selection:
       selection && active
-        ? { from: place(selection.first), to: place(selection.after) }
+        ? // Its two ends in the text's order: a drag back to the left ends before it began.
+          {
+            from: Math.min(place(selection.first), place(selection.after)),
+            to: Math.max(place(selection.first), place(selection.after)),
+          }
         : null,
     dirty,
     mode,
@@ -1176,6 +1210,25 @@ export function placeOf(
   return { line, column: offset - start + 1 }
 }
 
+/** A place in `text` (`line` and `column`, both from 1) as its caret offset: what
+ *  `placeOf` gives, back. A place past its line's end is the line's end; one past the
+ *  last line throws. */
+export function offsetAt(
+  text: string,
+  { line, column }: { line: number; column: number },
+): number {
+  const lines = text.split("\n")
+  if (line < 1 || line > lines.length)
+    throw new Error(`code-session: line ${line} of ${lines.length}`)
+  let at = 0
+  for (let l = 0; l < line - 1; l++) at += (lines[l] as string).length + 1
+  return (
+    at +
+    Math.min(Math.max(column, 1), (lines[line - 1] as string).length + 1) -
+    1
+  )
+}
+
 /** The step a key makes in a text box over `text`, its caret at `caret`: a character
  *  typed there, Enter a line, Backspace and Delete a character taken, the arrows, Home
  *  and End the caret moved; null for any other key, and for one with nothing to do (a
@@ -1184,7 +1237,25 @@ export function keyStep(
   key: string,
   text: string,
   caret: number,
+  selection: { from: number; to: number } | null = null,
 ): CodeStep | null {
+  // Over a selection, a key that writes replaces it and an arrow lands on the end it
+  // points to, as every text box does.
+  if (selection && selection.to > selection.from) {
+    const over = (with_: string): CodeStep => ({
+      kind: "replace",
+      ...placeOf(text, selection.from),
+      length: selection.to - selection.from,
+      text: with_,
+    })
+    if ([...key].length === 1) return over(key)
+    if (key === "Enter") return over("\n")
+    if (key === "Backspace" || key === "Delete") return over("")
+    if (key === "ArrowLeft" || key === "ArrowUp")
+      return { kind: "place", ...placeOf(text, selection.from) }
+    if (key === "ArrowRight" || key === "ArrowDown")
+      return { kind: "place", ...placeOf(text, selection.to) }
+  }
   const here = placeOf(text, caret)
   const lines = text.split("\n")
   const end = (line: number) => (lines[line - 1] ?? "").length + 1

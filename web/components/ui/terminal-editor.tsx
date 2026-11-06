@@ -35,6 +35,7 @@ import {
   codeFrameAt,
   codeTimeline,
   keyStep,
+  offsetAt,
   placeOf,
 } from "@/lib/code-session"
 import { langOf } from "@/lib/code-tokens"
@@ -187,7 +188,29 @@ export function TerminalEditor({
     [files, steps, duration, diagnose],
   )
   const ms = usePlayhead(progress).at * timeline.total
-  const f = codeFrameAt(timeline, ms)
+  const played = codeFrameAt(timeline, ms)
+  // A selection being dragged, the editor's own until the button lets go: drawn as the
+  // frame's, and handed to `onEdit` as one `select` step when the drag ends.
+  const [drag, setDrag] = React.useState<{
+    anchor: number
+    head: number
+  } | null>(null)
+  const dragging = React.useRef(drag)
+  dragging.current = drag
+  const f = drag
+    ? {
+        ...played,
+        caret: drag.head,
+        selection:
+          drag.head === drag.anchor
+            ? null
+            : {
+                from: Math.min(drag.anchor, drag.head),
+                to: Math.max(drag.anchor, drag.head),
+              },
+        mode: drag.head === drag.anchor ? played.mode : ("select" as const),
+      }
+    : played
   const path = f.active ?? "[scratch]"
   const texts = React.useMemo(
     () => timeline.states.map((s) => ({ text: s.text, lang: langOf(s.path) })),
@@ -206,30 +229,78 @@ export function TerminalEditor({
     insert: onEdit !== undefined && focused,
   })
   const { status, caret } = screen
-  /** A key, as the step it makes. */
+  /** What the selection holds, the file's own text. */
+  const selected = () =>
+    f.selection ? f.text.slice(f.selection.from, f.selection.to) : ""
+  /** A key, as the step it makes. Select all, copy and cut are the box's, never the
+   *  page's: the box keeps its own selection. */
   const key = (e: React.KeyboardEvent) => {
     if (!onEdit) return
-    // Select all is the box's, never the page's: the box has no selection, so nothing.
-    if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "a")
-      return e.preventDefault()
-    if (e.metaKey || e.ctrlKey || e.altKey) return
-    const step = keyStep(e.key, f.text, f.caret)
+    if (e.metaKey || e.ctrlKey) {
+      const k = e.key.toLowerCase()
+      if (k === "a") {
+        e.preventDefault()
+        onEdit({
+          kind: "select",
+          line: 1,
+          column: 1,
+          to: placeOf(f.text, f.text.length),
+        })
+      } else if ((k === "c" || k === "x") && f.selection) {
+        e.preventDefault()
+        void navigator.clipboard.writeText(selected())
+        if (k === "x") {
+          const cut = keyStep("Delete", f.text, f.caret, f.selection)
+          if (cut) onEdit(cut)
+        }
+      }
+      return
+    }
+    if (e.altKey) return
+    const step = keyStep(e.key, f.text, f.caret, f.selection)
     if (!step) return
     e.preventDefault()
     onEdit(step)
   }
-  /** A press on a screen row, as the caret placed where it landed. */
-  const press = (row: EditorRow, e: React.PointerEvent<HTMLElement>) => {
+  /** Where a pointer stands on a screen row, as an offset of the file's text. */
+  const offsetOn = (row: EditorRow, e: React.PointerEvent<HTMLElement>) => {
     const ch = (probe.current?.getBoundingClientRect().width ?? 0) / 10
-    if (!onEdit || !(ch > 0)) return
+    if (!(ch > 0)) return null
     const x = e.clientX - e.currentTarget.getBoundingClientRect().left
     const indent = row.first ? 0 : WRAP_INDICATOR.length
     const at = Math.round(x / ch) - indent + row.from
-    onEdit({
-      kind: "place",
+    return offsetAt(f.text, {
       line: row.line + 1,
       column: Math.min(Math.max(at, row.from), row.length) + 1,
     })
+  }
+  /** A press on a screen row: the caret placed where it landed, and a drag begun from
+   *  there, which ends wherever the button lets go, on the editor or off it. */
+  const press = (row: EditorRow, e: React.PointerEvent<HTMLElement>) => {
+    const at = onEdit ? offsetOn(row, e) : null
+    if (!onEdit || at === null) return
+    onEdit({ kind: "place", ...placeOf(f.text, at) })
+    setDrag({ anchor: at, head: at })
+    const text = f.text
+    const release = () => {
+      window.removeEventListener("pointerup", release)
+      const d = dragging.current
+      setDrag(null)
+      if (d && d.head !== d.anchor)
+        onEdit({
+          kind: "select",
+          ...placeOf(text, d.anchor),
+          to: placeOf(text, d.head),
+        })
+    }
+    window.addEventListener("pointerup", release)
+  }
+  /** The pointer over a row with the button down, the drag's head where it is. */
+  const extend = (row: EditorRow, e: React.PointerEvent<HTMLElement>) => {
+    if (!dragging.current || (e.buttons & 1) === 0) return
+    const at = offsetOn(row, e)
+    if (at !== null && at !== dragging.current.head)
+      setDrag({ anchor: dragging.current.anchor, head: at })
   }
   return (
     <div
@@ -329,6 +400,9 @@ export function TerminalEditor({
               <span
                 className={`relative min-w-0 flex-1${onEdit ? " cursor-text" : ""}`}
                 onPointerDown={onEdit && row ? (e) => press(row, e) : undefined}
+                onPointerMove={
+                  onEdit && row ? (e) => extend(row, e) : undefined
+                }
               >
                 {r === 0 && (
                   // One character's width ten times over: what the screen's columns
