@@ -32,6 +32,9 @@ interface Exports {
   cells_cell_ends(h: number): number
   cells_set_cell(h: number, row: number, column: number, ptr: number, len: number, cap: number): number
   cells_set_type(h: number, column: number, ptr: number, len: number, cap: number): number
+  cells_fix_stale(h: number): void
+  cells_keep_stale(h: number, row: number, column: number): number
+  cells_stored_since(h: number, before: number): void
   cells_read_as(ptr: number, len: number, cap: number, sep: number): number
   cells_detect(ptr: number, len: number): number
   cells_reshaped(h: number, ptr: number, len: number, cap: number): number
@@ -304,10 +307,10 @@ export class Column {
   }
 
   /** A value as this column writes it: its pair's words, its format, ISO otherwise, and
-   *  text that would read as a formula (`` `=x` ``) with its first backtick doubled. */
+   *  text's `=` written `'=`, so it never reads as a computed cell. */
   form(v: Value): string {
     if (v === null) return ""
-    if (typeof v === "string" && /^`+=[\s\S]*`$/.test(v) && v.length >= 3) return `\`${v}`
+    if (typeof v === "string" && v.includes("=")) return v.replaceAll("=", "'=")
     if (typeof v === "boolean") {
       const [yes, no] = this.m.words ?? ["true", "false"]
       return v ? yes : no
@@ -322,8 +325,8 @@ export class Column {
     return String(v)
   }
 
-  /** The cell's text as the file writes it, unquoted: blank where its column's formula
-   *  computes it, `` `=…` `` where its own does. */
+  /** The cell's text as the file writes it, unquoted: `84.20=` where its column's formula
+   *  computes it (blank before a write stores it), `32.25=96.75 / 3` where its own does. */
   text(i: number): string {
     return returned(x.cells_text(this.doc.handle, i, this.index))
   }
@@ -341,8 +344,9 @@ export interface Problem {
   at: number
   /** `ragged`: a row longer than its header (in a plain file, shorter too); `formula`: a cell's
    *  own formula that does not compute; `reference`: a key no table it names holds, or
-   *  two do. */
-  kind: "type" | "missing" | "key" | "ragged" | "formula" | "reference"
+   *  two do; `stale`: a computed cell storing another value than its formula gives (its
+   *  value the formula's; `fixStale` or `keepStale` resolve it). */
+  kind: "type" | "missing" | "key" | "ragged" | "formula" | "reference" | "stale"
   /** The cell's text as written. */
   readonly text: string
   /** The problem in words: `row 3, cost: "8x.50" is not a number`. */
@@ -379,7 +383,7 @@ export interface Naming {
   readonly reason: string
 }
 
-const KINDS = ["type", "missing", "key", "ragged", "formula", "reference"] as const
+const KINDS = ["type", "missing", "key", "ragged", "formula", "reference", "stale"] as const
 const live = new FinalizationRegistry<number>((h) => x.cells_drop(h))
 
 /** A file read, held by the module. */
@@ -612,9 +616,11 @@ function columnOf(doc: Doc, column: string | number): number {
   return k
 }
 
-/** One cell's text changed; every other byte stays as read. Returns `doc`, changed; text
- *  holding a control character throws `CellsError` at the row, `doc` untouched. Text of
- *  `` `=…` `` is the cell's own formula; blank in a column with a formula, the formula's. */
+/** One cell's text changed; every other byte stays as read but the computed values the
+ *  change reaches, stored left of their `=` (SPEC.md, Writing). Returns `doc`, changed;
+ *  text holding a control character throws `CellsError` at the row, `doc` untouched.
+ *  `=96.75 / 3` is the cell's own formula (its value stored by this write); blank, or
+ *  a lone `=`, in a column with a formula, the formula's; a value with no `=`, written. */
 export function setCell(doc: Doc, row: number, column: string | number, text: string): Doc {
   const k = columnOf(doc, column)
   if (row < 0 || row >= doc.rowCount) throw new CellsError(`row ${row}`, "does not exist")
@@ -637,6 +643,34 @@ export function setType(doc: Doc, column: string | number, spelled: string): Doc
   const k = columnOf(doc, column)
   const [p, len, cap] = put(spelled)
   if (x.cells_set_type(doc.handle, k, p, len, cap) !== 0) throw thrown()
+  doc.refresh()
+  return doc
+}
+
+/** Every stale cell given its formula's value (`cells fix`); an override is never touched.
+ *  Returns `doc`, changed. */
+export function fixStale(doc: Doc): Doc {
+  x.cells_fix_stale(doc.handle)
+  doc.refresh()
+  return doc
+}
+
+/** One stale cell's stored value kept as the row's override: its `=` and formula dropped.
+ *  Returns `doc`, changed. */
+export function keepStale(doc: Doc, row: number, column: string | number): Doc {
+  const k = columnOf(doc, column)
+  if (row < 0 || row >= doc.rowCount) throw new CellsError(`row ${row}`, "does not exist")
+  if (x.cells_keep_stale(doc.handle, row, k) !== 0) throw thrown()
+  doc.refresh()
+  return doc
+}
+
+/** `doc` (the text a client holds now, read) as a write after `before` (the text as last
+ *  written) leaves it: every computed cell the edits since reached stored, each row found
+ *  in `before` by its written cells; a stale cell they did not reach is left as read. What
+ *  a client storing on save writes. Returns `doc`, changed. */
+export function storedSince(doc: Doc, before: Doc): Doc {
+  x.cells_stored_since(doc.handle, before.handle)
   doc.refresh()
   return doc
 }

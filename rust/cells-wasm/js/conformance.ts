@@ -12,7 +12,7 @@ import type { Column, Doc, Value } from "./cells.ts"
 const args = process.argv.slice(2)
 const libAt = args.indexOf("--lib")
 const lib = libAt < 0 ? "./cells.ts" : resolve(args.splice(libAt, 2)[1] as string)
-const { compose, detect, read, readAs, reshape, setCell, setType, setValue, CellsError, write, writtenAs } = (await import(
+const { compose, detect, fixStale, read, readAs, reshape, setCell, setType, setValue, CellsError, write, writtenAs } = (await import(
   lib
 )) as typeof import("./cells.ts")
 type CellsError = InstanceType<typeof CellsError>
@@ -174,6 +174,10 @@ function edited(start: Doc, edits: Record<string, unknown>[]): string {
   const kept = (): ColumnAt[] => doc.columns.map((_, k) => ({ kept: k }))
   for (const e of edits) {
     if ("as" in e) return writtenAs(doc, e.as as Dialect, e.header as string[] | undefined)
+    if ("fix" in e) {
+      fixStale(doc)
+      continue
+    }
     /** The edit made, against what the suite says of it: taken, or refused at `refused`. */
     const taken = (edit: () => void) => {
       try {

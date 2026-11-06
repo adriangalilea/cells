@@ -311,7 +311,7 @@ fn addr<T>(v: &[T]) -> usize {
 /// named types, every column's type, formula, kind and buffers (its cells' origins too,
 /// bytes 0 written, 1 its formula's, 2 their own, when any is computed), the header
 /// problems, where the grammar breaks (`{at, why}`), the problems as `u32` triples (row, column, kind: 0 type, 1 missing, 2 key,
-/// 3 ragged, 4 formula, 5 reference). Read again after every edit: an edit may move a
+/// 3 ragged, 4 formula, 5 reference, 6 stale). Read again after every edit: an edit may move a
 /// column's buffers.
 ///
 /// # Safety
@@ -631,6 +631,47 @@ pub unsafe extern "C" fn cells_set_cell(h: *mut Handle, row: usize, column: usiz
             1
         }
     }
+}
+
+/// Every stale cell given its formula's value (`Doc::fix_stale`).
+///
+/// # Safety
+/// `h` is a live handle.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn cells_fix_stale(h: *mut Handle) {
+    // SAFETY: the caller's promise.
+    unsafe { handle(h) }.doc.fix_stale();
+}
+
+/// One stale cell's stored value kept as its row's override (`Doc::keep_stale`); 0 when
+/// it was, else 1 with the error at `cells_error`.
+///
+/// # Safety
+/// `h` is a live handle.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn cells_keep_stale(h: *mut Handle, row: usize, column: usize) -> u32 {
+    // SAFETY: the caller's promise.
+    let h = unsafe { handle(h) };
+    match h.doc.keep_stale(row, column) {
+        Ok(()) => 0,
+        Err(e) => {
+            failed(e);
+            1
+        }
+    }
+}
+
+/// `h`'s file as a write after `before`'s leaves it (`Doc::stored_since`): every computed
+/// cell the edits since reached stored.
+///
+/// # Safety
+/// `h` and `before` are live handles, never the same one.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn cells_stored_since(h: *mut Handle, before: *mut Handle) {
+    assert!(h != before, "a file stored since itself changes nothing");
+    // SAFETY: the caller's promise: two live handles, distinct.
+    let (h, before) = unsafe { (handle(h), handle(before)) };
+    h.doc.stored_since(&before.doc);
 }
 
 /// One column's type rewritten in shorthand; 0 when it read, else 1 with the error at
