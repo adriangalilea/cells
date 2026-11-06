@@ -39,6 +39,7 @@ interface Exports {
   cells_detect(ptr: number, len: number): number
   cells_token_kinds(): number
   cells_tokens(ptr: number, len: number, cap: number): number
+  cells_layout(ptr: number, len: number, cap: number, fold: number): number
   cells_reshaped(h: number, ptr: number, len: number, cap: number): number
   cells_written_as(h: number, sep: number, ptr: number, len: number, cap: number): number
   cells_naming_why(h: number, i: number): number
@@ -663,6 +664,31 @@ export function tokens(text: string): Token[] {
     })
   }
   return out
+}
+
+/** A file's tables laid out as tables, for a view that aligns their columns without
+ *  writing a byte: `pads`, spaces drawn at `at` (a string's index, where a cell's next
+ *  comma stands) so every cell of a column ends where its widest does; `cuts`, with a
+ *  `fold`, the middle of each cell wider than it, `from` to `to`, drawn folded until a
+ *  reader opens it (a header cell's name kept whole). Widths in characters. A cell is
+ *  read exactly as written, so these are never written into the file. */
+export interface Layout {
+  pads: { at: number; width: number }[]
+  cuts: { from: number; to: number }[]
+}
+
+export function layout(text: string, fold?: number): Layout {
+  if (fold !== undefined && !(Number.isInteger(fold) && fold >= 8))
+    throw new Error(`cells: a fold is a whole number of characters, 8 or more, not ${fold}`)
+  const [p, len, cap] = put(text)
+  const at = x.cells_layout(p, len, cap, fold ?? 0)
+  const raw = new Uint32Array(x.memory.buffer, at, x.cells_len() / 4).slice()
+  const count = raw[0] as number
+  const pads: Layout["pads"] = []
+  for (let i = 0; i < count; i++) pads.push({ at: raw[1 + 2 * i] as number, width: raw[2 + 2 * i] as number })
+  const cuts: Layout["cuts"] = []
+  for (let i = 1 + 2 * count; i < raw.length; i += 2) cuts.push({ from: raw[i] as number, to: raw[i + 1] as number })
+  return { pads, cuts }
 }
 
 /** A file read in a dialect: `cells`, or a plain file (a `.csv`, a `.tsv`, plain text) by

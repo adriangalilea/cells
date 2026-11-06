@@ -92,6 +92,7 @@ impl LanguageServer for Backend {
                     prepare_provider: Some(true),
                     work_done_progress_options: Default::default(),
                 })),
+                inlay_hint_provider: Some(OneOf::Left(true)),
                 semantic_tokens_provider: Some(SemanticTokensServerCapabilities::SemanticTokensOptions(SemanticTokensOptions {
                     legend: colour::legend(),
                     full: Some(SemanticTokensFullOptions::Bool(true)),
@@ -173,6 +174,12 @@ impl LanguageServer for Backend {
         let folder = self.folder();
         let Some(file) = path(&p.text_document.uri).and_then(|path| folder.read(&path)) else { return Ok(None) };
         Ok(Some(SemanticTokensResult::Tokens(SemanticTokens { result_id: None, data: colour::semantic_tokens(&file.text) })))
+    }
+
+    async fn inlay_hint(&self, p: InlayHintParams) -> Result<Option<Vec<InlayHint>>> {
+        let folder = self.folder();
+        let Some(file) = path(&p.text_document.uri).and_then(|path| folder.read(&path)) else { return Ok(None) };
+        Ok(Some(colour::aligned(&file.text, p.range)))
     }
 
     async fn prepare_rename(&self, p: TextDocumentPositionParams) -> Result<Option<PrepareRenameResponse>> {

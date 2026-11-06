@@ -9,7 +9,9 @@
 //! the script's own language the third.
 
 use cells::tokens::{Kind, Token};
-use tower_lsp::lsp_types::{SemanticToken, SemanticTokenModifier, SemanticTokenType, SemanticTokensLegend};
+use tower_lsp::lsp_types::{
+    InlayHint, InlayHintLabel, Range, SemanticToken, SemanticTokenModifier, SemanticTokenType, SemanticTokensLegend,
+};
 
 use super::text::Lines;
 
@@ -93,6 +95,29 @@ pub fn semantic_tokens(text: &str) -> Vec<SemanticToken> {
     out
 }
 
+/// The file's tables aligned, as inlay hints: after each cell the spaces that bring its
+/// column's cells to one end (`cells::tokens::layout`), drawn by the editor and never in
+/// the file, since a cell is read exactly as written. Those in `range` alone. No cell is
+/// folded: an editor shows the whole text.
+pub fn aligned(text: &str, range: Range) -> Vec<InlayHint> {
+    let lines = Lines::new(text);
+    let (pads, _) = cells::tokens::layout(text, None);
+    pads.into_iter()
+        .map(|p| (lines.position(p.at as usize), p.width))
+        .filter(|(at, _)| range.start <= *at && *at <= range.end)
+        .map(|(position, width)| InlayHint {
+            position,
+            label: InlayHintLabel::String(" ".repeat(width as usize)),
+            kind: None,
+            text_edits: None,
+            tooltip: None,
+            padding_left: None,
+            padding_right: None,
+            data: None,
+        })
+        .collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -129,6 +154,23 @@ mod tests {
         assert_eq!(find("text"), [("type", 0)]);
         assert_eq!(find("*"), [("operator", 0)]);
         assert!(find(",").is_empty() && find("=").is_empty(), "punctuation is the grammar's");
+    }
+
+    #[test]
+    fn columns_aligned_by_hints_in_the_range_asked() {
+        use tower_lsp::lsp_types::Position;
+        let text = "item,cost\nfuel,1\nsplit dinner,2\n";
+        let all = Range { start: Position { line: 0, character: 0 }, end: Position { line: 3, character: 0 } };
+        let hints: Vec<(u32, u32, usize)> = aligned(text, all)
+            .into_iter()
+            .map(|h| match h.label {
+                InlayHintLabel::String(s) => (h.position.line, h.position.character, s.len()),
+                InlayHintLabel::LabelParts(_) => unreachable!(),
+            })
+            .collect();
+        assert_eq!(hints, [(0, 4, 8), (1, 4, 8)], "item and fuel padded to split dinner's 12");
+        let first = Range { start: Position { line: 0, character: 0 }, end: Position { line: 0, character: 9 } };
+        assert_eq!(aligned(text, first).len(), 1, "only the range asked");
     }
 
     #[test]
