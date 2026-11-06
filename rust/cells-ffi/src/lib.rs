@@ -1178,6 +1178,19 @@ pub struct CellsStatement {
     pub exported: bool,
     /// An import's names in braces (`CellsStatementWord`); 0 for one that takes a file whole.
     pub words: usize,
+    /// A script's code between its fences, as prelude lines (its first, the one after its
+    /// last); 0 and 0 for none.
+    pub code_line: u32,
+    pub code_end: u32,
+    /// A table's rows between their fences, a script's stored rows; 0 and 0 for none.
+    pub rows_line: u32,
+    pub rows_end: u32,
+}
+
+/// A fence's content as prelude lines: its first, and the one after its last.
+fn fenced_lines(prelude: &str, f: &cells::Fenced) -> (u32, u32) {
+    let first = f.line + 1;
+    (first, first + prelude[f.start..f.end].matches('\n').count() as u32)
 }
 
 /// A statement's words, read one at a time; empty where it has none.
@@ -1225,15 +1238,27 @@ pub unsafe extern "C" fn cells_statement(d: *mut CellsDoc, i: usize) -> CellsSta
     // SAFETY: the caller's promise.
     let d = unsafe { doc(d) };
     let lines = d.doc.statement_lines(i);
+    let prelude = d.doc.prelude_text();
+    let at = |f: Option<&cells::Fenced>| f.map_or((0, 0), |f| fenced_lines(prelude, f));
     use cells::Statement as S;
-    let (kind, exported, words) = match &d.doc.statements()[i] {
-        S::Type { exported, .. } => (CellsStatementKind::CellsStatementType, *exported, 0),
-        S::Import { names, .. } => (CellsStatementKind::CellsStatementImport, false, names.len()),
-        S::Table { exported, .. } => (CellsStatementKind::CellsStatementTable, *exported, 0),
-        S::Run { exported, .. } => (CellsStatementKind::CellsStatementRun, *exported, 0),
-        S::Column { .. } => (CellsStatementKind::CellsStatementColumn, false, 0),
+    let (kind, exported, words, code, rows) = match &d.doc.statements()[i] {
+        S::Type { exported, .. } => (CellsStatementKind::CellsStatementType, *exported, 0, at(None), at(None)),
+        S::Import { names, .. } => (CellsStatementKind::CellsStatementImport, false, names.len(), at(None), at(None)),
+        S::Table { exported, body, .. } => (CellsStatementKind::CellsStatementTable, *exported, 0, at(None), at(Some(body))),
+        S::Run { exported, code, stored, .. } => (CellsStatementKind::CellsStatementRun, *exported, 0, at(Some(code)), at(stored.as_ref())),
+        S::Column { .. } => (CellsStatementKind::CellsStatementColumn, false, 0, at(None), at(None)),
     };
-    CellsStatement { kind, line: lines.start, end: lines.end, exported, words }
+    CellsStatement {
+        kind,
+        line: lines.start,
+        end: lines.end,
+        exported,
+        words,
+        code_line: code.0,
+        code_end: code.1,
+        rows_line: rows.0,
+        rows_end: rows.1,
+    }
 }
 
 /// One of statement `i`'s words.
@@ -1273,43 +1298,52 @@ pub unsafe extern "C" fn cells_statement_part(d: *mut CellsDoc, i: usize, part: 
     CellsStr::of(&d.out)
 }
 
-/// The file's text with its prelude edited: statement `at`'s lines replaced by `text`
-/// (empty: taken out), or `text` written last when `at` is negative, a prelude opened for
-/// it in a file without one. `text` is lines joined by `\n`. The caller reads the text
-/// again, so the imports a new line names are followed.
+/// The file's text with its prelude edited: prelude lines `from..to` (1-based inside the
+/// fences: a statement's, a script's code alone) replaced by `text` (empty: taken out;
+/// `from == to`: written before line `from`), or `text` written last when `from` is 0, a
+/// prelude opened for it in a file without one. `text` is lines joined by `\n`. The
+/// caller reads the text again, so the imports a new line names are followed.
 ///
 /// # Safety
-/// `d` is a live Cells doc; `at` is negative or below `cells_statement_count(d)`; `text`
-/// points at `len` bytes of UTF-8.
+/// `d` is a live Cells doc; `from..to` lies inside its prelude; `text` points at `len`
+/// bytes of UTF-8.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn cells_prelude_edited(d: *mut CellsDoc, at: isize, text: *const c_char, len: usize) -> CellsStr {
+pub unsafe extern "C" fn cells_prelude_edited(d: *mut CellsDoc, from: u32, to: u32, text: *const c_char, len: usize) -> CellsStr {
     // SAFETY: the caller's promise.
     let d = unsafe { doc(d) };
     // SAFETY: the caller's promise.
     let text = unsafe { text_of(text, len) };
-    d.out = d.doc.prelude_edited(usize::try_from(at).ok(), text);
+    d.out = d.doc.prelude_edited((from > 0).then_some(from..to), text);
     CellsStr::of(&d.out)
 }
 
-/// A one-line statement as a writer writes it: a type (`name`, the type after its `=` in
-/// `said`), an import of a file whole (`name`, where from in `said`), or a column (`name`,
-/// its type and formula as a header cell spells them in `said`, `EUR=cost * qty`).
+/// A one-line statement as a writer writes it, `export` before it when `exported`: a type
+/// (`name`, the type after its `=` in `said`), an import of a file whole (`name`, where
+/// from in `said`), a column (`name`, its type and formula as a header cell spells them in
+/// `said`, `EUR=cost * qty`), or a script's first line (`name`, its schedule in `said`).
 ///
 /// # Safety
-/// `d` is a live doc, whose buffer holds the line; `kind` is a type, an import or a
-/// column; `name` and `said` are UTF-8.
+/// `d` is a live doc, whose buffer holds the line; `kind` is not a table; `name` and
+/// `said` are UTF-8.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn cells_prelude_line(d: *mut CellsDoc, kind: CellsStatementKind, name: CellsStr, said: CellsStr) -> CellsStr {
+pub unsafe extern "C" fn cells_prelude_line(
+    d: *mut CellsDoc,
+    kind: CellsStatementKind,
+    exported: bool,
+    name: CellsStr,
+    said: CellsStr,
+) -> CellsStr {
     // SAFETY: the caller's promise.
     let d = unsafe { doc(d) };
     // SAFETY: the caller's promise.
     let (name, said) = unsafe { (text_of(name.ptr, name.len), text_of(said.ptr, said.len)) };
     use cells::prelude as p;
     d.out = match kind {
-        CellsStatementKind::CellsStatementType => p::type_line(name, said, false),
+        CellsStatementKind::CellsStatementType => p::type_line(name, said, exported),
         CellsStatementKind::CellsStatementImport => p::import_line(Some(name), &[], said, &[]),
         CellsStatementKind::CellsStatementColumn => p::column_line(name, said),
-        other => panic!("a {other:?} is more than one line"),
+        CellsStatementKind::CellsStatementRun => p::run_line(name, said, exported),
+        CellsStatementKind::CellsStatementTable => panic!("a table is more than one line"),
     };
     CellsStr::of(&d.out)
 }
