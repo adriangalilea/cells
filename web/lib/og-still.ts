@@ -122,11 +122,17 @@ export function ogFace(file: string, family: string): OgFace {
     }
     return w
   }
+  // sCapHeight is OS/2's from version 2 on.
+  if (os2.getUint16(0) < 2)
+    throw new Error(
+      `og-still: ${file}'s OS/2 table is version ${os2.getUint16(0)}, before it gave the capitals' height`,
+    )
   return {
     family,
     weight: os2.getUint16(4),
     ascent: hhea.getInt16(4) / em,
     descent: -hhea.getInt16(6) / em,
+    cap: os2.getInt16(88) / em,
     width: (text) => {
       let w = 0
       for (const ch of text) w += of(ch.codePointAt(0) as number)

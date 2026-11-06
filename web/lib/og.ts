@@ -82,6 +82,9 @@ export interface OgFace {
   weight: number
   ascent: number
   descent: number
+  /** The capitals' height above the baseline, em: where words are seen to begin, which
+   *  a line's ascent overshoots. */
+  cap: number
   width: (text: string) => number
 }
 
@@ -288,8 +291,9 @@ export function ogWordmarkCard(card: OgCard): string {
 }
 
 /** The type of a stacked card's row of words, px: the name, and the line beside it on
- *  its baseline; and the gap between the still and the row. */
-export const OG_STACK = { title: 60, line: 30, between: 28, gap: 28 } as const
+ *  its baseline; and the gap from the still to the name's capitals, under the margins
+ *  above and below so the two read as one block. */
+export const OG_STACK = { title: 60, line: 30, between: 28, gap: 36 } as const
 
 /** A still across the card's width (an editor, a terminal), the name and the line in a
  *  row under it: the thing itself first and as large as the card allows, what it is
@@ -307,7 +311,9 @@ export function ogStackCard(card: OgCard & { still: string }): string {
     throw new Error(
       `og: the line takes ${lineLines.length} lines beside the name in ${Math.round(room)} px: say it shorter`,
     )
-  const rowH = OG_STACK.title * (title.ascent + title.descent)
+  // The row as it is seen, from its capitals' top to its baseline: a line box's ascent
+  // above the capitals and its descent below would sink the words and the block.
+  const rowH = OG_STACK.title * title.cap
   const blockH = height + OG_STACK.gap + rowH
   const top = (OG.height - blockH) / 2
   // Inside the card's margin, which X's 2:1 crop (15 px off each end) leaves whole.
@@ -315,7 +321,7 @@ export function ogStackCard(card: OgCard & { still: string }): string {
     throw new Error(
       `og: the still and its row are ${Math.round(blockH)} px tall, more than the ${OG.height - 2 * OG_PAD} px inside the card's margin: give the still fewer rows or more columns`,
     )
-  const baseline = top + height + OG_STACK.gap + OG_STACK.title * title.ascent
+  const baseline = top + height + OG_STACK.gap + rowH
   return svgOf(
     `${ground(card.look, { x: OG.width / 2, y: top + height / 2 })}
   ${placed(card.still, OG_PAD, top, width)}
