@@ -2188,19 +2188,63 @@
           "name": "_typed"
         },
         {
-          "type": "FIELD",
-          "name": "name",
-          "content": {
-            "type": "ALIAS",
-            "content": {
-              "type": "SYMBOL",
-              "name": "quoted_field"
-            },
-            "named": true,
-            "value": "column_name"
-          }
+          "type": "SYMBOL",
+          "name": "_quoted_header_cell"
         }
       ]
+    },
+    "_quoted_header_cell": {
+      "type": "SEQ",
+      "members": [
+        {
+          "type": "STRING",
+          "value": "\""
+        },
+        {
+          "type": "CHOICE",
+          "members": [
+            {
+              "type": "FIELD",
+              "name": "name",
+              "content": {
+                "type": "ALIAS",
+                "content": {
+                  "type": "SYMBOL",
+                  "name": "_quoted_column_name"
+                },
+                "named": true,
+                "value": "column_name"
+              }
+            },
+            {
+              "type": "BLANK"
+            }
+          ]
+        },
+        {
+          "type": "CHOICE",
+          "members": [
+            {
+              "type": "SYMBOL",
+              "name": "_typed"
+            },
+            {
+              "type": "BLANK"
+            }
+          ]
+        },
+        {
+          "type": "STRING",
+          "value": "\""
+        }
+      ]
+    },
+    "_quoted_column_name": {
+      "type": "TOKEN",
+      "content": {
+        "type": "PATTERN",
+        "value": "([^\":\\r\\n]|\"\")+"
+      }
     },
     "_typed": {
       "type": "SEQ",
@@ -4285,6 +4329,15 @@
         {
           "type": "SYMBOL",
           "name": "computed_cell"
+        },
+        {
+          "type": "ALIAS",
+          "content": {
+            "type": "SYMBOL",
+            "name": "_quoted_computed"
+          },
+          "named": true,
+          "value": "computed_cell"
         }
       ]
     },
@@ -4384,14 +4437,23 @@
             "type": "CHOICE",
             "members": [
               {
-                "type": "PATTERN",
-                "value": "[^\"]+"
+                "type": "SYMBOL",
+                "name": "_quoted_text"
               },
               {
                 "type": "ALIAS",
                 "content": {
                   "type": "STRING",
                   "value": "\"\""
+                },
+                "named": true,
+                "value": "escape_sequence"
+              },
+              {
+                "type": "ALIAS",
+                "content": {
+                  "type": "STRING",
+                  "value": "'="
                 },
                 "named": true,
                 "value": "escape_sequence"
@@ -4404,6 +4466,67 @@
           "value": "\""
         }
       ]
+    },
+    "_quoted_computed": {
+      "type": "SEQ",
+      "members": [
+        {
+          "type": "STRING",
+          "value": "\""
+        },
+        {
+          "type": "CHOICE",
+          "members": [
+            {
+              "type": "FIELD",
+              "name": "stored",
+              "content": {
+                "type": "ALIAS",
+                "content": {
+                  "type": "SYMBOL",
+                  "name": "_quoted_text"
+                },
+                "named": true,
+                "value": "text"
+              }
+            },
+            {
+              "type": "BLANK"
+            }
+          ]
+        },
+        {
+          "type": "STRING",
+          "value": "="
+        },
+        {
+          "type": "CHOICE",
+          "members": [
+            {
+              "type": "FIELD",
+              "name": "formula",
+              "content": {
+                "type": "SYMBOL",
+                "name": "_expression"
+              }
+            },
+            {
+              "type": "BLANK"
+            }
+          ]
+        },
+        {
+          "type": "STRING",
+          "value": "\""
+        }
+      ]
+    },
+    "_quoted_text": {
+      "type": "TOKEN",
+      "content": {
+        "type": "PATTERN",
+        "value": "([^\"=']|'[^\"=])+|'"
+      }
     },
     "datetime": {
       "type": "PATTERN",

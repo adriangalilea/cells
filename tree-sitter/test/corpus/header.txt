@@ -61,6 +61,30 @@ item name:text,plain,"a, b"
       (column_name))))
 
 ==================
+A quoted header cell is a bare one inside its quotes
+==================
+cost:EUR,"vat:EUR=ROUND(cost, 2)","my ""best"" item"
+---
+
+(source_file
+  (header
+    (header_cell
+      (column_name)
+      (type
+        (currency)))
+    (header_cell
+      (column_name)
+      (type
+        (currency))
+      (call_expression
+        (function_name)
+        (column_reference
+          (identifier))
+        (number)))
+    (header_cell
+      (column_name))))
+
+==================
 A trailing comma is a blank column
 ==================
 a:int,

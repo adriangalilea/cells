@@ -27,6 +27,7 @@ export default async () => []
 ---
 item:text!,category:Category,cost:EUR>=0,paid:yes/no,on:date(DD/MM/YYYY),note:text?,score:0..10,to:accounts.account,x:one of a b key,y:bool si no optional,z:num between 0 and 100,w:num min 1,total:EUR=ABS(cost) * (score - 1),fee:EUR(6),running:EUR=running[-1] + total,cum:EUR=SUM(total[FIRST:THIS]),low:num=round(cost)
 fuel,travel,32.25=96.75 / 3,yes,14/08/2026,"a ""b""",7,assets:bank,a,si,2026-08-14T10:00:00Z,https://example.com,84.20=,0.001200,84.20=,=SUM(TABLE.total),84=
+maps,stay,"2.10=ROUND(6.30 / 3, 2)"
 `
 
 // [text, canonical capture, Helix scope]
@@ -158,6 +159,11 @@ const EXPECT: [string, string, string][] = [
   ["=", "punctuation.special", "punctuation.special"],
   ["SUM", "function", "function"],
   ["TABLE", "variable.builtin", "variable.builtin"],
+  // a quoted cell holding its own formula: the formula coloured inside the quotes
+  ["=", "punctuation.special", "punctuation.special"],
+  ["ROUND", "function", "function"],
+  ["6.30", "number", "constant.numeric"],
+  ["/", "operator", "operator"],
 ]
 
 type Capture = { name: string; text: string }

@@ -567,21 +567,6 @@
     }
   },
   {
-    "type": "column_name",
-    "named": true,
-    "fields": {},
-    "children": {
-      "multiple": true,
-      "required": false,
-      "types": [
-        {
-          "type": "escape_sequence",
-          "named": true
-        }
-      ]
-    }
-  },
-  {
     "type": "column_reference",
     "named": true,
     "fields": {},
@@ -2884,6 +2869,10 @@
   {
     "type": "changes",
     "named": false
+  },
+  {
+    "type": "column_name",
+    "named": true
   },
   {
     "type": "comment",

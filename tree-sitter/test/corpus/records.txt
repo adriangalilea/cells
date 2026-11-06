@@ -292,3 +292,34 @@ total:num,note:text
       (text)))
   (row
     (field)))
+
+==================
+A quoted cell holding its own formula, and quoted text that writes its =
+==================
+cost:num,note:text
+"2.10=ROUND(6.30 / 3, 2)","a '= b, c"
+---
+
+(source_file
+  (header
+    (header_cell
+      name: (column_name)
+      type: (type
+        (base_type)))
+    (header_cell
+      name: (column_name)
+      type: (type
+        (base_type))))
+  (row
+    (field
+      (computed_cell
+        stored: (text)
+        formula: (call_expression
+          function: (function_name)
+          (binary_expression
+            left: (number)
+            right: (number))
+          (number))))
+    (field
+      (quoted_field
+        (escape_sequence)))))

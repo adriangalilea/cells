@@ -336,8 +336,19 @@ module.exports = grammar({
     _header_cell_content: $ => choice(
       seq(field('name', $.column_name), optional($._typed)),
       $._typed,
-      field('name', alias($.quoted_field, $.column_name)),
+      $._quoted_header_cell,
     ),
+
+    // A header cell quoted (its formula holds a `,` or a `"`) reads as a bare one inside
+    // its quotes: its name up to the first `:`, then its type and formula.
+    _quoted_header_cell: $ => seq(
+      '"',
+      optional(field('name', alias($._quoted_column_name, $.column_name))),
+      optional($._typed),
+      '"',
+    ),
+
+    _quoted_column_name: _ => token(/([^":\r\n]|"")+/),
 
     _typed: $ => seq(':', field('type', $.type), optional(seq('=', field('formula', $._expression)))),
 
@@ -439,7 +450,7 @@ module.exports = grammar({
 
     _field_with_comma: $ => seq(optional($._value), ','),
 
-    _value: $ => choice($.quoted_field, $._written, $.computed_cell),
+    _value: $ => choice($.quoted_field, $._written, $.computed_cell, alias($._quoted_computed, $.computed_cell)),
 
     // The order is the lexer's tie-break: a cell that reads as a date and as
     // text is a date, `84.20` is a number before it is text.
@@ -462,11 +473,24 @@ module.exports = grammar({
       optional(field('formula', $._expression)),
     ),
 
+    // A quoted cell is text up to its first `=` with no `'` before it; with one it is a
+    // computed cell inside its quotes (its own formula holds a `,`), what it stores
+    // before the `=` as written.
     quoted_field: $ => seq(
       '"',
-      repeat(choice(/[^"]+/, alias('""', $.escape_sequence))),
+      repeat(choice($._quoted_text, alias('""', $.escape_sequence), alias("'=", $.escape_sequence))),
       '"',
     ),
+
+    _quoted_computed: $ => seq(
+      '"',
+      optional(field('stored', alias($._quoted_text, $.text))),
+      '=',
+      optional(field('formula', $._expression)),
+      '"',
+    ),
+
+    _quoted_text: _ => token(/([^"=']|'[^"=])+|'/),
 
     datetime: _ => /\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2}(\.\d+)?)?(Z|[+-]\d{2}:?\d{2})?/,
 
