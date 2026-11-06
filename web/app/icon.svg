@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024">
+<!-- Cells: a table, its header and its computed column lit (the app icon, syntaxes/palette.json) -->
+<defs><linearGradient id="g" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#1d2125"/><stop offset="1" stop-color="#0c0f12"/></linearGradient></defs>
+<rect width="1024" height="1024" rx="230" fill="url(#g)"/>
+<rect x="190" y="190" width="196" height="196" rx="47.04" fill="#43d5dc"/>
+<rect x="190" y="414" width="196" height="196" rx="47.04" fill="#1f4a4e"/>
+<rect x="190" y="638" width="196" height="196" rx="47.04" fill="#1f4a4e"/>
+<rect x="414" y="190" width="196" height="196" rx="47.04" fill="#c3aeff"/>
+<rect x="414" y="414" width="196" height="196" rx="47.04" fill="#3b3552"/>
+<rect x="414" y="638" width="196" height="196" rx="47.04" fill="#3b3552"/>
+<rect x="638" y="190" width="196" height="196" rx="47.04" fill="#f6ab6b"/>
+<rect x="638" y="414" width="196" height="196" rx="47.04" fill="#f6ab6b"/>
+<rect x="638" y="638" width="196" height="196" rx="47.04" fill="#f6ab6b"/>
+</svg>
