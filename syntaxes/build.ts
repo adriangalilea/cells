@@ -81,6 +81,9 @@ const S = {
   brace: "punctuation.section.braces.cells",
   attribute: "entity.other.attribute-name.import.cells",
   table: "entity.name.function.table.cells",
+  // A declared column's name: which column it is, the header says, which a pattern
+  // cannot read, so it wears one colour; the language server's tokens give its own.
+  declared: "variable.other.member.column.declared.cells",
   run: "keyword.control.run.cells",
   schedule: "keyword.other.schedule.cells",
   scheduleWord: "string.unquoted.schedule.cells",
@@ -235,11 +238,13 @@ const type = [
 
 // A quoted cell closes on this line, its last quote ending the cell; one
 // that does not is the multi-line string rule's, below.
-const CLOSED = raw`"(?:[^"]|"")*"(?=,|$)`
+const CLOSED = raw`"(?:[^"]|"")*"[ \t]*(?=,|$)`
 // A header cell quoted (its formula holds a `,` or a `"`) is read as a bare one inside
 // its quotes: its name up to the first `:`, then its type and formula.
-const headerCell = raw`(?:(")((?:[^":\r\n]|"")*)(?:(:)((?:[^"\r\n]|"")*))?(")(?=,|$)|([^:,\r\n"][^:,\r\n]*)?(?:(:)([^,\r\n]*))?)`
-const rowCell = raw`(${CLOSED}|(?!")[^,\r\n]*)`
+const headerCell = raw`(?:[ \t]*(")((?:[^":\r\n]|"")*)(?:(:)((?:[^"\r\n]|"")*))?(")[ \t]*(?=,|$)|([^:,\r\n"][^:,\r\n]*)?(?:(:)([^,\r\n]*))?)`
+// A field's padding, spaces and tabs at its ends, is no part of it: a quoted field may
+// stand inside some.
+const rowCell = raw`([ \t]*${CLOSED}|(?![ \t]*")[^,\r\n]*)`
 
 function cycle(cell: string, groupsPerCell: number, captureCell: (column: number) => Record<number, unknown>) {
   let match = raw`(?:^|(,))${cell}`
@@ -484,6 +489,16 @@ const prelude = {
       match: raw`^[ \t]*(?:(export)[ \t]+)?(${NAME})[ \t]*(=)(?=[ \t]*\x60{3,})`,
       captures: { 1: { name: S.export }, 2: { name: S.table }, 3: { name: S.assign } },
     },
+    {
+      comment:
+        "A column's declaration: its name (quoted when it holds a `:`, a `,` or a `\"`), then its type and its formula as a header cell's after its `:`.",
+      match: raw`^[ \t]*("(?:[^"]|"")*"|[^:=,"\r\n/ \t][^:=,"\r\n/]*?)[ \t]*(:)((?:[^/\r\n]|/(?!/))*)`,
+      captures: {
+        1: { name: S.declared },
+        2: { name: S.colon },
+        3: { name: S.type, patterns: [{ include: "#type" }] },
+      },
+    },
     ...fenced,
   ],
 }
@@ -498,7 +513,7 @@ const body = {
     { comment: "The header is the body's first line.", begin: raw`\G`, end: "$", name: "meta.header.cells", patterns: [{ include: "#header" }] },
     {
       comment: "A quoted field that holds a line break: a string until its closing quote.",
-      begin: raw`(?:^|(,))(")(?=(?:[^"]|"")*$)`,
+      begin: raw`(?:^|(,))[ \t]*(")(?=(?:[^"]|"")*$)`,
       beginCaptures: { 1: { name: S.comma }, 2: { name: S.stringBegin } },
       end: raw`(")(?!")`,
       endCaptures: { 1: { name: S.stringEnd } },

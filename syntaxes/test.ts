@@ -22,10 +22,11 @@ rates = run every day at 18:00 in Europe/Madrid
 \`\`\`ts
 export default async () => []
 \`\`\`
+"price, net": EUR? = cost * 2
 ---
 item:text!,category:Category,cost:EUR>=0,paid:yes/no,on:date(DD/MM/YYYY),note:text?,score:0..10,to:accounts.account,x:one of a b key,y:bool si no optional,z:num between 0 and 100,w:num min 1,total:EUR=ABS(cost) * (score - 1),fee:EUR(6),running:EUR=running[-1] + total,cum:EUR=SUM(total[FIRST:THIS]),low:num=round(cost),memo:text,"vat:EUR=ROUND(cost, 2)","my ""best"" item"
 fuel,travel,32.25=96.75 / 3,yes,14/08/2026,"a ""b""",7,assets:bank,a,si,2026-08-14T10:00:00Z,https://example.com,84.20=,0.001200,84.20=,=SUM(TABLE.total),84=,'=> see invoice
-maps,stay,"2.10=ROUND(6.30 / 3, 2)"
+maps,stay,   "2.10=ROUND(6.30 / 3, 2)"
 a,"two
 lines",b
 `
@@ -64,6 +65,11 @@ const EXPECT: [string, string][] = [
   ["Europe/Madrid", "string.unquoted.schedule.cells"],
   ["ts", "entity.name.section.language.cells"],
   ["export", "meta.embedded.block.typescript"],
+  // a column declared: its name, then its type and formula as a header cell's
+  ['"price, net"', "variable.other.member.column.declared.cells"],
+  [":", "punctuation.separator.type.cells"],
+  ["EUR", "support.type.currency.cells"],
+  ["cost", "variable.other.property.cells"],
   ["---", "punctuation.separator.prelude.cells"],
   // the header: each name in its column's colour, then its type's parts
   ["item", "meta.column.1.cells"],
