@@ -136,11 +136,16 @@ export function blocksOf(file: string, tree: Root): { lang: string; meta: string
   return blocks
 }
 
-let built: Promise<DocPage[]> | null = null
+/** The pages as last built, and the documents' modification times they were built
+ *  from: an edited document (the dev server) builds them again, and so does a build
+ *  that threw, once its document is fixed. */
+let built: { from: string; pages: Promise<DocPage[]> } | null = null
 
 /** Every page of the docs, each link resolved and each code block coloured ahead. */
 export function docPages(): Promise<DocPage[]> {
-  built ??= (async () => {
+  const from = DOCS.map((doc) => statSync(join(REPO, doc.file)).mtimeMs).join(",")
+  if (built?.from === from) return built.pages
+  const pages = (async () => {
     const anchors = anchorsOf()
     const pages: DocPage[] = []
     for (const doc of DOCS) {
@@ -168,7 +173,8 @@ export function docPages(): Promise<DocPage[]> {
     }
     return pages
   })()
-  return built
+  built = { from, pages }
+  return pages
 }
 
 /** A page's file on GitHub, where it is edited. */
