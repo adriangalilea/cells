@@ -31,6 +31,7 @@ comment-token = "//"
 injection-regex = "^cells$"
 roots = []
 language-servers = ["cells"]
+auto-format = true
 
 [[grammar]]
 name = "cells"
@@ -41,7 +42,24 @@ command = "/path/to/cells/rust/target/release/cells"
 args = ["lsp"]
 ```
 
-Then `hx --grammar build`, and link the queries: `ln -s /path/to/cells/tree-sitter/queries/helix ~/.config/helix/runtime/queries/cells`. `hx --health cells` shows the server, the parser and the highlights. Hover is `space k`, the diagnostics `space d`, go to definition `g d`, rename `space r`, the code action `space a`.
+Then `hx --grammar build`, and link the queries: `ln -s /path/to/cells/tree-sitter/queries/helix ~/.config/helix/runtime/queries/cells`. `hx --health cells` shows the server, the parser and the highlights. Hover is `space k`, the diagnostics `space d`, go to definition `g d`, rename `space r`, the code action `space a`. `auto-format` is what stores the computed values on `:w`; without it, `:format` does.
+
+## Git
+
+`cells merge` merges two versions of a file as SPEC.md, Merging, says: what was written merges as text, every computed value is computed again from the merged rows, so two branches that each add a row to a running balance never conflict on the balances. In the repository's `.gitattributes`:
+
+```
+*.cell merge=cells
+```
+
+and once per machine:
+
+```sh
+git config --global merge.cells.name "cells"
+git config --global merge.cells.driver "cells merge %O %A %B"
+```
+
+A conflict in what was written is left in the file with git's markers, and the merge exits 1.
 
 ## Neovim
 

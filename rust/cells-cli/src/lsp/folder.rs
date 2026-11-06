@@ -64,7 +64,12 @@ impl Folder {
     /// The file at `path`, read with its imports followed; nothing when it cannot be read
     /// as text.
     pub fn read(&self, path: &Path) -> Option<File> {
-        let text = self.text(path)?;
+        self.read_as(path, self.text(path)?)
+    }
+
+    /// `text` read as the file at `path` (its imports followed from there): the file as
+    /// it was saved, beside the text the editor holds now.
+    pub fn read_as(&self, path: &Path, text: String) -> Option<File> {
         let doc = cells::read_with(text.clone().into_bytes(), &mut Disk::over(path, Arc::clone(&self.open)), 1).ok()?;
         Some(File { path: path.to_path_buf(), text, doc })
     }

@@ -22,6 +22,9 @@ use text::Lines;
 struct Backend {
     client: Client,
     folder: Mutex<Folder>,
+    /// Each open file's text as it was last saved (or opened): what formatting on save
+    /// stores the edits since against.
+    saved: Mutex<BTreeMap<PathBuf, String>>,
 }
 
 impl Backend {
@@ -70,7 +73,13 @@ impl LanguageServer for Backend {
         self.folder.lock().unwrap().root = root;
         Ok(InitializeResult {
             capabilities: ServerCapabilities {
-                text_document_sync: Some(TextDocumentSyncCapability::Kind(TextDocumentSyncKind::FULL)),
+                text_document_sync: Some(TextDocumentSyncCapability::Options(TextDocumentSyncOptions {
+                    open_close: Some(true),
+                    change: Some(TextDocumentSyncKind::FULL),
+                    save: Some(TextDocumentSyncSaveOptions::SaveOptions(SaveOptions { include_text: Some(true) })),
+                    ..TextDocumentSyncOptions::default()
+                })),
+                document_formatting_provider: Some(OneOf::Left(true)),
                 hover_provider: Some(HoverProviderCapability::Simple(true)),
                 completion_provider: Some(CompletionOptions {
                     trigger_characters: Some(vec![".".into(), "[".into(), ":".into(), ",".into()]),
@@ -94,9 +103,25 @@ impl LanguageServer for Backend {
 
     async fn did_open(&self, p: DidOpenTextDocumentParams) {
         if let Some(path) = path(&p.text_document.uri) {
+            self.saved.lock().unwrap().insert(path.clone(), p.text_document.text.clone());
             self.change(path, Some(p.text_document.text));
             self.diagnose().await;
         }
+    }
+
+    async fn did_save(&self, p: DidSaveTextDocumentParams) {
+        if let (Some(path), Some(text)) = (path(&p.text_document.uri), p.text) {
+            self.saved.lock().unwrap().insert(path, text);
+        }
+    }
+
+    async fn formatting(&self, p: DocumentFormattingParams) -> Result<Option<Vec<TextEdit>>> {
+        let folder = self.folder();
+        let Some(path) = path(&p.text_document.uri) else { return Ok(None) };
+        let Some(file) = folder.read(&path) else { return Ok(None) };
+        let saved = self.saved.lock().unwrap().get(&path).cloned();
+        let saved = saved.and_then(|t| folder.read_as(&path, t));
+        Ok(features::formatted(&file, saved.as_ref()).map(|e| Vec::from([e])))
     }
 
     async fn did_change(&self, p: DidChangeTextDocumentParams) {
@@ -109,6 +134,7 @@ impl LanguageServer for Backend {
 
     async fn did_close(&self, p: DidCloseTextDocumentParams) {
         if let Some(path) = path(&p.text_document.uri) {
+            self.saved.lock().unwrap().remove(&path);
             self.change(path, None);
             self.client.publish_diagnostics(p.text_document.uri, Vec::new(), None).await;
             self.diagnose().await;
@@ -155,8 +181,11 @@ impl LanguageServer for Backend {
 pub fn serve() {
     let runtime = tokio::runtime::Builder::new_multi_thread().enable_all().build().expect("a runtime");
     runtime.block_on(async {
-        let (service, socket) =
-            LspService::new(|client| Backend { client, folder: Mutex::new(Folder { root: None, open: Arc::new(BTreeMap::new()) }) });
+        let (service, socket) = LspService::new(|client| Backend {
+            client,
+            folder: Mutex::new(Folder { root: None, open: Arc::new(BTreeMap::new()) }),
+            saved: Mutex::new(BTreeMap::new()),
+        });
         Server::new(tokio::io::stdin(), tokio::io::stdout(), socket).serve(service).await;
     });
 }

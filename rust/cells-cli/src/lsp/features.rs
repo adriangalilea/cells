@@ -66,11 +66,13 @@ fn header_cell<'a>(file: &'a File, column: usize) -> HeaderCell<'a> {
     HeaderCell { name, ty: Some(span(at(ty), ty.len() as u32)), formula: formula.map(|f| (f, at(f))) }
 }
 
-/// A cell's own formula, `` `=…` ``: its text and where it starts.
+/// A cell's own formula, right of its `=` (`32.25=96.75 / 3`): its text and where it
+/// starts. Nothing for a cell its column's formula computes (`84.20=`) or a written one.
 fn cell_formula(file: &File, row: usize, column: usize) -> Option<(&str, u32)> {
     let s = file.doc.cell_span(row, column);
     let raw = &file.text[s.start as usize..(s.start + s.len) as usize];
-    (raw.len() >= 3 && raw.starts_with("`=") && raw.ends_with('`')).then(|| (&raw[2..raw.len() - 1], s.start + 2))
+    let at = cells::split_cell(raw)? + 1;
+    (!raw[at..].trim().is_empty()).then(|| (&raw[at..], s.start + at as u32))
 }
 
 pub fn spot(file: &File, at: usize) -> Spot<'_> {
@@ -306,8 +308,12 @@ fn ident(c: char) -> bool {
 }
 
 /// A name as a formula writes it: as it is, or quoted.
+/// A name as a formula writes it: bare when it is a word with a lower-case letter, quoted
+/// otherwise, so it is never the language's (a word in capitals).
 fn written(name: &str) -> String {
-    let plain = name.chars().next().is_some_and(|c| c.is_ascii_alphabetic() || c == '_') && name.chars().all(ident);
+    let plain = name.chars().next().is_some_and(|c| c.is_ascii_alphabetic() || c == '_')
+        && name.chars().all(ident)
+        && name.chars().any(|c| c.is_ascii_lowercase());
     if plain { name.to_owned() } else { format!("\"{}\"", name.replace('"', "\"\"")) }
 }
 
@@ -389,7 +395,23 @@ fn formula_completions(folder: &Folder, file: &File, f: &Formula, at: usize, lin
             .map(|c| item(written(&c.name), CompletionItemKind::FIELD, format!("{detail}{}", c.ty.shorthand()), range))
             .collect()
     };
-    // Inside `this[`, `fees[`: the table's rows, each by its key, found by its number too.
+    // After a column's `[`: the rows by where they are from this one.
+    if let Some((name, open)) = opened(src)
+        && name != "TABLE"
+        && file.doc.column(name).is_some()
+    {
+        let range = lines.range(span(f.base + open as u32, (here - open) as u32));
+        let places = [
+            ("-1", "the row above"),
+            ("+1", "the row below"),
+            ("FIRST", "the first row"),
+            ("LAST", "the last row"),
+            ("FIRST:THIS", "the rows from the first to this one, an aggregate's"),
+            ("THIS:LAST", "the rows from this one to the last, an aggregate's"),
+        ];
+        return places.iter().map(|(p, d)| item((*p).into(), CompletionItemKind::KEYWORD, (*d).into(), range)).collect();
+    }
+    // Inside `TABLE[`, `fees[`: the table's rows, each by its key, found by its number too.
     if let Some((name, open)) = opened(src) {
         let Some(held) = folder.held(file, name) else { return Vec::new() };
         let d = held.doc();
@@ -429,12 +451,15 @@ fn formula_completions(folder: &Folder, file: &File, f: &Formula, at: usize, lin
         };
     }
     let mut out = columns(&file.doc, "");
-    out.push(item(expr::THIS.to_owned(), CompletionItemKind::MODULE, "this file's own table".into(), range));
+    out.push(item("TABLE".to_owned(), CompletionItemKind::MODULE, "this file's own table".into(), range));
     for t in file.doc.tables() {
         out.push(item(written(&t.name), CompletionItemKind::MODULE, "a table".into(), range));
     }
     for name in expr::FUNCTIONS {
         out.push(item(name.to_owned(), CompletionItemKind::FUNCTION, "a function".into(), range));
+    }
+    for word in ["CASE", "WHEN", "THEN", "ELSE", "END", "AND", "OR", "NOT", "IS", "NULL", "TRUE", "FALSE", "OVER", "ORDER", "BY", "DESC"] {
+        out.push(item(word.to_owned(), CompletionItemKind::KEYWORD, "the language's".into(), range));
     }
     out
 }
@@ -453,6 +478,8 @@ fn opened(src: &str) -> Option<(&str, usize)> {
     }
     let before = src[..open].trim_end_matches([' ', '\t']);
     let name = &before[before.rfind(|c: char| !ident(c)).map_or(0, |i| i + 1)..];
+    // The language's `TABLE` is the file's own table, as the engine names it.
+    let name = if name == "TABLE" { cells::expr::THIS } else { name };
     (!name.is_empty()).then_some((name, open + 1))
 }
 
@@ -489,28 +516,119 @@ pub fn numbered(folder: &Folder, file: &File) -> Vec<Numbered> {
     out
 }
 
-/// What can be done at a range: each `#n` on its lines written as its row's key.
+/// The file as a write leaves it (SPEC.md, Writing), for a client formatting it as it
+/// saves: every computed value the edits since `saved` reached stored beside its `=`,
+/// every one not stored yet stored, and nothing else, a stale cell the edits did not reach
+/// left as it is. Nothing when it is already so.
+pub fn formatted(file: &File, saved: Option<&File>) -> Option<TextEdit> {
+    let mut doc = file.doc.clone();
+    if let Some(saved) = saved {
+        doc.stored_since(&saved.doc);
+    }
+    doc.store_unstored();
+    let text = doc.write();
+    (text != file.text).then(|| whole(file, &Lines::new(&file.text), text))
+}
+
+/// A fix: its title, and its edits to the file.
+fn quickfix(file: &File, title: String, edits: Vec<TextEdit>) -> CodeAction {
+    CodeAction {
+        title,
+        kind: Some(CodeActionKind::QUICKFIX),
+        edit: Some(WorkspaceEdit { changes: Some(HashMap::from([(uri(&file.path), edits)])), ..WorkspaceEdit::default() }),
+        ..CodeAction::default()
+    }
+}
+
+/// The whole file replaced by `text`: one edit, for a change a write makes beyond the
+/// cell it starts from (a value stored below an override kept).
+fn whole(file: &File, lines: &Lines, text: String) -> TextEdit {
+    TextEdit { range: lines.range(span(0, file.text.len() as u32)), new_text: text }
+}
+
+/// What can be done at a range, on its lines:
+/// - each `#n` written as its row's key;
+/// - a stale cell given its formula's value, or its stored value kept as the row's
+///   override (SPEC.md, Writing);
+/// - a word of the language written in lower case written in capitals;
+/// - a spreadsheet's formula (`=C2*D2`, `=SUM($E$2:E2)`) written in names.
 pub fn actions(folder: &Folder, file: &File, range: Range) -> Vec<CodeAction> {
     let lines = Lines::new(&file.text);
-    numbered(folder, file)
+    let on = |s: Span| {
+        let r = lines.range(s);
+        r.start.line <= range.end.line && r.end.line >= range.start.line
+    };
+    let mut out: Vec<CodeAction> = numbered(folder, file)
         .into_iter()
-        .filter(|n| {
-            let r = lines.range(n.span);
-            r.start.line <= range.end.line && r.end.line >= range.start.line
-        })
+        .filter(|n| on(n.span))
         .map(|n| {
             let edit = TextEdit { range: lines.range(n.span), new_text: written_key(&n.key) };
-            CodeAction {
-                title: format!("#{} is the row {}: write its key", n.row, written_key(&n.key)),
-                kind: Some(CodeActionKind::QUICKFIX),
-                edit: Some(WorkspaceEdit {
-                    changes: Some(HashMap::from([(uri(&file.path), Vec::from([edit]))])),
-                    ..WorkspaceEdit::default()
-                }),
-                ..CodeAction::default()
-            }
+            quickfix(file, format!("#{} is the row {}: write its key", n.row, written_key(&n.key)), Vec::from([edit]))
         })
-        .collect()
+        .collect();
+    let doc = &file.doc;
+    for (p, s) in doc.problems().iter().zip(doc.spans()) {
+        if p.kind() != cells::Kind::Stale || !on(s) {
+            continue;
+        }
+        let (r, c) = (p.row as usize, p.column as usize);
+        let raw = doc.text(r, c).into_owned();
+        let stored = raw[..cells::split_cell(&raw).unwrap_or(raw.len())].to_owned();
+        let mut fixed = doc.clone();
+        fixed.fix_stale_at(r, c);
+        let gives = fixed.text(r, c);
+        let gives = gives[..cells::split_cell(&gives).unwrap_or(gives.len())].to_owned();
+        out.push(quickfix(file, format!("Use the formula's value, {gives}"), Vec::from([whole(file, &lines, fixed.write())])));
+        let mut kept = doc.clone();
+        if kept.keep_stale(r, c).is_ok() {
+            out.push(quickfix(file, format!("Keep {stored} as this row's override"), Vec::from([whole(file, &lines, kept.write())])));
+        }
+    }
+    // Every formula on the lines: words of the language in lower case, and a spreadsheet's
+    // references, each written as the file holds them.
+    let columns: Vec<&str> = doc.columns().iter().map(|c| c.name.as_str()).collect();
+    let key = doc.columns().iter().position(|c| c.ty.key);
+    let keys = |r: usize| key.map(|k| doc.text(r, k).into_owned()).filter(|t| !t.is_empty());
+    let sheet = cells::sheet::Sheet { columns: &columns, rows: doc.rows(), key: &keys };
+    let names = |w: &str| doc.column(w).is_some() || doc.tables().iter().any(|t| t.name == w);
+    for (src, base, row) in formula_rows(file) {
+        if !on(span(base, src.len() as u32)) {
+            continue;
+        }
+        let low: Vec<TextEdit> = expr::low_words(src)
+            .into_iter()
+            .filter(|((s, l), _)| !names(&src[*s as usize..(s + l) as usize]))
+            .map(|((s, l), up)| TextEdit { range: lines.range(span(base + s, l)), new_text: up })
+            .collect();
+        if !low.is_empty() {
+            let words: Vec<&str> = low.iter().map(|e| e.new_text.as_str()).collect();
+            out.push(quickfix(file, format!("Write in capitals: {}", words.join(", ")), low));
+        }
+        if let Some(named) = cells::sheet::from_sheet(src, row, &sheet) {
+            let edit = TextEdit { range: lines.range(span(base, src.len() as u32)), new_text: named.clone() };
+            out.push(quickfix(file, format!("Write the spreadsheet's references in names: {}", named.trim()), Vec::from([edit])));
+        }
+    }
+    out
+}
+
+/// Every formula of a file with where it starts and the row it is computed on: a column's
+/// on its first row (a spreadsheet's formula is typed on the first and filled down), a
+/// cell's on its own.
+fn formula_rows(file: &File) -> Vec<(&str, u32, usize)> {
+    let doc = &file.doc;
+    let mut out: Vec<(&str, u32, usize)> =
+        (0..doc.columns().len()).filter_map(|c| header_cell(file, c).formula.map(|(f, b)| (f, b, 0))).collect();
+    for (c, col) in doc.columns().iter().enumerate() {
+        for r in 0..col.origin.len() {
+            if col.origin(r) == Origin::Cell
+                && let Some((f, b)) = cell_formula(file, r, c)
+            {
+                out.push((f, b, r));
+            }
+        }
+    }
+    out
 }
 
 // ---- definition ----
@@ -736,7 +854,7 @@ mod tests {
     use super::*;
 
     const ACCOUNTS: &str = "account:text!,kind:assets|expenses\nbank,assets\nrent,expenses\npower,expenses\n";
-    const MONEY: &str = "---\nimport accounts from \"../accounts.cell\"\n---\nid:text!,amount:EUR,to:accounts.account,note:text?,double:EUR=amount * 2\na1,950.00,rent,,\na2,64.30,pwer,,\na3,8x,bank,`=accounts['rent'].kind`,\n";
+    const MONEY: &str = "---\nimport accounts from \"../accounts.cell\"\n---\nid:text!,amount:EUR,to:accounts.account,note:text?,double:EUR=amount * 2\na1,950.00,rent,,1900.00=\na2,64.30,pwer,,128.60=\na3,8x,bank,expenses=accounts['rent'].kind,=\n";
 
     /// A folder of two files, `books/accounts.cell` and `books/home/money.cell`.
     fn books(name: &str) -> (Folder, PathBuf, PathBuf) {
@@ -800,7 +918,13 @@ mod tests {
         assert_eq!(labels(complete(&folder, &file, at(MONEY, "pwer", 0) + 2)), ["bank", "rent", "power"]);
         let formula = labels(complete(&folder, &file, at(MONEY, "amount * 2", 0) + 2));
         assert!(formula.starts_with(&["id".into(), "amount".into(), "to".into()]) && formula.contains(&"accounts".into()), "{formula:?}");
-        assert!(formula.contains(&"sum".into()));
+        assert!(formula.contains(&"SUM".into()) && formula.contains(&"TABLE".into()) && formula.contains(&"CASE".into()), "{formula:?}");
+        // After a column's `[`: the rows by where they are.
+        let text = MONEY.replace("amount * 2", "amount[");
+        let folder2 = Folder { open: Arc::new(BTreeMap::from([(money.clone(), text.clone())])), ..folder.clone() };
+        let f2 = folder2.read(&money).unwrap();
+        let places = labels(complete(&folder2, &f2, at(&text, "amount[", 0) + "amount[".len()));
+        assert!(places.contains(&"-1".into()) && places.contains(&"FIRST:THIS".into()), "{places:?}");
         let after = at(MONEY, "['rent'].", 0) + "['rent'].".len();
         assert_eq!(labels(complete(&folder, &file, after)), ["account", "kind"]);
         let typed = complete(&folder, &file, at(MONEY, "accounts.account", 0) + 3);
@@ -827,7 +951,7 @@ mod tests {
     #[test]
     fn a_row_by_its_number_is_written_as_its_key() {
         let (folder, _, money) = books("numbered");
-        let text = MONEY.replace("amount * 2", "this[#2].amount + this[");
+        let text = MONEY.replace("amount * 2", "TABLE[#2].amount + TABLE[");
         let folder = Folder { open: Arc::new(BTreeMap::from([(money.clone(), text.clone())])), ..folder };
         let file = folder.read(&money).unwrap();
         // The file holds it, so the formula breaks, and the action writes the key.
@@ -842,10 +966,64 @@ mod tests {
         assert_eq!(a[0].title, "#2 is the row 'a2': write its key");
         let edit = &a[0].edit.as_ref().unwrap().changes.as_ref().unwrap()[&uri(&money)][0];
         assert_eq!((edit.range, edit.new_text.as_str()), (Lines::new(&text).range(span(at(&text, "#2", 0) as u32, 2)), "'a2'"));
-        // Inside `this[`: the rows, by key, found by number.
-        let rows = complete(&folder, &file, at(&text, "this[", 1) + "this[".len());
+        // Inside `TABLE[`: the rows, by key, found by number.
+        let rows = complete(&folder, &file, at(&text, "TABLE[", 1) + "TABLE[".len());
         let labels: Vec<(&str, Option<&str>)> = rows.iter().map(|i| (i.label.as_str(), i.filter_text.as_deref())).collect();
         assert_eq!(labels, [("'a1'", Some("#1 a1")), ("'a2'", Some("#2 a2")), ("'a3'", Some("#3 a3"))]);
+    }
+
+    /// The text `edit`, one edit over the whole file, leaves.
+    fn applied(edit: &TextEdit) -> &str {
+        edit.new_text.as_str()
+    }
+
+    #[test]
+    fn saving_stores_what_the_edits_reached() {
+        let (folder, _, money) = books("format");
+        let saved = folder.read(&money).unwrap();
+        // An amount changed in the editor: its double is reached, and stored on save.
+        let text = MONEY.replace("64.30,pwer,,128.60=", "70.00,pwer,,128.60=");
+        let folder = Folder { open: Arc::new(BTreeMap::from([(money.clone(), text.clone())])), ..folder };
+        let now = folder.read(&money).unwrap();
+        let edit = formatted(&now, Some(&saved)).expect("a value to store");
+        assert!(applied(&edit).contains("70.00,pwer,,140.00="), "{}", applied(&edit));
+        assert!(applied(&edit).contains("950.00,rent,,1900.00="), "the row not reached is as it was");
+        // A value typed over its `=` is left for a person: a stale cell, not overwritten.
+        let typed = MONEY.replace("1900.00=", "1999.00=");
+        let folder = Folder { open: Arc::new(BTreeMap::from([(money.clone(), typed.clone())])), ..folder };
+        let now = folder.read(&money).unwrap();
+        assert!(formatted(&now, Some(&saved)).is_none(), "nothing reached it");
+        // Its two fixes.
+        let lines = Lines::new(&typed);
+        let row = lines.position(at(&typed, "1999.00=", 0)).line;
+        let on = Range {
+            start: tower_lsp::lsp_types::Position { line: row, character: 0 },
+            end: tower_lsp::lsp_types::Position { line: row, character: 0 },
+        };
+        let a = actions(&folder, &now, on);
+        let titles: Vec<&str> = a.iter().map(|a| a.title.as_str()).collect();
+        assert!(titles.contains(&"Use the formula's value, 1900.00"), "{titles:?}");
+        assert!(titles.contains(&"Keep 1999.00 as this row's override"), "{titles:?}");
+        let keep = a.iter().find(|a| a.title.starts_with("Keep")).unwrap();
+        let edit = &keep.edit.as_ref().unwrap().changes.as_ref().unwrap()[&uri(&money)][0];
+        assert!(applied(edit).contains("950.00,rent,,1999.00\n"), "{}", applied(edit));
+    }
+
+    #[test]
+    fn a_formula_is_written_as_the_file_holds_it() {
+        let (folder, _, money) = books("sheet");
+        let text = MONEY.replace("amount * 2", "sum(amount) + B2");
+        let folder = Folder { open: Arc::new(BTreeMap::from([(money.clone(), text.clone())])), ..folder };
+        let file = folder.read(&money).unwrap();
+        let header = Lines::new(&text).position(at(&text, "sum(", 0)).line;
+        let on = Range {
+            start: tower_lsp::lsp_types::Position { line: header, character: 0 },
+            end: tower_lsp::lsp_types::Position { line: header, character: 0 },
+        };
+        let a = actions(&folder, &file, on);
+        let titles: Vec<&str> = a.iter().map(|a| a.title.as_str()).collect();
+        assert!(titles.contains(&"Write in capitals: SUM"), "{titles:?}");
+        assert!(titles.iter().any(|t| t.contains("in names: sum(amount) + amount")), "{titles:?}");
     }
 
     #[test]
