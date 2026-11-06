@@ -215,6 +215,9 @@ export interface CodeFrame {
   origin: number[]
   /** The caret, an offset into `text`. */
   caret: number
+  /** When (ms) a key last landed in the front file, a character typed or taken away
+   *  by then; -1 before any: how long the caret has been still. */
+  keyed: number
   /** A range selected, offsets into `text`. */
   selection: { from: number; to: number } | null
   /** The files changed since they were last saved. */
@@ -1050,6 +1053,11 @@ export function codeFrameAt(timeline: CodeTimeline, ms: number): CodeFrame {
           : (doc[0] ?? null),
       )
     : 0
+  let keyed = -1
+  for (const c of active ? (timeline.chars[active] as Char[]) : []) {
+    if (c.born <= ms && c.born > keyed) keyed = c.born
+    if (c.died <= ms && c.died > keyed) keyed = c.died
+  }
   const dirty = open.filter((p) =>
     (timeline.chars[p] as Char[]).some((c) => {
       const since = savedAt[p] ?? -1
@@ -1077,6 +1085,7 @@ export function codeFrameAt(timeline: CodeTimeline, ms: number): CodeFrame {
     state,
     origin,
     caret,
+    keyed,
     selection:
       selection && active
         ? { from: place(selection.first), to: place(selection.after) }

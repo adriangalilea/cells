@@ -67,6 +67,10 @@ export interface CodeLanguage {
   >
   /** `cell` for `cells`: what `money.cell` and a ```` ```cell ```` fence say. */
   aliases?: readonly string[]
+  /** What the language's own scopes wear in every theme, over its colours: a Cells
+   *  header's names bold. Each a TextMate scope selector, which a theme's rule for a
+   *  deeper scope still wins over. */
+  styles?: readonly { scope: string; bold?: boolean; italic?: boolean }[]
 }
 
 /** The languages code colours beyond Shiki's bundle, by id, and every alias to its
@@ -103,7 +107,25 @@ export function registerLanguage(id: string, language: CodeLanguage): void {
   for (const [alias, of] of ALIASES) if (of === id) ALIASES.delete(alias)
   LANGUAGES.set(id, language)
   for (const alias of language.aliases ?? []) ALIASES.set(alias, id)
+  if (language.styles?.length) styled++
 }
+
+/** Bumped whenever a language brings styles: a theme loaded before is loaded again,
+ *  wearing them. */
+let styled = 0
+
+/** Every registered language's styles, as a theme's rules. */
+const styleRules = () =>
+  [...LANGUAGES.values()].flatMap((l) =>
+    (l.styles ?? []).map((s) => ({
+      scope: s.scope,
+      settings: {
+        fontStyle: [s.bold && "bold", s.italic && "italic"]
+          .filter(Boolean)
+          .join(" "),
+      },
+    })),
+  )
 
 registerLanguage("cells", {
   grammar: () =>
@@ -111,6 +133,8 @@ registerLanguage("cells", {
       (m) => m.cellsGrammar,
     ),
   aliases: ["cell"],
+  // A header's names, each `meta.column.<n>` (its rainbow colour), bold.
+  styles: [{ scope: "meta.header.cells meta.column", bold: true }],
 })
 
 /** The id a language name stands for: a registered language's alias resolved
@@ -184,15 +208,34 @@ async function highlighter(lang: string, themes: CodeThemes): Promise<Core> {
     if (bundled) loading.push(h.loadLanguage(bundled))
     else if (own) loading.push(own.then((g) => h.loadLanguage(...g)))
   }
-  for (const name of [themes.light, themes.dark])
-    if (!h.getLoadedThemes().includes(name)) {
+  for (const name of [themes.light, themes.dark]) {
+    let worn = wearing.get(name)
+    if (worn?.styled !== styled) {
       const theme = bundledThemes[name as keyof typeof bundledThemes]
       if (!theme) throw new Error(`code-tokens: no Shiki theme ${name}`)
-      loading.push(h.loadTheme(theme))
+      worn = {
+        styled,
+        loaded: theme().then(({ default: t }) =>
+          h.loadTheme({
+            ...t,
+            tokenColors: [
+              ...(t.tokenColors ?? t.settings ?? []),
+              ...styleRules(),
+            ],
+          }),
+        ),
+      }
+      wearing.set(name, worn)
     }
+    // A call made while the theme loads waits for the same load.
+    loading.push(worn.loaded)
+  }
   await Promise.all(loading)
   return h
 }
+
+/** Each theme's load, and the languages' styles it wears (`styled` when it began). */
+const wearing = new Map<string, { styled: number; loaded: Promise<void> }>()
 
 /** Every character of `text` coloured by `lang`'s grammar in both `themes`. A
  *  language Shiki does not know is `text`: one ink, the theme's foreground. Runs

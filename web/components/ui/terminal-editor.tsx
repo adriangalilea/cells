@@ -100,6 +100,41 @@ const SEVERITY: Record<CodeSeverity, { ink: string; name: string }> = {
 const WORST: CodeSeverity[] = ["error", "warning", "info", "hint"]
 /** The rows helix's completion menu and picker show before they scroll. */
 const MENU_ROWS = 8
+/** How long the caret has been still, ms, before it blinks, and a blink's whole
+ *  period: a terminal's. */
+const STILL_MS = 500
+const BLINK_MS = 1060
+
+/** The caret: solid while keys land, blinking once it has been still (`still`), on the
+ *  page's clock, as a terminal's does; solid always under reduced motion. */
+function Caret({
+  still,
+  style,
+}: {
+  still: boolean
+  style: React.CSSProperties
+}) {
+  const ref = React.useRef<HTMLSpanElement>(null)
+  React.useEffect(() => {
+    const el = ref.current
+    if (!still || !el || matchMedia("(prefers-reduced-motion: reduce)").matches)
+      return
+    const blink = el.animate([{ opacity: 1 }, { opacity: 0 }], {
+      duration: BLINK_MS,
+      iterations: Number.POSITIVE_INFINITY,
+      easing: "steps(2, jump-none)",
+    })
+    return () => blink.cancel()
+  }, [still])
+  return (
+    <span
+      ref={ref}
+      data-slot="terminal-editor-caret"
+      className="absolute top-0 h-full"
+      style={style}
+    />
+  )
+}
 
 /** What lies over a piece of a line: a diagnostic's severity, or the selection. */
 type Mark = CodeSeverity | "selection"
@@ -435,9 +470,8 @@ export function TerminalEditor({
                   </span>
                 )}
                 {here && (
-                  <span
-                    data-slot="terminal-editor-caret"
-                    className="absolute top-0 h-full"
+                  <Caret
+                    still={f.keyed < 0 || ms - f.keyed >= STILL_MS}
                     style={{
                       left: `${(caret.first ? 0 : WRAP_INDICATOR.length) + column - caret.from}ch`,
                       width: insert ? "2px" : "1ch",

@@ -111,6 +111,19 @@ export function CellsTable({
 
 const r0Numeric = (rows: ViewCell[][], k: number) => rows.some((r) => r[k]?.numeric)
 
+/** A file's name, its extension lit (an extension alone, all of it): what tells a CSV
+ *  from a Cells file. */
+export function FileName({ name }: { name: string }) {
+  const dot = name.lastIndexOf(".")
+  if (dot < 0) return name
+  return (
+    <>
+      {name.slice(0, dot)}
+      <span className="text-edge">{name.slice(dot)}</span>
+    </>
+  )
+}
+
 /** The app's window: a title bar with the file's name, the table under it, and a strip of
  *  a fixed height at its foot with the file's problems (their count and the engine's own
  *  words), so a problem appearing or going never moves anything. */
@@ -135,7 +148,11 @@ export function CellsWindow({
   return (
     <AppWindow
       data-slot="cells-window"
-      title={`${name} · ${PRODUCT.name}`}
+      title={
+        <>
+          <FileName name={name} /> · {PRODUCT.name}
+        </>
+      }
       scheme="dark"
       className={cn("rounded-[10px] [--ag-table-ground:var(--ag-app-window-ground)]", className)}
     >

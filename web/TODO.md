@@ -3,8 +3,6 @@
 ## Next
 
 - **The window under the hero takes typing** as a text box does (click to place the caret, type, arrows, backspace, no modes), its colours and the engine's problems live; the Helix-faithful "your turn" below stays the bigger version.
-- **A blinking caret** in ui's terminal-editor while idle, solid while keys land.
-- **The extension lit** in a code frame's or a window's title (`groceries.cell`), and the header's names bold through `registerLanguage`'s styles (ui).
 
 ## The hero becomes usable (Adrian's idea, worth a great deal of effort)
 

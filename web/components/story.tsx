@@ -9,7 +9,7 @@
 // narrow window, reduced motion) the steps stand one under another, each at rest.
 
 import * as React from "react"
-import { CellsWindow } from "@/components/cells-window"
+import { CellsWindow, FileName } from "@/components/cells-window"
 import { ACCENT } from "@/components/hero"
 import { Playhead } from "@/components/ui/playback"
 import { Terminal } from "@/components/ui/terminal"
@@ -45,18 +45,9 @@ function ActView({ act, p, rows }: { act: StoryAct; p: number; rows: number }) {
 /** What a file holds, in told words: set as code; a file's name or an extension with the
  *  extension lit, what tells a CSV from a Cells file. */
 function Code({ text }: { text: string }) {
-  const dot = text.lastIndexOf(".")
-  const file = /^[\w-]*\.[a-z]+$/.test(text)
   return (
     <code className="font-mono text-[0.92em] text-foreground">
-      {file ? (
-        <>
-          {text.slice(0, dot)}
-          <span className="text-edge">{text.slice(dot)}</span>
-        </>
-      ) : (
-        text
-      )}
+      {/^[\w-]*\.[a-z]+$/.test(text) ? <FileName name={text} /> : text}
     </code>
   )
 }
