@@ -4,6 +4,10 @@
 //!                                     `path row N, column: why`, its imports followed, its
 //!                                     own tables checked too
 //!   cells fmt --check <file|folder>... every file written back is the same bytes
+//!   cells fix <file|folder>...         every stale computed cell given its formula's value,
+//!                                     every one not stored yet stored, each file written
+//!   cells merge <base> <ours> <theirs> git's merge driver: what was written merged, what is
+//!                                     computed computed again (SPEC.md, Merging)
 //!   cells pin <file>...                every import from a URL pinned by its hash now
 //!   cells run <file> [script]          its scripts run once, their rows written under them
 //!   cells show <file>                  its table as tab-separated text, computed cells
@@ -18,6 +22,7 @@
 mod disk;
 mod json;
 mod lsp;
+mod merge;
 mod pin;
 mod run;
 
@@ -28,7 +33,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 
 use disk::Disk;
 
-const USAGE: &str = "cells check <file|folder>...\ncells fmt --check <file|folder>...\ncells pin <file>...\ncells run <file> [script]\ncells show <file>\ncells lsp";
+const USAGE: &str = "cells check <file|folder>...\ncells fmt --check <file|folder>...\ncells fix <file|folder>...\ncells merge <base> <ours> <theirs>\ncells pin <file>...\ncells run <file> [script]\ncells show <file>\ncells lsp";
 
 /// Every `.cell` file a path names, sorted.
 fn files(path: &Path, out: &mut Vec<PathBuf>) -> Result<(), String> {
@@ -78,6 +83,23 @@ fn check(path: &Path, threads: usize) -> Result<Said, String> {
     }
     lines.extend(doc.problems().iter().map(|p| format!("{shown} {}", doc.describe(p))));
     if lines.is_empty() { Ok(Said::Clean) } else { Ok(Said::Found(lines)) }
+}
+
+/// The file written with every stale cell given its formula's value and every computed
+/// cell not stored yet stored: what it says is how many cells it stored.
+fn fix(path: &Path, threads: usize) -> Result<Said, String> {
+    let bytes = fs::read(path).map_err(|e| format!("{}: {e}", path.display()))?;
+    let shown = path.display();
+    let mut doc = cells::read_with(bytes.clone(), &mut Disk::new(path), threads).map_err(|e| format!("{shown} {e}"))?;
+    let stale = doc.problems().iter().filter(|p| p.kind() == cells::Kind::Stale).count();
+    doc.fix_stale();
+    doc.store_unstored();
+    let text = doc.write();
+    if text.as_bytes() == bytes {
+        return Ok(Said::Clean);
+    }
+    fs::write(path, text).map_err(|e| format!("{shown}: {e}"))?;
+    Ok(Said::Found(vec![format!("{shown}: {stale} stale cells given their formula's value, every computed value stored")]))
 }
 
 fn round_trip(path: &Path, threads: usize) -> Result<Said, String> {
@@ -160,6 +182,22 @@ fn main() -> ExitCode {
             eprintln!("cells: fmt only checks for now: cells fmt --check <file|folder>...");
             ExitCode::from(2)
         }
+        // A fix that wrote files exits 0: it did what it was asked.
+        Some("fix") if args.len() > 1 => match run(&args[1..], fix) {
+            code if code == ExitCode::from(2) => code,
+            _ => ExitCode::SUCCESS,
+        },
+        Some("merge") if args.len() == 4 => match merge::merge(Path::new(&args[1]), Path::new(&args[2]), Path::new(&args[3])) {
+            Ok(merge::Merged::Clean) => ExitCode::SUCCESS,
+            Ok(merge::Merged::Conflicts(n)) => {
+                eprintln!("cells merge: {n} conflicts left marked in {}", args[2]);
+                ExitCode::from(1)
+            }
+            Err(e) => {
+                eprintln!("cells: {e}");
+                ExitCode::from(2)
+            }
+        },
         Some("pin") if args.len() > 1 => {
             for p in &args[1..] {
                 match pin::pin(Path::new(p)) {
