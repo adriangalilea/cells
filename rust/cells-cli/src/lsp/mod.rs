@@ -4,6 +4,7 @@
 //! answers from the doc. Diagnostics follow every change, in every open file, since a
 //! change in one may break a reference in another.
 
+mod colour;
 mod features;
 mod folder;
 mod text;
@@ -91,6 +92,11 @@ impl LanguageServer for Backend {
                     prepare_provider: Some(true),
                     work_done_progress_options: Default::default(),
                 })),
+                semantic_tokens_provider: Some(SemanticTokensServerCapabilities::SemanticTokensOptions(SemanticTokensOptions {
+                    legend: colour::legend(),
+                    full: Some(SemanticTokensFullOptions::Bool(true)),
+                    ..SemanticTokensOptions::default()
+                })),
                 ..ServerCapabilities::default()
             },
             server_info: Some(ServerInfo { name: "cells".into(), version: Some(env!("CARGO_PKG_VERSION").into()) }),
@@ -161,6 +167,12 @@ impl LanguageServer for Backend {
         let Some(file) = path(&p.text_document.uri).and_then(|path| folder.read(&path)) else { return Ok(None) };
         let actions = features::actions(&folder, &file, p.range);
         Ok((!actions.is_empty()).then(|| actions.into_iter().map(CodeActionOrCommand::CodeAction).collect()))
+    }
+
+    async fn semantic_tokens_full(&self, p: SemanticTokensParams) -> Result<Option<SemanticTokensResult>> {
+        let folder = self.folder();
+        let Some(file) = path(&p.text_document.uri).and_then(|path| folder.read(&path)) else { return Ok(None) };
+        Ok(Some(SemanticTokensResult::Tokens(SemanticTokens { result_id: None, data: colour::semantic_tokens(&file.text) })))
     }
 
     async fn prepare_rename(&self, p: TextDocumentPositionParams) -> Result<Option<PrepareRenameResponse>> {

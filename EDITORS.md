@@ -24,10 +24,11 @@ What each part of a file is comes from one place, the engine's reading of it (`c
 
 | Surface | Reads | State |
 |---|---|---|
-| the engine's `tokens` | the text alone, never refused: a broken file still has its spans | built; `reads`, the column a formula's name reads, owed |
-| `cells lsp` | semantic tokens: the kind, and the column as a modifier (`column1` to `column6`) | owed |
-| wasm, ui's `code` | the same tokens, drawn in a palette of ui's code themes, in code blocks, the editor views and inline code (a fragment read by its shape) | owed |
-| the C ABI, Swift | `cells_tokens`, as `Tokens.swift` draws them | built, without `reads` |
+| the engine's `tokens` | the text alone, never refused: a broken file still has its spans | built |
+| `cells lsp` | semantic tokens: a part with a standard type served as it (keyword, type, number, operator), so any theme colours it; a header's name, a cell and a formula's name that reads a column as `column` or `cell`, types no theme colours, so the grammar's colour stays, with the column as a modifier (`column1` to `column6`) | built |
+| wasm | `cells_tokens` and `cells_token_kinds` | built |
+| ui's `code` | the wasm's tokens, drawn in a palette of ui's code themes, in code blocks, the editor views and inline code (a fragment read by its shape) | owed |
+| the C ABI, Swift | `cells_tokens`, as `Tokens.swift` draws them | built; Swift reads `reads` from the next Apple release |
 | the TextMate and tree-sitter grammars | the text by pattern, where no engine runs (GitHub, an editor without the server): each column a scope its theme already colours, a name in a formula without its column | TextMate built; tree-sitter's rows still by kind |
 
 A grammar is the reading without the engine, so it is held to the engine's: each grammar's scopes over the examples agree with the engine's kinds (owed).
