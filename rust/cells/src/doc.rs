@@ -2345,8 +2345,9 @@ impl Doc {
 
     /// This file as a write after `before` leaves it: every computed cell the edits since
     /// reached stored, each row of now found in `before` by its written cells, so a row
-    /// moved, added or taken out is followed. What a client storing on save writes
-    /// (`cells lsp`'s formatting).
+    /// moved, added or taken out is followed, and every one stored nowhere yet stored
+    /// (`store_unstored`). What a client storing on save writes (`cells lsp`'s
+    /// formatting).
     pub fn stored_since(&mut self, before: &Doc) {
         let key = |d: &Doc, r: usize| -> String {
             (0..d.columns.len())
@@ -2362,6 +2363,7 @@ impl Doc {
         let moved: Vec<Option<u32>> = (0..self.rows()).map(|r| then.get(&key(self, r)).copied()).collect();
         let before_rendered = before.rendered.clone();
         self.store_reached(&before_rendered, |r| moved[r as usize]);
+        self.store_unstored();
     }
 
     /// Every computed cell stored nowhere yet (a blank field of a computed column, a lone

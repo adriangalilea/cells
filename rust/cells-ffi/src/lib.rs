@@ -717,7 +717,8 @@ pub unsafe extern "C" fn cells_keep_stale(d: *mut CellsDoc, row: usize, column: 
 
 /// `d` (the text a client holds now) as a write after `before` (the text as last written)
 /// leaves it: every computed cell the edits since reached stored, each row found in
-/// `before` by its written cells; a stale cell they did not reach left as read. What a
+/// `before` by its written cells, and every one stored nowhere yet (a lone `=`, a blank
+/// field of a computed column); a stale cell they did not reach left as read. What a
 /// client storing on save writes.
 ///
 /// # Safety

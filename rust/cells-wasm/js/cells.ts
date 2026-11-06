@@ -685,7 +685,8 @@ export function keepStale(doc: Doc, row: number, column: string | number): Doc {
 
 /** `doc` (the text a client holds now, read) as a write after `before` (the text as last
  *  written) leaves it: every computed cell the edits since reached stored, each row found
- *  in `before` by its written cells; a stale cell they did not reach is left as read. What
+ *  in `before` by its written cells, and every one stored nowhere yet (a lone `=`, a blank
+ *  field of a computed column); a stale cell they did not reach is left as read. What
  *  a client storing on save writes. Returns `doc`, changed. */
 export function storedSince(doc: Doc, before: Doc): Doc {
   x.cells_stored_since(doc.handle, before.handle)

@@ -522,10 +522,10 @@ pub fn numbered(folder: &Folder, file: &File) -> Vec<Numbered> {
 /// left as it is. Nothing when it is already so.
 pub fn formatted(file: &File, saved: Option<&File>) -> Option<TextEdit> {
     let mut doc = file.doc.clone();
-    if let Some(saved) = saved {
-        doc.stored_since(&saved.doc);
+    match saved {
+        Some(saved) => doc.stored_since(&saved.doc),
+        None => doc.store_unstored(),
     }
-    doc.store_unstored();
     let text = doc.write();
     (text != file.text).then(|| whole(file, &Lines::new(&file.text), text))
 }

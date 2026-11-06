@@ -662,7 +662,7 @@ pub unsafe extern "C" fn cells_keep_stale(h: *mut Handle, row: usize, column: us
 }
 
 /// `h`'s file as a write after `before`'s leaves it (`Doc::stored_since`): every computed
-/// cell the edits since reached stored.
+/// cell the edits since reached stored, and every one stored nowhere yet.
 ///
 /// # Safety
 /// `h` and `before` are live handles, never the same one.
