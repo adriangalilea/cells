@@ -34,7 +34,7 @@ function ActView({ act, p, rows }: { act: StoryAct; p: number; rows: number }) {
     <div className="grid gap-4">
       <Playhead progress={p}>
         <Terminal alt="" accent={ACCENT} size="clamp(11px,0.95vw,13.5px)">
-          <TerminalEditor files={edit.files} steps={edit.steps} rows={rows} bufferline="multiple" diagnose={diagnose} />
+          <TerminalEditor files={edit.files} steps={edit.steps} rows={rows} softWrap bufferline="multiple" diagnose={diagnose} />
         </Terminal>
       </Playhead>
       <CellsWindow name={edit.path} text={text} others={act.others} light={p >= 1 ? act.light : undefined} className="h-[13rem]" />
@@ -60,8 +60,8 @@ function Told({ text }: { text: string }) {
 /** A step per act. */
 function stepsOf(acts: StoryAct[]): WalkthroughSteps {
   // The editor's rows: the longest file the story writes, its imports' bufferline, and
-  // room under the last line.
-  const rows = Math.max(...acts.map((a) => a.end.text.split("\n").length)) + 2
+  // room under the last line for the header soft-wrapped onto a second and a third row.
+  const rows = Math.max(...acts.map((a) => a.end.text.split("\n").length)) + 4
   return acts.map((act) => {
     const edit = editOf(act)
     return {
