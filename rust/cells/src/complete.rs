@@ -540,6 +540,34 @@ mod tests {
         complete(&doc, text, at, |_: &[&str]| None::<Arc<Doc>>).into_iter().map(|c| c.label).collect()
     }
 
+    /// A reference followed through an imported file into the file it imports: the
+    /// tables a read holds are read with their own imports.
+    #[cfg(feature = "std")]
+    #[test]
+    fn imports_of_imports() {
+        use alloc::collections::BTreeMap;
+        let mut files = BTreeMap::new();
+        files.insert("kinds.cells".to_owned(), "kind:text!,side:text\nassets,debit\n".to_owned());
+        files.insert(
+            "accounts.cells".to_owned(),
+            "---\nimport kinds from \"./kinds.cells\"\n---\naccount:text!,kind:kinds.kind\nbank,assets\n".to_owned(),
+        );
+        let text = "---\nimport accounts from \"./accounts.cells\"\n---\nto:accounts.account,s:text=to.kind.\nbank,x=\n";
+        let doc = crate::read_with(text, &mut crate::files::Files::new(&files, "money.cells"), 1).unwrap();
+        let held = |path: &[&str]| {
+            let (first, rest) = path.split_first()?;
+            let mut t = doc.tables().iter().find(|t| t.name == *first)?.doc.clone()?;
+            for name in rest {
+                let next = t.tables().iter().find(|x| x.name == *name)?.doc.clone()?;
+                t = next;
+            }
+            Some(t)
+        };
+        let at = text.find("to.kind.").unwrap() + "to.kind.".len();
+        let found: Vec<String> = complete(&doc, text, at, held).into_iter().map(|c| c.label).collect();
+        assert_eq!(found, ["kind", "side"], "the columns of the table two imports away");
+    }
+
     #[test]
     fn statements() {
         let text = "---\nty\n---\nitem:text!,cost:EUR\nfuel,1.00\n";
