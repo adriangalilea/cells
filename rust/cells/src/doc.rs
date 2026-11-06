@@ -1292,6 +1292,59 @@ impl Doc {
         spans.iter().map(|&(s, e)| &line[s as usize..e as usize]).collect()
     }
 
+    /// `line` with its field `column` written as `field` (quoted as it must be already),
+    /// every other byte as it was: in a Cells file the padding a line has keeps it aligned
+    /// (SPEC.md, Writing), the spaces after the field's comma taking up the difference
+    /// when its width changes, one at the least; a field past the line's end is written
+    /// after blank ones. A plain file has no padding: its fields joined by its separator.
+    fn with_field(&self, line: &str, column: usize, field: &str) -> String {
+        let sep = self.sep();
+        if self.dialect != Dialect::Cells {
+            let blank = self.quote("");
+            let mut fields: Vec<Cow<'_, str>> = self.raw_fields(line).into_iter().map(|f| self.sound(f)).collect();
+            while fields.len() <= column {
+                fields.push(blank.clone());
+            }
+            fields[column] = Cow::Borrowed(field);
+            return fields.join(sep);
+        }
+        let (spans, _) = scan::record(line.as_bytes(), 0, self.dialect.records()).unwrap();
+        let spans: Vec<(usize, usize)> = spans.iter().map(|&(s, e)| (s as usize, e as usize)).collect();
+        if column >= spans.len() {
+            let mut out = String::from(line);
+            for _ in spans.len()..column {
+                out.push_str(sep);
+            }
+            out.push_str(sep);
+            out.push_str(field);
+            return out;
+        }
+        let (s, e) = spans[column];
+        let mut out = String::with_capacity(line.len() + field.len());
+        out.push_str(&line[..s]);
+        out.push_str(field);
+        match spans.get(column + 1) {
+            Some(&(next, _)) => {
+                let gap = &line[e..next];
+                let comma = gap.find(sep).expect("a separator between two fields");
+                let after = &gap[comma + sep.len()..];
+                // Plain spaces after the comma are the line's alignment: they give or take
+                // what the field's width changed by.
+                let spaces = after.len();
+                if comma == 0 && spaces > 0 && after.bytes().all(|b| b == b' ') {
+                    let delta = field.chars().count() as isize - line[s..e].chars().count() as isize;
+                    out.push_str(sep);
+                    out.extend(core::iter::repeat_n(' ', (spaces as isize - delta).max(1) as usize));
+                } else {
+                    out.push_str(gap);
+                }
+                out.push_str(&line[next..]);
+            }
+            None => out.push_str(&line[e..]),
+        }
+        out
+    }
+
     /// A stored cell's text as written, unquoted; blank for a field the row leaves out.
     pub fn text(&self, row: usize, column: usize) -> Cow<'_, str> {
         assert!(column < self.columns.len(), "column {column} is not stored");
@@ -1763,14 +1816,8 @@ impl Doc {
         assert!(row < self.rows(), "row {row} does not exist");
         writable(text, At::Row(row as u32))?;
         let was = self.text(row, column).into_owned();
-        let blank = self.quote("");
-        let mut fields: Vec<Cow<'_, str>> = self.raw_fields(self.line(row)).into_iter().map(|f| self.sound(f)).collect();
-        while fields.len() <= column {
-            fields.push(blank.clone());
-        }
-        fields[column] = self.quote(text);
-        let width = fields.len();
-        let mut joined = fields.join(self.sep());
+        let width = self.width(row).max(column + 1);
+        let mut joined = self.with_field(self.line(row), column, &self.quote(text));
         if joined.is_empty() && self.terminator(row).is_empty() {
             // An empty last line with no break after it is no record: the blank is quoted.
             joined.push_str("\"\"");
@@ -2037,9 +2084,7 @@ impl Doc {
             }
         };
         let line = self.header_line().to_owned();
-        let mut fields: Vec<Cow<'_, str>> = self.raw_fields(&line).into_iter().map(Cow::Borrowed).collect();
-        fields[column] = scan::quote(&cell);
-        let header = fields.join(",");
+        let header = self.with_field(&line, column, &scan::quote(&cell));
         let mut text = String::with_capacity(self.source.len() + 32);
         text.push_str(self.prelude_text());
         text.push_str(&header);
@@ -2291,13 +2336,7 @@ impl Doc {
         if cell == raw {
             return;
         }
-        let blank = self.quote("");
-        let mut fields: Vec<Cow<'_, str>> = self.raw_fields(self.line(row)).into_iter().map(|f| self.sound(f)).collect();
-        while fields.len() <= column {
-            fields.push(blank.clone());
-        }
-        fields[column] = self.quote(&cell);
-        let joined = fields.join(self.sep());
+        let joined = self.with_field(self.line(row), column, &self.quote(&cell));
         self.edits.insert(row as u32, joined);
         self.problems.retain(|p| !(p.order() == (row as u32, column as u32) && p.why == Why::Stale));
     }
