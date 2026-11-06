@@ -34,9 +34,9 @@
 
 /* How strongly the rim reads against what it stands on, a multiple of its light
    (`--glass-rim`, the glass's own state, is the other). Worked out on each element
-   that wears the light (`glassLight`): the ground's (`--glass-ground-sheen`, a
-   picture's, from ui/ground) when there is one, else the face's own. Registered
-   so it eases with the glass when the ground or the face changes; not inherited,
+   that wears the light (`glassLight`): the background's (`--glass-background-sheen`, a
+   picture's, from ui/background) when there is one, else the face's own. Registered
+   so it eases with the glass when the background or the face changes; not inherited,
    since every element that reads it declares it, so its easing restyles only the
    elements that draw with it. */
 @property --glass-sheen {
@@ -48,9 +48,9 @@
 /* The light around a glass, the colour its rim catches (`glassLight`): white
    leaning toward the picture under it. Registered for two reasons: so it eases
    when what is under the glass changes colour, and so a glass over no picture
-   (its formula invalid without `--glass-ground`) falls back to white, this
+   (its formula invalid without `--glass-background`) falls back to white, this
    property's own value. Not inherited, for the same reason as the sheen. */
-@property --glass-ground-light {
+@property --glass-background-light {
   syntax: "<color>";
   inherits: false;
   initial-value: white;

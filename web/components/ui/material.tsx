@@ -21,18 +21,18 @@ import type { WornScheme } from "@/components/ui/material-glass"
 //
 //   auto          the page (its theme, the system's or a toggle's)
 //   light, dark   the author, whatever the page is
-//   ground        the pixels behind it: a picture under the surface, measured live
+//   background    the pixels behind it: a picture under the surface, measured live
 //
 // Whoever decides, a surface has its two faces and wears one (`WornScheme`, through
-// `schemeOf`). `ground` is answered by the nearest `Ground` source above it (a
-// VideoPicture, a <Ground> picture: only what holds pixels can answer), per
+// `schemeOf`). `background` is answered by the nearest `Background` source above it (a
+// VideoPicture, a <Background> picture: only what holds pixels can answer), per
 // surface: a control that passes its element to `useScheme` is read by the part of
 // the picture under IT, one that does not by the whole picture. The source also sets
 // how thick its glass is (as thick as its words need over that picture, no thicker)
 // and how strongly its rim reads.
 
 export type Material = "plain" | "glass"
-export type Scheme = WornScheme | "ground"
+export type Scheme = WornScheme | "background"
 export type { WornScheme }
 
 /** The tokens' tones, for what says how a thing stands. */
@@ -54,26 +54,28 @@ const MaterialContext = React.createContext<{
 
 /** What a picture under the surfaces answers: the scheme the pixels under an element
  *  ask for (`null`: the whole picture), now and on every change. Made by whatever
- *  holds the pixels (ui/ground); `watch` returns the stop. */
-export interface GroundSource {
+ *  holds the pixels (ui/background); `watch` returns the stop. */
+export interface BackgroundSource {
   watch(
     element: HTMLElement | null,
     onChange: (scheme: "light" | "dark") => void,
   ): () => void
 }
 
-const GroundContext = React.createContext<GroundSource | null>(null)
+const BackgroundContext = React.createContext<BackgroundSource | null>(null)
 
-/** Makes `source` the answer to `scheme="ground"` for everything inside. */
-export function GroundScope({
+/** Makes `source` the answer to `scheme="background"` for everything inside. */
+export function BackgroundScope({
   source,
   children,
 }: {
-  source: GroundSource
+  source: BackgroundSource
   children: React.ReactNode
 }) {
   return (
-    <GroundContext.Provider value={source}>{children}</GroundContext.Provider>
+    <BackgroundContext.Provider value={source}>
+      {children}
+    </BackgroundContext.Provider>
   )
 }
 
@@ -111,7 +113,7 @@ export function useMaterial(own?: Material): Material {
 }
 
 /** The scheme a control wears: its own `scheme` prop when given, else the nearest
- *  provider's, else the page's; `ground` answered by the picture under `element`
+ *  provider's, else the page's; `background` answered by the picture under `element`
  *  (the control's root; unset, the whole picture). Dark until the picture has been
  *  read, the scheme of a picture still loading. */
 export function useScheme(
@@ -119,18 +121,18 @@ export function useScheme(
   element?: HTMLElement | null,
 ): WornScheme {
   const around = React.useContext(MaterialContext)
-  const source = React.useContext(GroundContext)
+  const source = React.useContext(BackgroundContext)
   const asked = own ?? around.scheme
-  if (asked === "ground" && !source)
+  if (asked === "background" && !source)
     throw new Error(
-      'scheme="ground" with no picture above to read: place it inside a VideoPicture or a <Ground>, or name a scheme',
+      'scheme="background" with no picture above to read: place it inside a VideoPicture or a <Background>, or name a scheme',
     )
   const [seen, setSeen] = React.useState<"light" | "dark">("dark")
   React.useEffect(() => {
-    if (asked !== "ground" || !source) return
+    if (asked !== "background" || !source) return
     return source.watch(element ?? null, setSeen)
   }, [asked, source, element])
-  return asked === "ground" ? seen : asked
+  return asked === "background" ? seen : asked
 }
 
 /** A SURFACE's scheme: `useScheme` read by the surface's own element, and the ref

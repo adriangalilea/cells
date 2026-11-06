@@ -1,5 +1,5 @@
 // WHAT THE PIXELS BEHIND A SURFACE ASK FOR: light ink or dark, read off the picture it
-// stands over. Framework-free arithmetic; the side holding the pixels (ui/ground:
+// stands over. Framework-free arithmetic; the side holding the pixels (ui/background:
 // a video, a picture) samples a frame into a small grid and asks here, per surface.
 //
 // The unit is the one contrast is felt in: CIE lightness L* (0 black, 100 white,
@@ -32,7 +32,7 @@ export interface Grid {
    *  light, as the eye mixes them, never in sRGB's encoded numbers (which darken a
    *  mix). */
   rgb: Float32Array
-  /** The darkest and the brightest of each cell's `GROUND.fine` × `fine` samples,
+  /** The darkest and the brightest of each cell's `BACKGROUND.fine` × `fine` samples,
    *  L*: what a glass's words can stand over inside the cell, which its mean hides. */
   lo: Float32Array
   hi: Float32Array
@@ -58,7 +58,7 @@ export interface Reading {
   color: Rgb
 }
 
-export const GROUND = {
+export const BACKGROUND = {
   /** The grid a frame is sampled into: enough for a control's area to span cells,
    *  little enough to read every frame. */
   cols: 32,
@@ -145,7 +145,7 @@ export function gridOf(
   const width = cols * fine
   if (rgba.length !== width * rows * fine * 4)
     throw new Error(
-      `ground: ${rgba.length} values for a ${width}×${rows * fine} frame, expected ${width * rows * fine * 4}`,
+      `background: ${rgba.length} values for a ${width}×${rows * fine} frame, expected ${width * rows * fine * 4}`,
     )
   const l = new Float32Array(cols * rows)
   const rgb = new Float32Array(cols * rows * 3)
@@ -236,11 +236,12 @@ export function reading(
   total: number,
   outside: number,
 ): Reading {
-  if (!(total > 0)) throw new Error(`ground: an area with no size (${total})`)
+  if (!(total > 0))
+    throw new Error(`background: an area with no size (${total})`)
   const covered = cells.reduce((s, c) => s + c.weight, 0)
   if (covered > total * (1 + 1e-6))
     throw new Error(
-      `ground: cells cover ${covered} of an area of ${total}: two pictures of one source overlap, and only one of them shows`,
+      `background: cells cover ${covered} of an area of ${total}: two pictures of one source overlap, and only one of them shows`,
     )
   const grey = yOf(outside)
   const all =
@@ -271,7 +272,7 @@ export function reading(
 /** One frame's area read, off-frame as `outside`. */
 export function readArea(grid: Grid, area: Area, outside: number): Reading {
   if (!(area.w > 0 && area.h > 0))
-    throw new Error(`ground: an area with no size (${area.w}×${area.h})`)
+    throw new Error(`background: an area with no size (${area.w}×${area.h})`)
   return reading(cellsUnder(grid, area), area.w * area.h, outside)
 }
 
@@ -292,15 +293,15 @@ export function judge(
   visible: boolean,
 ): Verdict {
   const want: Worn =
-    read.mean > GROUND.lightAbove
+    read.mean > BACKGROUND.lightAbove
       ? "light"
-      : read.mean < GROUND.darkBelow
+      : read.mean < BACKGROUND.darkBelow
         ? "dark"
         : (prev?.worn ?? (read.mean >= 55 ? "light" : "dark"))
   if (!prev || !visible || want === prev.worn)
     return { worn: want, pending: null, since: now }
   if (prev.pending !== want) return { ...prev, pending: want, since: now }
-  if (now - prev.since >= GROUND.holdMs)
+  if (now - prev.since >= BACKGROUND.holdMs)
     return { worn: want, pending: null, since: now }
   return prev
 }
@@ -394,7 +395,7 @@ export function underRim(worn: Worn, read: Reading, thickness: number): number {
 }
 
 /** How strongly a glass's rim should read over a ground of lightness `l` (L*; the
- *  ground right under the rim, `underRim`): its `--glass-ground-sheen`. A white
+ *  ground right under the rim, `underRim`): its `--glass-background-sheen`. A white
  *  edge's contrast grows as its ground darkens, so over a dark ground the rim
  *  carries less light and over a light one more, the edge reading about the same on
  *  both. Between `SHEEN.dark` (black) and `SHEEN.light` (white), along the

@@ -1,15 +1,15 @@
 "use client"
 
-// THE GROUND, READ: the picture behind the surfaces (a page's, a section's, a player's
+// THE BACKGROUND, READ: the picture behind the surfaces (a page's, a section's, a player's
 // frame), the thing glass stands on. What holds pixels (a video, a picture) answers
-// `scheme="ground"` for every surface over it, each by the part of the picture under
-// it (lib/ground-core: a frame sampled into a small grid of lightness, a verdict per
+// `scheme="background"` for every surface over it, each by the part of the picture under
+// it (lib/background-core: a frame sampled into a small grid of lightness, a verdict per
 // surface with memory, so a cut is held before a visible surface flips and a strobe
 // flips nothing).
 //
-//   <Ground src="/peaks.jpg">            a picture behind a section
+//   <Background src="/peaks.jpg">            a picture behind a section
 //     <Button material="glass">go</Button>   light glass over the sky, dark over rock
-//   </Ground>
+//   </Background>
 //
 // VideoPicture makes its own (a player's chrome adapts with nothing said). A source
 // samples only while it is on screen and its document visible: a playing video on its
@@ -24,10 +24,10 @@
 import * as React from "react"
 import { cn } from "@/lib/utils"
 import {
+  BACKGROUND,
   type Cell,
   cellsUnder,
   contentBox,
-  GROUND,
   type Grid,
   gridOf,
   judge,
@@ -37,10 +37,10 @@ import {
   tintFor,
   underRim,
   type Verdict,
-} from "@/lib/ground-core"
+} from "@/lib/background-core"
 import {
-  GroundScope,
-  type GroundSource,
+  BackgroundScope,
+  type BackgroundSource,
   MaterialProvider,
   type Scheme,
   useSurfaceScheme,
@@ -58,15 +58,15 @@ import {
  *  comparison stage, a chart). A canvas says nothing when it redraws, so its owner
  *  calls the source's `refresh` after drawing. */
 type Media = HTMLVideoElement | HTMLImageElement | HTMLCanvasElement
-export type GroundFit = "contain" | "cover" | "fill"
+export type BackgroundFit = "contain" | "cover" | "fill"
 
 /** A playing video's frames, read at most this often (ms): about every frame of a
  *  film, so the glass answers a cut while it is the cut. */
 const SAMPLE_MS = 33
 
-/** The sampling canvas: each cell of the grid `GROUND.fine` samples a side. */
-const W = GROUND.cols * GROUND.fine
-const H = GROUND.rows * GROUND.fine
+/** The sampling canvas: each cell of the grid `BACKGROUND.fine` samples a side. */
+const W = BACKGROUND.cols * BACKGROUND.fine
+const H = BACKGROUND.rows * BACKGROUND.fine
 
 interface Watcher {
   element: HTMLElement | null
@@ -98,7 +98,7 @@ interface Box {
 
 /** Where a medium's picture stands on the screen: its element's box, cut to its
  *  content as `object-fit` places it. */
-const pictureBox = (m: Media, fit: GroundFit): Box => {
+const pictureBox = (m: Media, fit: BackgroundFit): Box => {
   const box = m.getBoundingClientRect()
   const c = contentBox(box, naturalOf(m), fit)
   return {
@@ -141,17 +141,17 @@ const sameMedia = (a: readonly Media[], b: readonly Media[]) =>
   a.length === b.length && a.every((m, i) => m === b[i])
 
 /** The source over `media` (one picture or video, or several: photographs gliding
- *  under the same controls): hand it to <GroundScope>. `fit` is how each fills its
+ *  under the same controls): hand it to <BackgroundScope>. `fit` is how each fills its
  *  element (`object-fit`); `outside` the lightness of what shows where none does
  *  (L*, 0: a black stage). A surface over two of them is read across both.
  *  `read` is whether the pictures have been read yet: until then the glass over
  *  them wears its unread scheme, so a picture its owner draws should show only from
- *  then, fading in while the glass eases to it (<Ground> does), never be seen
+ *  then, fading in while the glass eases to it (<Background> does), never be seen
  *  first with the glass catching up a beat later. */
-export function useGroundSource(
+export function useBackgroundSource(
   media: Media | readonly Media[] | null,
-  { fit, outside = 0 }: { fit: GroundFit; outside?: number },
-): GroundSource & { refresh(): void; read: boolean } {
+  { fit, outside = 0 }: { fit: BackgroundFit; outside?: number },
+): BackgroundSource & { refresh(): void; read: boolean } {
   const [read, setRead] = React.useState(false)
   const [state] = React.useState(() => ({
     fit,
@@ -215,18 +215,19 @@ export function useGroundSource(
       // inside a group). Continuous; it eases.
       write(
         w.element,
-        "--glass-ground-sheen",
+        "--glass-background-sheen",
         grain.multiple(sheenOf(underRim(next.worn, read, thickness))),
       )
       // And picks up the picture's colour under it (`glassLight` leans the rim's
       // light toward it).
-      write(w.element, "--glass-ground", grain.color(read.color))
+      write(w.element, "--glass-background", grain.color(read.color))
       // As thick as its words need over what is under it, no thicker (eased by the
       // glass's own transition): the face's tint at this opacity.
       write(w.element, "--glass-thickness", grain.multiple(thickness))
       if (!w.verdict || next.worn !== w.verdict.worn) w.onChange(next.worn)
       w.verdict = next
-      if (next.pending) wake = Math.min(wake, next.since + GROUND.holdMs - now)
+      if (next.pending)
+        wake = Math.min(wake, next.since + BACKGROUND.holdMs - now)
     }
     // A change waiting out its hold is looked at again the moment the hold ends, a
     // still picture sending nothing else.
@@ -254,7 +255,7 @@ export function useGroundSource(
         // thousand samples come back: read every frame, it costs a fraction of a ms.
         state.canvas = canvas.getContext("2d")
         if (!state.canvas)
-          throw new Error("ground: no 2d canvas to sample into")
+          throw new Error("background: no 2d canvas to sample into")
       }
       const ctx = state.canvas
       ctx.drawImage(m, 0, 0, W, H)
@@ -263,13 +264,13 @@ export function useGroundSource(
         pixels = ctx.getImageData(0, 0, W, H)
       } catch (e) {
         throw new Error(
-          `ground: the pixels of ${m instanceof HTMLCanvasElement ? "a canvas holding another origin's picture" : m.currentSrc || "the picture"} cannot be read (another origin without CORS: serve it with Access-Control-Allow-Origin and set crossOrigin, or name a scheme)`,
+          `background: the pixels of ${m instanceof HTMLCanvasElement ? "a canvas holding another origin's picture" : m.currentSrc || "the picture"} cannot be read (another origin without CORS: serve it with Access-Control-Allow-Origin and set crossOrigin, or name a scheme)`,
           { cause: e },
         )
       }
       state.grids.set(
         m,
-        gridOf(pixels.data, GROUND.cols, GROUND.rows, GROUND.fine),
+        gridOf(pixels.data, BACKGROUND.cols, BACKGROUND.rows, BACKGROUND.fine),
       )
       // Read now: told in the same pass as the surfaces' first verdicts (looked at
       // right here, not a frame later), so a picture shown from `read` and the
@@ -373,8 +374,8 @@ export function useGroundSource(
         return () => {
           state.watchers.delete(w)
           element?.style.removeProperty("--glass-thickness")
-          element?.style.removeProperty("--glass-ground-sheen")
-          element?.style.removeProperty("--glass-ground")
+          element?.style.removeProperty("--glass-background-sheen")
+          element?.style.removeProperty("--glass-background")
         }
       },
       // A canvas's owner says it redrew: it is read again, and its surfaces looked at.
@@ -434,7 +435,7 @@ const FLUID_FILTER = "blur(16px) grayscale(1) contrast(3.4)"
 const FROST_STYLE: GlassStyle = { "--glass-backdrop": FLUID_FILTER }
 
 /** `Glass` (server-safe, told its scheme) as a surface that reads its own: the
- *  scheme it is given or its provider's, `ground` answered by the picture under
+ *  scheme it is given or its provider's, `background` answered by the picture under
  *  this element. For a piece of glass of your own over a picture (a header pill, an
  *  avatar's ring); every base control already does this itself.
  *
@@ -505,7 +506,7 @@ export function AdaptiveGlass<T extends React.ElementType = "div">({
  *  piece in it. Read one by one, a pill over the sky turned light beside circles over
  *  rock that stayed dark, and the row looked broken. Its glass's thickness and rim
  *  are the band's too (set on the group, inherited by every glass in it). */
-export function GroundGroup({
+export function BackgroundGroup({
   scheme,
   ref,
   children,
@@ -513,21 +514,21 @@ export function GroundGroup({
 }: React.ComponentProps<"div"> & { scheme?: Scheme }) {
   const [s, here] = useSurfaceScheme<HTMLDivElement>(scheme, ref)
   return (
-    <div ref={here} data-slot="ground-group" {...props}>
+    <div ref={here} data-slot="background-group" {...props}>
       <MaterialProvider scheme={s}>{children}</MaterialProvider>
     </div>
   )
 }
 
 /** A picture behind a section, read: every control inside wears the scheme the
- *  picture under it asks for (`scheme="ground"`), glass over the sky light, over
+ *  picture under it asks for (`scheme="background"`), glass over the sky light, over
  *  the rock dark. The picture fills the box (`fit`, `cover` by default); it is
  *  decoration, hidden from assistive technology. It shows once it has been read,
  *  fading in over the glass's own 300 ms while the glass eases to its reading, one
  *  movement: shown on load, it stood a beat under glass still wearing the scheme of
  *  the empty page, which then snapped ("abrupt and too lagged", Adrian,
  *  2026-10-11). */
-export function Ground({
+export function Background({
   src,
   fit = "cover",
   crossOrigin,
@@ -535,17 +536,17 @@ export function Ground({
   children,
 }: {
   src: string
-  fit?: GroundFit
+  fit?: BackgroundFit
   /** For a picture on another origin, served with CORS. */
   crossOrigin?: "anonymous" | "use-credentials"
   className?: string
   children?: React.ReactNode
 }) {
   const [picture, setPicture] = React.useState<HTMLImageElement | null>(null)
-  const source = useGroundSource(picture, { fit })
+  const source = useBackgroundSource(picture, { fit })
   return (
     <div
-      data-slot="ground"
+      data-slot="background"
       className={cn("relative isolate overflow-hidden", className)}
     >
       {/* biome-ignore lint/performance/noImgElement: the picture is read pixel by pixel, a plain element any React app has */}
@@ -566,9 +567,9 @@ export function Ground({
               : "object-fill",
         )}
       />
-      <GroundScope source={source}>
-        <MaterialProvider scheme="ground">{children}</MaterialProvider>
-      </GroundScope>
+      <BackgroundScope source={source}>
+        <MaterialProvider scheme="background">{children}</MaterialProvider>
+      </BackgroundScope>
     </div>
   )
 }

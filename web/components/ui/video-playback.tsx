@@ -49,8 +49,11 @@ import {
 } from "@/lib/playable"
 import type { Span } from "@/lib/span"
 import { msOf, shownAt } from "@/lib/timebase"
-import { useGroundSource } from "@/components/ui/ground"
-import { GroundScope, MaterialProvider } from "@/components/ui/material"
+import { useBackgroundSource } from "@/components/ui/background"
+import {
+  BackgroundScope,
+  MaterialProvider,
+} from "@/components/ui/material"
 import {
   Caption,
   CaptionLines,
@@ -577,7 +580,7 @@ export function VideoPicture({
   // origin, or CORS with `crossOrigin` (the rule the sound's spectrum keeps). The black
   // stage round a letterboxed frame reads as black.
   const readable = soundReadable(ctx.picture.src, ctx.picture.crossOrigin)
-  const ground = useGroundSource(readable ? el : null, {
+  const background = useBackgroundSource(readable ? el : null, {
     fit: "contain",
     outside: 0,
   })
@@ -722,21 +725,21 @@ export function VideoPicture({
       {captions?.shown && <PictureCaptions />}
       {/* What stands over a picture (PlayerChrome and its parts, a zoom finder, their
           tooltips and menus) wears the scheme the frame under it asks for, read
-          live (ui/ground): light glass over snow, dark over night, with no part
+          live (ui/background): light glass over snow, dark over night, with no part
           saying so. A picture whose pixels cannot be read (another origin, no
           CORS) stands it all in the dark scheme. Popups open inside the picture
           only while it is the fullscreen element (the only place they show then);
           otherwise in the player's layer, unclipped by a picture narrower than
           they are. */}
-      <GroundScope source={ground}>
-        <MaterialProvider scheme={readable ? "ground" : "dark"}>
+      <BackgroundScope source={background}>
+        <MaterialProvider scheme={readable ? "background" : "dark"}>
           {fullscreen ? (
             <PlayerLayer active={full}>{children}</PlayerLayer>
           ) : (
             children
           )}
         </MaterialProvider>
-      </GroundScope>
+      </BackgroundScope>
       {zoom && (
         <span role="status" className="sr-only">
           {said ? `zoom ${said.text}` : ""}

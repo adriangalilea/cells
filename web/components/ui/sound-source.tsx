@@ -8,9 +8,10 @@
 // The element is tapped (createMediaElementSource) once and never twice (the API
 // throws on a second tap), folded to left and right by Web Audio's speaker rules (mono
 // on both sides, 5.1 folded the standard way) and analysed per channel. An
-// AudioContext may only start after the person has pressed something, so the tap
-// happens at the first play a press asks for, or at the first press after the page has
-// had one. Once tapped, the element's sound flows through the context: a context that
+// AudioContext starts when the browser lets it: at any play where the page may play
+// sound already (an autoplay the browser allowed, a reading opened from a link), else
+// at the first press. The tap is asked at every play and at every press until it holds,
+// and it holds once the context runs. Once tapped, the element's sound flows through the context: a context that
 // is not running would silence it, so the tap connects only once the context runs. A
 // cross-origin source is tapped only with `crossOrigin` set (and the server sending
 // CORS headers): without, the browser hands Web Audio silence and the element would go
@@ -95,9 +96,9 @@ export function soundReadable(
 }
 
 /** A media element's spectrum: the analysers once tapped (null before), and `tap`,
- *  which a player calls inside a play the person asked for (its `beforePlay`). The
- *  first press anywhere taps an element that started playing without one (autoplay, a
- *  playlist going on). The graph dies with the element. */
+ *  which a player calls inside every play (its `beforePlay`), a press's or not. The
+ *  first press anywhere taps an element whose context the browser held back (an autoplay
+ *  it muted, a playlist going on). The graph dies with the element. */
 export function useSoundTap(
   el: HTMLMediaElement | null,
   readable: boolean,
@@ -114,9 +115,10 @@ export function useSoundTap(
   const tap = React.useCallback(() => {
     const g = graph.current
     if (!el || g.tapped || !readable) return
-    // Before anyone has pressed anything a context cannot start; the first press will.
-    if (navigator.userActivation && !navigator.userActivation.hasBeenActive)
-      return
+    // Asked before any press, the context starts where the browser lets the page play
+    // sound (an allowed autoplay); where it does not, it waits suspended and the first
+    // press resumes it. Never gated on a press: a reading playing with its sound before
+    // anyone pressed had no spectrum, and its halo stood still.
     if (!g.context) g.context = new window.AudioContext()
     const context = g.context
     const connect = () => {

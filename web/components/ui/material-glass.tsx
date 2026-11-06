@@ -13,7 +13,7 @@ import "./material-glass.css"
  *  colours, whatever it is on: a control's glass (`glassVariants`), glass round media
  *  (`GlassEdge`), a lit pane inside a bar (`glassLift`), a pane's seam. All of it is
  *  derived; what is turned is the glass's state (`--glass-rim`), the light's colour
- *  (`--glass-rim-color`, `--glass-hue`) and the ground's (`--glass-ground-sheen`).
+ *  (`--glass-rim-color`, `--glass-hue`) and the background's (`--glass-background-sheen`).
  *  Light and dark faces differ in their values here, never in how they are drawn. */
 export const glassLight = [
   // THE STAIN, the one way glass takes a colour: `--glass-stain` (any CSS colour) at
@@ -27,25 +27,25 @@ export const glassLight = [
   // both are invalid and every use falls back to the glass's own.
   "[--glass-hue:oklch(from_var(--glass-stain)_max(l,0.78)_min(calc(c*2),0.2)_h)] [--glass-hue-deep:oklch(from_var(--glass-stain)_min(l,0.5)_min(calc(c*2),0.2)_h)]",
   // The light around the glass: white, leaning toward the colour of what it stands
-  // over (`--glass-ground`, the picture's colour under it, set by ui/ground), made
-  // light and clear (lightness at least 0.85), by `--glass-ground-share` (35% unless
+  // over (`--glass-background`, the picture's colour under it, set by ui/background), made
+  // light and clear (lightness at least 0.85), by `--glass-background-share` (35% unless
   // set). Light catching a curve takes the colour around it, a red rock's edge
   // warming, a sky's cooling (Apple's glass does; Adrian, 2026-10-11). No picture
   // read, white (the registered property's own, material-glass.css). Registered, so
   // a change of ground eases.
-  "[--glass-ground-light:color-mix(in_oklab,oklch(from_var(--glass-ground)_max(l,0.85)_min(calc(c*1.5),0.2)_h)_var(--glass-ground-share,35%),white)]",
+  "[--glass-background-light:color-mix(in_oklab,oklch(from_var(--glass-background)_max(l,0.85)_min(calc(c*1.5),0.2)_h)_var(--glass-background-share,35%),white)]",
   // The light the rim catches: `--glass-rim-color` when set (an edge that says
   // something on its own), else the stain's hue, else the light around it. A colour
   // reads as itself on the edge, where the glass is brightest.
-  "[--glass-rim-ink:var(--glass-rim-color,var(--glass-hue,var(--glass-ground-light)))]",
+  "[--glass-rim-ink:var(--glass-rim-color,var(--glass-hue,var(--glass-background-light)))]",
   // How strongly the rim reads against its ground, a multiple of all its light: the
   // same white catch reads several times stronger on dark glass ("overpowering" as a
   // full outline; as a corner catch alone, a touch less was right, Adrian,
   // 2026-10-11), so the dark face carries 0.8 of it. Over a picture the picture under
-  // the glass decides (`--glass-ground-sheen`, set by ui/ground on the surface or on
+  // the glass decides (`--glass-background-sheen`, set by ui/background on the surface or on
   // a group round several, and inherited: the face's own number is only the fallback,
   // so a group's reading reaches every glass inside it).
-  "[--glass-sheen:var(--glass-ground-sheen,1)] scheme-dark:[--glass-sheen:var(--glass-ground-sheen,0.8)]",
+  "[--glass-sheen:var(--glass-background-sheen,1)] scheme-dark:[--glass-sheen:var(--glass-background-sheen,0.8)]",
   // Glass ON glass (a field in a glass card, a chosen segment in a glass bar):
   // what is under it is the outer glass, already frosted and tinted, never the
   // picture (the outer glass's blur makes it a backdrop root, so the inner one sees
@@ -206,11 +206,11 @@ const GLASS_BODY = [
   // A ghost's body is a third as thick (`--glass-ghost`): the picture shows through
   // what is only inherited. How much it deepens the colour behind it is
   // `--glass-saturation` (above).
-  // THICKNESS: `--glass-thickness` when the picture under it is read (ui/ground's
+  // THICKNESS: `--glass-thickness` when the picture under it is read (ui/background's
   // `tintFor`: as thick as its quietest words need over that picture, and no
   // thicker); unread, 0.75 on either face, what those words need over the worst
   // ground there is (white under the dark face, black under the light one: words at
-  // 65% of their ink keep 4.5:1, lib/ground-core `WORDS`). Apple's regular glass,
+  // 65% of their ink keep 4.5:1, lib/background-core `WORDS`). Apple's regular glass,
   // legible over anything; at 0.6 dark and 0.7 light a description on dark glass over
   // a bright sky fell to 2.6:1.
   "[--glass-face:var(--glass-tint,rgb(242_244_247/calc(var(--glass-thickness,0.75)*var(--glass-stack)*(1-0.65*var(--glass-ghost)))))] [--glass-body-hue:var(--glass-hue)] [--glass-backdrop:blur(var(--glass-blur,14px))_saturate(calc(1+0.4*var(--glass-saturation,1)))]",
@@ -268,7 +268,7 @@ export const glassVariants = cva(
     // computed transparent for the whole transition, Chrome unable to blend a colour
     // still bound to the text: an outline lost its ring on every hover and every
     // leave (Adrian, 2026-10-11, measured: transparent from the hover to 300 ms).
-    "[--glass-change:var(--glass-change-duration,300ms)_var(--glass-change-ease,var(--ease-out))] [transition:var(--glass-moves,background-color_0s),background-color_var(--glass-change),color_var(--glass-change),--glass-rim_var(--glass-change),--glass-ghost_var(--glass-change),--glass-sheen_var(--glass-change),--glass-ground-light_var(--glass-change)] motion-reduce:[transition:none]",
+    "[--glass-change:var(--glass-change-duration,300ms)_var(--glass-change-ease,var(--ease-out))] [transition:var(--glass-moves,background-color_0s),background-color_var(--glass-change),color_var(--glass-change),--glass-rim_var(--glass-change),--glass-ghost_var(--glass-change),--glass-sheen_var(--glass-change),--glass-background-light_var(--glass-change)] motion-reduce:[transition:none]",
     "forced-colors:border",
     // Its words are the scheme's foreground, so everything inside reads on it with no
     // ink of its own; its drop shadow is the scheme's.
@@ -348,7 +348,7 @@ export type GlassStyle = React.CSSProperties & {
   /** How strongly the rim reads against its ground, a multiple of its light; unset,
    *  the face's own (1 light, 0.8 dark). A ground source sets it from the picture
    *  under the glass; inherited, so set on a group it reaches every glass inside. */
-  "--glass-ground-sheen"?: number | string
+  "--glass-background-sheen"?: number | string
   /** How bright the rim and its inner reflections are, a multiple of the default. */
   "--glass-rim"?: number | string
   /** A ghost, 0 to 1 (0 unless set): a value that applies but is not set here
@@ -399,10 +399,10 @@ export type GlassStyle = React.CSSProperties & {
   "--glass-on-glass-rim"?: number | string
   /** The colour of what the glass stands over; a ground source sets it from the
    *  picture under the glass. Its rim's light leans toward it. */
-  "--glass-ground"?: string
-  /** How far the rim's light leans toward `--glass-ground`, a percentage (35%
+  "--glass-background"?: string
+  /** How far the rim's light leans toward `--glass-background`, a percentage (35%
    *  unless set). */
-  "--glass-ground-share"?: string
+  "--glass-background-share"?: string
 }
 
 /** What a glass's light can be told, one by one: the props `Glass` takes, and
@@ -617,7 +617,7 @@ export const PLAIN_BAND =
  *  that is yours) `--flare-ink`: the hue made readable on the face it stands on, by
  *  lightness, in either material (at least 0.84 in the dark scheme, at most 0.4 in
  *  the light: the lightness of 4.5:1 over the grounds glass keeps under its words,
- *  L* 34 and 71, lib/ground-core `TINT`), so a dark blue holds on black and a
+ *  L* 34 and 71, lib/background-core `TINT`), so a dark blue holds on black and a
  *  yellow on white, on the page and on glass over any picture. Mixed 25% toward black or white, a pale green fell to
  *  2.8:1 on light glass. Worked out from `--flare-hue` on the surface itself: the
  *  rim's own ink is computed on the glass's body, a layer inside, and read on the
