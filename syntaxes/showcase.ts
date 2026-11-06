@@ -14,12 +14,12 @@ const examples = join(import.meta.dir, "../tree-sitter/examples")
 
 // The order a reader meets them: the trip, the books from the chart of
 // accounts down, then everything at once.
-const ORDER = ["trip-budget.cell", "books/accounts.cell", "books/vendors.cell", "books/rates.cell", "books/home/money.cell", "every-type.cell"]
+const ORDER = ["trip-budget.cells", "books/accounts.cells", "books/vendors.cells", "books/rates.cells", "books/home/money.cells", "every-type.cells"]
 
 function files(dir: string): string[] {
   return readdirSync(dir).flatMap((name) => {
     const path = join(dir, name)
-    return statSync(path).isDirectory() ? files(path) : name.endsWith(".cell") ? [path] : []
+    return statSync(path).isDirectory() ? files(path) : name.endsWith(".cells") ? [path] : []
   })
 }
 

@@ -2,7 +2,7 @@
 An import and a reference type
 ==================|||
 ---
-import accounts from "../accounts.cell"
+import accounts from "../accounts.cells"
 type Rate = pct
 ---
 date:date,amount:EUR>0,account_from:accounts.account,account_to:accounts.account,description:text,tax_rate:Rate,vat:EUR=amount * tax_rate / (100 + tax_rate)
@@ -120,8 +120,8 @@ vendor:vendors.vendor?,key:ledger.entry!,v:v1.2|v2.0,b:on.off/off.on
 Several imports, with comments
 ==================|||
 ---
-import accounts from "../accounts.cell"   // the chart of accounts
-import vendors from "../../vendors.cell"
+import accounts from "../accounts.cells"   // the chart of accounts
+import vendors from "../../vendors.cells"
 ---
 vendor:vendors.vendor
 ---|||

@@ -16,7 +16,7 @@ const examples = join(import.meta.dir, "../tree-sitter/examples")
 const files = (dir: string): string[] =>
   readdirSync(dir).flatMap((name) => {
     const path = join(dir, name)
-    return statSync(path).isDirectory() ? files(path) : name.endsWith(".cell") ? [path] : []
+    return statSync(path).isDirectory() ? files(path) : name.endsWith(".cells") ? [path] : []
   })
 
 // The innermost scope a token stands in, named by what it is in Cells.

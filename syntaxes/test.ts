@@ -11,8 +11,8 @@ import inline from "./cells-inline.tmLanguage.json"
 import grammar from "./cells.tmLanguage.json"
 
 const FIXTURE = `---
-import accounts from "../accounts.cell"   // shared
-import { Kind } from "./kinds.cell" with { rev: "a1b2c3d" }
+import accounts from "../accounts.cells"   // shared
+import { Kind } from "./kinds.cells" with { rev: "a1b2c3d" }
 export type Category = travel|stay|'it''s fine'
 fees = \`\`\`cells
 kind:text!,pct:pct
@@ -35,7 +35,7 @@ const EXPECT: [string, string][] = [
   ["import", "keyword.control.import.cells"],
   ["accounts", "entity.name.namespace.cells"],
   ["from", "keyword.control.import.cells"],
-  ['"../accounts.cell"', "string.quoted.double.path.cells"],
+  ['"../accounts.cells"', "string.quoted.double.path.cells"],
   ["//", "punctuation.definition.comment.cells"],
   [" shared", "comment.line.double-slash.cells"],
   ["{", "punctuation.section.braces.cells"],

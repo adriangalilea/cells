@@ -1,6 +1,6 @@
 ---
-import accounts from "../accounts.cell"    // every account, once
-import vendors from "../vendors.cell"
+import accounts from "../accounts.cells"    // every account, once
+import vendors from "../vendors.cells"
 type Rate = pct 0..100
 ---
 date:date,amount:EUR>0,account_from:accounts.account,account_to:accounts.account,vendor:vendors.vendor?,invoice:text?,description:text,tax_rate:Rate,reconciled:bool,vat:EUR=amount * tax_rate / (100 + tax_rate),net:EUR=amount - vat

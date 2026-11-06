@@ -7,7 +7,7 @@
       "title": "Cells",
       "scope": "source.cells",
       "path": ".",
-      "file-types": ["cell"],
+      "file-types": ["cells"],
       "highlights": "queries/highlights.scm",
       "injections": "queries/injections.scm",
       "injection-regex": "^cells$"

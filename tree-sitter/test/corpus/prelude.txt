@@ -243,7 +243,7 @@ export fees = ```cells
 kind:text!,pct:pct
 card,1.4
 ```
-eurusd = run every hour, when ../money.cell changes in UTC
+eurusd = run every hour, when ../money.cells changes in UTC
 ````ts
 const s = "```"
 export default () => []

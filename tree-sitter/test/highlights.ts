@@ -13,8 +13,8 @@ const root = join(import.meta.dir, "..")
 const dir = mkdtempSync(join(tmpdir(), "cells-highlights-"))
 
 const FIXTURE = `---
-import accounts from "../accounts.cell"   // shared
-import { Kind } from "./kinds.cell" with { rev: "a1b2c3d" }
+import accounts from "../accounts.cells"   // shared
+import { Kind } from "./kinds.cells" with { rev: "a1b2c3d" }
 export type Category = travel|stay|'it''s fine'
 fees = \`\`\`cells
 kind:text!,pct:pct
@@ -36,7 +36,7 @@ const EXPECT: [string, string, string][] = [
   ["import", "keyword.import", "keyword.control.import"],
   ["accounts", "module", "namespace"],
   ["from", "keyword.import", "keyword.control.import"],
-  ['"../accounts.cell"', "string.special.path", "string.special.path"],
+  ['"../accounts.cells"', "string.special.path", "string.special.path"],
   ["// shared", "comment", "comment.line"],
   ["{", "punctuation.bracket", "punctuation.bracket"],
   ["Kind", "module", "namespace"],
@@ -196,11 +196,11 @@ function check(label: string, query: string, file: string, column: 1 | 2): numbe
   return failures
 }
 
-const file = join(dir, "fixture.cell")
+const file = join(dir, "fixture.cells")
 writeFileSync(file, FIXTURE)
 
 // The same file with CRLF line endings must parse without an error.
-const crlf = join(dir, "crlf.cell")
+const crlf = join(dir, "crlf.cells")
 writeFileSync(crlf, FIXTURE.replaceAll("\n", "\r\n"))
 const parsed = Bun.spawnSync(["tree-sitter", "parse", "--quiet", crlf], { cwd: root })
 const crlfFailures = parsed.exitCode === 0 ? 0 : 1

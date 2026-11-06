@@ -115,8 +115,8 @@ module.exports = grammar({
       field('type', $.type),
     ),
 
-    // `import accounts from "../accounts.cell"`, `import { Kind, fees } from
-    // "./rates.cell"`, a URL pinned `with { sha256: "…" }`.
+    // `import accounts from "../accounts.cells"`, `import { Kind, fees } from
+    // "./rates.cells"`, a URL pinned `with { sha256: "…" }`.
     import_statement: $ => seq(
       'import',
       choice(field('default', alias($.identifier, $.table_name)), $.named_imports),
