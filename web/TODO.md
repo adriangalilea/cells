@@ -6,7 +6,7 @@ Built: the hero is someone at work in Cells (two app windows, ui's table-session
 
 Owed, in order:
 
-- [ ] **The app's window, after Cells.app**: designed and validated in the Mac app first (untitled `apps/tally/TODO.md`, "The window, designed"), then mirrored here: the file's path in its title, the prelude folded over the table and opened into its setup, heads in their column's colour with the type, link and formula under the name, the folder a sidebar closed by default, the format's character. Never designed here ahead of the app.
+- [ ] **The app's window, after Cells.app**: designed and validated in the Mac app first (untitled `apps/cells/TODO.md`, "The window, designed"), then mirrored here: the file's path in its title, the prelude folded over the table and opened into its setup, heads in their column's colour with the type, link and formula under the name, the folder a sidebar closed by default, the format's character. Never designed here ahead of the app.
 - [ ] **The hero, told in order, once the window is**: `accounts.cells` full screen and fully written; `money.cells` opened, the screen split; its import added from its prelude; its data typed a cell at a time, each computed value landing; a link to an account that is not there flagged and fixed in the other window. ui's table-session needs the steps for it: a window opened and the screen arranged, a prelude line set, a column's type and formula set in its head.
 - [ ] **The copy pass**, every line of the page and of the docs read again for density: each sentence a fact a reader needs, nothing that fills time.
 - [ ] **The link card's title**: it leads with "Programmable data." (the rule), the name smaller.
