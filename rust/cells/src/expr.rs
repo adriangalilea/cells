@@ -668,6 +668,29 @@ pub fn low_words(src: &str) -> Vec<(Sp, String)> {
 pub const FUNCTIONS: [&str; 15] =
     ["SUM", "AVG", "MIN", "MAX", "COUNT", "ROUND", "FLOOR", "CEIL", "ABS", "COALESCE", "NULLIF", "LENGTH", "LOWER", "UPPER", "TRIM"];
 
+/// A function's call as written and what it gives, in a line: what a completion and a
+/// hover say of it. Every one of `FUNCTIONS` has one.
+pub fn signature(name: &str) -> Option<(&'static str, &'static str)> {
+    Some(match name {
+        "SUM" => ("SUM(column)", "the sum of the column's values, over every row or a range (SUM(total[FIRST:THIS])), blanks left out"),
+        "AVG" => ("AVG(column)", "the mean of the column's values that are not blank"),
+        "MIN" => ("MIN(column)", "the column's smallest value"),
+        "MAX" => ("MAX(column)", "the column's largest value"),
+        "COUNT" => ("COUNT(column)", "how many of the column's values are not blank"),
+        "ROUND" => ("ROUND(x, digits)", "x rounded half to even to `digits` places after the point, none unless given"),
+        "FLOOR" => ("FLOOR(x)", "the whole number at or below x"),
+        "CEIL" => ("CEIL(x)", "the whole number at or above x"),
+        "ABS" => ("ABS(x)", "x without its sign"),
+        "COALESCE" => ("COALESCE(a, b, …)", "the first of its values that is not blank"),
+        "NULLIF" => ("NULLIF(a, b)", "blank where a equals b, else a"),
+        "LENGTH" => ("LENGTH(text)", "how many characters the text has"),
+        "LOWER" => ("LOWER(text)", "the text in lower case"),
+        "UPPER" => ("UPPER(text)", "the text in upper case"),
+        "TRIM" => ("TRIM(text)", "the text without the spaces and tabs at either end"),
+        _ => return None,
+    })
+}
+
 /// A name a formula reads, each part where it is written: `cost`; `to.kind`, a column
 /// and what its reference leads to; `fees['card'].pct`, a table (`table`) and a column of
 /// the row its key finds.

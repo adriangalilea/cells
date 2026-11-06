@@ -10,9 +10,9 @@ use tower_lsp::lsp_types::{
     HoverContents, Location, MarkupContent, MarkupKind, Range, TextEdit, Url, WorkspaceEdit,
 };
 
-use cells::complete::{CompletionKind as Kind, HeaderCell, Spot, opened, shown, summary, written, written_key};
+use cells::complete::{CompletionKind as Kind, HeaderCell, Spot, opened, written, written_key};
 use cells::expr::{self, Named};
-use cells::{Base, Column, Doc, Origin, Span, Statement};
+use cells::{Base, Doc, Origin, Span, Statement};
 
 use super::folder::{File, Folder, Held, inline, names_main};
 use super::text::Lines;
@@ -101,29 +101,6 @@ pub fn diagnostics(file: &File) -> Vec<Diagnostic> {
 
 // ---- hover ----
 
-/// A column in words: its header cell, what it holds, what computes it, what it names.
-fn about(c: &Column) -> String {
-    let mut out = format!("`{}:{}`", c.name, c.ty.shorthand());
-    if let Some(f) = &c.formula {
-        out.push_str(&format!(" `={f}`"));
-    }
-    let mut said = Vec::new();
-    if c.ty.inferred {
-        said.push("its type inferred from its values".to_owned());
-    }
-    if c.ty.key {
-        said.push("the key: in every row, once".to_owned());
-    }
-    if let Base::Ref(targets) = &c.ty.base {
-        let named: Vec<String> = targets.iter().map(|t| format!("`{}.{}`", t.table, t.column)).collect();
-        said.push(format!("a key of {}", named.join(" or ")));
-    }
-    if !said.is_empty() {
-        out.push_str(&format!("\n\n{}", said.join("; ")));
-    }
-    out
-}
-
 /// The row of `held` a reference's text names, and its key column.
 fn target_row(held: &Held, key: &str, text: &str) -> Option<(usize, usize)> {
     let doc = held.doc();
@@ -131,64 +108,25 @@ fn target_row(held: &Held, key: &str, text: &str) -> Option<(usize, usize)> {
     (0..doc.rows()).find(|&r| doc.text(r, k) == text).map(|r| (r, k))
 }
 
-fn markdown(value: String, range: Option<Range>) -> Hover {
-    Hover { contents: HoverContents::Markup(MarkupContent { kind: MarkupKind::Markdown, value }), range }
+/// The tables a file names, by a path of names, through the folder as the editor has it:
+/// what the engine's `complete` and `hover` reach them by.
+fn reach<'a>(folder: &'a Folder, file: &'a File) -> impl Fn(&[&str]) -> Option<Held> + 'a {
+    move |path: &[&str]| {
+        let (first, rest) = path.split_first()?;
+        let mut h = folder.held(file, first)?;
+        for name in rest {
+            h = folder.held(&h.file, name)?;
+        }
+        Some(h)
+    }
 }
 
+/// What is said of `at`, the engine's (`cells::hover`), in Markdown.
 pub fn hover(folder: &Folder, file: &File, at: usize) -> Option<Hover> {
     let lines = Lines::new(&file.text);
-    let doc = &file.doc;
-    match spot(file, at) {
-        Spot::Name(c, s) | Spot::Type(c, s) => {
-            let mut out = about(&doc.columns()[c]);
-            for e in doc.broken().iter().filter(|e| e.at == cells::At::Column(c as u32 + 1)) {
-                out.push_str(&format!("\n\n{}", e.why));
-            }
-            Some(markdown(out, Some(lines.range(s))))
-        }
-        Spot::Cell(r, c, s) => {
-            let col = &doc.columns()[c];
-            let mut out = format!("{}\n\n", about(col));
-            match col.origin(r) {
-                Origin::Formula => out.push_str(&format!("computed: **{}**", shown(col, r))),
-                _ => out.push_str(&format!("**{}**", shown(col, r))),
-            }
-            if let Some(p) = doc.problems().iter().find(|p| p.row as usize == r && p.column as usize == c) {
-                out.push_str(&format!("\n\n{}", doc.why(p)));
-            }
-            if let Base::Ref(targets) = &col.ty.base {
-                let text = doc.text(r, c);
-                for t in targets {
-                    if let Some(held) = folder.held(file, &t.table)
-                        && let Some((row, _)) = target_row(&held, &t.column, &text)
-                    {
-                        out.push_str(&format!("\n\n{}: {}", t.table, summary(held.doc(), row)));
-                    }
-                }
-            }
-            Some(markdown(out, Some(lines.range(s))))
-        }
-        Spot::Formula(f) => {
-            let at = at as u32 - f.base;
-            let names = expr::names(f.src).ok()?;
-            let (n, part) = names.iter().find_map(|n| n.parts.iter().position(|(_, (s, l))| at >= *s && at <= s + l).map(|k| (n, k)))?;
-            let (name, (s, l)) = &n.parts[part];
-            let range = Some(lines.range(span(f.base + s, *l)));
-            let said = match follow(folder, file, n, part)? {
-                Followed::Column(held, k) => {
-                    let d = held.as_ref().map_or(doc, |h| h.doc());
-                    about(&d.columns()[k])
-                }
-                Followed::Table(held) => {
-                    let d = held.doc();
-                    let columns: Vec<&str> = d.columns().iter().map(|c| c.name.as_str()).collect();
-                    format!("table `{name}`: {} rows, {}", d.rows(), columns.join(", "))
-                }
-            };
-            Some(markdown(said, range))
-        }
-        Spot::Prelude | Spot::Nothing => None,
-    }
+    let h = cells::hover::hover(&file.doc, &file.text, at, reach(folder, file))?;
+    let range = Some(lines.range(span(h.from, h.to - h.from)));
+    Some(Hover { contents: HoverContents::Markup(MarkupContent { kind: MarkupKind::Markdown, value: h.markdown() }), range })
 }
 
 /// What a part of a name in a formula of `file` is.
@@ -232,15 +170,7 @@ fn follow(folder: &Folder, file: &File, n: &Named, k: usize) -> Option<Followed>
 /// reached through the folder as the editor has it.
 pub fn complete(folder: &Folder, file: &File, at: usize) -> Vec<CompletionItem> {
     let lines = Lines::new(&file.text);
-    let held = |path: &[&str]| -> Option<Held> {
-        let (first, rest) = path.split_first()?;
-        let mut h = folder.held(file, first)?;
-        for name in rest {
-            h = folder.held(&h.file, name)?;
-        }
-        Some(h)
-    };
-    cells::complete::complete(&file.doc, &file.text, at, held)
+    cells::complete::complete(&file.doc, &file.text, at, reach(folder, file))
         .into_iter()
         .map(|c| {
             let range = lines.range(span(c.from, c.to - c.from));

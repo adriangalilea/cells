@@ -29,6 +29,7 @@ pub mod exact;
 pub mod expr;
 pub mod files;
 mod format;
+pub mod hover;
 mod identity;
 mod keys;
 pub mod layout;

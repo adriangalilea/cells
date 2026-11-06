@@ -191,7 +191,7 @@ fn item(label: String, kind: CompletionKind, detail: String, from: u32, to: u32)
     Completion { insert: label.clone(), label, kind, detail, from, to, filter: None, sort: None }
 }
 
-fn ident(c: char) -> bool {
+pub(crate) fn ident(c: char) -> bool {
     c.is_ascii_alphanumeric() || c == '_'
 }
 
@@ -210,7 +210,7 @@ pub fn written_key(key: &str) -> String {
 }
 
 /// A table reached: the file's own doc, or one its host holds.
-enum Got<'a, D> {
+pub(crate) enum Got<'a, D> {
     Main(&'a Doc),
     Held(D),
 }
@@ -228,13 +228,13 @@ impl<D: Deref<Target = Doc>> Deref for Got<'_, D> {
 /// The tables a place reaches, through the host: `held(path)` is the table reached by the
 /// names in `path`, the first a table `doc`'s prelude names and each after it one the
 /// table before names (a reference followed through two files). `this` is `doc` itself.
-struct Reach<'a, H> {
-    doc: &'a Doc,
-    held: H,
+pub(crate) struct Reach<'a, H> {
+    pub(crate) doc: &'a Doc,
+    pub(crate) held: H,
 }
 
 impl<'a, D: Deref<Target = Doc>, H: Fn(&[&str]) -> Option<D>> Reach<'a, H> {
-    fn get(&self, path: &[&str]) -> Option<Got<'a, D>> {
+    pub(crate) fn get(&self, path: &[&str]) -> Option<Got<'a, D>> {
         match path {
             [first] if *first == expr::THIS => Some(Got::Main(self.doc)),
             _ => (self.held)(path).map(Got::Held),
@@ -243,7 +243,7 @@ impl<'a, D: Deref<Target = Doc>, H: Fn(&[&str]) -> Option<D>> Reach<'a, H> {
 }
 
 /// What a part of a name in a formula is, and the path of tables that reaches it.
-enum Followed<'a, D> {
+pub(crate) enum Followed<'a, D> {
     /// A column: of the file itself (no path), or of a table.
     Column(Option<(Vec<String>, Got<'a, D>)>, usize),
     Table(Vec<String>, Got<'a, D>),
@@ -251,7 +251,11 @@ enum Followed<'a, D> {
 
 /// Part `k` of a name, followed: its first part a column of the file (or a table, `table`
 /// or not), every part after it a column of the table the one before leads to.
-fn follow<'a, D: Deref<Target = Doc>, H: Fn(&[&str]) -> Option<D>>(reach: &Reach<'a, H>, n: &Named, k: usize) -> Option<Followed<'a, D>> {
+pub(crate) fn follow<'a, D: Deref<Target = Doc>, H: Fn(&[&str]) -> Option<D>>(
+    reach: &Reach<'a, H>,
+    n: &Named,
+    k: usize,
+) -> Option<Followed<'a, D>> {
     let first = &n.parts[0].0;
     let mut at = match (n.table, reach.doc.column(first)) {
         (false, Some(c)) => Followed::Column(None, c),
@@ -427,7 +431,8 @@ fn formula<D: Deref<Target = Doc>, H: Fn(&[&str]) -> Option<D>>(reach: &Reach<'_
         out.push(item(written(&t.name), CompletionKind::Module, "a table".into(), from, to));
     }
     for name in expr::FUNCTIONS {
-        out.push(item(name.to_owned(), CompletionKind::Function, "a function".into(), from, to));
+        let (call, gives) = expr::signature(name).expect("every function has its signature");
+        out.push(item(name.to_owned(), CompletionKind::Function, format!("{call}: {gives}"), from, to));
     }
     for word in ["CASE", "WHEN", "THEN", "ELSE", "END", "AND", "OR", "NOT", "IS", "NULL", "TRUE", "FALSE", "OVER", "ORDER", "BY", "DESC"] {
         out.push(item(word.to_owned(), CompletionKind::Keyword, "the language's".into(), from, to));
