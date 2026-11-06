@@ -93,19 +93,27 @@ function Editor({
   rows = ROWS + 1,
   steps,
   onOpen,
+  onEdit,
   className,
 }: {
   size: string
   rows?: number
   steps?: CodeStep[]
   onOpen?: (path: string) => void
+  onEdit?: (step: CodeStep) => void
   className?: string
 }) {
   const h = useHero()
   const diagnose = useCellsDiagnose()
   return (
-    <Terminal alt="" accent={ACCENT} size={size} className={className}>
-      <TerminalEditor files={h.files} steps={steps ?? h.steps} rows={rows} bufferline="always" diagnose={diagnose} onOpen={onOpen} />
+    <Terminal
+      alt={onEdit ? "Helix on the hero's files: type into it" : ""}
+      interactive={onEdit !== undefined}
+      accent={ACCENT}
+      size={size}
+      className={className}
+    >
+      <TerminalEditor files={h.files} steps={steps ?? h.steps} rows={rows} bufferline="always" diagnose={diagnose} onOpen={onOpen} onEdit={onEdit} />
     </Terminal>
   )
 }
@@ -113,21 +121,32 @@ function Editor({
 /** The editor window the Mac's screen lets go of, as the page keeps it: the very window
  *  (its stage size, its type, its rows), scaled to `width` as a whole, so the flight
  *  between the two is a move and a scale and nothing else. money.cell as the edit left it,
- *  or the file `front` names, its tab pressed (`onOpen`). */
-export function EditorWindow({ width, front, onOpen }: { width: number; front?: string; onOpen?: (path: string) => void }) {
-  // A file pressed is the edit's next step: the frame drawn is still the edit's.
+ *  then what the reader did to it (`added`: a tab pressed, a key typed), each the edit's
+ *  next step, handed back through `onStep`, so the frame drawn is still the edit's. */
+export function EditorWindow({
+  width,
+  added = NO_STEPS,
+  onStep,
+}: {
+  width: number
+  added?: CodeStep[]
+  onStep?: (step: CodeStep) => void
+}) {
   const h = useHero()
-  const steps = React.useMemo(() => (front ? [...h.steps, { kind: "open" as const, path: front }] : h.steps), [h, front])
+  const steps = React.useMemo(() => [...h.steps, ...added], [h, added])
+  const open = React.useMemo(() => onStep && ((path: string) => onStep({ kind: "open", path })), [onStep])
   return (
     <div style={{ width, height: (width * WINDOW_H) / WINDOW_W }}>
       <div style={{ width: WINDOW_W, height: WINDOW_H, transform: `scale(${width / WINDOW_W})`, transformOrigin: "0 0" }}>
         <Playhead progress={1}>
-          <Editor size={EDITOR_SIZE} steps={steps} onOpen={onOpen} className="h-full" />
+          <Editor size={EDITOR_SIZE} steps={steps} onOpen={open} onEdit={onStep} className="h-full" />
         </Playhead>
       </div>
     </div>
   )
 }
+
+const NO_STEPS: CodeStep[] = []
 
 /** The landing's width on the page: the window a little larger than on the Mac. */
 const LANDING_W = 600
@@ -136,13 +155,14 @@ const LANDING_W = 600
  *  already shows the editor, stacked, and nothing flies, so there is none. */
 export function Landing() {
   const narrow = useNarrow()
-  const [front, setFront] = React.useState<string | undefined>(undefined)
+  const [added, setAdded] = React.useState<CodeStep[]>(NO_STEPS)
+  const step = React.useCallback((s: CodeStep) => setAdded((a) => [...a, s]), [])
   if (narrow) return null
   return (
     // Before it knows the width (the server's HTML) a phone collapses it rather than
     // `display: none`, so the editor in it can still measure its columns.
     <div data-hero-landing className="overflow-hidden rounded-[10px] max-md:invisible max-md:h-0" style={{ width: LANDING_W }}>
-      <EditorWindow width={LANDING_W} front={front} onOpen={setFront} />
+      <EditorWindow width={LANDING_W} added={added} onStep={step} />
     </div>
   )
 }

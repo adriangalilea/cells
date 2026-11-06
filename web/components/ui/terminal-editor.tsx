@@ -17,7 +17,9 @@
 // code, which takes code's dark theme (lib/code-tokens), and the severities, which
 // take the terminal's own red, yellow, blue and grey: a terminal is dark whatever
 // the page is. Display-only, like the terminal around it, but for the bufferline's
-// files when `onOpen` makes them pressable.
+// files when `onOpen` makes them pressable, and the text when `onEdit` makes it a text
+// box: each press and key handed to the page as the step it makes, the frame still the
+// edit's.
 
 import * as React from "react"
 import {
@@ -28,6 +30,7 @@ import {
   type CodeStep,
   codeFrameAt,
   codeTimeline,
+  keyStep,
   placeOf,
 } from "@/lib/code-session"
 import {
@@ -73,6 +76,13 @@ export interface TerminalEditorProps {
    *  page answers with the edit's next step (`{ kind: "open", path }` appended to
    *  `steps`), so what is drawn stays the edit's frame. Absent, display-only. */
   onOpen?: (path: string) => void
+  /** The editor takes typing as a text box does, with no modes: focused, it is in
+   *  insert, a click places the caret, a key types at it, the arrows, Home and End
+   *  move it, Backspace and Delete take a character. Each is handed over as the
+   *  step it makes (`keyStep`), and the page answers by appending it to `steps`,
+   *  as `onOpen`. Inside `<Terminal interactive>`, so the box is not hidden in one
+   *  picture. Absent, display-only. */
+  onEdit?: (step: CodeStep) => void
 }
 
 /** How the status line names each mode, helix's three letters: a selection made
@@ -240,8 +250,10 @@ export function TerminalEditor({
   bufferline = "multiple",
   softWrap = false,
   onOpen,
+  onEdit,
 }: TerminalEditorProps) {
   const palette = useTerminalPalette()
+  const [focused, setFocused] = React.useState(false)
   const timeline = React.useMemo(
     () => codeTimeline(files, steps, { duration, diagnose }),
     [files, steps, duration, diagnose],
@@ -292,7 +304,35 @@ export function TerminalEditor({
   const caret = screen[caretRow] as ScreenRow
   const top = Math.max(0, caretRow - textRows + SCROLL_OFF)
   const digits = Math.max(3, String(lines.length).length)
-  const insert = f.mode === "insert"
+  // A text box has no modes: taking typing, the editor is in insert.
+  const mode = onEdit && focused ? "insert" : f.mode
+  const insert = mode === "insert"
+  /** A key, as the step it makes. */
+  const key = (e: React.KeyboardEvent) => {
+    if (!onEdit) return
+    // Select all is the box's, never the page's: the box has no selection, so nothing.
+    if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "a")
+      return e.preventDefault()
+    if (e.metaKey || e.ctrlKey || e.altKey) return
+    const step = keyStep(e.key, f.text, f.caret)
+    if (!step) return
+    e.preventDefault()
+    onEdit(step)
+  }
+  /** A press on a screen row, as the caret placed where it landed. */
+  const press = (row: ScreenRow, e: React.PointerEvent<HTMLElement>) => {
+    const ch = (probe.current?.getBoundingClientRect().width ?? 0) / 10
+    if (!onEdit || !(ch > 0)) return
+    const x = e.clientX - e.currentTarget.getBoundingClientRect().left
+    const indent = row.first ? 0 : WRAP_INDICATOR.length
+    const width = (lines[row.line] ?? []).reduce((n, r) => n + r.text.length, 0)
+    const at = Math.round(x / ch) - indent + row.from
+    onEdit({
+      kind: "place",
+      line: row.line + 1,
+      column: Math.min(Math.max(at, row.from), width) + 1,
+    })
+  }
   /** Where the text starts, past the diagnostics gutter and the numbers. */
   const gutter = digits + 3
   // The command line: what is typed into it, a prompt, else helix's answer to the
@@ -329,8 +369,18 @@ export function TerminalEditor({
   return (
     <div
       data-slot="terminal-editor"
-      className="whitespace-pre"
+      // Taking typing, a press places the caret and never starts the page's selection.
+      className={`whitespace-pre outline-none${onEdit ? " select-none" : ""}`}
       style={{ color: palette.command }}
+      {...(onEdit && {
+        role: "textbox",
+        "aria-multiline": true,
+        "aria-label": `${nameOf(path)}, editable`,
+        tabIndex: 0,
+        onKeyDown: key,
+        onFocus: () => setFocused(true),
+        onBlur: () => setFocused(false),
+      })}
     >
       {buffers && (
         <div
@@ -414,7 +464,10 @@ export function TerminalEditor({
               >
                 {row?.first ? row.line + 1 : ""}
               </span>
-              <span className="relative min-w-0 flex-1">
+              <span
+                className={`relative min-w-0 flex-1${onEdit ? " cursor-text" : ""}`}
+                onPointerDown={onEdit && row ? (e) => press(row, e) : undefined}
+              >
                 {r === 0 && (
                   // One character's width ten times over: what the screen's columns
                   // are counted in.
@@ -509,7 +562,7 @@ export function TerminalEditor({
             color: palette.bg,
           }}
         >
-          {MODES[f.mode]}
+          {MODES[mode]}
         </span>
         <span className="min-w-0 flex-1 truncate">
           {path}

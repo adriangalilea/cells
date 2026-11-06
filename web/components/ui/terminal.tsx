@@ -5,7 +5,8 @@
 // else moves time: inside `<Player playable={sessionTimeline(…).playable}>` it plays, inside
 // a scroll stage it scrolls, with a fixed `progress` it is a still. The still renderer in the same lib draws
 // the identical frame as SVG, so a CLI's media and its live demo cannot drift.
-// Display-only: role="img", zero focusables.
+// Display-only: role="img", zero focusables; a program that takes input (`interactive`)
+// makes it a group whose screen is read.
 //
 // A full-screen program (an editor, `terminal-editor`) is `children` instead of a
 // session: the window draws it on its screen, and hands it its palette
@@ -35,6 +36,9 @@ export type TerminalProps = TerminalWindowProps &
          *  full-screen program runs in. It draws its own rows from the top-left
          *  corner, in the window's type and its palette (`useTerminalPalette`). */
         children: React.ReactNode
+        /** The program takes input (an editor with `onEdit`): the window is a group
+         *  named by `alt` and its screen is read, never one picture. */
+        interactive?: boolean
         session?: never
         progress?: never
         rows?: never
@@ -85,12 +89,13 @@ export function useTerminalPalette(): TerminalPalette {
 
 export function Terminal(props: TerminalProps) {
   if (props.session === undefined) {
-    const { children, accent, size, alt, className } = props
+    const { children, interactive, accent, size, alt, className } = props
     return (
       <TerminalWindow
         accent={accent}
         size={size}
         alt={alt}
+        interactive={interactive}
         className={className}
       >
         {children}
@@ -105,15 +110,20 @@ function TerminalWindow({
   accent,
   size = "13px",
   alt,
+  interactive = false,
   className,
   children,
-}: TerminalWindowProps & { children: React.ReactNode }) {
+}: TerminalWindowProps & {
+  children: React.ReactNode
+  interactive?: boolean
+}) {
   const palette = React.useMemo(() => terminalPalette(accent), [accent])
   return (
+    // biome-ignore lint/a11y/useAriaPropsSupportedByRole: img and group both take a name
     <div
       data-slot="terminal"
       className={className}
-      role="img"
+      role={interactive ? "group" : "img"}
       aria-label={alt}
       style={{
         // A column: the bar, then the screen taking what is left of a window given
@@ -133,7 +143,7 @@ function TerminalWindow({
       }}
     >
       <div
-        aria-hidden="true"
+        aria-hidden={interactive ? undefined : true}
         style={{
           display: "flex",
           flexDirection: "column",
@@ -143,6 +153,7 @@ function TerminalWindow({
       >
         <div
           data-slot="terminal-bar"
+          aria-hidden={interactive || undefined}
           style={{
             display: "flex",
             gap: em(8),

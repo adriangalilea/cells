@@ -1,8 +1,5 @@
 # TODO
 
-## Next
-
-- **The window under the hero takes typing** as a text box does (click to place the caret, type, arrows, backspace, no modes), its colours and the engine's problems live; the Helix-faithful "your turn" below stays the bigger version.
 
 ## The hero becomes usable (Adrian's idea, worth a great deal of effort)
 

@@ -76,6 +76,8 @@ export type CodeStep = (
       length: number
       text: string
     }
+  /** The caret moved to a place in the file in front: a click, an arrow key. */
+  | { kind: "place"; line: number; column?: number }
   /** The file in front saved: VS Code's ⌘S, a modal editor's `:w`. `formatted`, the
    *  text a language server's formatting on save leaves it as: what it changes lands
    *  as the write does, every other character stays. */
@@ -216,7 +218,7 @@ export interface CodeFrame {
   /** The caret, an offset into `text`. */
   caret: number
   /** When (ms) a key last landed in the front file, a character typed or taken away
-   *  by then; -1 before any: how long the caret has been still. */
+   *  or the caret placed by then; -1 before any: how long the caret has been still. */
   keyed: number
   /** A range selected, offsets into `text`. */
   selection: { from: number; to: number } | null
@@ -272,6 +274,7 @@ type Plan =
       /** Where the caret stood before the first key. */
       before: Char | null
     }
+  | { kind: "place"; path: string; caret: Char | null }
   | { kind: "save"; path: string }
   | { kind: "hover"; path: string; caret: Char | null; text: string }
   | {
@@ -647,6 +650,14 @@ export function codeTimeline(
         took = PLACE_MS + SELECT_MS + Math.max(1, keys) * TYPE_MS + ESC_MS
         break
       }
+      case "place": {
+        const path = front("a place")
+        const caret = charAt(path, s.line, s.column)
+        carets[path] = caret
+        plans.push({ kind: "place", path, caret })
+        took = PLACE_MS
+        break
+      }
       case "save": {
         const path = front("save")
         if (s.formatted !== undefined) {
@@ -901,6 +912,8 @@ export function codeFrameAt(timeline: CodeTimeline, ms: number): CodeFrame {
   let command = ""
   let saved: CodeFrame["saved"] = null
   let step = -1
+  /** Per file: when its caret was last moved by a place. */
+  const placed: Record<string, number> = {}
   // What the step under way shows, held as characters until the front file's text
   // at `ms` is known, then placed in it.
   let popup: { plan: Plan; anchor: Char | null } | null = null
@@ -961,6 +974,10 @@ export function codeFrameAt(timeline: CodeTimeline, ms: number): CodeFrame {
         }
         break
       }
+      case "place":
+        carets[plan.path] = plan.caret
+        placed[plan.path] = from
+        break
       case "save": {
         const landed = from + SAVE_KEY_MS * 3
         if (ms < landed) {
@@ -1053,7 +1070,7 @@ export function codeFrameAt(timeline: CodeTimeline, ms: number): CodeFrame {
           : (doc[0] ?? null),
       )
     : 0
-  let keyed = -1
+  let keyed = active ? (placed[active] ?? -1) : -1
   for (const c of active ? (timeline.chars[active] as Char[]) : []) {
     if (c.born <= ms && c.born > keyed) keyed = c.born
     if (c.died <= ms && c.died > keyed) keyed = c.died
@@ -1157,4 +1174,51 @@ export function placeOf(
       start = i + 1
     }
   return { line, column: offset - start + 1 }
+}
+
+/** The step a key makes in a text box over `text`, its caret at `caret`: a character
+ *  typed there, Enter a line, Backspace and Delete a character taken, the arrows, Home
+ *  and End the caret moved; null for any other key, and for one with nothing to do (a
+ *  Backspace at the start). An editor taking typing appends it to its steps. */
+export function keyStep(
+  key: string,
+  text: string,
+  caret: number,
+): CodeStep | null {
+  const here = placeOf(text, caret)
+  const lines = text.split("\n")
+  const end = (line: number) => (lines[line - 1] ?? "").length + 1
+  const upright = (line: number): CodeStep => ({
+    kind: "place",
+    line,
+    column: Math.min(here.column, end(line)),
+  })
+  if ([...key].length === 1) return { kind: "type", text: key }
+  switch (key) {
+    case "Enter":
+      return { kind: "type", text: "\n" }
+    case "Backspace":
+      return caret > 0
+        ? { kind: "replace", ...placeOf(text, caret - 1), length: 1, text: "" }
+        : null
+    case "Delete":
+      return caret < text.length
+        ? { kind: "replace", ...here, length: 1, text: "" }
+        : null
+    case "ArrowLeft":
+      return caret > 0 ? { kind: "place", ...placeOf(text, caret - 1) } : null
+    case "ArrowRight":
+      return caret < text.length
+        ? { kind: "place", ...placeOf(text, caret + 1) }
+        : null
+    case "ArrowUp":
+      return here.line > 1 ? upright(here.line - 1) : null
+    case "ArrowDown":
+      return here.line < lines.length ? upright(here.line + 1) : null
+    case "Home":
+      return { kind: "place", line: here.line, column: 1 }
+    case "End":
+      return { kind: "place", line: here.line }
+  }
+  return null
 }
