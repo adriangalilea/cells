@@ -1217,13 +1217,15 @@ pub enum CellsTokenKind {
     CellsTokenCode = 22,
 }
 
-/// A span of the text in bytes, what it is, and its column (`UINT32_MAX` for none).
+/// A span of the text in bytes, what it is, its column, and for a name a formula reads
+/// the column of its own table it names (`UINT32_MAX` for none, in both).
 #[repr(C)]
 pub struct CellsToken {
     pub start: u32,
     pub end: u32,
     pub kind: CellsTokenKind,
     pub column: u32,
+    pub reads: u32,
 }
 
 /// A text's spans, owned by the caller until `cells_tokens_free`.
@@ -1249,6 +1251,7 @@ pub unsafe extern "C" fn cells_tokens(bytes: *const c_char, len: usize) -> Cells
             start: t.start,
             end: t.end,
             column: t.column,
+            reads: t.reads,
             kind: match t.kind {
                 K::Fence => CellsTokenKind::CellsTokenFence,
                 K::Comment => CellsTokenKind::CellsTokenComment,

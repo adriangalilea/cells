@@ -27,6 +27,9 @@ pub struct Handle {
 struct Shared {
     len: usize,
     error: Vec<u8>,
+    /// What `cells_tokens` gave, and `cells_token_kinds`.
+    tokens: Vec<u32>,
+    kinds: Vec<u8>,
 }
 
 struct Global(UnsafeCell<Shared>);
@@ -34,7 +37,7 @@ struct Global(UnsafeCell<Shared>);
 // SAFETY: wasm32-unknown-unknown without the atomics feature has one thread.
 unsafe impl Sync for Global {}
 
-static SHARED: Global = Global(UnsafeCell::new(Shared { len: 0, error: Vec::new() }));
+static SHARED: Global = Global(UnsafeCell::new(Shared { len: 0, error: Vec::new(), tokens: Vec::new(), kinds: Vec::new() }));
 
 fn shared() -> &'static mut Shared {
     // SAFETY: one thread, and no call holds this across another.
@@ -603,6 +606,51 @@ pub unsafe extern "C" fn cells_spans(h: *mut Handle) -> *const u32 {
         }
     }
     h.spans.as_ptr()
+}
+
+/// The names of the spans' kinds (`cells::tokens::Kind::ALL`), one per line: a kind's
+/// number in `cells_tokens` is its line.
+#[unsafe(no_mangle)]
+pub extern "C" fn cells_token_kinds() -> *const u8 {
+    let s = shared();
+    s.kinds = cells::tokens::Kind::ALL.iter().map(|k| k.name()).collect::<Vec<_>>().join("\n").into_bytes();
+    give(&s.kinds)
+}
+
+/// The spans of a text (room from `cells_alloc(cap)`, `len` bytes of it written, which this
+/// call takes), what a highlighter paints: read from the text alone, never refused. Five
+/// `u32` each, in order: its start and end in UTF-16 units, its kind's number
+/// (`cells_token_kinds`), its column and the column of its own table a formula's name
+/// reads (`u32::MAX` for none). `cells_len` is their length in bytes; they live until the
+/// next `cells_tokens`.
+///
+/// # Safety
+/// As `take`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn cells_tokens(ptr: *mut u8, len: usize, cap: usize) -> *const u32 {
+    // SAFETY: the caller's promise.
+    let text = unsafe { take(ptr, len, cap) };
+    let tokens = cells::tokens::tokens(&text);
+    let s = shared();
+    s.tokens.clear();
+    // The spans are in order and never overlap: one walk turns bytes into units.
+    let (mut byte, mut unit) = (0usize, 0u32);
+    let mut chars = text.chars();
+    let mut to = |b: u32| {
+        while byte < b as usize {
+            let c = chars.next().expect("a span inside the text");
+            byte += c.len_utf8();
+            unit += c.len_utf16() as u32;
+        }
+        unit
+    };
+    for t in tokens {
+        let start = to(t.start);
+        let end = to(t.end);
+        s.tokens.extend([start, end, t.kind as u32, t.column, t.reads]);
+    }
+    s.len = s.tokens.len() * 4;
+    s.tokens.as_ptr()
 }
 
 /// Takes the text a page wrote into room from `cells_alloc`.
