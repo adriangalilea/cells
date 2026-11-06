@@ -11,8 +11,9 @@ use alloc::vec::Vec;
 use crate::Base;
 use crate::types::{self, BASES, EXPLICIT, NamedType, OPS, RESERVED, Type};
 
-/// What a span of the text is.
+/// What a span of the text is. A new kind goes last, and into `ALL`.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+#[repr(u8)]
 pub enum Kind {
     /// A prelude's `---`, and a fence's backticks with its language.
     Fence,
@@ -62,14 +63,78 @@ pub enum Kind {
     Code,
 }
 
-/// A span of the source in bytes, `start..end`, and its column where it has one (a header
-/// cell's parts, a cell, a record's comma before it), else `u32::MAX`.
+impl Kind {
+    /// Every kind, in declaration order: a kind's number across a boundary (wasm) is its
+    /// place here, and its name the one `name` gives.
+    pub const ALL: [Kind; 23] = [
+        Kind::Fence,
+        Kind::Comment,
+        Kind::Keyword,
+        Kind::Name,
+        Kind::Type,
+        Kind::Mark,
+        Kind::Bound,
+        Kind::Format,
+        Kind::Choice,
+        Kind::Punct,
+        Kind::Number,
+        Kind::Reference,
+        Kind::Operator,
+        Kind::CellText,
+        Kind::CellNumber,
+        Kind::CellBool,
+        Kind::CellDate,
+        Kind::CellChoice,
+        Kind::CellLink,
+        Kind::CellId,
+        Kind::Error,
+        Kind::String,
+        Kind::Code,
+    ];
+
+    /// Its name in lower camel case (`cellNumber`), as a page or a language server's legend
+    /// calls it.
+    pub fn name(self) -> &'static str {
+        match self {
+            Kind::Fence => "fence",
+            Kind::Comment => "comment",
+            Kind::Keyword => "keyword",
+            Kind::Name => "name",
+            Kind::Type => "type",
+            Kind::Mark => "mark",
+            Kind::Bound => "bound",
+            Kind::Format => "format",
+            Kind::Choice => "choice",
+            Kind::Punct => "punct",
+            Kind::Number => "number",
+            Kind::Reference => "reference",
+            Kind::Operator => "operator",
+            Kind::CellText => "cellText",
+            Kind::CellNumber => "cellNumber",
+            Kind::CellBool => "cellBool",
+            Kind::CellDate => "cellDate",
+            Kind::CellChoice => "cellChoice",
+            Kind::CellLink => "cellLink",
+            Kind::CellId => "cellId",
+            Kind::Error => "error",
+            Kind::String => "string",
+            Kind::Code => "code",
+        }
+    }
+}
+
+/// A span of the source in bytes, `start..end`; its column where it has one (a header
+/// cell's parts, a cell, a record's comma before it), else `u32::MAX`; and for a name a
+/// formula reads, the column of its own table it names (`cost`, `cost[-1]`,
+/// `TABLE['k7m2q9xa'].cost`), else `u32::MAX` (another table's, `TABLE` itself, a row's
+/// word in capitals, a name no column has).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Token {
     pub start: u32,
     pub end: u32,
     pub kind: Kind,
     pub column: u32,
+    pub reads: u32,
 }
 
 const NONE: u32 = u32::MAX;
@@ -81,7 +146,58 @@ struct Out {
 impl Out {
     fn push(&mut self, start: usize, end: usize, kind: Kind, column: u32) {
         if end > start {
-            self.tokens.push(Token { start: start as u32, end: end as u32, kind, column });
+            self.tokens.push(Token { start: start as u32, end: end as u32, kind, column, reads: NONE });
+        }
+    }
+}
+
+/// A name as a formula and a header spell it alike: a quoted one without its quotes, its
+/// `""` one `"`.
+fn unquoted(spelled: &str) -> String {
+    match spelled.strip_prefix('"').and_then(|s| s.strip_suffix('"')) {
+        Some(inner) => inner.replace("\"\"", "\""),
+        None => String::from(spelled),
+    }
+}
+
+/// Each name of a formula among `tokens` (one table's, its header's names among them)
+/// given the column of the table it reads: a name standing alone or after `TABLE`'s
+/// `.` (its row between brackets or none) reads the column of that name; after any
+/// other `.` it is another table's.
+fn resolve(source: &str, tokens: &mut [Token]) {
+    let text = |t: &Token| &source[t.start as usize..t.end as usize];
+    let names: Vec<(String, u32)> = tokens.iter().filter(|t| t.kind == Kind::Name).map(|t| (unquoted(text(t)), t.column)).collect();
+    for i in 0..tokens.len() {
+        if tokens[i].kind != Kind::Reference {
+            continue;
+        }
+        let own = match i.checked_sub(1).map(|p| (p, &tokens[p])) {
+            Some((p, dot)) if dot.kind == Kind::Operator && text(dot) == "." => {
+                // What the `.` follows, back over a row `[…]` to the `[` that opens it.
+                let mut j = p;
+                if j > 0 && text(&tokens[j - 1]) == "]" {
+                    let mut depth = 0usize;
+                    while j > 0 {
+                        j -= 1;
+                        match (tokens[j].kind, text(&tokens[j])) {
+                            (Kind::Operator, "]") => depth += 1,
+                            (Kind::Operator, "[") => depth -= 1,
+                            _ => {}
+                        }
+                        if depth == 0 {
+                            break;
+                        }
+                    }
+                }
+                j.checked_sub(1).is_some_and(|h| tokens[h].kind == Kind::Reference && text(&tokens[h]) == "TABLE")
+            }
+            _ => true,
+        };
+        if own {
+            let name = unquoted(text(&tokens[i]));
+            if let Some(&(_, column)) = names.iter().find(|(n, _)| *n == name) {
+                tokens[i].reads = column;
+            }
         }
     }
 }
@@ -138,6 +254,7 @@ pub fn tokens(source: &str) -> Vec<Token> {
         return out.tokens;
     }
     // The header: each cell's name, its type's parts and its formula.
+    let table = out.tokens.len();
     let mut columns: Vec<Option<Type>> = Vec::new();
     let (fields, next) = record(src, at);
     for (k, &(s, e)) in fields.iter().enumerate() {
@@ -175,6 +292,9 @@ pub fn tokens(source: &str) -> Vec<Token> {
         }
         at = next;
     }
+    // A formula may name a column the header has not reached yet: names resolve once
+    // the table is read whole.
+    resolve(source, &mut out.tokens[table..]);
     out.tokens
 }
 
@@ -666,6 +786,38 @@ mod tests {
         assert_eq!(kinds(Kind::Number), ["18:00", "96.75", "3"]);
         assert_eq!(kinds(Kind::CellNumber), ["1.4", "32.25"]);
         assert!(kinds(Kind::Error).is_empty(), "{t:?}");
+    }
+
+    #[test]
+    fn every_kind_numbered_by_its_place() {
+        for (i, k) in Kind::ALL.iter().enumerate() {
+            assert_eq!(*k as usize, i, "{k:?}");
+        }
+        assert_eq!(Kind::Code as usize + 1, Kind::ALL.len(), "a kind declared after Code is missing from ALL");
+    }
+
+    #[test]
+    fn a_formula_name_reads_its_column() {
+        let src = "---\nimport accounts from \"./a.cell\"\n---\nto:accounts.account,cost:EUR,qty:int,total:EUR=cost * qty,run:EUR=run[-1] + total,\"my \"\"x\"\"\",w:EUR=TABLE['k7'].cost + TABLE.qty + accounts.cost + SUM(total[FIRST:THIS]) + \"my \"\"x\"\"\" + later,later:num\nrent,2,3,6=qty * 2,,1,\n";
+        let reads = |name: &str| {
+            tokens(src)
+                .into_iter()
+                .filter(|t| t.kind == Kind::Reference && &src[t.start as usize..t.end as usize] == name)
+                .map(|t| t.reads)
+                .collect::<Vec<_>>()
+        };
+        // Bare, with a row, after TABLE's `.` (with its row or none), and in a cell's own formula.
+        assert_eq!(reads("cost"), [1, 1, NONE]);
+        assert_eq!(reads("qty"), [2, 2, 2]);
+        assert_eq!(reads("run"), [4]);
+        assert_eq!(reads("total"), [3, 3]);
+        // A quoted name, and one the header reaches only later.
+        assert_eq!(reads("\"my \"\"x\"\"\""), [5]);
+        assert_eq!(reads("later"), [7]);
+        // The table itself, another table, a row's word: none.
+        assert_eq!(reads("TABLE"), [NONE, NONE]);
+        assert_eq!(reads("accounts"), [NONE]);
+        assert_eq!(reads("FIRST"), [NONE]);
     }
 
     #[test]
