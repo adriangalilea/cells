@@ -2349,18 +2349,36 @@ impl Doc {
     /// (`store_unstored`). What a client storing on save writes (`cells lsp`'s
     /// formatting).
     pub fn stored_since(&mut self, before: &Doc) {
-        let key = |d: &Doc, r: usize| -> String {
-            (0..d.columns.len())
-                .filter(|&k| d.columns[k].origin(r) == Origin::Written)
-                .map(|k| d.text(r, k).into_owned())
-                .collect::<Vec<_>>()
-                .join("\u{1f}")
-        };
-        let mut then: BTreeMap<String, u32> = BTreeMap::new();
-        for r in (0..before.rows()).rev() {
-            then.insert(key(before, r), r as u32);
+        // A file that computes nothing has nothing to store.
+        if self.rendered.is_empty() {
+            return;
         }
-        let moved: Vec<Option<u32>> = (0..self.rows()).map(|r| then.get(&key(self, r)).copied()).collect();
+        fn written(d: &Doc, r: usize) -> impl Iterator<Item = usize> + '_ {
+            (0..d.columns.len()).filter(move |&k| d.columns[k].origin(r) == Origin::Written)
+        }
+        let key = |d: &Doc, r: usize| -> String { written(d, r).map(|k| d.text(r, k).into_owned()).collect::<Vec<_>>().join("\u{1f}") };
+        let same = |r: usize| {
+            self.columns.len() == before.columns.len()
+                && written(self, r).eq(written(before, r))
+                && written(self, r).all(|k| self.text(r, k) == before.text(r, k))
+        };
+        // A row where it was is itself (the usual edit); only the rest are found by their
+        // written cells among the rows of `before` no row took where they were.
+        let shared = self.rows().min(before.rows());
+        let mut moved: Vec<Option<u32>> = (0..self.rows()).map(|r| (r < shared && same(r)).then_some(r as u32)).collect();
+        if moved.iter().any(Option::is_none) {
+            let mut then: BTreeMap<String, u32> = BTreeMap::new();
+            for r in (0..before.rows()).rev() {
+                if moved.get(r).is_none_or(Option::is_none) {
+                    then.insert(key(before, r), r as u32);
+                }
+            }
+            for (r, m) in moved.iter_mut().enumerate() {
+                if m.is_none() {
+                    *m = then.get(&key(self, r)).copied();
+                }
+            }
+        }
         let before_rendered = before.rendered.clone();
         self.store_reached(&before_rendered, |r| moved[r as usize]);
         self.store_unstored();
