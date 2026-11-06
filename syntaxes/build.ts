@@ -50,12 +50,14 @@ const word = (alternatives: string[]) => raw`${BEFORE}(?:${alternatives.join("|"
 const NOT_KEYWORD = raw`(?!${word(KEYWORDS)})`
 
 // ── Scopes ──────────────────────────────────────────────────────────────────
-// A column's name in the header and its text cells share one of these, in
-// turn, as the tree-sitter queries do. The first column is the text's own
-// colour; the rest are scopes every showcase theme paints. No theme there
-// gives all six apart (`bun run colours.ts` measures what each gives), and
-// Rosé Pine's palette has only five colours that are not a number's or a
-// string's, so no choice of scopes could.
+// A column's name in the header and every cell under it share one of these, in
+// turn, as the tree-sitter queries do and as Rainbow CSV does: a table is read
+// by its columns, and a cell's kind is its header's type. Each is a scope a
+// theme already paints, then `meta.column.<n>.cells` INSIDE it, which no theme
+// names, so an editor's theme colours the column by the outer scope and a
+// palette of its own (ui's `code`) names the column by its number. The first
+// column is the text's own colour in an editor; no showcase theme gives all six
+// apart (`bun run colours.ts` measures what each gives).
 const RAINBOW = [
   null,
   "entity.name.function",
@@ -63,7 +65,7 @@ const RAINBOW = [
   "entity.name.tag",
   "entity.other.attribute-name",
   "support.function",
-].map((scope, i) => `meta.column.${i + 1}.cells${scope ? ` ${scope}.column.cells` : ""}`)
+].map((scope, i) => `${scope ? `${scope}.column.cells ` : ""}meta.column.${i + 1}.cells`)
 
 const S = {
   preludeFence: "punctuation.separator.prelude.cells",
@@ -270,38 +272,45 @@ const whole = (body: string) => raw`(?<=^|,)[ \t]*(?:${body})[ \t]*$`
 
 // A cell is what is written (84.20), what a formula computed (84.20=), or that and its
 // own formula (32.25=96.75 / 3): the first `=` that is no `'=` splits what the file
-// stores from how it is computed.
-const value = [
+// stores from how it is computed. What is written is read by `written`: `#written`,
+// its kind by its spelling, for a value with nothing around it (an inline fragment);
+// `#plain`, its quotes and escapes alone, for a row's cell, which its column colours.
+const valueOf = (written: "#written" | "#plain") => [
   {
     comment: "A quoted computed cell (its own formula holds a `,`): the same parts inside its quotes.",
     match: whole(raw`(")((?:'=|""|[^="])*?)(?<!')(=)((?:""|[^"])*)(")`),
     captures: {
       1: { name: S.stringBegin },
-      2: { name: "meta.stored.cells", patterns: [{ include: "#written" }] },
+      2: { name: "meta.stored.cells", patterns: [{ include: written }] },
       3: { name: S.formulaMark },
       4: { name: S.formula, patterns: [{ include: "#formula" }] },
       5: { name: S.stringEnd },
     },
   },
   {
+    comment: "A computed cell: what the file stores, `=`, then its own formula or none (its column's).",
+    match: raw`(?<=^|,)[ \t]*((?:'=|[^=])*?)(?<!')(=)(.*)$`,
+    captures: {
+      1: { name: "meta.stored.cells", patterns: [{ include: written }] },
+      2: { name: S.formulaMark },
+      3: { name: S.formula, patterns: [{ include: "#formula" }] },
+    },
+  },
+  { include: written },
+]
+
+// A row's cell as written: its quotes and escapes, and no kind, so the column it
+// stands in is its colour.
+const plain = [
+  {
     match: whole(raw`(")((?:[^"]|"")*)(")`),
-    name: S.string,
     captures: {
       1: { name: S.stringBegin },
       2: { patterns: [{ match: '""', name: S.escape }] },
       3: { name: S.stringEnd },
     },
   },
-  {
-    comment: "A computed cell: what the file stores, `=`, then its own formula or none (its column's).",
-    match: raw`(?<=^|,)[ \t]*((?:'=|[^=])*?)(?<!')(=)(.*)$`,
-    captures: {
-      1: { name: "meta.stored.cells", patterns: [{ include: "#written" }] },
-      2: { name: S.formulaMark },
-      3: { name: S.formula, patterns: [{ include: "#formula" }] },
-    },
-  },
-  { include: "#written" },
+  { comment: "A text's `=`, written `'=`.", match: "'=", name: S.escape },
 ]
 
 // What a cell holds as written, by its spelling alone.
@@ -325,7 +334,7 @@ const written = [
   { comment: "A text's `=`, written `'=`.", match: "'=", name: S.escape },
 ]
 
-const row = cycle(rowCell, 1, (column) => ({ 0: { name: RAINBOW[column], patterns: [{ include: "#value" }] } }))
+const row = cycle(rowCell, 1, (column) => ({ 0: { name: RAINBOW[column], patterns: [{ include: "#cell" }] } }))
 
 // ── The prelude ─────────────────────────────────────────────────────────────
 
@@ -524,8 +533,10 @@ const grammar = {
     },
     type: { patterns: type },
     formula: { patterns: formula },
-    value: { patterns: value },
+    value: { patterns: valueOf("#written") },
     written: { patterns: written },
+    cell: { patterns: valueOf("#plain") },
+    plain: { patterns: plain },
     header,
     row: { ...row, name: "meta.row.cells" },
   },

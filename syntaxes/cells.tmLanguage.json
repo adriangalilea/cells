@@ -866,26 +866,6 @@
           }
         },
         {
-          "match": "(?<=^|,)[ \\t]*(?:(\")((?:[^\"]|\"\")*)(\"))[ \\t]*$",
-          "name": "string.quoted.double.cells",
-          "captures": {
-            "1": {
-              "name": "punctuation.definition.string.begin.cells"
-            },
-            "2": {
-              "patterns": [
-                {
-                  "match": "\"\"",
-                  "name": "constant.character.escape.cells"
-                }
-              ]
-            },
-            "3": {
-              "name": "punctuation.definition.string.end.cells"
-            }
-          }
-        },
-        {
           "comment": "A computed cell: what the file stores, `=`, then its own formula or none (its column's).",
           "match": "(?<=^|,)[ \\t]*((?:'=|[^=])*?)(?<!')(=)(.*)$",
           "captures": {
@@ -972,6 +952,97 @@
         }
       ]
     },
+    "cell": {
+      "patterns": [
+        {
+          "comment": "A quoted computed cell (its own formula holds a `,`): the same parts inside its quotes.",
+          "match": "(?<=^|,)[ \\t]*(?:(\")((?:'=|\"\"|[^=\"])*?)(?<!')(=)((?:\"\"|[^\"])*)(\"))[ \\t]*$",
+          "captures": {
+            "1": {
+              "name": "punctuation.definition.string.begin.cells"
+            },
+            "2": {
+              "name": "meta.stored.cells",
+              "patterns": [
+                {
+                  "include": "#plain"
+                }
+              ]
+            },
+            "3": {
+              "name": "punctuation.definition.formula.cells"
+            },
+            "4": {
+              "name": "meta.formula.cells",
+              "patterns": [
+                {
+                  "include": "#formula"
+                }
+              ]
+            },
+            "5": {
+              "name": "punctuation.definition.string.end.cells"
+            }
+          }
+        },
+        {
+          "comment": "A computed cell: what the file stores, `=`, then its own formula or none (its column's).",
+          "match": "(?<=^|,)[ \\t]*((?:'=|[^=])*?)(?<!')(=)(.*)$",
+          "captures": {
+            "1": {
+              "name": "meta.stored.cells",
+              "patterns": [
+                {
+                  "include": "#plain"
+                }
+              ]
+            },
+            "2": {
+              "name": "punctuation.definition.formula.cells"
+            },
+            "3": {
+              "name": "meta.formula.cells",
+              "patterns": [
+                {
+                  "include": "#formula"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "include": "#plain"
+        }
+      ]
+    },
+    "plain": {
+      "patterns": [
+        {
+          "match": "(?<=^|,)[ \\t]*(?:(\")((?:[^\"]|\"\")*)(\"))[ \\t]*$",
+          "captures": {
+            "1": {
+              "name": "punctuation.definition.string.begin.cells"
+            },
+            "2": {
+              "patterns": [
+                {
+                  "match": "\"\"",
+                  "name": "constant.character.escape.cells"
+                }
+              ]
+            },
+            "3": {
+              "name": "punctuation.definition.string.end.cells"
+            }
+          }
+        },
+        {
+          "comment": "A text's `=`, written `'=`.",
+          "match": "'=",
+          "name": "constant.character.escape.cells"
+        }
+      ]
+    },
     "header": {
       "match": "(?:^|(,))(?:(\")((?:[^\":\\r\\n]|\"\")*)(?:(:)((?:[^\"\\r\\n]|\"\")*))?(\")(?=,|$)|([^:,\\r\\n\"][^:,\\r\\n]*)?(?:(:)([^,\\r\\n]*))?)(?:(,)(?:(\")((?:[^\":\\r\\n]|\"\")*)(?:(:)((?:[^\"\\r\\n]|\"\")*))?(\")(?=,|$)|([^:,\\r\\n\"][^:,\\r\\n]*)?(?:(:)([^,\\r\\n]*))?))?(?:(,)(?:(\")((?:[^\":\\r\\n]|\"\")*)(?:(:)((?:[^\"\\r\\n]|\"\")*))?(\")(?=,|$)|([^:,\\r\\n\"][^:,\\r\\n]*)?(?:(:)([^,\\r\\n]*))?))?(?:(,)(?:(\")((?:[^\":\\r\\n]|\"\")*)(?:(:)((?:[^\"\\r\\n]|\"\")*))?(\")(?=,|$)|([^:,\\r\\n\"][^:,\\r\\n]*)?(?:(:)([^,\\r\\n]*))?))?(?:(,)(?:(\")((?:[^\":\\r\\n]|\"\")*)(?:(:)((?:[^\"\\r\\n]|\"\")*))?(\")(?=,|$)|([^:,\\r\\n\"][^:,\\r\\n]*)?(?:(:)([^,\\r\\n]*))?))?(?:(,)(?:(\")((?:[^\":\\r\\n]|\"\")*)(?:(:)((?:[^\"\\r\\n]|\"\")*))?(\")(?=,|$)|([^:,\\r\\n\"][^:,\\r\\n]*)?(?:(:)([^,\\r\\n]*))?))?",
       "captures": {
@@ -1019,7 +1090,7 @@
           "name": "punctuation.definition.string.begin.cells"
         },
         "12": {
-          "name": "meta.column.2.cells entity.name.function.column.cells"
+          "name": "entity.name.function.column.cells meta.column.2.cells"
         },
         "13": {
           "name": "punctuation.separator.type.cells"
@@ -1036,7 +1107,7 @@
           "name": "punctuation.definition.string.end.cells"
         },
         "16": {
-          "name": "meta.column.2.cells entity.name.function.column.cells"
+          "name": "entity.name.function.column.cells meta.column.2.cells"
         },
         "17": {
           "name": "punctuation.separator.type.cells"
@@ -1056,7 +1127,7 @@
           "name": "punctuation.definition.string.begin.cells"
         },
         "21": {
-          "name": "meta.column.3.cells variable.parameter.column.cells"
+          "name": "variable.parameter.column.cells meta.column.3.cells"
         },
         "22": {
           "name": "punctuation.separator.type.cells"
@@ -1073,7 +1144,7 @@
           "name": "punctuation.definition.string.end.cells"
         },
         "25": {
-          "name": "meta.column.3.cells variable.parameter.column.cells"
+          "name": "variable.parameter.column.cells meta.column.3.cells"
         },
         "26": {
           "name": "punctuation.separator.type.cells"
@@ -1093,7 +1164,7 @@
           "name": "punctuation.definition.string.begin.cells"
         },
         "30": {
-          "name": "meta.column.4.cells entity.name.tag.column.cells"
+          "name": "entity.name.tag.column.cells meta.column.4.cells"
         },
         "31": {
           "name": "punctuation.separator.type.cells"
@@ -1110,7 +1181,7 @@
           "name": "punctuation.definition.string.end.cells"
         },
         "34": {
-          "name": "meta.column.4.cells entity.name.tag.column.cells"
+          "name": "entity.name.tag.column.cells meta.column.4.cells"
         },
         "35": {
           "name": "punctuation.separator.type.cells"
@@ -1130,7 +1201,7 @@
           "name": "punctuation.definition.string.begin.cells"
         },
         "39": {
-          "name": "meta.column.5.cells entity.other.attribute-name.column.cells"
+          "name": "entity.other.attribute-name.column.cells meta.column.5.cells"
         },
         "40": {
           "name": "punctuation.separator.type.cells"
@@ -1147,7 +1218,7 @@
           "name": "punctuation.definition.string.end.cells"
         },
         "43": {
-          "name": "meta.column.5.cells entity.other.attribute-name.column.cells"
+          "name": "entity.other.attribute-name.column.cells meta.column.5.cells"
         },
         "44": {
           "name": "punctuation.separator.type.cells"
@@ -1167,7 +1238,7 @@
           "name": "punctuation.definition.string.begin.cells"
         },
         "48": {
-          "name": "meta.column.6.cells support.function.column.cells"
+          "name": "support.function.column.cells meta.column.6.cells"
         },
         "49": {
           "name": "punctuation.separator.type.cells"
@@ -1184,7 +1255,7 @@
           "name": "punctuation.definition.string.end.cells"
         },
         "52": {
-          "name": "meta.column.6.cells support.function.column.cells"
+          "name": "support.function.column.cells meta.column.6.cells"
         },
         "53": {
           "name": "punctuation.separator.type.cells"
@@ -1209,7 +1280,7 @@
           "name": "meta.column.1.cells",
           "patterns": [
             {
-              "include": "#value"
+              "include": "#cell"
             }
           ]
         },
@@ -1217,10 +1288,10 @@
           "name": "punctuation.separator.comma.cells"
         },
         "4": {
-          "name": "meta.column.2.cells entity.name.function.column.cells",
+          "name": "entity.name.function.column.cells meta.column.2.cells",
           "patterns": [
             {
-              "include": "#value"
+              "include": "#cell"
             }
           ]
         },
@@ -1228,10 +1299,10 @@
           "name": "punctuation.separator.comma.cells"
         },
         "6": {
-          "name": "meta.column.3.cells variable.parameter.column.cells",
+          "name": "variable.parameter.column.cells meta.column.3.cells",
           "patterns": [
             {
-              "include": "#value"
+              "include": "#cell"
             }
           ]
         },
@@ -1239,10 +1310,10 @@
           "name": "punctuation.separator.comma.cells"
         },
         "8": {
-          "name": "meta.column.4.cells entity.name.tag.column.cells",
+          "name": "entity.name.tag.column.cells meta.column.4.cells",
           "patterns": [
             {
-              "include": "#value"
+              "include": "#cell"
             }
           ]
         },
@@ -1250,10 +1321,10 @@
           "name": "punctuation.separator.comma.cells"
         },
         "10": {
-          "name": "meta.column.5.cells entity.other.attribute-name.column.cells",
+          "name": "entity.other.attribute-name.column.cells meta.column.5.cells",
           "patterns": [
             {
-              "include": "#value"
+              "include": "#cell"
             }
           ]
         },
@@ -1261,10 +1332,10 @@
           "name": "punctuation.separator.comma.cells"
         },
         "12": {
-          "name": "meta.column.6.cells support.function.column.cells",
+          "name": "support.function.column.cells meta.column.6.cells",
           "patterns": [
             {
-              "include": "#value"
+              "include": "#cell"
             }
           ]
         }
