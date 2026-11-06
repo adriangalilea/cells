@@ -13,7 +13,7 @@ Built: every document a page (SPEC.md a page per section), links resolved at bui
 
 ## The hero becomes usable (Adrian's idea, worth a great deal of effort)
 
-After it plays, a "your turn" control pauses the clip, and the frame at that instant (the files as typed so far, the tab in front, the caret) becomes live state: one folder in memory (`accounts.cell`, `money.cell`) that every window reads and writes through the real wasm engine. Any window's edit is a write to the folder, and every window reads it again.
+After it plays, a "your turn" control pauses the clip, and the frame at that instant (the files as typed so far, the tab in front, the caret) becomes live state: one folder in memory (`accounts.cells`, `money.cells`) that every window reads and writes through the real wasm engine. Any window's edit is a write to the folder, and every window reads it again.
 
 - **The Cells window:** ui's `table`, editable on that folder (`useTableDocument` with the `cells` codec, which shows a computed cell's value and stores what each edit reached). Buildable now.
 - **The terminal:** a small shell over the folder running the real engine: `cells check`, `cells show`, `ls`, `cat`. Anything else answers that it is not in this demo. Nothing leaves the page.

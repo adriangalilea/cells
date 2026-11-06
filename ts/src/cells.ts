@@ -664,7 +664,7 @@ export interface Read {
   problems: Problem[]
 }
 
-/** A `.cell` file's text, read. */
+/** A `.cells` file's text, read. */
 export function read(text: string): Read {
   const newline = text.includes("\r\n") ? "\r\n" : "\n"
   const lines = text.split(newline)

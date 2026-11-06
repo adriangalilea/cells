@@ -1,6 +1,6 @@
 # Editors
 
-A `.cell` file in an editor takes two pieces from this repository: the tree-sitter grammar (`tree-sitter/`) for highlighting, and `cells lsp`, the language server, for everything that needs the engine, its colours included where the editor asks for them (Colour, below).
+A `.cells` file in an editor takes two pieces from this repository: the tree-sitter grammar (`tree-sitter/`) for highlighting, and `cells lsp`, the language server, for everything that needs the engine, its colours included where the editor asks for them (Colour, below).
 
 ## The language server
 
@@ -41,7 +41,7 @@ A grammar is the reading without the engine, so it is held to the engine's: each
 [[language]]
 name = "cells"
 scope = "source.cells"
-file-types = ["cell"]
+file-types = ["cells"]
 comment-token = "//"
 injection-regex = "^cells$"
 roots = []
@@ -64,7 +64,7 @@ Then `hx --grammar build`, and link the queries: `ln -s /path/to/cells/tree-sitt
 `cells merge` merges two versions of a file as SPEC.md, Merging, says: what was written merges as text, every computed value is computed again from the merged rows, so two branches that each add a row to a running balance never conflict on the balances. In the repository's `.gitattributes`:
 
 ```text
-*.cell merge=cells
+*.cells merge=cells
 ```
 
 and once per machine:
@@ -81,7 +81,7 @@ A conflict in what was written is left in the file with git's markers, and the m
 Neovim 0.11 configures a server natively:
 
 ```lua
-vim.filetype.add({ extension = { cell = "cells" } })
+vim.filetype.add({ extension = { cells = "cells" } })
 
 vim.lsp.config("cells", {
   cmd = { "/path/to/cells/rust/target/release/cells", "lsp" },
@@ -102,7 +102,7 @@ require("nvim-treesitter.parsers").get_parser_configs().cells = {
 
 ## VS Code
 
-VS Code starts a language server only from an extension, and none ships yet. One is small: a `package.json` contributing the language `cells` (extension `.cell`) and the TextMate grammar `syntaxes/cells.tmLanguage.json`, and an `extension.ts` whose `activate` starts `cells lsp` through `vscode-languageclient`:
+VS Code starts a language server only from an extension, and none ships yet. One is small: a `package.json` contributing the language `cells` (extension `.cells`) and the TextMate grammar `syntaxes/cells.tmLanguage.json`, and an `extension.ts` whose `activate` starts `cells lsp` through `vscode-languageclient`:
 
 ```ts
 import { LanguageClient } from "vscode-languageclient/node"

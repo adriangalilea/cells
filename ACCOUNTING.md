@@ -13,16 +13,16 @@
 
 ```text
 books/
-├── commodities.cell   what money is held in
-├── accounts.cell      every account, once
-├── vendors.cell
-├── balances.cell      what a statement says a balance was
-├── schedules.cell     movements that recur, for forecasts
-├── prices.cell
-└── home/money.cell    the movements
+├── commodities.cells   what money is held in
+├── accounts.cells      every account, once
+├── vendors.cells
+├── balances.cells      what a statement says a balance was
+├── schedules.cells     movements that recur, for forecasts
+├── prices.cells
+└── home/money.cells    the movements
 ```
 
-`commodities.cell`:
+`commodities.cells`:
 
 ```cells
 ---
@@ -34,11 +34,11 @@ USD,currency,2,us dollar
 KITE,stock,0,Kite Works shares
 ```
 
-`accounts.cell`:
+`accounts.cells`:
 
 ```cells
 ---
-import commodities from "./commodities.cell"
+import commodities from "./commodities.cells"
 type Kind = assets|liabilities|equity|income|expenses
 type Booking = strict|fifo|lifo|hifo|average
 ---
@@ -57,13 +57,13 @@ equity:conversion,equity,EUR,2026-01-01,,no,
 
 The hierarchy is the name (`assets:bank:main` under `assets:bank`), as in every plain text ledger. `never_negative` is a limit checked before every write; `booking` says which lot a sale draws from when it names none.
 
-`home/money.cell`:
+`home/money.cells`:
 
 ```cells draft
 ---
-import accounts from "../accounts.cell"
-import commodities from "../commodities.cell"
-import vendors from "../vendors.cell"
+import accounts from "../accounts.cells"
+import commodities from "../commodities.cells"
+import vendors from "../vendors.cells"
 type Phase = single|pending|post|void
 type Code = purchase|refund|transfer|salary|tax|pension|exchange|sale|correction|opening
 ---
@@ -90,11 +90,11 @@ r7s8t9v0,2026-09-21,single,950.00,EUR,expenses:home:rent,assets:bank:main,,,,,,c
 
 ## A balance that must hold
 
-`balances.cell`:
+`balances.cells`:
 
 ```cells draft
 ---
-import accounts from "./accounts.cell"
+import accounts from "./accounts.cells"
 check balance_holds:
   SELECT b.id FROM balances b
   WHERE b.balance <> (SELECT COALESCE(SUM(p.amount), 0) FROM postings p
@@ -123,5 +123,5 @@ The account's posted balance at the end of `date` (a statement's closing balance
 
 ## Recurring and prices
 
-- `schedules.cell`, `id:id!,every:monthly|quarterly|yearly,day:1..31,from:date,until:date?,amount:money in commodity,commodity:commodities.commodity,account_from:accounts.account,account_to:accounts.account,description:text`: each due occurrence is shown as a computed row (never stored: a forecast, not a movement) for forecasts and budgets. When the real movement happens, a real row is written naming the schedule.
-- `prices.cell`, `id:id!,date:date,commodity:commodities.commodity,price:num>0,in:commodities.commodity,source:text?`: one price per date, commodity and currency (a `unique` over the three). Valuation (then, at a period's end, now) is a query over it, never data.
+- `schedules.cells`, `id:id!,every:monthly|quarterly|yearly,day:1..31,from:date,until:date?,amount:money in commodity,commodity:commodities.commodity,account_from:accounts.account,account_to:accounts.account,description:text`: each due occurrence is shown as a computed row (never stored: a forecast, not a movement) for forecasts and budgets. When the real movement happens, a real row is written naming the schedule.
+- `prices.cells`, `id:id!,date:date,commodity:commodities.commodity,price:num>0,in:commodities.commodity,source:text?`: one price per date, commodity and currency (a `unique` over the three). Valuation (then, at a period's end, now) is a query over it, never data.

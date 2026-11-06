@@ -2,7 +2,7 @@
 
 > **Not yet final.** This spec is a draft: what follows is what the conformance suite ([`tests/`](tests)) holds every reader to, and [Open](#open) holds what is decided in direction but not written, and what is undecided. Any of it may still change.
 
-Data and its logic, in one plain-text file. A cell, a `.cell` file, is a table whose header cells carry their column's type, `name:type`, and its formula when it computes, `name:type=formula`; its rows hold every value, the computed ones too, each beside how it is computed; it may open with a prelude, fenced by `---`, that names types, imports other files and holds tables of its own, written inline or filled by a script. One file, never a sidecar: the types and the logic travel with the data, and the data is all there to read in any editor. MIME type `text/vnd.cells`.
+Data and its logic, in one plain-text file. A Cells file, `.cells`, is a table whose header cells carry their column's type, `name:type`, and its formula when it computes, `name:type=formula`; its rows hold every value, the computed ones too, each beside how it is computed; it may open with a prelude, fenced by `---`, that names types, imports other files and holds tables of its own, written inline or filled by a script. One file, never a sidecar: the types and the logic travel with the data, and the data is all there to read in any editor. MIME type `text/vnd.cells`.
 
 ```cells
 ---
@@ -42,7 +42,7 @@ cost:EUR>=0        total:EUR=cost * qty
 
 ## A cell
 
-A cell of a `.cell` file is one of four forms, in every column and every table:
+A cell of a Cells file is one of four forms, in every column and every table:
 
 | Written | Is |
 |---|---|
@@ -138,7 +138,7 @@ Without `?`, a blank cell is reported as missing. `note:text?` is an optional no
 
 ### Every shorthand has a word
 
-Both are always valid and mean the same; a cell may mix them.
+Both are always valid and mean the same; a header cell may mix them.
 
 | Shorthand | Explicit |
 |---|---|
@@ -162,7 +162,7 @@ Inside a type, outside single quotes: `|` `/` `!` `?` `<` `>` `=` `..` `(` `)` `
 
 ````cells
 ---
-import accounts from "../accounts.cell"       // the shared accounts
+import accounts from "../accounts.cells"       // the shared accounts
 type Kind = card|transfer
 
 fees = ```cells
@@ -175,7 +175,7 @@ transfer,0
 
 The prelude is the work; the header and rows after it are what the file shows, and an app shows the prelude folded. One statement a line, a fence's content apart; a blank line is nothing, and spaces and tabs at a line's ends and between a statement's parts are nothing (a tab counts as a space everywhere in the prelude, outside quotes). A line that is no statement is an error naming it. Statements are read in order: each sees the types and tables named above it, never one below. A name is a type's or a table's, once in the file: one named twice, whatever the two are, is an error naming the second. An error inside a statement (a type that does not read, an import that does not follow, a table's cell grammar) names the statement's line, or the line inside the table's fence it is on.
 
-- **`//`** starts a comment to the line's end, outside single and double quotes and outside fences (`type Path = 'a//b'|c`, `"https://example.com/r.cell"`).
+- **`//`** starts a comment to the line's end, outside single and double quotes and outside fences (`type Path = 'a//b'|c`, `"https://example.com/r.cells"`).
 - **A fence** opens with three backticks or more and its language, `` ```cells ``, and closes at the first line that is as many backticks and nothing else, spaces and tabs aside. What it holds is its language's, so a `//` or a `---` inside one is no comment and no end of the prelude's. A fence never closed is an error naming the line it opens on.
 - **A computed column** is no statement: `total = cost * qty` is an error naming its line. It is a header cell, `total:EUR=cost * qty` ([Formulas](#formulas)).
 
@@ -187,16 +187,16 @@ The prelude is the work; the header and rows after it are what the file shows, a
 
 ```cells
 ---
-import accounts from "../accounts.cell"
-import { Kind, fees } from "./rates.cell"
-import vat from "https://example.com/es/vat.cell" with { sha256: "9c1e7f0a…" }
-import last_year from "./money.cell" with { rev: "a1b2c3d" }
+import accounts from "../accounts.cells"
+import { Kind, fees } from "./rates.cells"
+import vat from "https://example.com/es/vat.cells" with { sha256: "9c1e7f0a…" }
+import last_year from "./money.cells" with { rev: "a1b2c3d" }
 ---
 ```
 
 - **The default import**, `import accounts from "…"`, names the other file's table: its key a type for a column (`to:accounts.account`), its columns read by a formula through a reference or by key.
 - **A named import**, `import { Kind, fees } from "…"`, takes what the other file exports: a type (`export type Kind = …`) or a table (`export fees = …`). A name it does not export is an error naming the line, the names it does export said. What a file does not export is its own, so `accounts.account` only ever means a column.
-- **Where from** is a quoted path, read from the importing file's folder (`"../accounts.cell"`), or a URL. Nothing is copied in: a local import is read again at every read, so it is always current.
+- **Where from** is a quoted path, read from the importing file's folder (`"../accounts.cells"`), or a URL. Nothing is copied in: a local import is read again at every read, so it is always current.
 - **A URL is pinned by its content**: `with { sha256: "…" }`, the hash of its bytes in lower-case hexadecimal, is its identity. A URL with no hash is an error naming the line (`cells pin` writes it). Bytes that do not match the hash are an error naming the line, the hash they have said; a change at the source is never followed. A reader fetches from wherever the bytes can be had (the URL, a cache of them by their hash).
 - **`with { rev: "…" }`** reads a local file as its history holds it at that revision (git's, for the command line), so last quarter's report reads last quarter's files. A reader that holds no history reads it as unreachable.
 - **A file that imports itself**, directly or through others, is an error naming the line.
@@ -206,7 +206,7 @@ Data has no versions to resolve: no ranges, no resolver, no lockfile. Considered
 
 ### Tables written inline
 
-**`name = ```cells`**, its rows on the lines after it and a closing fence: a table of the file's own, read as a cell's table is (a header and rows, no prelude of its own) whose types may be the prelude's above it and whose references and formulas may read the tables above it. **`export name = ```cells`** is one another file may import. It is read as any table is: its problems are its own (`cells check` reports them under its name), and the file's formulas read it by name: `fees[kind].pct`, `SUM(fees.pct)`. Considered: a store beside the file, or hidden in it, which would make the file no longer all there is. A file of several sheets, as a workbook: a folder is the workbook and a file one table of it, so a table one file alone needs is written inline, and one another file needs moves to its own file, one import changed and no row.
+**`name = ```cells`**, its rows on the lines after it and a closing fence: a table of the file's own, read as a Cells file's table is (a header and rows, no prelude of its own) whose types may be the prelude's above it and whose references and formulas may read the tables above it. **`export name = ```cells`** is one another file may import. It is read as any table is: its problems are its own (`cells check` reports them under its name), and the file's formulas read it by name: `fees[kind].pct`, `SUM(fees.pct)`. Considered: a store beside the file, or hidden in it, which would make the file no longer all there is. A file of several sheets, as a workbook: a folder is the workbook and a file one table of it, so a table one file alone needs is written inline, and one another file needs moves to its own file, one import changed and no row.
 
 ### Tables a script fills
 
@@ -248,7 +248,7 @@ Any other fence after a script, or one of these twice, is an error naming the li
 | `every monday at 09:00` | each week, the day named (`monday` to `sunday`) |
 | `every month on 1 at 08:00` | each month, the day of the month named (1 to 31) |
 | `cron 0 9 * * 1-5` | as cron's five fields say |
-| `when ../money.cell changes` | each time that file changes |
+| `when ../money.cells changes` | each time that file changes |
 
 A trigger with a time of day (and `cron`) needs the zone: a file moves between machines, and 18:00 must be one moment on all of them. A schedule that says none of these is an error naming the line.
 
@@ -272,7 +272,7 @@ invoice 42,80.00,1,79.99
 
 ### A formula in a cell
 
-- **A cell's own formula**, right of its `=` (`32.25=96.75 / 3`, or `=96.75 / 3` before its value is stored), is in any column of a `.cell` file. Its value is what the formula gives on its row, read by the column's type; a write stores it, and never changes the formula. In a column with its own formula, a cell's formula beats it for that cell. A field holding a `,` or a `"` (`"7.43=ROUND(qty * 2.25, 1)"`) is quoted as any field is.
+- **A cell's own formula**, right of its `=` (`32.25=96.75 / 3`, or `=96.75 / 3` before its value is stored), is in any column of a `.cells` file. Its value is what the formula gives on its row, read by the column's type; a write stores it, and never changes the formula. In a column with its own formula, a cell's formula beats it for that cell. A field holding a `,` or a `"` (`"7.43=ROUND(qty * 2.25, 1)"`) is quoted as any field is.
 - **A cell's formula that does not compute** (it does not read, it names what is not there, it gives what its column cannot hold, it reads its own cell through others) is a problem of kind `formula` on its cell, its value null, the problem saying why, and what the file stores left of its `=` kept as written.
 - **`#n` is input, never stored.** An app or the language server takes `TABLE[#3]`, the row numbered 3 where it shows now (from 1, as a table numbers its rows), and writes that row's key in its place: `TABLE['k7m2q9xa']`. A file holding `#` is an error naming it. A bare `TABLE[3]` stays the key `3`, so an `int` key never collides with a row number. Completing inside `TABLE[` lists the rows, each by its key and a few of its columns.
 - **A spreadsheet's references are input, never stored.** An app or the language server takes a formula as a spreadsheet writes it, `=C2*D2` or `=SUM($E$2:E2)`, and writes it in names: a column by the header's name for its letter, this row bare, another row by where it is from this one (`[-1]`), the first data row (a spreadsheet's 2) `FIRST`, a fixed row by its key (`TABLE['k7m2q9xa'].cost`), a whole column (`E:E`) by its name. `=C2*D2` is written `=cost * qty`, `=SUM($E$2:E2)` `=SUM(total[FIRST:THIS])`; filled down a column, the formula moves to its header cell. A file never holds a letter's column or a numbered row, so neither ever points at the wrong one after a line or a column is inserted by hand: a spreadsheet survives that only because it rewrites every reference when it happens, and in a file edited by hand or merged by git nothing does. A reader that finds `C2` reads it as a name.
@@ -369,7 +369,7 @@ A writer changing a type writes the shorthand, then its formula when it has one 
 
 ### Merging
 
-Two versions of a file merge row by row (each row by its identity, [Open](#open)), and a computed cell is never a conflict: what is right of its `=` merges as text, what is left of it is computed again from the merged rows, and only written cells, the header and the prelude can conflict. `cells merge` is that merge, as git's merge driver (`*.cell merge=cells` in `.gitattributes`, the driver `cells merge %O %A %B`). Two branches that each add a movement to a running balance merge into one file with every balance right, where a text merge conflicts on every row below the first insertion.
+Two versions of a file merge row by row (each row by its identity, [Open](#open)), and a computed cell is never a conflict: what is right of its `=` merges as text, what is left of it is computed again from the merged rows, and only written cells, the header and the prelude can conflict. `cells merge` is that merge, as git's merge driver (`*.cells merge=cells` in `.gitattributes`, the driver `cells merge %O %A %B`). Two branches that each add a movement to a running balance merge into one file with every balance right, where a text merge conflicts on every row below the first insertion.
 
 The shorthand, as a writer writes it:
 
@@ -395,20 +395,20 @@ In v0 a script is a program with the whole access of its runner, its imports res
 
 ### What it is for
 
-The use it is designed against is **plain text accounting done properly**: books kept as plain files (a `money.cell` per folder), readable, diffable and the person's own, with what ledgers in plain text never could do: say that an amount is euros, that an account must exist, that VAT is derived from the amount, that an invoice appears once, and answer any question across every file. Every decision below is judged by whether it makes those books better.
+The use it is designed against is **plain text accounting done properly**: books kept as plain files (a `money.cells` per folder), readable, diffable and the person's own, with what ledgers in plain text never could do: say that an amount is euros, that an account must exist, that VAT is derived from the amount, that an invoice appears once, and answer any question across every file. Every decision below is judged by whether it makes those books better.
 
 ### Decided in direction, not yet written
 
-- **The filesystem as a graph database.** A folder of `.cell` files is a graph of typed tables, its edges the references: written today, a reference that breaks is a problem naming the file and row. A rename is followed through every file that references the key (the language server, `cells lsp`). What is not yet: tools that notice before a break lands (a warning on a key renamed in the other file, a writer refusing to save a dangling reference without saying so).
+- **The filesystem as a graph database.** A folder of `.cells` files is a graph of typed tables, its edges the references: written today, a reference that breaks is a problem naming the file and row. A rename is followed through every file that references the key (the language server, `cells lsp`). What is not yet: tools that notice before a break lands (a warning on a key renamed in the other file, a writer refusing to save a dangling reference without saying so).
   ```text
   ~/books/
-  ├── accounts.cell              account:text!,kind:assets|liabilities|expenses|income
-  ├── vendors.cell               vendor:text!,name:text,vat_id:text?
-  ├── home/money.cell            account_from/account_to → accounts, vendor → vendors
-  ├── travel/money.cell
-  └── studio/money.cell
+  ├── accounts.cells              account:text!,kind:assets|liabilities|expenses|income
+  ├── vendors.cells               vendor:text!,name:text,vat_id:text?
+  ├── home/money.cells            account_from/account_to → accounts, vendor → vendors
+  ├── travel/money.cells
+  └── studio/money.cells
   ```
-- **Fixes a reference offers**: `did you mean "rent"?`, `add it to accounts.cell`, so a new account never means opening the other file by hand; and for a plain text column, a value seen once beside a near spelling seen often a hint, never a problem.
+- **Fixes a reference offers**: `did you mean "rent"?`, `add it to accounts.cells`, so a new account never means opening the other file by hand; and for a plain text column, a value seen once beside a near spelling seen often a hint, never a problem.
 - **Schedules kept.** A file's schedules are read today, never kept: the daemon (ENGINE.md) runs each script on its schedule. A run missed while the machine slept runs once on waking, never once per miss; retries are the engine's, the same for every file; every run is in the engine's log.
 - **Every row has an identity.** A file's key (`!`) is its rows' identity. A file with none gets an `id` column the first time the engine writes it, eight characters from a base-32 alphabet, unique within the file, assigned only by the engine and never edited through it. Edits address a row by its identity, never by its position, so a line inserted by hand elsewhere never makes an edit land on the wrong row, and two versions of a file merge row by row. A row without one (added by a tool that bypasses the engine) is found by its text until the engine next writes the file, which gives it one; a copied row's repeated id is replaced on the later copy. Apps built on the engine never show the column.
 - **One fact, one row, one file.** A movement is one row holding both its sides (`account_from`, `account_to`), so recording it is one write. A change that must touch several files (an account renamed in every file that references it) is an intent the engine journals before applying file by file, and replays after a crash; every intent is safe to apply twice.
@@ -420,19 +420,19 @@ The use it is designed against is **plain text accounting done properly**: books
   - **`check`**: a rule over many rows or files, a query in the prelude returning the rows that break it, checked before every write and by `cells check` (a balance that must hold on a date, an account open on a movement's date). The prelude is where it lives, beside the data it guards; it is SQL, the language formulas are a part of, whole, in DuckDB.
 - **Go's checksum log** for pinned imports, proving everyone got the same bytes and not only you, once files are published widely.
 - **Tooling, so the format is pleasant everywhere.** A tree-sitter grammar (highlighting in every editor that speaks tree-sitter, and in ui's code views), the language server (built, [EDITORS.md](EDITORS.md): types checked as typed, a broken reference underlined, a referenced file's keys completed, a rename followed across the folder), native apps (Cells.app, on the Mac) and web components (ui's table) built for it. Like rainbow CSV, but with the types.
-- **Visualisation for free, because it is typed.** A chart needs to know what each column is: a date is a time axis, money is a measure in its currency, a choice is a category, a reference a link to follow. An untyped CSV makes every chart guess or be configured; a cell says it, so a table can be charted as it is (spending by month, by account, by vendor), and the graph of files drawn as a graph. Every place that shows a cell shows its charts: ui's components, the Apple platforms' (Swift Charts over the typed columns), and the Mac app. What a chart needs beyond the types (which columns, which kind of chart) is declared in the prelude, never scripted, so a file sent as a chart is seen without running anything: a spreadsheet's charts are declarations too, and its macros apart.
+- **Visualisation for free, because it is typed.** A chart needs to know what each column is: a date is a time axis, money is a measure in its currency, a choice is a category, a reference a link to follow. An untyped CSV makes every chart guess or be configured; a Cells file says it, so a table can be charted as it is (spending by month, by account, by vendor), and the graph of files drawn as a graph. Every place that shows a Cells file shows its charts: ui's components, the Apple platforms' (Swift Charts over the typed columns), and the Mac app. What a chart needs beyond the types (which columns, which kind of chart) is declared in the prelude, never scripted, so a file sent as a chart is seen without running anything: a spreadsheet's charts are declarations too, and its macros apart.
 
 ### Undecided
 
 - **The query language.** Never one of ours. The candidates:
-  - **SQL**, which every reader knows and which already runs over files (DuckDB reads a folder of CSV as tables); a folder of `.cell` is typed tables, so `amount` is a number and `date` a date:
+  - **SQL**, which every reader knows and which already runs over files (DuckDB reads a folder of CSV as tables); a folder of `.cells` is typed tables, so `amount` is a number and `date` a date:
     ```console
     $ cells sql ~/books "
       SELECT vendor, SUM(amount) FROM money
       WHERE account_to LIKE 'expenses:home:%' AND YEAR(date) = 2026
       GROUP BY vendor"
     ```
-    `money` is every `money.cell` under the folder, one table, its words in capitals as a formula's are.
+    `money` is every `money.cells` under the folder, one table, its words in capitals as a formula's are.
   - **GQL** (ISO/IEC 39075, 2024, Cypher's successor), the shape of the graph: following references from a movement to its account, an account to its parent, a vendor to everything it touched; awkward for sums and grouping, which are most of accounting.
   - **SQL/PGQ** (SQL:2023, property graph queries): GQL's `MATCH` inside SQL, so one query walks the graph and then sums and groups; DuckDB has it (`duckpgq`). The likely answer: the two standards, composed, nothing invented.
     ```console
