@@ -4,9 +4,10 @@
 //! from the engine's own write coming back, writing only over the version a write was made
 //! from, logging every version, and saying each step.
 
-use std::collections::{BTreeSet, VecDeque};
+use std::collections::{BTreeMap, BTreeSet, VecDeque};
 use std::path::{Path, PathBuf};
-use std::time::Instant;
+use std::sync::mpsc::{Receiver, RecvTimeoutError, Sender};
+use std::time::{Duration, Instant};
 
 use cells::files::is_url;
 use cells::folder::{Change, Folder, Write};
@@ -14,6 +15,37 @@ use cells::folder::{Change, Folder, Write};
 use crate::log::{Entry, Log, hash};
 use crate::trace::Trace;
 use crate::world::{Found, Replaced, World, table_file};
+
+/// What reaches the daemon, in the order it came: the disk's changes and its clients'
+/// requests, through one channel, so the daemon is one thread and never shares its state.
+pub enum Event {
+    /// A path the disk says changed.
+    Disk(PathBuf),
+    /// A folder to serve: answered with the folder served (the one asked, or the folder
+    /// served already holding it), or why not.
+    Serve {
+        folder: PathBuf,
+        answer: Sender<Result<PathBuf, String>>,
+    },
+    /// A client told, from now on, every file whose version changed.
+    Listen {
+        id: u64,
+        client: String,
+        tell: Sender<Vec<PathBuf>>,
+    },
+    Leave {
+        id: u64,
+    },
+}
+
+/// How long the disk must be quiet before what was heard is read: a save is several events
+/// (a temporary file, a rename, metadata), and a writer caught mid-write is read once it is
+/// done. Measured in the time a person waits for a total to follow, never noticed under a
+/// tenth of a second.
+const STILL: Duration = Duration::from_millis(30);
+
+/// The longest a busy disk delays what was heard: a stream of writes is read in batches.
+const PATIENCE: Duration = Duration::from_millis(500);
 
 pub struct Daemon<W: World> {
     world: W,
@@ -23,6 +55,10 @@ pub struct Daemon<W: World> {
     trace: Trace,
     /// Each directory watched, and whether everything under it is.
     watched: Vec<(PathBuf, bool)>,
+    /// Each client told what changes, and its name.
+    listeners: BTreeMap<u64, (String, Sender<Vec<PathBuf>>)>,
+    /// The files whose version changed since the clients were last told.
+    changed: BTreeSet<PathBuf>,
 }
 
 /// The folder's key for a path: the path, absolute, as text.
@@ -31,41 +67,115 @@ fn key(path: &Path) -> String {
 }
 
 impl<W: World> Daemon<W> {
-    /// The daemon over `roots` (canonical folders): each locked and watched whole, every
-    /// table file under each read as the start of its history, and the files they import
-    /// from elsewhere read and watched too.
-    pub fn start(mut world: W, roots: &[PathBuf], trace: Trace) -> Result<Daemon<W>, String> {
-        let mut served = Vec::new();
-        for root in roots {
-            world.lock(root)?;
-            served.push((root.clone(), Log::open(root, &world)));
+    pub fn new(world: W, trace: Trace) -> Daemon<W> {
+        Daemon {
+            world,
+            folder: Folder::default(),
+            served: Vec::new(),
+            trace,
+            watched: Vec::new(),
+            listeners: BTreeMap::new(),
+            changed: BTreeSet::new(),
         }
-        let mut daemon = Daemon { world, folder: Folder::default(), served, trace, watched: Vec::new() };
-        for root in roots {
-            daemon.watch(root, true)?;
-        }
-        let found: Vec<PathBuf> = roots.iter().flat_map(|r| daemon.world.list(r)).collect();
-        for path in &found {
-            match daemon.world.read(path) {
-                Found::Text(text) => daemon.hand(Change::Seen { path: key(path), text }),
-                Found::Missing => {}
-                Found::Unreadable(why) => daemon.say("unread", &format!("{}: {why}", daemon.shown(path))),
-            }
-        }
-        let held = daemon.folder.paths().count();
-        let away = held - found.len();
-        let names: Vec<String> = roots.iter().map(|r| r.display().to_string()).collect();
-        let through = if away == 0 { String::new() } else { format!(", {away} more read through imports") };
-        daemon.say("serving", &format!("{} ({} files{through})", names.join(", "), found.len()));
-        Ok(daemon)
     }
 
-    /// Served until the process ends: every change heard handed in as it comes.
-    pub fn run(&mut self) -> ! {
-        loop {
-            let heard = self.world.heard();
-            self.hear(&heard);
+    /// `root` (canonical) served from now on: locked, watched whole, every table file under
+    /// it read as the start of its history, and the files they import from elsewhere read and
+    /// watched too. A folder inside one served already is that one; a folder holding one,
+    /// or the home folder or the disk's root whole, is refused.
+    pub fn serve(&mut self, root: &Path) -> Result<PathBuf, String> {
+        if let Some(holder) = self.root_of(root) {
+            return Ok(holder.to_path_buf());
         }
+        if root == self.world.home() || root.parent().is_none() {
+            return Err(format!("{} is too wide to serve whole: serve the folder your files are in", root.display()));
+        }
+        if let Some((inner, _)) = self.served.iter().find(|(r, _)| r.starts_with(root)) {
+            return Err(format!("{} holds {}, served already: serve the folders inside it one by one", root.display(), inner.display()));
+        }
+        self.world.lock(root)?;
+        self.watch(root, true)?;
+        self.served.push((root.to_path_buf(), Log::open(root, &self.world)));
+        let held = self.folder.paths().count();
+        let found = self.world.list(root);
+        for path in &found {
+            match self.world.read(path) {
+                Found::Text(text) => self.hand(Change::Seen { path: key(path), text }),
+                Found::Missing => {}
+                Found::Unreadable(why) => self.say("unread", &format!("{}: {why}", self.shown(path))),
+            }
+        }
+        let away = (self.folder.paths().count() - held).saturating_sub(found.len());
+        let through = if away == 0 { String::new() } else { format!(", {away} more read through imports") };
+        self.say("serving", &format!("{} ({} files{through})", root.display(), found.len()));
+        Ok(root.to_path_buf())
+    }
+
+    /// Served until the process ends: each event as it comes, what the disk says changed
+    /// read once the disk is still, and the clients told what changed after each.
+    pub fn run(&mut self, events: Receiver<Event>) -> ! {
+        loop {
+            let first = events.recv().expect("the daemon's senders live as long as it does");
+            let mut heard = BTreeSet::new();
+            let mut asked = Vec::new();
+            match first {
+                Event::Disk(p) => {
+                    heard.insert(p);
+                }
+                other => asked.push(other),
+            }
+            if !heard.is_empty() {
+                let began = Instant::now();
+                loop {
+                    match events.recv_timeout(STILL.min(PATIENCE.saturating_sub(began.elapsed()))) {
+                        Ok(Event::Disk(p)) => {
+                            heard.insert(p);
+                        }
+                        Ok(other) => asked.push(other),
+                        Err(RecvTimeoutError::Timeout) => break,
+                        Err(RecvTimeoutError::Disconnected) => panic!("the daemon's senders are gone"),
+                    }
+                }
+                self.hear(&heard);
+            }
+            for event in asked {
+                self.answer(event);
+            }
+            self.tell();
+        }
+    }
+
+    pub(crate) fn answer(&mut self, event: Event) {
+        match event {
+            Event::Disk(_) => unreachable!("the disk's events are heard, never answered"),
+            Event::Serve { folder, answer } => {
+                let served = self.serve(&folder);
+                if let Err(why) = &served {
+                    self.say("refused", why);
+                }
+                // the client may be gone already
+                let _ = answer.send(served);
+            }
+            Event::Listen { id, client, tell } => {
+                self.say("joined", &format!("{client} (#{id})"));
+                self.listeners.insert(id, (client, tell));
+            }
+            Event::Leave { id } => {
+                if let Some((client, _)) = self.listeners.remove(&id) {
+                    self.say("left", &format!("{client} (#{id})"));
+                }
+            }
+        }
+    }
+
+    /// Every client told the files whose version changed since it was last told; a client
+    /// gone is forgotten.
+    pub(crate) fn tell(&mut self) {
+        if self.changed.is_empty() {
+            return;
+        }
+        let paths: Vec<PathBuf> = std::mem::take(&mut self.changed).into_iter().collect();
+        self.listeners.retain(|_, (_, tell)| tell.send(paths.clone()).is_ok());
     }
 
     pub fn folder(&self) -> &Folder {
@@ -107,12 +217,14 @@ impl<W: World> Daemon<W> {
                     let now = hash(&text);
                     self.log(path, Entry::External { path, was: was.as_deref(), now: Some(&now) });
                     self.say(if was.is_some() { "changed" } else { "added" }, &self.shown(path));
+                    self.changed.insert(path.to_path_buf());
                     self.hand(Change::Changed { path: k, text });
                     handed += 1;
                 }
                 Found::Missing if was.is_some() => {
                     self.log(path, Entry::External { path, was: was.as_deref(), now: None });
                     self.say("removed", &self.shown(path));
+                    self.changed.insert(path.to_path_buf());
                     self.hand(Change::Gone { path: k });
                     handed += 1;
                 }
@@ -208,6 +320,7 @@ impl<W: World> Daemon<W> {
                 let cells: Vec<String> = w.stored.iter().map(|s| format!("{} row {} {} → {}", s.column, s.row, s.was, s.now)).collect();
                 let why = if w.because == w.path { String::new() } else { format!(" for {}", self.shown(&because)) };
                 self.say("stored", &format!("{}{why}: {}", self.shown(&path), cells.join(", ")));
+                self.changed.insert(path);
                 Some(Change::Written { path: w.path, text: w.text })
             }
             Replaced::Moved => {

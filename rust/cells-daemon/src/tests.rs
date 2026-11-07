@@ -2,10 +2,11 @@
 //! the test, a clock that only moves when asked. Every run is the same run.
 
 use std::cell::RefCell;
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
+use std::sync::mpsc::channel;
 
-use crate::daemon::Daemon;
+use crate::daemon::{Daemon, Event};
 use crate::log::hash;
 use crate::trace::Trace;
 use crate::world::{Found, Replaced, World, table_file};
@@ -70,8 +71,8 @@ impl World for Sim {
         Ok(())
     }
 
-    fn heard(&mut self) -> BTreeSet<PathBuf> {
-        unreachable!("a test hands what is heard in itself")
+    fn home(&self) -> PathBuf {
+        PathBuf::from("/home/someone")
     }
 
     fn now(&self) -> u64 {
@@ -85,11 +86,17 @@ const ACCOUNTS: &str = "/books/accounts.cells";
 const MONEY: &str = "---\ntype Kind = income|cost\ncost: EUR = CASE WHEN kind = 'cost' THEN amount ELSE 0 END\n---\nkind:Kind,amount:EUR,cost\nincome,4200.00,0.00=\ncost,180.00,180.00=\n";
 const INDEX: &str = "---\nimport q4 from \"./q4/money.cells\"\n---\nquarter:text!,costs:EUR\nq4,180.00=SUM(q4.cost)\n";
 
+fn served(sim: Sim, root: &str) -> Daemon<Sim> {
+    let mut d = Daemon::new(sim, Trace::kept());
+    assert_eq!(d.serve(Path::new(root)).unwrap(), PathBuf::from(root));
+    d
+}
+
 fn daemon() -> Daemon<Sim> {
     let sim = Sim::default();
     sim.put(Q4, MONEY);
     sim.put(QUARTERS, INDEX);
-    Daemon::start(sim, &[PathBuf::from("/w")], Trace::kept()).unwrap()
+    served(sim, "/w")
 }
 
 fn heard(d: &mut Daemon<Sim>, paths: &[&str]) {
@@ -157,7 +164,7 @@ fn an_import_outside_the_folder_is_read_and_watched_never_written() {
         "/w/plan.cells",
         "---\nimport accounts from \"../books/accounts.cells\"\n---\nwhat:text!,budget:EUR\nrent,900.00=SUM(accounts.budget)\n",
     );
-    let mut d = Daemon::start(sim, &[PathBuf::from("/w")], Trace::kept()).unwrap();
+    let mut d = served(sim, "/w");
     assert!(d.world().watched.contains(&(PathBuf::from("/books"), false)), "{:?}", d.world().watched);
     d.world().put(ACCOUNTS, "account:text!,budget:EUR\nrent,950.00\n");
     heard(&mut d, &[ACCOUNTS]);
@@ -184,4 +191,33 @@ fn a_file_added_then_removed_is_logged_and_read_by_its_readers() {
     heard(&mut d, &[Q4]);
     assert!(d.world().log().last().unwrap().contains("\"kind\":\"external\",\"path\":\"q4/money.cells\",\"was\":\""));
     assert!(d.world().log().last().unwrap().ends_with("\"now\":null}"));
+}
+
+#[test]
+fn a_folder_inside_one_served_is_that_one_and_a_wide_one_is_refused() {
+    let mut d = daemon();
+    assert_eq!(d.serve(Path::new("/w/q4")).unwrap(), PathBuf::from("/w"));
+    assert!(d.serve(Path::new("/")).unwrap_err().contains("too wide"));
+    assert!(d.serve(Path::new("/home/someone")).unwrap_err().contains("too wide"));
+    let mut e = served(Sim::default(), "/w/q4");
+    assert!(e.serve(Path::new("/w")).unwrap_err().contains("holds /w/q4"));
+}
+
+#[test]
+fn a_client_listening_is_told_every_file_whose_version_changed() {
+    let mut d = daemon();
+    let (tell, told) = channel();
+    d.answer(Event::Listen { id: 1, client: "lsp".into(), tell });
+    d.world().put(Q4, &MONEY.replace("cost,180.00,180.00=", "cost,200.00,180.00="));
+    heard(&mut d, &[Q4]);
+    d.tell();
+    assert_eq!(told.try_recv().unwrap(), [PathBuf::from(Q4), PathBuf::from(QUARTERS)], "its edit and the engine's writes, once each");
+    heard(&mut d, &[Q4, QUARTERS]);
+    d.tell();
+    assert!(told.try_recv().is_err(), "the engine's own writes heard again change nothing");
+    drop(told);
+    d.world().put(Q4, MONEY);
+    heard(&mut d, &[Q4]);
+    d.tell();
+    assert!(d.trace().lines().iter().any(|l| l.contains("joined   lsp (#1)")));
 }

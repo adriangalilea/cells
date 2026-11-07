@@ -3,12 +3,10 @@
 //! a Mac's; a simulation implements the same trait, so the daemon's every decision runs
 //! the same against either.
 
-use std::collections::BTreeSet;
 use std::fs::{self, File, OpenOptions, TryLockError};
 use std::io::Write as _;
 use std::path::{Path, PathBuf};
-use std::sync::mpsc::{Receiver, RecvTimeoutError, channel};
-use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
+use std::time::{SystemTime, UNIX_EPOCH};
 
 use notify::{RecommendedWatcher, RecursiveMode, Watcher};
 
@@ -45,11 +43,11 @@ pub trait World {
     fn last_line(&self, path: &Path) -> Option<String>;
     /// `root` held for this process alone while it runs: two daemons never write one folder.
     fn lock(&mut self, root: &Path) -> Result<(), String>;
-    /// Changes under `dir` heard from now on, everything under it when `whole`.
+    /// Changes under `dir` heard from now on, everything under it when `whole`: each path
+    /// handed to what the world was made with (`Disk::new`).
     fn watch(&mut self, dir: &Path, whole: bool) -> Result<(), String>;
-    /// Every path changed since the last call, once the disk has been still a moment:
-    /// blocks until something is heard.
-    fn heard(&mut self) -> BTreeSet<PathBuf>;
+    /// The user's home folder, which is never served whole.
+    fn home(&self) -> PathBuf;
     /// Milliseconds since the Unix epoch.
     fn now(&self) -> u64;
 }
@@ -59,37 +57,23 @@ pub fn table_file(path: &Path) -> bool {
     path.extension().is_some_and(|e| e == "cells" || e == "csv" || e == "tsv")
 }
 
-/// How long the disk must be quiet before what was heard is read: a save is several events
-/// (a temporary file, a rename, metadata), and a writer caught mid-write is read once it is
-/// done. Measured in the time a person waits for a total to follow, never noticed under
-/// a tenth of a second.
-const STILL: Duration = Duration::from_millis(30);
-
-/// The longest a busy disk delays what was heard: a stream of writes is read in batches.
-const PATIENCE: Duration = Duration::from_millis(500);
-
 pub struct Disk {
     watcher: RecommendedWatcher,
-    events: Receiver<PathBuf>,
     /// Each folder's lock, held while the daemon runs.
     locks: Vec<File>,
 }
 
 impl Disk {
-    pub fn new() -> Result<Disk, String> {
-        let (tx, events) = channel();
+    /// The disk, every path it says changed under a folder watched handed to `heard`, on the
+    /// watcher's own thread.
+    pub fn new(heard: impl Fn(PathBuf) + Send + 'static) -> Result<Disk, String> {
         let watcher = notify::recommended_watcher(move |e: notify::Result<notify::Event>| match e {
-            Ok(e) if !e.kind.is_access() => {
-                for p in e.paths {
-                    // fails only once the daemon is gone
-                    let _ = tx.send(p);
-                }
-            }
+            Ok(e) if !e.kind.is_access() => e.paths.into_iter().for_each(&heard),
             Ok(_) => {}
             Err(e) => eprintln!("cells serve: the disk's change events failed: {e}"),
         })
         .map_err(|e| format!("no file watcher: {e}"))?;
-        Ok(Disk { watcher, events, locks: Vec::new() })
+        Ok(Disk { watcher, locks: Vec::new() })
     }
 }
 
@@ -187,19 +171,9 @@ impl World for Disk {
         self.watcher.watch(dir, mode).map_err(|e| format!("{}: {e}", dir.display()))
     }
 
-    fn heard(&mut self) -> BTreeSet<PathBuf> {
-        let mut heard = BTreeSet::new();
-        heard.insert(self.events.recv().expect("the watcher outlives the daemon"));
-        let first = Instant::now();
-        loop {
-            match self.events.recv_timeout(STILL.min(PATIENCE.saturating_sub(first.elapsed()))) {
-                Ok(p) => {
-                    heard.insert(p);
-                }
-                Err(RecvTimeoutError::Timeout) => return heard,
-                Err(RecvTimeoutError::Disconnected) => panic!("the watcher is gone"),
-            }
-        }
+    fn home(&self) -> PathBuf {
+        let home = PathBuf::from(std::env::var_os("HOME").expect("HOME is set"));
+        fs::canonicalize(&home).unwrap_or(home)
     }
 
     fn now(&self) -> u64 {

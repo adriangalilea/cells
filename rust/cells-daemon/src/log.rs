@@ -13,6 +13,7 @@
 use std::path::{Path, PathBuf};
 
 use cells::folder::Stored;
+use serde::{Deserialize, Serialize};
 
 use crate::world::World;
 
@@ -36,25 +37,37 @@ pub fn hash(text: &str) -> String {
     cells::sha256::hex(&cells::sha256::digest(text.as_bytes()))
 }
 
-fn json(s: &str) -> String {
-    let mut out = String::from("\"");
-    for c in s.chars() {
-        match c {
-            '"' => out.push_str("\\\""),
-            '\\' => out.push_str("\\\\"),
-            '\n' => out.push_str("\\n"),
-            '\r' => out.push_str("\\r"),
-            '\t' => out.push_str("\\t"),
-            c if (c as u32) < 0x20 => out.push_str(&format!("\\u{:04x}", c as u32)),
-            c => out.push(c),
-        }
-    }
-    out.push('"');
-    out
+/// A line of the log as written: its place in the chain, its time, and the entry, every
+/// path from the folder logged.
+#[derive(Serialize)]
+struct Line {
+    n: u64,
+    prev: String,
+    at: u64,
+    #[serde(flatten)]
+    entry: Logged,
 }
 
-fn nullable(s: Option<&str>) -> String {
-    s.map_or("null".to_owned(), json)
+#[derive(Serialize)]
+#[serde(tag = "kind", rename_all = "lowercase")]
+enum Logged {
+    Store { path: String, because: String, against: String, now: String, stored: Vec<Cell> },
+    External { path: String, was: Option<String>, now: Option<String> },
+    Moved { path: String, against: String },
+}
+
+#[derive(Serialize)]
+struct Cell {
+    row: usize,
+    column: String,
+    was: String,
+    now: String,
+}
+
+/// Of a line, only its number: what the next line continues from.
+#[derive(Deserialize)]
+struct Numbered {
+    n: u64,
 }
 
 impl Log {
@@ -64,11 +77,8 @@ impl Log {
         let (next, prev) = match world.last_line(&path) {
             None => (1, String::new()),
             Some(line) => {
-                let n = line
-                    .strip_prefix("{\"n\":")
-                    .and_then(|rest| rest.split(',').next())
-                    .and_then(|n| n.parse::<u64>().ok())
-                    .unwrap_or_else(|| panic!("{}: its last line has no number: {line}", path.display()));
+                let Numbered { n } =
+                    serde_json::from_str(&line).unwrap_or_else(|e| panic!("{}: its last line is no entry ({e}): {line}", path.display()));
                 (n + 1, hash(&line))
             }
         };
@@ -76,34 +86,28 @@ impl Log {
     }
 
     fn shown(&self, path: &Path) -> String {
-        json(&path.strip_prefix(&self.root).unwrap_or(path).to_string_lossy())
+        path.strip_prefix(&self.root).unwrap_or(path).to_string_lossy().into_owned()
     }
 
     /// `entry` appended at `at` (milliseconds since the Unix epoch).
     pub fn append(&mut self, world: &impl World, at: u64, entry: Entry) -> Result<(), String> {
-        let body = match entry {
-            Entry::Store { path, because, against, now, stored } => {
-                let cells: Vec<String> = stored
+        let entry = match entry {
+            Entry::Store { path, because, against, now, stored } => Logged::Store {
+                path: self.shown(path),
+                because: self.shown(because),
+                against: against.to_owned(),
+                now: now.to_owned(),
+                stored: stored
                     .iter()
-                    .map(|s| {
-                        format!("{{\"row\":{},\"column\":{},\"was\":{},\"now\":{}}}", s.row, json(&s.column), json(&s.was), json(&s.now))
-                    })
-                    .collect();
-                format!(
-                    "\"kind\":\"store\",\"path\":{},\"because\":{},\"against\":{},\"now\":{},\"stored\":[{}]",
-                    self.shown(path),
-                    self.shown(because),
-                    json(against),
-                    json(now),
-                    cells.join(",")
-                )
-            }
+                    .map(|s| Cell { row: s.row, column: s.column.clone(), was: s.was.clone(), now: s.now.clone() })
+                    .collect(),
+            },
             Entry::External { path, was, now } => {
-                format!("\"kind\":\"external\",\"path\":{},\"was\":{},\"now\":{}", self.shown(path), nullable(was), nullable(now))
+                Logged::External { path: self.shown(path), was: was.map(str::to_owned), now: now.map(str::to_owned) }
             }
-            Entry::Moved { path, against } => format!("\"kind\":\"moved\",\"path\":{},\"against\":{}", self.shown(path), json(against)),
+            Entry::Moved { path, against } => Logged::Moved { path: self.shown(path), against: against.to_owned() },
         };
-        let line = format!("{{\"n\":{},\"prev\":{},\"at\":{at},{body}}}", self.next, json(&self.prev));
+        let line = serde_json::to_string(&Line { n: self.next, prev: self.prev.clone(), at, entry }).expect("a log line serializes");
         world.append(&self.path, &line)?;
         self.next += 1;
         self.prev = hash(&line);

@@ -1,54 +1,89 @@
-//! The engine kept running over folders of `.cells` files (ENGINE.md, v0): `cells serve`.
+//! The engine kept running (ENGINE.md, v0): `cells serve`, one per user.
 //!
 //! A change written to a file by anything (an editor's save, a script, git) is heard, and
 //! every computed cell it reaches is stored, in the file itself and in every file that reads
 //! it through its imports, so a folder's files stay one consistent set of books with nobody
 //! opening the files that follow. Each version of each file is logged (`.cells/log.jsonl`)
-//! and each step said (stderr).
+//! and each step said (stderr). Clients (the language server, the command line, Cells.app)
+//! reach it over its socket, ask for folders to be served, and hear every file that changes.
 //!
-//! Three parts, each owning one thing:
+//! Each part owns one thing:
 //!
 //! - `cells::folder`, in the core: what a change reaches and what to store, decided from
 //!   the changes handed in alone, with no disk, clock or thread;
 //! - `world`: the daemon's one way to the disk, the clock and change events, `Disk` on a
 //!   Mac and a simulated world in the tests;
-//! - `daemon`: the two joined, what was heard handed in and what was decided carried out,
-//!   with `log` and `trace` saying what happened and why.
+//! - `daemon`: the two joined, one thread taking every event in order (the disk's changes,
+//!   the clients' requests), what was decided carried out, with `log` and `trace` saying
+//!   what happened and why;
+//! - `wire`, `server` and `client`: the socket, the conversation over it, and its two ends.
 
+pub mod client;
 pub mod daemon;
 pub mod log;
+pub mod server;
 pub mod trace;
+pub mod wire;
 pub mod world;
 
 use std::convert::Infallible;
 use std::path::PathBuf;
+use std::sync::mpsc::channel;
 
-pub use daemon::Daemon;
+pub use client::Engine;
+pub use daemon::{Daemon, Event};
 pub use trace::Trace;
 pub use world::{Disk, World};
 
-pub const USAGE: &str = "cells serve [--verbose] <folder>...";
+use server::Unbound;
 
-/// `cells serve [--verbose] <folder>...`: the folders served until the process ends.
+pub const USAGE: &str = "cells serve [--verbose] [<folder>...]";
+
+/// `cells serve [--verbose] [<folder>...]`: the engine, serving the folders named and every
+/// folder a client asks for, until the process ends. With an engine running already, the
+/// folders are handed to it and this returns.
 pub fn serve(args: &[String]) -> Result<Infallible, String> {
     let verbose = args.iter().any(|a| a == "--verbose");
-    let folders: Vec<&String> = args.iter().filter(|a| *a != "--verbose").collect();
-    if folders.is_empty() || folders.iter().any(|a| a.starts_with("--")) {
+    let named: Vec<&String> = args.iter().filter(|a| *a != "--verbose").collect();
+    if named.iter().any(|a| a.starts_with("--")) {
         return Err(USAGE.to_owned());
     }
-    let mut roots: Vec<PathBuf> = Vec::new();
-    for f in folders {
-        let root = std::fs::canonicalize(f).map_err(|e| format!("{f}: {e}"))?;
-        if !root.is_dir() {
+    let mut folders: Vec<PathBuf> = Vec::new();
+    for f in named {
+        let folder = std::fs::canonicalize(f).map_err(|e| format!("{f}: {e}"))?;
+        if !folder.is_dir() {
             return Err(format!("{f}: not a folder"));
         }
-        if roots.iter().any(|r| root.starts_with(r) || r.starts_with(&root)) {
-            return Err(format!("{f}: inside another folder served, or holding one"));
-        }
-        roots.push(root);
+        folders.push(folder);
     }
-    let mut daemon = Daemon::start(Disk::new()?, &roots, Trace::new(verbose))?;
-    daemon.run()
+    let (events, heard) = channel();
+    match server::listen(events.clone()) {
+        Ok(listening) => {
+            let disk = events.clone();
+            let world = Disk::new(move |path| {
+                // fails only once the daemon is gone
+                let _ = disk.send(Event::Disk(path));
+            })?;
+            let mut daemon = Daemon::new(world, Trace::new(verbose));
+            daemon.trace().said(daemon.world().now(), "listening", &format!("{} (pid {})", listening.socket.display(), std::process::id()));
+            for folder in &folders {
+                daemon.serve(folder)?;
+            }
+            daemon.run(heard)
+        }
+        Err(Unbound::Running) => {
+            let (engine, _) = Engine::connect("cli")?;
+            if folders.is_empty() {
+                return Err(format!("the engine runs already (pid {}); name a folder to have it served", engine.pid));
+            }
+            for folder in &folders {
+                let served = engine.serve(folder)?;
+                println!("{}: served by the engine (pid {})", served.display(), engine.pid);
+            }
+            std::process::exit(0)
+        }
+        Err(Unbound::Failed(why)) => Err(why),
+    }
 }
 
 #[cfg(test)]

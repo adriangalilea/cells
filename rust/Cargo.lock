@@ -96,6 +96,8 @@ dependencies = [
  "cells-engine",
  "libc",
  "notify",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]
