@@ -1,0 +1,14 @@
+[package]
+name = "cells-daemon"
+version = "0.1.0"
+description = "The engine kept running over folders of .cells files: changes heard on the disk, every file they reach stored, every write logged"
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+cells = { package = "cells-engine", path = "../cells" }
+# the trace's local time (localtime_r), the one call std does not make
+libc = "0.2"
+notify = "8"

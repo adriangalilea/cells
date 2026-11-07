@@ -22,6 +22,11 @@
 //!                                     files they import, each a table by its stem; its
 //!                                     answer as `show` writes a table
 //!   cells lsp                          the language server, on stdin and stdout
+//!   cells serve [--verbose] <folder>... the engine kept running over the folders: a change
+//!                                     written to a file stores every computed cell it
+//!                                     reaches, in that file and every file importing it,
+//!                                     each version logged in `.cells/log.jsonl`, each step
+//!                                     said on stderr (`--verbose`: every read, timed)
 //!
 //! A folder means every `.cells` file under it, hidden folders (`.git`, the engine's `.cells`)
 //! left out. Exit 0 when nothing is found (or every run succeeds), 1 when something is (or
@@ -45,7 +50,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 
 use disk::Disk;
 
-const USAGE: &str = "cells check <file|folder>...\ncells fmt [--check] [--align on|off] <file|folder>...\ncells diff <file>\ncells fix <file|folder>...\ncells merge <base> <ours> <theirs>\ncells pin <file>...\ncells run <file> [script]\ncells show <file>\ncells sql <file|folder>... <query>\ncells lsp";
+const USAGE: &str = "cells check <file|folder>...\ncells fmt [--check] [--align on|off] <file|folder>...\ncells diff <file>\ncells fix <file|folder>...\ncells merge <base> <ours> <theirs>\ncells pin <file>...\ncells run <file> [script]\ncells show <file>\ncells sql <file|folder>... <query>\ncells lsp\ncells serve [--verbose] <folder>...";
 
 /// Every `.cells` file a path names, sorted.
 fn files(path: &Path, out: &mut Vec<PathBuf>) -> Result<(), String> {
@@ -221,6 +226,14 @@ fn main() -> ExitCode {
             lsp::serve();
             ExitCode::SUCCESS
         }
+        // Served until the process ends; only a folder it cannot serve returns.
+        Some("serve") => match cells_daemon::serve(&args[1..]) {
+            Ok(never) => match never {},
+            Err(e) => {
+                eprintln!("cells serve: {e}");
+                ExitCode::from(2)
+            }
+        },
         Some("fmt") => match fmt_args(&args[1..]) {
             // Formatting files exits 0, as a fix does; a check exits 1 on a file it would change.
             Some((align, false, paths)) => match run(paths, |p, t| fmt(p, t, align, false)) {

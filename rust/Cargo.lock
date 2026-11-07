@@ -81,11 +81,21 @@ dependencies = [
 name = "cells-cli"
 version = "0.1.0"
 dependencies = [
+ "cells-daemon",
  "cells-engine",
  "libduckdb-sys",
  "notify",
  "tokio",
  "tower-lsp",
+]
+
+[[package]]
+name = "cells-daemon"
+version = "0.1.0"
+dependencies = [
+ "cells-engine",
+ "libc",
+ "notify",
 ]
 
 [[package]]
