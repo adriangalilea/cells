@@ -36,9 +36,6 @@ pub struct Disk {
     cycle: Option<String>,
     /// The files an editor holds open, by their canonical path: read as it holds them.
     open: Arc<BTreeMap<PathBuf, String>>,
-    /// Every file this file's imports named on the disk, imports of imports included,
-    /// found or not: what a change written to would change this read.
-    pub reached: Vec<PathBuf>,
 }
 
 impl Disk {
@@ -48,7 +45,7 @@ impl Disk {
 
     /// The imports of the file at `at`, a file `open` holds read from it.
     pub fn over(at: &Path, open: Arc<BTreeMap<PathBuf, String>>) -> Disk {
-        Disk { at: at.to_path_buf(), stack: Vec::new(), cycle: None, open, reached: Vec::new() }
+        Disk { at: at.to_path_buf(), stack: Vec::new(), cycle: None, open }
     }
 
     fn folder(&self) -> &Path {
@@ -88,7 +85,6 @@ impl Imports for Disk {
         } else {
             let path = self.folder().join(&i.from);
             let path = fs::canonicalize(&path).unwrap_or(path);
-            self.reached.push(path.clone());
             let mut chain = self.stack.clone();
             chain.push(fs::canonicalize(&self.at).unwrap_or(self.at.clone()));
             if let Some(from) = chain.iter().position(|f| *f == path) {
@@ -118,10 +114,8 @@ impl Imports for Disk {
         pinned(&bytes, &i.with)?;
         let mut stack = self.stack.clone();
         stack.push(fs::canonicalize(&self.at).unwrap_or(self.at.clone()));
-        let mut inner = Disk { at: path, stack, cycle: None, open: Arc::clone(&self.open), reached: Vec::new() };
-        let doc = cells::read_with(bytes, &mut inner, 1);
-        self.reached.append(&mut inner.reached);
-        let doc = doc.map_err(|e| e.to_string())?;
+        let mut inner = Disk { at: path, stack, cycle: None, open: Arc::clone(&self.open) };
+        let doc = cells::read_with(bytes, &mut inner, 1).map_err(|e| e.to_string())?;
         if let Some(why) = inner.cycle {
             self.cycle = Some(why.clone());
             return Err(why);

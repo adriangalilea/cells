@@ -84,7 +84,6 @@ dependencies = [
  "cells-daemon",
  "cells-engine",
  "libduckdb-sys",
- "notify",
  "tokio",
  "tower-lsp",
 ]

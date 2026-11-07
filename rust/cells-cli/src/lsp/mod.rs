@@ -3,8 +3,10 @@
 //! followed from the folder (a file the editor holds open read as it holds it), and
 //! answers from the doc. Diagnostics follow every change, in every open file, since a
 //! change in one may break a reference in another: a change the editor makes, and one
-//! written to the disk by anything else (another editor, Cells.app, a script), which the
-//! server hears by watching the folder itself, never by asking the editor.
+//! written to the disk by anything else (another editor, Cells.app, a script, the
+//! engine storing what a change reached). The engine (`cells serve`) hears the disk and
+//! says what changed: the server asks it to serve the folder the editor names, and each
+//! open file's own, starting it when none answers.
 
 mod colour;
 mod features;
@@ -16,7 +18,7 @@ use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 
-use notify::{RecommendedWatcher, RecursiveMode, Watcher};
+use cells_daemon::Engine;
 use tower_lsp::jsonrpc::{Error, Result};
 use tower_lsp::lsp_types::*;
 use tower_lsp::{Client, LanguageServer, LspService, Server};
@@ -27,8 +29,9 @@ use text::Lines;
 struct Backend {
     client: Client,
     folder: Arc<Mutex<Folder>>,
-    /// The directories watched for what is written to the disk.
-    watch: Arc<Mutex<Watch>>,
+    /// The engine, once reached: it serves the editor's folders and says what the disk
+    /// changed. Nothing when none could be reached, said to the editor once.
+    engine: Mutex<Option<Arc<Engine>>>,
     /// Each open file's text as it was last saved (or opened): what formatting on save
     /// stores the edits since against.
     saved: Mutex<BTreeMap<PathBuf, String>>,
@@ -37,46 +40,10 @@ struct Backend {
     align: AtomicBool,
 }
 
-struct Watch {
-    watcher: RecommendedWatcher,
-    /// Each directory watched, and whether with everything under it.
-    dirs: Vec<(PathBuf, bool)>,
-}
-
-/// A file a table can be read from, the kinds whose change is heard.
-fn table_file(p: &Path) -> bool {
-    p.extension().is_some_and(|e| e == "cells" || e == "csv" || e == "tsv")
-}
-
-impl Watch {
-    /// `dir` watched, unless a directory watched already covers it.
-    fn watch(&mut self, dir: &Path, whole: bool) {
-        if self.dirs.iter().any(|(d, all)| d == dir || (*all && dir.starts_with(d))) {
-            return;
-        }
-        let mode = if whole { RecursiveMode::Recursive } else { RecursiveMode::NonRecursive };
-        if let Err(e) = self.watcher.watch(dir, mode) {
-            eprintln!("cells lsp: {} is not watched, a change written there goes unheard: {e}", dir.display());
-            return;
-        }
-        self.dirs.push((dir.to_path_buf(), whole));
-    }
-}
-
-/// Every open file's diagnostics, sent again, and the directory of every file each read
-/// watched: the file's own, and each its imports reached, wherever they are (an editor
-/// may name no folder, and an import may climb out of the one it names).
-async fn diagnose(client: &Client, folder: Folder, watch: &Mutex<Watch>) {
+/// Every open file's diagnostics, sent again.
+async fn diagnose(client: &Client, folder: Folder) {
     for path in folder.open.keys() {
         let Some(file) = folder.read(path) else { continue };
-        {
-            let mut w = watch.lock().unwrap();
-            for read in std::iter::once(&file.path).chain(&file.reached) {
-                if let Some(dir) = read.parent() {
-                    w.watch(dir, false);
-                }
-            }
-        }
         client.publish_diagnostics(folder.uri(path), features::diagnostics(&file), None).await;
     }
 }
@@ -106,7 +73,17 @@ impl Backend {
     }
 
     async fn diagnose(&self) {
-        diagnose(&self.client, self.folder(), &self.watch).await;
+        diagnose(&self.client, self.folder()).await;
+    }
+
+    /// `folder` served by the engine, when one was reached; a refusal (a folder too wide
+    /// to serve whole) said to the editor.
+    async fn serve(&self, folder: PathBuf) {
+        let Some(engine) = self.engine.lock().unwrap().clone() else { return };
+        let answer = tokio::task::spawn_blocking(move || engine.serve(&folder)).await.expect("the engine's request never panics");
+        if let Err(why) = answer {
+            self.client.log_message(MessageType::WARNING, format!("cells: {why}")).await;
+        }
     }
 
     /// The file a request names, read, and the byte its position names.
@@ -136,13 +113,7 @@ impl LanguageServer for Backend {
         if let Some(s) = &spelled {
             self.spell(s);
         }
-        let root = spelled.map(|s| canonical(&s));
-        // the folder the editor named, whole: a file added anywhere in it is a key a rename
-        // and a completion may reach
-        if let Some(r) = &root {
-            self.watch.lock().unwrap().watch(r, true);
-        }
-        self.folder.lock().unwrap().root = root;
+        self.folder.lock().unwrap().root = spelled.map(|s| canonical(&s));
         let align = params.initialization_options.as_ref().and_then(|o| o.get("align")).and_then(|a| a.as_bool());
         self.align.store(align.unwrap_or(true), Ordering::Relaxed);
         Ok(InitializeResult {
@@ -177,6 +148,43 @@ impl LanguageServer for Backend {
         })
     }
 
+    /// The engine reached (started when none answers), told the folder the editor named and
+    /// every file's open already, and what it says changed diagnosed from then on.
+    async fn initialized(&self, _: InitializedParams) {
+        let exe = std::env::current_exe().expect("the server knows its own binary");
+        let reached = tokio::task::spawn_blocking(move || Engine::connect_or_start("lsp", &exe)).await.expect("connecting never panics");
+        let (engine, changed) = match reached {
+            Ok(reached) => reached,
+            Err(why) => {
+                let said = format!("cells: no engine ({why}): a file another program writes shows here once this one is edited");
+                self.client.log_message(MessageType::WARNING, said).await;
+                return;
+            }
+        };
+        *self.engine.lock().unwrap() = Some(Arc::new(engine));
+        let (told, mut hearing) = tokio::sync::mpsc::unbounded_channel::<Vec<PathBuf>>();
+        std::thread::spawn(move || {
+            for paths in changed {
+                if told.send(paths).is_err() {
+                    return;
+                }
+            }
+        });
+        let (client, folder) = (self.client.clone(), Arc::clone(&self.folder));
+        tokio::spawn(async move {
+            while hearing.recv().await.is_some() {
+                let held = folder.lock().unwrap().clone();
+                diagnose(&client, held).await;
+            }
+        });
+        let held = self.folder();
+        let folders: Vec<PathBuf> =
+            held.root.iter().cloned().chain(held.open.keys().filter_map(|p| p.parent().map(Path::to_path_buf))).collect();
+        for f in folders {
+            self.serve(f).await;
+        }
+    }
+
     async fn shutdown(&self) -> Result<()> {
         Ok(())
     }
@@ -187,8 +195,11 @@ impl LanguageServer for Backend {
                 self.spell(dir);
             }
             self.saved.lock().unwrap().insert(path.clone(), p.text_document.text.clone());
-            self.change(path, Some(p.text_document.text));
+            self.change(path.clone(), Some(p.text_document.text));
             self.diagnose().await;
+            if let Some(dir) = path.parent() {
+                self.serve(dir.to_path_buf()).await;
+            }
         }
     }
 
@@ -277,28 +288,12 @@ pub fn serve() {
     let runtime = tokio::runtime::Builder::new_multi_thread().enable_all().build().expect("a runtime");
     runtime.block_on(async {
         let folder = Arc::new(Mutex::new(Folder { root: None, open: Arc::new(BTreeMap::new()), spelled: Arc::new(BTreeMap::new()) }));
-        // What the disk says changed, heard on the watcher's thread: only that something
-        // did, since every open file is diagnosed again whatever it was.
-        let (heard, mut hearing) = tokio::sync::mpsc::unbounded_channel::<()>();
-        let watcher = notify::recommended_watcher(move |e: notify::Result<notify::Event>| {
-            if e.is_ok_and(|e| !e.kind.is_access() && e.paths.iter().any(|p| table_file(p))) {
-                // fails only once the server is gone
-                let _ = heard.send(());
-            }
-        })
-        .expect("a file watcher");
-        let watch = Arc::new(Mutex::new(Watch { watcher, dirs: Vec::new() }));
-        let (service, socket) = LspService::new(|client| {
-            let (told, held, watching) = (client.clone(), folder.clone(), watch.clone());
-            tokio::spawn(async move {
-                while hearing.recv().await.is_some() {
-                    // a save is several events: one pass for all of them
-                    while hearing.try_recv().is_ok() {}
-                    let folder = held.lock().unwrap().clone();
-                    diagnose(&told, folder, &watching).await;
-                }
-            });
-            Backend { client, folder, watch, saved: Mutex::new(BTreeMap::new()), align: AtomicBool::new(true) }
+        let (service, socket) = LspService::new(|client| Backend {
+            client,
+            folder,
+            engine: Mutex::new(None),
+            saved: Mutex::new(BTreeMap::new()),
+            align: AtomicBool::new(true),
         });
         Server::new(tokio::io::stdin(), tokio::io::stdout(), socket).serve(service).await;
     });
