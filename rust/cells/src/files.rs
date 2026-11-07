@@ -55,11 +55,15 @@ pub struct Files<'a> {
     /// A cycle found under this file: every import on the way to it is refused, since a
     /// file read inside one opens with its own break and would hide it.
     cycle: Option<String>,
+    /// Every file this file's imports named, by its key in `files`, imports of imports
+    /// included, held or not: what a change to would change this read, and what a host
+    /// that holds less than the reader asked for has to read.
+    pub reached: Vec<String>,
 }
 
 impl<'a> Files<'a> {
     pub fn new(files: &'a BTreeMap<String, String>, at: &str) -> Files<'a> {
-        Files { files, at: at.to_owned(), stack: Vec::new(), cycle: None }
+        Files { files, at: at.to_owned(), stack: Vec::new(), cycle: None, reached: Vec::new() }
     }
 }
 
@@ -76,6 +80,7 @@ impl Imports for Files<'_> {
             return Ok(None);
         }
         let key = if is_url(&i.from) { i.from.clone() } else { join(dir(&self.at), &i.from) };
+        self.reached.push(key.clone());
         let Some(text) = self.files.get(&key) else { return Ok(None) };
         pinned(text.as_bytes(), &i.with)?;
         let mut chain = self.stack.clone();
@@ -89,8 +94,10 @@ impl Imports for Files<'_> {
             self.cycle = Some(why.clone());
             return Err(why);
         }
-        let mut inner = Files { files: self.files, at: key, stack: chain, cycle: None };
-        let doc = read_with(text.as_bytes().to_vec(), &mut inner, 1).map_err(|e| format!("{e}"))?;
+        let mut inner = Files { files: self.files, at: key, stack: chain, cycle: None, reached: Vec::new() };
+        let doc = read_with(text.as_bytes().to_vec(), &mut inner, 1);
+        self.reached.append(&mut inner.reached);
+        let doc = doc.map_err(|e| format!("{e}"))?;
         if let Some(why) = inner.cycle {
             self.cycle = Some(why.clone());
             return Err(why);
