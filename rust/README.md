@@ -1,11 +1,12 @@
 # The core
 
-One reader and writer of Cells, in Rust, that every surface uses: the command line, the page (as WebAssembly), the Apple platforms (a C ABI in an XCFramework), the language server (`cells lsp`, [EDITORS.md](../EDITORS.md)), and next the daemon. [SPEC.md](../SPEC.md) is the law and [tests/](../tests) holds it to it.
+One reader and writer of Cells, in Rust, that every surface uses: the command line, the page (as WebAssembly), the Apple platforms (a C ABI in an XCFramework), the language server (`cells lsp`, [EDITORS.md](../EDITORS.md)), and the daemon (`cells serve`, [ENGINE.md](../ENGINE.md)). [SPEC.md](../SPEC.md) is the law and [tests/](../tests) holds it to it.
 
 | Crate | What it is | Depends on |
 |---|---|---|
-| `cells` | the reader, the writer, the columns, formulas, imports, the Arrow export | nothing; `no_std` with `alloc`, the `std` feature adds threads |
-| `cells-cli` | `cells check`, `fmt` (and `--check`), `diff`, `pin`, `run`, `show`, `sql` (DuckDB), and `lsp`, the language server (tower-lsp); imports followed from the disk, git and a cache, a file an editor holds open as it holds it | `cells`, `libduckdb-sys` (DuckDB 2.0.0 bundled); `git`, `curl` and `bun` when a file asks |
+| `cells` | the reader, the writer, the columns, formulas, imports, the Arrow export, and `folder`: a folder's files, what each reads, and what a change reaches and stores, decided with no disk, clock or thread | nothing; `no_std` with `alloc`, the `std` feature adds threads |
+| `cells-cli` | `cells check`, `fmt` (and `--check`), `diff`, `pin`, `run`, `show`, `sql` (DuckDB), `serve` (the daemon's), and `lsp`, the language server (tower-lsp); imports followed from the disk, git and a cache, a file an editor holds open as it holds it | `cells`, `cells-daemon`, `libduckdb-sys` (DuckDB 2.0.0 bundled); `git`, `curl` and `bun` when a file asks |
+| `cells-daemon` | the engine kept running over folders: `World`, its one way to the disk, the clock and change events (`Disk`, FSEvents through `notify`); `Daemon`, what was heard handed to the folder and what it decides written, only over the version it was made from; the folder's log (`.cells/log.jsonl`) and the trace (stderr) | `cells`, `notify`, `libc` (local time) |
 | `cells-wasm` | the core as WebAssembly, and `js/cells.ts`, a synchronous reader on it | `cells` without `std` |
 | `cells-ffi` | the C ABI, `cells.h` (cbindgen), `CellsCore.xcframework` | `cells` |
 | `cells-bench` | budgets generated and read, against the csv crate | `cells`, `csv` (bench only) |
