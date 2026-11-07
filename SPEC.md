@@ -463,7 +463,7 @@ The use it is designed against is **plain text accounting done properly**: books
       WHERE account_to LIKE 'expenses:home:%' AND YEAR(date) = 2026
       GROUP BY vendor"
     ```
-    `money` is every `money.cells` under the folder, one table, its words in capitals as a formula's are.
+    `money` is every `money.cells` under the folder, one table, its words in capitals as a formula's are. `cells sql` runs this today, DuckDB's SQL whole over a folder's typed columns, each row with the `file` it is read from; how it maps the types and what it costs is in [rust/README.md](rust/README.md).
   - **GQL** (ISO/IEC 39075, 2024, Cypher's successor), the shape of the graph: following references from a movement to its account, an account to its parent, a vendor to everything it touched; awkward for sums and grouping, which are most of accounting.
   - **SQL/PGQ** (SQL:2023, property graph queries): GQL's `MATCH` inside SQL, so one query walks the graph and then sums and groups; DuckDB has it (`duckpgq`). The likely answer: the two standards, composed, nothing invented.
     ```console

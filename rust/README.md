@@ -5,7 +5,7 @@ One reader and writer of Cells, in Rust, that every surface uses: the command li
 | Crate | What it is | Depends on |
 |---|---|---|
 | `cells` | the reader, the writer, the columns, formulas, imports, the Arrow export | nothing; `no_std` with `alloc`, the `std` feature adds threads |
-| `cells-cli` | `cells check`, `fmt` (and `--check`), `diff`, `pin`, `run`, `show`, and `lsp`, the language server (tower-lsp); imports followed from the disk, git and a cache, a file an editor holds open as it holds it | `cells`; `git`, `curl` and `bun` when a file asks |
+| `cells-cli` | `cells check`, `fmt` (and `--check`), `diff`, `pin`, `run`, `show`, `sql` (DuckDB), and `lsp`, the language server (tower-lsp); imports followed from the disk, git and a cache, a file an editor holds open as it holds it | `cells`, `libduckdb-sys` (DuckDB 2.0.0 bundled); `git`, `curl` and `bun` when a file asks |
 | `cells-wasm` | the core as WebAssembly, and `js/cells.ts`, a synchronous reader on it | `cells` without `std` |
 | `cells-ffi` | the C ABI, `cells.h` (cbindgen), `CellsCore.xcframework` | `cells` |
 | `cells-bench` | budgets generated and read, against the csv crate | `cells`, `csv` (bench only) |
@@ -52,6 +52,48 @@ let (schema, array) = cells::arrow::export(&doc);
 - **Breaks and spans** (`Doc::broken`, `Doc::spans`, `Doc::broken_spans`): where the grammar breaks, each break taking out only what it breaks, and where every problem and break is in the text written now.
 
 A formula column costs its evaluation: 1M rows with `total:EUR=cost * qty` read in 236 ms on one thread and 170 ms on eighteen (the file without it in 74 and 12), the formula evaluated on one thread, its results written as text and read again by the column's decoder.
+
+## `cells sql`
+
+```console
+$ cells sql <file|folder>... "<query>"
+```
+
+A folder asked as one database through DuckDB 2.0.0, built from its bundled sources into the binary (`libduckdb-sys`, pinned, its C API alone: the `duckdb` crate would add arrow-rs and some hundred crates for a Rust layer nothing here uses). Every `.cells` file under the paths is a table named by its stem, and so is every file they import from the disk (an import through git's history or a URL is read for the file importing it, never as a table) and every table a prelude writes, by its name. Tables of one name are one table: every `money.cells` under the folder is `money`, its columns joined by name in the order they first appear, null in a file without them. Every table has one more column, `file`, the path its row is read from, as `cells check` prints it; a file with a column of that name stops the query. The query is DuckDB's SQL, whole; its answer is written as `cells show` writes a table, tab-separated, a header of the columns' names, each cell its value, a null an empty cell. No extension is installed or loaded because a query names one (`autoinstall_known_extensions` and `autoload_known_extensions` off), so a query fetches nothing.
+
+| Cells | DuckDB |
+|---|---|
+| `text`, `url`, `email`, `id` | `VARCHAR` |
+| `int` | `BIGINT` |
+| a currency | `DECIMAL(38, s)` at its scale: `EUR` 2, `EUR(6)` 6, `JPY` 0 |
+| `num`, `pct` | `DECIMAL(38, s)`, `s` the most digits after the point a value of the table holds |
+| `bool`, and its pairs (`yes/no`) | `BOOLEAN`, written `true` and `false` |
+| `date` | `DATE` |
+| `time` | `TIME` |
+| `datetime` | `TIMESTAMP` in UTC, `TIMESTAMP_NS` when a value holds nanoseconds, written `2026-08-14T10:00:00.5Z` |
+| a choice | `ENUM` of its words in their order, so `ORDER BY` sorts as the type is written |
+| a reference | its key's type: `VARCHAR` for a text key, `BIGINT`, `DECIMAL` or `DATE` read from its text for those |
+
+The width is 38 because the engine's decimals are `Decimal128(38, s)`: exact, never a `DOUBLE`. DuckDB keeps them exact through `+`, `-`, `*` and `SUM` (`0.10 + 0.20` is `0.30`, `amount * amount` a `DECIMAL(38, 4)`), but its `/` and `AVG` on decimals give a `DOUBLE`, where a formula's `/` is exact to 34 digits: that is DuckDB's SQL, left as it is. The same column in two files must hold the same kind of value: two currencies, `num` beside `pct`, two choices of other words, or a reference to keys of two types stop the query with both files named (`money.cost: EUR in a/money.cells and USD in b/money.cells`), never coerced; a scale or a nanosecond unit differing between files is the wider. A choice can be an `ENUM` because a table of one name holds the same words in every file. A computed cell is the value its formula gives, as `cells show` writes it; a broken cell is null. When any file read has problems the answer is still written, stderr says how many (`cells sql: 3 problems in 2 files read, a broken cell read as null: cells check books`), and it exits 1; 2 is a query that cannot run (a path, a clash, an error of DuckDB's).
+
+The columns reach DuckDB through a table function, `cells_scan`, which writes the engine's buffers into DuckDB's vectors a chunk of 2048 rows at a time: the values DuckDB holds as the engine does copied (`i64`, `i32` days, `i128` decimals raised to the column's scale, a choice's index as the `ENUM`'s), text copied into DuckDB's strings, only the columns the query reads (projection pushdown), each view (`CREATE VIEW money AS SELECT * FROM cells_scan(k)`) read as many times as the query reads it. The engine's Arrow export (`cells::arrow`) is not the path: the C API's Arrow scan, `duckdb_arrow_array_scan`, wraps one array in a stream that hands it out once (its `GetNext` sets `done`), so a table read twice, a self-join or a subquery, reads empty the second time, and the only safe use is copying the whole file into a DuckDB table; DuckDB's own zero-copy scan, `arrow_scan` with a stream factory, takes C++ function pointers the C API does not offer. A scan runs on one thread, so rows come in the files' order as `show` writes them; the parallel scan the C API allows gives up that order.
+
+1M rows of the budget (55.8 MB, `cells-bench gen`), the whole command, best of seven, other work running (load 4 to 12):
+
+| | ms |
+|---|---|
+| a one-row file, `SELECT 1` (start, DuckDB opened, the function registered) | 18.8 |
+| the 1M-row file, `SELECT 1` (its read on 18 threads added) | 44.1 |
+| `SELECT category, SUM(cost) FROM budget GROUP BY category` | 54.4 |
+| `SELECT SUM(cost * qty) FROM budget WHERE paid AND "on" >= DATE '2025-01-01'` | 53.4 |
+| `SELECT COUNT(*) FROM budget` (DuckDB asks for the first column, 1M texts copied) | 62.6 |
+| `SELECT COUNT(DISTINCT item) FROM budget` | 205.8 |
+| `SELECT COUNT(*) FROM budget a JOIN budget b ON a.item = b.item` | 164.6 |
+| `SELECT * FROM budget`, every row written | 387.6 (`cells show`: 515.6) |
+
+DuckDB costs the binary and the build: `cells` is 68.1 MB built and 48.0 MB stripped, against 3.2 MB and 2.4 MB before it, and a clean `cargo build --release -p cells-cli` takes 2 min 17 s on 18 cores (1201 s of CPU, nearly all compiling DuckDB's C++) against 48 s; building the crate again after an edit takes 36 s (30 s before), most of it the fat LTO.
+
+**SQL/PGQ is not in it.** `GRAPH_TABLE … MATCH` is DuckDB's community extension `duckpgq` (cwida/duckpgq-extension, MIT; the community index pins commit `9c11bc19` for DuckDB 2.0, which needs `SET active_grammar_extensions = ['duckpgq']` after loading it). The one stock way to have it is `INSTALL duckpgq FROM community`, a download from community-extensions.duckdb.org at run time, which `cells sql` never does. Built in, it would take: DuckDB 2.0.0 built with CMake and an extension config loading `duckpgq` statically at its pinned commit (`duckdb_extension_load(duckpgq GIT_URL https://github.com/cwida/duckpgq-extension GIT_TAG 9c11bc19…)`), a fetch at build time only; `libduckdb-sys` linking that build (`DUCKDB_LIB_DIR`, its static libraries and the generated extension loader) in place of `bundled`, which compiles DuckDB's amalgamation alone, and whose `bundled-cmake` refuses `DUCKDB_EXTENSION_CONFIGS` ("additional static extension libraries are not auto-linked"); a `build.rs` in `cells-cli` linking `libduckpgq_extension.a`; and the binary's size and build time measured again. Shipping the extension's own `.duckdb_extension` inside `cells` and loading it from a file is not tried: a C++ extension takes DuckDB's symbols from the process, and a statically linked binary does not export them. With it, the references are the edges: a property graph named after the folder (`books`), every table a vertex table, and a table holding references also an edge table for each reference column, its source its own key, its destination the key it names (`money` needs its `id!`), labelled by the column (`MATCH (m:money)-[:account_to]->(a:accounts)`).
 
 ## Numbers
 
