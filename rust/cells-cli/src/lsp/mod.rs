@@ -2,7 +2,9 @@
 //! everything else: each request reads the file as the editor holds it, its imports
 //! followed from the folder (a file the editor holds open read as it holds it), and
 //! answers from the doc. Diagnostics follow every change, in every open file, since a
-//! change in one may break a reference in another.
+//! change in one may break a reference in another: a change the editor makes, and one
+//! written to the disk by anything else (another editor, Cells.app, a script), which the
+//! server hears by watching the folder itself, never by asking the editor.
 
 mod colour;
 mod features;
@@ -14,6 +16,7 @@ use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 
+use notify::{RecommendedWatcher, RecursiveMode, Watcher};
 use tower_lsp::jsonrpc::{Error, Result};
 use tower_lsp::lsp_types::*;
 use tower_lsp::{Client, LanguageServer, LspService, Server};
@@ -23,7 +26,10 @@ use text::Lines;
 
 struct Backend {
     client: Client,
-    folder: Mutex<Folder>,
+    folder: Arc<Mutex<Folder>>,
+    /// The directories watched for what is written to the disk: the folder the editor
+    /// opened, whole, and the directory of each file opened outside it.
+    watch: Mutex<Watch>,
     /// Each open file's text as it was last saved (or opened): what formatting on save
     /// stores the edits since against.
     saved: Mutex<BTreeMap<PathBuf, String>>,
@@ -32,7 +38,40 @@ struct Backend {
     align: AtomicBool,
 }
 
+struct Watch {
+    watcher: RecommendedWatcher,
+    /// Each directory watched, and whether with everything under it.
+    dirs: Vec<(PathBuf, bool)>,
+}
+
+/// A file a table can be read from, the kinds whose change is heard.
+fn table_file(p: &Path) -> bool {
+    p.extension().is_some_and(|e| e == "cells" || e == "csv" || e == "tsv")
+}
+
+/// Every open file's diagnostics, sent again.
+async fn diagnose(client: &Client, folder: Folder) {
+    for path in folder.open.keys() {
+        let Some(file) = folder.read(path) else { continue };
+        client.publish_diagnostics(folder.uri(path), features::diagnostics(&file), None).await;
+    }
+}
+
 impl Backend {
+    /// `dir` watched, unless a directory watched already covers it.
+    fn watch(&self, dir: &Path, whole: bool) {
+        let mut w = self.watch.lock().unwrap();
+        if w.dirs.iter().any(|(d, all)| d == dir || (*all && dir.starts_with(d))) {
+            return;
+        }
+        let mode = if whole { RecursiveMode::Recursive } else { RecursiveMode::NonRecursive };
+        if let Err(e) = w.watcher.watch(dir, mode) {
+            eprintln!("cells lsp: {} is not watched, a change written there goes unheard: {e}", dir.display());
+            return;
+        }
+        w.dirs.push((dir.to_path_buf(), whole));
+    }
+
     fn folder(&self) -> Folder {
         self.folder.lock().unwrap().clone()
     }
@@ -56,13 +95,8 @@ impl Backend {
         f.spelled = Arc::new(spelled);
     }
 
-    /// Every open file's diagnostics, sent again.
     async fn diagnose(&self) {
-        let folder = self.folder();
-        for path in folder.open.keys() {
-            let Some(file) = folder.read(path) else { continue };
-            self.client.publish_diagnostics(folder.uri(path), features::diagnostics(&file), None).await;
-        }
+        diagnose(&self.client, self.folder()).await;
     }
 
     /// The file a request names, read, and the byte its position names.
@@ -92,7 +126,11 @@ impl LanguageServer for Backend {
         if let Some(s) = &spelled {
             self.spell(s);
         }
-        self.folder.lock().unwrap().root = spelled.map(|s| canonical(&s));
+        let root = spelled.map(|s| canonical(&s));
+        if let Some(r) = &root {
+            self.watch(r, true);
+        }
+        self.folder.lock().unwrap().root = root;
         let align = params.initialization_options.as_ref().and_then(|o| o.get("align")).and_then(|a| a.as_bool());
         self.align.store(align.unwrap_or(true), Ordering::Relaxed);
         Ok(InitializeResult {
@@ -135,6 +173,9 @@ impl LanguageServer for Backend {
         if let Some(path) = path(&p.text_document.uri) {
             if let Some(dir) = p.text_document.uri.to_file_path().ok().as_deref().and_then(Path::parent) {
                 self.spell(dir);
+            }
+            if let Some(dir) = path.parent() {
+                self.watch(dir, false);
             }
             self.saved.lock().unwrap().insert(path.clone(), p.text_document.text.clone());
             self.change(path, Some(p.text_document.text));
@@ -226,11 +267,34 @@ impl LanguageServer for Backend {
 pub fn serve() {
     let runtime = tokio::runtime::Builder::new_multi_thread().enable_all().build().expect("a runtime");
     runtime.block_on(async {
-        let (service, socket) = LspService::new(|client| Backend {
-            client,
-            folder: Mutex::new(Folder { root: None, open: Arc::new(BTreeMap::new()), spelled: Arc::new(BTreeMap::new()) }),
-            saved: Mutex::new(BTreeMap::new()),
-            align: AtomicBool::new(true),
+        let folder = Arc::new(Mutex::new(Folder { root: None, open: Arc::new(BTreeMap::new()), spelled: Arc::new(BTreeMap::new()) }));
+        // What the disk says changed, heard on the watcher's thread: only that something
+        // did, since every open file is diagnosed again whatever it was.
+        let (heard, mut hearing) = tokio::sync::mpsc::unbounded_channel::<()>();
+        let watcher = notify::recommended_watcher(move |e: notify::Result<notify::Event>| {
+            if e.is_ok_and(|e| !e.kind.is_access() && e.paths.iter().any(|p| table_file(p))) {
+                // fails only once the server is gone
+                let _ = heard.send(());
+            }
+        })
+        .expect("a file watcher");
+        let (service, socket) = LspService::new(|client| {
+            let (told, held) = (client.clone(), folder.clone());
+            tokio::spawn(async move {
+                while hearing.recv().await.is_some() {
+                    // a save is several events: one pass for all of them
+                    while hearing.try_recv().is_ok() {}
+                    let folder = held.lock().unwrap().clone();
+                    diagnose(&told, folder).await;
+                }
+            });
+            Backend {
+                client,
+                folder,
+                watch: Mutex::new(Watch { watcher, dirs: Vec::new() }),
+                saved: Mutex::new(BTreeMap::new()),
+                align: AtomicBool::new(true),
+            }
         });
         Server::new(tokio::io::stdin(), tokio::io::stdout(), socket).serve(service).await;
     });
