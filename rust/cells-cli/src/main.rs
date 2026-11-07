@@ -18,12 +18,17 @@
 //!   cells run <file> [script]          its scripts run once, their rows written under them
 //!   cells show <file>                  its table as tab-separated text, computed cells
 //!                                     their values as the file stores them (`0.00`)
+//!   cells sql <file|folder>... <query> the query, DuckDB's SQL, over every file and the
+//!                                     files they import, each a table by its stem; its
+//!                                     answer as `show` writes a table
 //!   cells lsp                          the language server, on stdin and stdout
 //!
 //! A folder means every `.cells` file under it, hidden folders (`.git`, the engine's `.cells`)
 //! left out. Exit 0 when nothing is found (or every run succeeds), 1 when something is (or
-//! a run fails), 2 when the command cannot run (a path that does not exist, a file that
-//! cannot be read, a wrong argument).
+//! a run fails, or a query read files with problems: its answer is printed, and how many
+//! problems on stderr), 2 when the command cannot run (a path that does not exist, a file
+//! that cannot be read, a wrong argument, tables whose columns clash, a query DuckDB
+//! refuses).
 
 mod disk;
 mod json;
@@ -31,6 +36,7 @@ mod lsp;
 mod merge;
 mod pin;
 mod run;
+mod sql;
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -39,7 +45,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 
 use disk::Disk;
 
-const USAGE: &str = "cells check <file|folder>...\ncells fmt [--check] [--align on|off] <file|folder>...\ncells diff <file>\ncells fix <file|folder>...\ncells merge <base> <ours> <theirs>\ncells pin <file>...\ncells run <file> [script]\ncells show <file>\ncells lsp";
+const USAGE: &str = "cells check <file|folder>...\ncells fmt [--check] [--align on|off] <file|folder>...\ncells diff <file>\ncells fix <file|folder>...\ncells merge <base> <ours> <theirs>\ncells pin <file>...\ncells run <file> [script]\ncells show <file>\ncells sql <file|folder>... <query>\ncells lsp";
 
 /// Every `.cells` file a path names, sorted.
 fn files(path: &Path, out: &mut Vec<PathBuf>) -> Result<(), String> {
@@ -284,6 +290,21 @@ fn main() -> ExitCode {
                 }
                 Err(e) => {
                     eprintln!("cells: {e}");
+                    ExitCode::from(2)
+                }
+            }
+        }
+        Some("sql") if args.len() > 2 => {
+            let (paths, query) = args[1..].split_at(args.len() - 2);
+            match sql::sql(paths, &query[0]) {
+                Ok((0, _)) => ExitCode::SUCCESS,
+                Ok((problems, files)) => {
+                    let (n, s) = (if problems == 1 { "problem" } else { "problems" }, if files == 1 { "file" } else { "files" });
+                    eprintln!("cells sql: {problems} {n} in {files} {s} read, a broken cell read as null: cells check {}", paths.join(" "));
+                    ExitCode::from(1)
+                }
+                Err(e) => {
+                    eprintln!("cells sql: {e}");
                     ExitCode::from(2)
                 }
             }

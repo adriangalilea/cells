@@ -1,0 +1,7 @@
+---
+import accounts from "../accounts.cells"
+import vendors from "../vendors.cells"
+---
+id:id!,date:date,amount:EUR>0,account_from:accounts.account,account_to:accounts.account,vendor:vendors.vendor,description:text,tax_rate:pct,vat:EUR=amount * tax_rate / (100 + tax_rate)
+t2n6w4qa,2026-08-17,50.00,liabilities:card,expenses:travel:ferry,ferry,ferry to the island,10,4.55=
+t8c3m7xd,2026-08-17,12.60,assets:cash,expenses:travel:food,cafe,three coffees,10,1.15=

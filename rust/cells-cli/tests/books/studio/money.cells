@@ -1,0 +1,8 @@
+---
+import accounts from "../accounts.cells"
+import vendors from "../vendors.cells"
+---
+id:id!,date:date,amount:EUR>0,account_from:accounts.account,account_to:accounts.account,vendor:vendors.vendor?,description:text
+s1p4k9ra,2026-09-02,0.10,assets:cash,expenses:studio:paper,paper,a sheet of paper
+s6d2j5tb,2026-09-02,0.20,assets:cash,expenses:studio:paper,paper,two more sheets
+s9f7g3vc,2026-09-20,120.00,income:studio:prints,assets:bank:main,,three prints sold
