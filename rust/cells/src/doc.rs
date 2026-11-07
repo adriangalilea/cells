@@ -1954,6 +1954,24 @@ impl Doc {
     /// ragged row loses them there. The byte order mark, the line breaks and the final
     /// one are this file's.
     pub fn written_as(&self, to: Dialect, header: Option<&[&str]>) -> String {
+        self.written(to, header, |_, _, v| match v {
+            Value::Decimal(d) => d.normal().to_string(),
+            _ => unreachable!("a computed value written as its form is a decimal"),
+        })
+    }
+
+    /// The table as `cells show` writes it: tab-separated, its header the columns' names,
+    /// every written cell as written and every computed cell its value as the file stores it
+    /// left of its `=` (an amount at its column's scale, `0.00`), never its plain form.
+    pub fn shown(&self) -> String {
+        self.written(Dialect::Plain(Separator::Tab), None, |r, k, _| {
+            self.rendered.get(&(r as u32, k as u32)).expect("a computed cell with a value is rendered").clone()
+        })
+    }
+
+    /// `written_as`, a computed decimal written as `decimal` gives it (its row, its column,
+    /// its value).
+    fn written(&self, to: Dialect, header: Option<&[&str]>, decimal: impl Fn(usize, usize, Value) -> String) -> String {
         if to == self.dialect && header.is_none() {
             return self.write();
         }
@@ -2024,7 +2042,7 @@ impl Doc {
                     if c.origin(r) != Origin::Written {
                         cells[k] = match c.value(r) {
                             Value::Null => quote(""),
-                            Value::Decimal(d) => d.normal().to_string(),
+                            v @ Value::Decimal(_) => decimal(r, k, v),
                             Value::Text(t) | Value::Choice(t) => quote(t),
                             v => quote(&c.form(v)),
                         };
@@ -3286,6 +3304,16 @@ mod tests {
         assert_eq!(doc.offers(1), ["in", "out"]);
         assert_eq!(doc.offers(2), ["yes", "no"]);
         assert!(doc.offers(3).is_empty());
+    }
+
+    #[test]
+    fn shown() {
+        // A computed amount is shown as the file stores it, at its currency's two digits,
+        // declared in the header or in the prelude; written cells as written; a plain file
+        // written from it keeps a decimal's plain form.
+        let doc = read("---\nvat: EUR = usd * 21 / 100\n---\nusd:EUR,vat,total:EUR=usd + vat,n:num=usd / 4\n0,0.00=,0.00=,0=\n38.40,8.06=,46.46=,9.6=\n").unwrap();
+        assert_eq!(doc.shown(), "usd\tvat\ttotal\tn\n0\t0.00\t0.00\t0\n38.40\t8.06\t46.46\t9.6\n");
+        assert_eq!(doc.written_as(Dialect::Plain(Separator::Tab), None), "usd\tvat\ttotal\tn\n0\t0\t0\t0\n38.40\t8.06\t46.46\t9.6\n");
     }
 
     #[test]

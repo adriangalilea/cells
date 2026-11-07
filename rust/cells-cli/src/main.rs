@@ -17,7 +17,7 @@
 //!   cells pin <file>...                every import from a URL pinned by its hash now
 //!   cells run <file> [script]          its scripts run once, their rows written under them
 //!   cells show <file>                  its table as tab-separated text, computed cells
-//!                                     their values
+//!                                     their values as the file stores them (`0.00`)
 //!   cells lsp                          the language server, on stdin and stdout
 //!
 //! A folder means every `.cells` file under it, hidden folders (`.git`, the engine's `.cells`)
@@ -279,7 +279,7 @@ fn main() -> ExitCode {
                 .and_then(|b| cells::read_with(b, &mut Disk::new(path), 1).map_err(|e| format!("{} {e}", path.display())));
             match shown {
                 Ok(doc) => {
-                    print!("{}", doc.written_as(cells::Dialect::Plain(cells::Separator::Tab), None));
+                    print!("{}", doc.shown());
                     ExitCode::SUCCESS
                 }
                 Err(e) => {

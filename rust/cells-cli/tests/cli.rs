@@ -79,6 +79,12 @@ fn imports_formulas_and_a_script() {
     assert!(text.contains("day:date!,rate:num>0,run:int?\n2026-11-03,0.25,\n2026-11-04,0.5,1\n```\n```cells runs\n"), "{text}");
 
     let show = Command::new(cells).arg("show").arg(&money).output().unwrap();
-    assert_eq!(String::from_utf8(show.stdout).unwrap(), "day\tusd\tto\teur\n2026-11-03\t100\thotel\t25\n2026-11-04\t10\tbar\t5\n");
+    assert_eq!(String::from_utf8(show.stdout).unwrap(), "day\tusd\tto\teur\n2026-11-03\t100\thotel\t25.00\n2026-11-04\t10\tbar\t5.00\n");
+
+    // A computed amount at its currency's digits, its column declared in the prelude too.
+    let vat = dir.join("vat.cells");
+    fs::write(&vat, "---\nvat: USD = usd * 21 / 100\n---\nusd:USD>0,vat,total:USD=usd + vat\n200,42.00=,242.00=\n38.40,,\n").unwrap();
+    let show = Command::new(cells).arg("show").arg(&vat).output().unwrap();
+    assert_eq!(String::from_utf8(show.stdout).unwrap(), "usd\tvat\ttotal\n200\t42.00\t242.00\n38.40\t8.06\t46.46\n");
     fs::remove_dir_all(&dir).unwrap();
 }
