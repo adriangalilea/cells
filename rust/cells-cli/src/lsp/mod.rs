@@ -10,7 +10,7 @@ mod folder;
 mod text;
 
 use std::collections::BTreeMap;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 
@@ -18,7 +18,7 @@ use tower_lsp::jsonrpc::{Error, Result};
 use tower_lsp::lsp_types::*;
 use tower_lsp::{Client, LanguageServer, LspService, Server};
 
-use folder::{File, Folder, canonical};
+use folder::{File, Folder, canonical, spelling};
 use text::Lines;
 
 struct Backend {
@@ -47,12 +47,21 @@ impl Backend {
         f.open = Arc::new(open);
     }
 
+    /// The editor's spelling of `dir`, kept when it is not the canonical one.
+    fn spell(&self, dir: &Path) {
+        let Some((c, s)) = spelling(dir) else { return };
+        let mut f = self.folder.lock().unwrap();
+        let mut spelled = BTreeMap::clone(&f.spelled);
+        spelled.insert(c, s);
+        f.spelled = Arc::new(spelled);
+    }
+
     /// Every open file's diagnostics, sent again.
     async fn diagnose(&self) {
         let folder = self.folder();
         for path in folder.open.keys() {
             let Some(file) = folder.read(path) else { continue };
-            self.client.publish_diagnostics(features::uri(path), features::diagnostics(&file), None).await;
+            self.client.publish_diagnostics(folder.uri(path), features::diagnostics(&file), None).await;
         }
     }
 
@@ -73,9 +82,17 @@ fn path(uri: &Url) -> Option<PathBuf> {
 impl LanguageServer for Backend {
     async fn initialize(&self, params: InitializeParams) -> Result<InitializeResult> {
         #[allow(deprecated)]
-        let root =
-            params.workspace_folders.as_ref().and_then(|w| w.first()).map(|w| w.uri.clone()).or(params.root_uri).and_then(|u| path(&u));
-        self.folder.lock().unwrap().root = root;
+        let spelled = params
+            .workspace_folders
+            .as_ref()
+            .and_then(|w| w.first())
+            .map(|w| w.uri.clone())
+            .or(params.root_uri)
+            .and_then(|u| u.to_file_path().ok());
+        if let Some(s) = &spelled {
+            self.spell(s);
+        }
+        self.folder.lock().unwrap().root = spelled.map(|s| canonical(&s));
         let align = params.initialization_options.as_ref().and_then(|o| o.get("align")).and_then(|a| a.as_bool());
         self.align.store(align.unwrap_or(true), Ordering::Relaxed);
         Ok(InitializeResult {
@@ -116,6 +133,9 @@ impl LanguageServer for Backend {
 
     async fn did_open(&self, p: DidOpenTextDocumentParams) {
         if let Some(path) = path(&p.text_document.uri) {
+            if let Some(dir) = p.text_document.uri.to_file_path().ok().as_deref().and_then(Path::parent) {
+                self.spell(dir);
+            }
             self.saved.lock().unwrap().insert(path.clone(), p.text_document.text.clone());
             self.change(path, Some(p.text_document.text));
             self.diagnose().await;
@@ -208,7 +228,7 @@ pub fn serve() {
     runtime.block_on(async {
         let (service, socket) = LspService::new(|client| Backend {
             client,
-            folder: Mutex::new(Folder { root: None, open: Arc::new(BTreeMap::new()) }),
+            folder: Mutex::new(Folder { root: None, open: Arc::new(BTreeMap::new()), spelled: Arc::new(BTreeMap::new()) }),
             saved: Mutex::new(BTreeMap::new()),
             align: AtomicBool::new(true),
         });

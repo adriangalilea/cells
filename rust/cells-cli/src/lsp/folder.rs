@@ -9,6 +9,7 @@ use std::sync::Arc;
 
 use cells::files::is_url;
 use cells::{Doc, Statement};
+use tower_lsp::lsp_types::Url;
 
 use crate::disk::Disk;
 
@@ -18,6 +19,10 @@ pub struct Folder {
     pub root: Option<PathBuf>,
     /// The files the editor holds open, by canonical path.
     pub open: Arc<BTreeMap<PathBuf, String>>,
+    /// Each directory the editor spells another way than its canonical path (`/tmp` is
+    /// `/private/tmp` on a Mac), canonical to spelled: an editor drops whatever names a
+    /// file by a path it did not open, diagnostics included.
+    pub spelled: Arc<BTreeMap<PathBuf, PathBuf>>,
 }
 
 /// A file read: its text as the editor has it, and the doc.
@@ -61,7 +66,21 @@ pub fn canonical(p: &Path) -> PathBuf {
     fs::canonicalize(p).unwrap_or_else(|_| p.to_path_buf())
 }
 
+/// A directory as the editor spells it, keyed by its canonical path; nothing when the two
+/// are the same.
+pub fn spelling(dir: &Path) -> Option<(PathBuf, PathBuf)> {
+    let c = canonical(dir);
+    (c != dir).then(|| (c, dir.to_path_buf()))
+}
+
 impl Folder {
+    /// The URI naming `p` (canonical) as the editor spells it, under the deepest
+    /// directory it spells its own way.
+    pub fn uri(&self, p: &Path) -> Url {
+        let spelled = self.spelled.iter().rev().find_map(|(c, s)| p.strip_prefix(c).ok().map(|rest| s.join(rest)));
+        Url::from_file_path(spelled.as_deref().unwrap_or(p)).expect("the folder's paths are absolute")
+    }
+
     pub fn text(&self, path: &Path) -> Option<String> {
         match self.open.get(path) {
             Some(t) => Some(t.clone()),

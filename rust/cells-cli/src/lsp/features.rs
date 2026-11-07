@@ -3,7 +3,6 @@
 //! followed through every file that names what is renamed.
 
 use std::collections::HashMap;
-use std::path::Path;
 
 use tower_lsp::lsp_types::{
     CodeAction, CodeActionKind, CompletionItem, CompletionItemKind, CompletionTextEdit, Diagnostic, DiagnosticSeverity, Hover,
@@ -16,10 +15,6 @@ use cells::{Base, Doc, Origin, Span, Statement};
 
 use super::folder::{File, Folder, Held, inline, names_main};
 use super::text::Lines;
-
-pub fn uri(p: &Path) -> Url {
-    Url::from_file_path(p).expect("the folder's paths are absolute")
-}
 
 fn span(start: u32, len: u32) -> Span {
     Span { start, len }
@@ -245,11 +240,11 @@ pub fn formatted(file: &File, saved: Option<&File>, align: bool) -> Option<TextE
 }
 
 /// A fix: its title, and its edits to the file.
-fn quickfix(file: &File, title: String, edits: Vec<TextEdit>) -> CodeAction {
+fn quickfix(folder: &Folder, file: &File, title: String, edits: Vec<TextEdit>) -> CodeAction {
     CodeAction {
         title,
         kind: Some(CodeActionKind::QUICKFIX),
-        edit: Some(WorkspaceEdit { changes: Some(HashMap::from([(uri(&file.path), edits)])), ..WorkspaceEdit::default() }),
+        edit: Some(WorkspaceEdit { changes: Some(HashMap::from([(folder.uri(&file.path), edits)])), ..WorkspaceEdit::default() }),
         ..CodeAction::default()
     }
 }
@@ -277,7 +272,7 @@ pub fn actions(folder: &Folder, file: &File, range: Range) -> Vec<CodeAction> {
         .filter(|n| on(n.span))
         .map(|n| {
             let edit = TextEdit { range: lines.range(n.span), new_text: written_key(&n.key) };
-            quickfix(file, format!("#{} is the row {}: write its key", n.row, written_key(&n.key)), Vec::from([edit]))
+            quickfix(folder, file, format!("#{} is the row {}: write its key", n.row, written_key(&n.key)), Vec::from([edit]))
         })
         .collect();
     let doc = &file.doc;
@@ -292,10 +287,15 @@ pub fn actions(folder: &Folder, file: &File, range: Range) -> Vec<CodeAction> {
         fixed.fix_stale_at(r, c);
         let gives = fixed.text(r, c);
         let gives = gives[..cells::split_cell(&gives).unwrap_or(gives.len())].to_owned();
-        out.push(quickfix(file, format!("Use the formula's value, {gives}"), Vec::from([whole(file, &lines, fixed.write())])));
+        out.push(quickfix(folder, file, format!("Use the formula's value, {gives}"), Vec::from([whole(file, &lines, fixed.write())])));
         let mut kept = doc.clone();
         if kept.keep_stale(r, c).is_ok() {
-            out.push(quickfix(file, format!("Keep {stored} as this row's override"), Vec::from([whole(file, &lines, kept.write())])));
+            out.push(quickfix(
+                folder,
+                file,
+                format!("Keep {stored} as this row's override"),
+                Vec::from([whole(file, &lines, kept.write())]),
+            ));
         }
     }
     // Every formula on the lines: words of the language in lower case, and a spreadsheet's
@@ -316,11 +316,11 @@ pub fn actions(folder: &Folder, file: &File, range: Range) -> Vec<CodeAction> {
             .collect();
         if !low.is_empty() {
             let words: Vec<&str> = low.iter().map(|e| e.new_text.as_str()).collect();
-            out.push(quickfix(file, format!("Write in capitals: {}", words.join(", ")), low));
+            out.push(quickfix(folder, file, format!("Write in capitals: {}", words.join(", ")), low));
         }
         if let Some(named) = cells::sheet::from_sheet(src, row, &sheet) {
             let edit = TextEdit { range: lines.range(span(base, src.len() as u32)), new_text: named.clone() };
-            out.push(quickfix(file, format!("Write the spreadsheet's references in names: {}", named.trim()), Vec::from([edit])));
+            out.push(quickfix(folder, file, format!("Write the spreadsheet's references in names: {}", named.trim()), Vec::from([edit])));
         }
     }
     out
@@ -349,8 +349,10 @@ fn formula_rows(file: &File) -> Vec<(&str, u32, usize)> {
 
 pub fn definition(folder: &Folder, file: &File, at: usize) -> Option<Location> {
     let doc = &file.doc;
-    let located =
-        |held: &Held, s: Span| Location { uri: uri(&held.file.path), range: Lines::new(&held.file.text).range(shifted(s, held.base)) };
+    let located = |held: &Held, s: Span| Location {
+        uri: folder.uri(&held.file.path),
+        range: Lines::new(&held.file.text).range(shifted(s, held.base)),
+    };
     let header = |held: &Held, k: usize| located(held, held.doc().header_span(k));
     match spot(file, at) {
         Spot::Cell(r, c, _) => {
@@ -383,7 +385,7 @@ pub fn definition(folder: &Folder, file: &File, at: usize) -> Option<Location> {
                 Statement::Type { line, name: n, .. } if *n == name => Some(*line),
                 _ => None,
             })?;
-            Some(prelude_line(file, line))
+            Some(prelude_line(folder, file, line))
         }
         Spot::Formula(f) => {
             let at = at as u32 - f.base;
@@ -391,12 +393,12 @@ pub fn definition(folder: &Folder, file: &File, at: usize) -> Option<Location> {
             let (n, k) = names.iter().find_map(|n| n.parts.iter().position(|(_, (s, l))| at >= *s && at <= s + l).map(|k| (n, k)))?;
             match follow(folder, file, n, k)? {
                 Followed::Column(None, c) => {
-                    Some(Location { uri: uri(&file.path), range: Lines::new(&file.text).range(doc.header_span(c)) })
+                    Some(Location { uri: folder.uri(&file.path), range: Lines::new(&file.text).range(doc.header_span(c)) })
                 }
                 Followed::Column(Some(held), c) => Some(header(&held, c)),
                 Followed::Table(held) => match &held.inline {
                     Some(_) => Some(located(&held, span(0, 0))),
-                    None => Some(Location { uri: uri(&held.file.path), range: Range::default() }),
+                    None => Some(Location { uri: folder.uri(&held.file.path), range: Range::default() }),
                 },
             }
         }
@@ -406,7 +408,7 @@ pub fn definition(folder: &Folder, file: &File, at: usize) -> Option<Location> {
             doc.statements().iter().find_map(|s| match s {
                 Statement::Import { line: l, from, .. } if *l == line && !cells::files::is_url(from) => {
                     let path = super::folder::canonical(&file.path.parent()?.join(from));
-                    Some(Location { uri: uri(&path), range: Range::default() })
+                    Some(Location { uri: folder.uri(&path), range: Range::default() })
                 }
                 _ => None,
             })
@@ -415,16 +417,16 @@ pub fn definition(folder: &Folder, file: &File, at: usize) -> Option<Location> {
         Spot::Name(c, s) => {
             let (declared, _) = doc.declaration_span(c)?;
             let to = if s == declared { doc.header_span(c) } else { declared };
-            Some(Location { uri: uri(&file.path), range: Lines::new(&file.text).range(to) })
+            Some(Location { uri: folder.uri(&file.path), range: Lines::new(&file.text).range(to) })
         }
         Spot::Nothing => None,
     }
 }
 
 /// Prelude line `n` (1-based inside the fences, the file's line `n` after its `---`).
-fn prelude_line(file: &File, n: u32) -> Location {
+fn prelude_line(folder: &Folder, file: &File, n: u32) -> Location {
     let start = tower_lsp::lsp_types::Position { line: n, character: 0 };
-    Location { uri: uri(&file.path), range: Range { start, end: start } }
+    Location { uri: folder.uri(&file.path), range: Range { start, end: start } }
 }
 
 // ---- rename ----
@@ -468,7 +470,7 @@ pub fn rename(folder: &Folder, file: &File, at: usize, to: &str) -> Result<Works
     let mut edits: HashMap<Url, Vec<TextEdit>> = HashMap::new();
     let mut edit = |f: &File, s: Span, text: String| {
         let range = Lines::new(&f.text).range(s);
-        edits.entry(uri(&f.path)).or_default().push(TextEdit { range, new_text: text });
+        edits.entry(folder.uri(&f.path)).or_default().push(TextEdit { range, new_text: text });
     };
     let others: Vec<File> = folder.files().iter().filter(|p| **p != file.path).filter_map(|p| folder.read(p)).collect();
     match what {
@@ -569,12 +571,12 @@ pub fn rename(folder: &Folder, file: &File, at: usize, to: &str) -> Result<Works
 mod tests {
     use std::collections::BTreeMap;
     use std::fs;
-    use std::path::PathBuf;
+    use std::path::{Path, PathBuf};
     use std::sync::Arc;
 
     use tower_lsp::lsp_types::{CompletionTextEdit, HoverContents};
 
-    use super::super::folder::{Folder, canonical};
+    use super::super::folder::{Folder, canonical, spelling};
     use super::*;
 
     const ACCOUNTS: &str = "account:text!,kind:assets|expenses\nbank,assets\nrent,expenses\npower,expenses\n";
@@ -587,7 +589,7 @@ mod tests {
         fs::write(root.join("accounts.cells"), ACCOUNTS).unwrap();
         fs::write(root.join("home/money.cells"), MONEY).unwrap();
         let root = canonical(&root);
-        let folder = Folder { root: Some(root.clone()), open: Arc::new(BTreeMap::new()) };
+        let folder = Folder { root: Some(root.clone()), open: Arc::new(BTreeMap::new()), spelled: Arc::new(BTreeMap::new()) };
         (folder, root.join("accounts.cells"), root.join("home/money.cells"))
     }
 
@@ -694,14 +696,33 @@ mod tests {
         let (folder, accounts, money) = books("define");
         let file = folder.read(&money).unwrap();
         let rent = definition(&folder, &file, at(MONEY, "rent", 0)).unwrap();
-        assert_eq!(rent.uri, uri(&accounts));
+        assert_eq!(rent.uri, folder.uri(&accounts));
         assert_eq!(rent.range, Lines::new(ACCOUNTS).range(span(at(ACCOUNTS, "rent", 0) as u32, 4)));
         let typed = definition(&folder, &file, at(MONEY, "accounts.account", 0) + 10).unwrap();
         assert_eq!(typed.range, Lines::new(ACCOUNTS).range(span(0, "account:text!".len() as u32)));
         let amount = definition(&folder, &file, at(MONEY, "amount * 2", 0)).unwrap();
-        assert_eq!((amount.uri, amount.range.start.line), (uri(&money), 3));
+        assert_eq!((amount.uri, amount.range.start.line), (folder.uri(&money), 3));
         let import = definition(&folder, &file, at(MONEY, "import", 0)).unwrap();
-        assert_eq!(import.uri, uri(&accounts));
+        assert_eq!(import.uri, folder.uri(&accounts));
+    }
+
+    /// A folder the editor opened through a link (`/tmp` on a Mac) is answered in the
+    /// link's spelling, the one file the editor knows by that name.
+    #[test]
+    fn a_uri_is_spelled_as_the_editor_opened_it() {
+        let (folder, accounts, money) = books("spelled");
+        let root = folder.root.clone().unwrap();
+        let link = root.with_file_name(format!("{}-link", root.file_name().unwrap().to_str().unwrap()));
+        let _ = fs::remove_file(&link);
+        std::os::unix::fs::symlink(&root, &link).unwrap();
+        let spelled = spelling(&link.join("home")).expect("a link is not its canonical path");
+        let folder = Folder { spelled: Arc::new(BTreeMap::from([spelled])), ..folder };
+        assert_eq!(folder.uri(&money), Url::from_file_path(link.join("home/money.cells")).unwrap());
+        assert_eq!(folder.uri(&accounts), Url::from_file_path(&accounts).unwrap(), "outside the spelled directory");
+        let file = folder.read(&money).unwrap();
+        let amount = definition(&folder, &file, at(MONEY, "amount * 2", 0)).unwrap();
+        assert_eq!(amount.uri, Url::from_file_path(link.join("home/money.cells")).unwrap());
+        fs::remove_file(&link).unwrap();
     }
 
     #[test]
@@ -720,7 +741,7 @@ mod tests {
         let a = actions(&folder, &file, line);
         assert_eq!(a.len(), 1);
         assert_eq!(a[0].title, "#2 is the row 'a2': write its key");
-        let edit = &a[0].edit.as_ref().unwrap().changes.as_ref().unwrap()[&uri(&money)][0];
+        let edit = &a[0].edit.as_ref().unwrap().changes.as_ref().unwrap()[&folder.uri(&money)][0];
         assert_eq!((edit.range, edit.new_text.as_str()), (Lines::new(&text).range(span(at(&text, "#2", 0) as u32, 2)), "'a2'"));
         // Inside `TABLE[`: the rows, by key, found by number.
         let rows = complete(&folder, &file, at(&text, "TABLE[", 1) + "TABLE[".len());
@@ -764,7 +785,7 @@ mod tests {
         assert!(titles.contains(&"Use the formula's value, 1900.00"), "{titles:?}");
         assert!(titles.contains(&"Keep 1999.00 as this row's override"), "{titles:?}");
         let keep = a.iter().find(|a| a.title.starts_with("Keep")).unwrap();
-        let edit = &keep.edit.as_ref().unwrap().changes.as_ref().unwrap()[&uri(&money)][0];
+        let edit = &keep.edit.as_ref().unwrap().changes.as_ref().unwrap()[&folder.uri(&money)][0];
         assert!(applied(edit).contains("950.00,rent,,1999.00\n"), "{}", applied(edit));
     }
 
@@ -791,7 +812,7 @@ mod tests {
         let file = folder.read(&accounts).unwrap();
         let e = rename(&folder, &file, at(ACCOUNTS, "rent", 0), "lease").unwrap();
         let changes = e.changes.unwrap();
-        let texts = |u: &Path| changes[&uri(u)].iter().map(|t| t.new_text.as_str()).collect::<Vec<_>>();
+        let texts = |u: &Path| changes[&folder.uri(u)].iter().map(|t| t.new_text.as_str()).collect::<Vec<_>>();
         assert_eq!(texts(&accounts), ["lease"]);
         // The reference, and the formula's key.
         assert_eq!(texts(&money), ["lease", "'lease'"]);
@@ -803,10 +824,10 @@ mod tests {
         let file = folder.read(&accounts).unwrap();
         let e = rename(&folder, &file, at(ACCOUNTS, "kind", 0), "group").unwrap();
         let changes = e.changes.unwrap();
-        assert_eq!(changes[&uri(&money)].len(), 1, "the formula reading accounts['rent'].kind");
+        assert_eq!(changes[&folder.uri(&money)].len(), 1, "the formula reading accounts['rent'].kind");
         let file = folder.read(&money).unwrap();
         let e = rename(&folder, &file, at(MONEY, "amount", 0), "sum_paid").unwrap();
-        let edits = &e.changes.unwrap()[&uri(&money)];
+        let edits = &e.changes.unwrap()[&folder.uri(&money)];
         assert_eq!(edits.len(), 2, "the header cell and the formula reading it");
         assert!(rename(&folder, &file, at(MONEY, "amount", 0), "two words").is_err());
     }
