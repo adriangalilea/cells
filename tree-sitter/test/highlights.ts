@@ -142,7 +142,7 @@ const EXPECT: [string, string, string][] = [
   ["fuel", "variable", "variable"],
   ["travel", "variable.parameter", "variable.parameter"],
   // a value and its own formula: what the file stores, `=`, how it is computed
-  ["32.25", "number", "constant.numeric"],
+  ["32.25", "constant.builtin.computed", "constant.builtin.computed"],
   ["=", "punctuation.special", "punctuation.special"],
   ["96.75", "number", "constant.numeric"],
   ["/", "operator", "operator"],
@@ -157,13 +157,14 @@ const EXPECT: [string, string, string][] = [
   ["2026-08-14T10:00:00Z", "string.special", "string.special"],
   ["https://example.com", "string.special.url", "string.special.url"],
   // a value its column's formula computed, and a formula not computed yet
-  ["84.20", "number", "constant.numeric"],
+  ["84.20", "constant.builtin.computed", "constant.builtin.computed"],
   ["=", "punctuation.special", "punctuation.special"],
   ["0.001200", "number", "constant.numeric"],
   ["=", "punctuation.special", "punctuation.special"],
   ["SUM", "function", "function"],
   ["TABLE", "variable.builtin", "variable.builtin"],
   // a quoted cell holding its own formula: the formula coloured inside the quotes
+  ["2.10", "constant.builtin.computed", "constant.builtin.computed"],
   ["=", "punctuation.special", "punctuation.special"],
   ["ROUND", "function", "function"],
   ["6.30", "number", "constant.numeric"],

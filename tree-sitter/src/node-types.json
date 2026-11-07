@@ -779,35 +779,7 @@
         "required": false,
         "types": [
           {
-            "type": "boolean",
-            "named": true
-          },
-          {
-            "type": "date",
-            "named": true
-          },
-          {
-            "type": "datetime",
-            "named": true
-          },
-          {
-            "type": "email",
-            "named": true
-          },
-          {
-            "type": "number",
-            "named": true
-          },
-          {
-            "type": "text",
-            "named": true
-          },
-          {
-            "type": "time",
-            "named": true
-          },
-          {
-            "type": "url",
+            "type": "stored",
             "named": true
           }
         ]
@@ -1843,6 +1815,11 @@
         }
       ]
     }
+  },
+  {
+    "type": "stored",
+    "named": true,
+    "fields": {}
   },
   {
     "type": "string",

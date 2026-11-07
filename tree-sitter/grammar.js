@@ -487,9 +487,23 @@ module.exports = grammar({
     // A computed cell (SPEC, A cell): what the file stores, `=`, then its own
     // formula or none (its column's): `84.20=`, `32.25=96.75 / 3`, `=96.75 / 3`.
     computed_cell: $ => seq(
-      optional(field('stored', $._written)),
+      optional(field('stored', $._stored)),
       '=',
       optional(field('formula', $._expression)),
+    ),
+
+    // What a computed cell stores is the engine's to write, never a person's: one
+    // node whatever it spells (a number, a date, text), so an editor colours it as
+    // computed and never as a value typed. Lexed as `_written` is, in its order.
+    _stored: $ => choice(
+      alias($.datetime, $.stored),
+      alias($.date, $.stored),
+      alias($.time, $.stored),
+      alias($._data_number, $.stored),
+      alias($.boolean, $.stored),
+      alias($.url, $.stored),
+      alias($.email, $.stored),
+      alias($.text, $.stored),
     ),
 
     // A quoted cell is text up to its first `=` with no `'` before it; with one it is a
@@ -503,7 +517,7 @@ module.exports = grammar({
 
     _quoted_computed: $ => seq(
       '"',
-      optional(field('stored', alias($._quoted_text, $.text))),
+      optional(field('stored', alias($._quoted_text, $.stored))),
       '=',
       optional(field('formula', $._expression)),
       '"',

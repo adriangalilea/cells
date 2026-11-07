@@ -266,13 +266,13 @@ total:num,note:text
   (row
     (field
       (computed_cell
-        stored: (number)))
+        stored: (stored)))
     (field
       (text)))
   (row
     (field
       (computed_cell
-        stored: (number)
+        stored: (stored)
         formula: (binary_expression
           left: (number)
           right: (number))))
@@ -313,7 +313,7 @@ cost:num,note:text
   (row
     (field
       (computed_cell
-        stored: (text)
+        stored: (stored)
         formula: (call_expression
           function: (function_name)
           (binary_expression

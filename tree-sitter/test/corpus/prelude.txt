@@ -423,7 +423,7 @@ total,split dinner,"price, net"
   (row
     (field
       (computed_cell
-        stored: (number)))
+        stored: (stored)))
     (field
       (text))
     (field

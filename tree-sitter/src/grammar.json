@@ -4474,7 +4474,7 @@
               "name": "stored",
               "content": {
                 "type": "SYMBOL",
-                "name": "_written"
+                "name": "_stored"
               }
             },
             {
@@ -4501,6 +4501,83 @@
               "type": "BLANK"
             }
           ]
+        }
+      ]
+    },
+    "_stored": {
+      "type": "CHOICE",
+      "members": [
+        {
+          "type": "ALIAS",
+          "content": {
+            "type": "SYMBOL",
+            "name": "datetime"
+          },
+          "named": true,
+          "value": "stored"
+        },
+        {
+          "type": "ALIAS",
+          "content": {
+            "type": "SYMBOL",
+            "name": "date"
+          },
+          "named": true,
+          "value": "stored"
+        },
+        {
+          "type": "ALIAS",
+          "content": {
+            "type": "SYMBOL",
+            "name": "time"
+          },
+          "named": true,
+          "value": "stored"
+        },
+        {
+          "type": "ALIAS",
+          "content": {
+            "type": "SYMBOL",
+            "name": "_data_number"
+          },
+          "named": true,
+          "value": "stored"
+        },
+        {
+          "type": "ALIAS",
+          "content": {
+            "type": "SYMBOL",
+            "name": "boolean"
+          },
+          "named": true,
+          "value": "stored"
+        },
+        {
+          "type": "ALIAS",
+          "content": {
+            "type": "SYMBOL",
+            "name": "url"
+          },
+          "named": true,
+          "value": "stored"
+        },
+        {
+          "type": "ALIAS",
+          "content": {
+            "type": "SYMBOL",
+            "name": "email"
+          },
+          "named": true,
+          "value": "stored"
+        },
+        {
+          "type": "ALIAS",
+          "content": {
+            "type": "SYMBOL",
+            "name": "text"
+          },
+          "named": true,
+          "value": "stored"
         }
       ]
     },
@@ -4567,7 +4644,7 @@
                   "name": "_quoted_text"
                 },
                 "named": true,
-                "value": "text"
+                "value": "stored"
               }
             },
             {

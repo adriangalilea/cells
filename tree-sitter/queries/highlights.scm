@@ -327,6 +327,10 @@
 
 (number) @number
 
+; What a computed cell stores, the engine's to write: one colour whatever it
+; spells, so it never reads as a value someone typed.
+(stored) @constant.builtin.computed
+
 (boolean) @boolean
 
 [
