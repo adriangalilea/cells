@@ -30,6 +30,8 @@ pub struct File {
     pub path: PathBuf,
     pub text: String,
     pub doc: Doc,
+    /// Every file its imports named on the disk, imports of imports included.
+    pub reached: Vec<PathBuf>,
 }
 
 /// Where a table a file names lives: a file's own rows, or a table its prelude writes.
@@ -97,8 +99,9 @@ impl Folder {
     /// `text` read as the file at `path` (its imports followed from there): the file as
     /// it was saved, beside the text the editor holds now.
     pub fn read_as(&self, path: &Path, text: String) -> Option<File> {
-        let doc = cells::read_with(text.clone().into_bytes(), &mut Disk::over(path, Arc::clone(&self.open)), 1).ok()?;
-        Some(File { path: path.to_path_buf(), text, doc })
+        let mut disk = Disk::over(path, Arc::clone(&self.open));
+        let doc = cells::read_with(text.clone().into_bytes(), &mut disk, 1).ok()?;
+        Some(File { path: path.to_path_buf(), text, doc, reached: disk.reached })
     }
 
     /// Every `.cells` file under the root (hidden folders left out, as `cells check` leaves
@@ -130,14 +133,14 @@ impl Folder {
     /// The table `name` read where it lives, as `file` names it: `this`, the file's own.
     pub fn held(&self, file: &File, name: &str) -> Option<Held> {
         if name == cells::expr::THIS {
-            let own = File { path: file.path.clone(), text: file.text.clone(), doc: file.doc.clone() };
+            let own = File { path: file.path.clone(), text: file.text.clone(), doc: file.doc.clone(), reached: file.reached.clone() };
             return Some(Held { file: own, inline: None, base: 0 });
         }
         match home(file, name)? {
             Home::Main(path) => Some(Held { file: self.read(&path)?, inline: None, base: 0 }),
             Home::Inline(path, table) => {
                 let f = match path == file.path {
-                    true => File { path, text: file.text.clone(), doc: file.doc.clone() },
+                    true => File { path, text: file.text.clone(), doc: file.doc.clone(), reached: file.reached.clone() },
                     false => self.read(&path)?,
                 };
                 let (inline, base) = inline(&f, &table)?;

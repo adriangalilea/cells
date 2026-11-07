@@ -27,9 +27,8 @@ use text::Lines;
 struct Backend {
     client: Client,
     folder: Arc<Mutex<Folder>>,
-    /// The directories watched for what is written to the disk: the folder the editor
-    /// opened, whole, and the directory of each file opened outside it.
-    watch: Mutex<Watch>,
+    /// The directories watched for what is written to the disk.
+    watch: Arc<Mutex<Watch>>,
     /// Each open file's text as it was last saved (or opened): what formatting on save
     /// stores the edits since against.
     saved: Mutex<BTreeMap<PathBuf, String>>,
@@ -49,29 +48,40 @@ fn table_file(p: &Path) -> bool {
     p.extension().is_some_and(|e| e == "cells" || e == "csv" || e == "tsv")
 }
 
-/// Every open file's diagnostics, sent again.
-async fn diagnose(client: &Client, folder: Folder) {
+impl Watch {
+    /// `dir` watched, unless a directory watched already covers it.
+    fn watch(&mut self, dir: &Path, whole: bool) {
+        if self.dirs.iter().any(|(d, all)| d == dir || (*all && dir.starts_with(d))) {
+            return;
+        }
+        let mode = if whole { RecursiveMode::Recursive } else { RecursiveMode::NonRecursive };
+        if let Err(e) = self.watcher.watch(dir, mode) {
+            eprintln!("cells lsp: {} is not watched, a change written there goes unheard: {e}", dir.display());
+            return;
+        }
+        self.dirs.push((dir.to_path_buf(), whole));
+    }
+}
+
+/// Every open file's diagnostics, sent again, and the directory of every file each read
+/// watched: the file's own, and each its imports reached, wherever they are (an editor
+/// may name no folder, and an import may climb out of the one it names).
+async fn diagnose(client: &Client, folder: Folder, watch: &Mutex<Watch>) {
     for path in folder.open.keys() {
         let Some(file) = folder.read(path) else { continue };
+        {
+            let mut w = watch.lock().unwrap();
+            for read in std::iter::once(&file.path).chain(&file.reached) {
+                if let Some(dir) = read.parent() {
+                    w.watch(dir, false);
+                }
+            }
+        }
         client.publish_diagnostics(folder.uri(path), features::diagnostics(&file), None).await;
     }
 }
 
 impl Backend {
-    /// `dir` watched, unless a directory watched already covers it.
-    fn watch(&self, dir: &Path, whole: bool) {
-        let mut w = self.watch.lock().unwrap();
-        if w.dirs.iter().any(|(d, all)| d == dir || (*all && dir.starts_with(d))) {
-            return;
-        }
-        let mode = if whole { RecursiveMode::Recursive } else { RecursiveMode::NonRecursive };
-        if let Err(e) = w.watcher.watch(dir, mode) {
-            eprintln!("cells lsp: {} is not watched, a change written there goes unheard: {e}", dir.display());
-            return;
-        }
-        w.dirs.push((dir.to_path_buf(), whole));
-    }
-
     fn folder(&self) -> Folder {
         self.folder.lock().unwrap().clone()
     }
@@ -96,7 +106,7 @@ impl Backend {
     }
 
     async fn diagnose(&self) {
-        diagnose(&self.client, self.folder()).await;
+        diagnose(&self.client, self.folder(), &self.watch).await;
     }
 
     /// The file a request names, read, and the byte its position names.
@@ -127,8 +137,10 @@ impl LanguageServer for Backend {
             self.spell(s);
         }
         let root = spelled.map(|s| canonical(&s));
+        // the folder the editor named, whole: a file added anywhere in it is a key a rename
+        // and a completion may reach
         if let Some(r) = &root {
-            self.watch(r, true);
+            self.watch.lock().unwrap().watch(r, true);
         }
         self.folder.lock().unwrap().root = root;
         let align = params.initialization_options.as_ref().and_then(|o| o.get("align")).and_then(|a| a.as_bool());
@@ -173,9 +185,6 @@ impl LanguageServer for Backend {
         if let Some(path) = path(&p.text_document.uri) {
             if let Some(dir) = p.text_document.uri.to_file_path().ok().as_deref().and_then(Path::parent) {
                 self.spell(dir);
-            }
-            if let Some(dir) = path.parent() {
-                self.watch(dir, false);
             }
             self.saved.lock().unwrap().insert(path.clone(), p.text_document.text.clone());
             self.change(path, Some(p.text_document.text));
@@ -278,23 +287,18 @@ pub fn serve() {
             }
         })
         .expect("a file watcher");
+        let watch = Arc::new(Mutex::new(Watch { watcher, dirs: Vec::new() }));
         let (service, socket) = LspService::new(|client| {
-            let (told, held) = (client.clone(), folder.clone());
+            let (told, held, watching) = (client.clone(), folder.clone(), watch.clone());
             tokio::spawn(async move {
                 while hearing.recv().await.is_some() {
                     // a save is several events: one pass for all of them
                     while hearing.try_recv().is_ok() {}
                     let folder = held.lock().unwrap().clone();
-                    diagnose(&told, folder).await;
+                    diagnose(&told, folder, &watching).await;
                 }
             });
-            Backend {
-                client,
-                folder,
-                watch: Mutex::new(Watch { watcher, dirs: Vec::new() }),
-                saved: Mutex::new(BTreeMap::new()),
-                align: AtomicBool::new(true),
-            }
+            Backend { client, folder, watch, saved: Mutex::new(BTreeMap::new()), align: AtomicBool::new(true) }
         });
         Server::new(tokio::io::stdin(), tokio::io::stdout(), socket).serve(service).await;
     });
