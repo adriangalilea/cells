@@ -269,7 +269,7 @@ fn a_book_opened_from_a_quarter_first_is_one_book_once_its_index_is() {
     let latest = &chains[0];
     assert_eq!(latest.root.folder, PathBuf::from("/w/q4"));
     assert!(
-        latest.followed.iter().any(|f| f.event.folder == PathBuf::from("/w") && f.event.line.entry.path() == "quarters.cells"),
+        latest.followed.iter().any(|f| f.event.folder == Path::new("/w") && f.event.line.entry.path() == "quarters.cells"),
         "one chain across both logs: {latest:#?}"
     );
 }
