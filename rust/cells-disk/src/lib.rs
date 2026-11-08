@@ -1,6 +1,8 @@
-//! Imports followed from the disk: a path from the importing file's folder, `with { rev }`
-//! through git, a URL from the cache of what was fetched by its hash, else fetched. A file
-//! an editor holds open is read as the editor holds it.
+//! Cells files as a disk holds them, for every program that reads them there (`cells`,
+//! `cells-sql`): imports followed from the disk (a path from the importing file's folder,
+//! `with { rev }` through git, a URL from the cache of what was fetched by its hash, else
+//! fetched; a file an editor holds open read as the editor holds it), and the files a path
+//! names.
 
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
@@ -122,4 +124,31 @@ impl Imports for Disk {
         }
         Ok(Some(doc))
     }
+}
+
+/// Every `.cells` file a path names, sorted: the file itself, or every one under a folder,
+/// hidden folders (`.git`, the engine's `.cells`) left out.
+pub fn files(path: &Path, out: &mut Vec<PathBuf>) -> Result<(), String> {
+    let meta = fs::metadata(path).map_err(|e| format!("{}: {e}", path.display()))?;
+    if meta.is_file() {
+        out.push(path.to_path_buf());
+        return Ok(());
+    }
+    let mut entries: Vec<PathBuf> = fs::read_dir(path)
+        .map_err(|e| format!("{}: {e}", path.display()))?
+        .map(|e| e.map(|e| e.path()))
+        .collect::<Result<_, _>>()
+        .map_err(|e| format!("{}: {e}", path.display()))?;
+    entries.sort();
+    for p in entries {
+        let hidden = p.file_name().is_some_and(|n| n.to_string_lossy().starts_with('.'));
+        if p.is_dir() {
+            if !hidden {
+                files(&p, out)?;
+            }
+        } else if p.extension().is_some_and(|e| e == "cells") {
+            out.push(p);
+        }
+    }
+    Ok(())
 }

@@ -12,7 +12,7 @@ use std::fs;
 use std::path::Path;
 use std::process::Command;
 
-use crate::disk::Disk;
+use cells_disk::Disk;
 
 /// How the merge ended: clean, or with conflicts left marked in `ours`.
 pub enum Merged {

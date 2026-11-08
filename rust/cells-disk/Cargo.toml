@@ -1,0 +1,11 @@
+[package]
+name = "cells-disk"
+version = "0.1.0"
+description = "Cells files read from a disk: imports followed by path, git revision or pinned URL, and a folder's files listed"
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+cells = { package = "cells-engine", path = "../cells" }

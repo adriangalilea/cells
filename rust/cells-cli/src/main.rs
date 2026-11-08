@@ -44,48 +44,20 @@
 //! refuses).
 
 mod allow;
-mod disk;
 mod history;
 mod lsp;
 mod merge;
 mod pin;
 mod run;
-mod sql;
 
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
-use disk::Disk;
+use cells_disk::{Disk, files};
 
 const USAGE: &str = "cells check <file|folder>...\ncells fmt [--check] [--align on|off] <file|folder>...\ncells diff <file>\ncells fix <file|folder>...\ncells merge <base> <ours> <theirs>\ncells pin <file>...\ncells run <file> [script]\ncells allow <file> [script]\ncells show <file>\ncells sql <file|folder>... <query>\ncells lsp\ncells serve [--verbose] <folder>...\ncells history <file|folder> [<row> <column>]";
-
-/// Every `.cells` file a path names, sorted.
-fn files(path: &Path, out: &mut Vec<PathBuf>) -> Result<(), String> {
-    let meta = fs::metadata(path).map_err(|e| format!("{}: {e}", path.display()))?;
-    if meta.is_file() {
-        out.push(path.to_path_buf());
-        return Ok(());
-    }
-    let mut entries: Vec<PathBuf> = fs::read_dir(path)
-        .map_err(|e| format!("{}: {e}", path.display()))?
-        .map(|e| e.map(|e| e.path()))
-        .collect::<Result<_, _>>()
-        .map_err(|e| format!("{}: {e}", path.display()))?;
-    entries.sort();
-    for p in entries {
-        let hidden = p.file_name().is_some_and(|n| n.to_string_lossy().starts_with('.'));
-        if p.is_dir() {
-            if !hidden {
-                files(&p, out)?;
-            }
-        } else if p.extension().is_some_and(|e| e == "cells") {
-            out.push(p);
-        }
-    }
-    Ok(())
-}
 
 /// What one file says: its lines of output, or the reason it could not be read.
 enum Said {
@@ -316,17 +288,21 @@ fn main() -> ExitCode {
                 }
             }
         }
-        Some("sql") if args.len() > 2 => {
-            let (paths, query) = args[1..].split_at(args.len() - 2);
-            match sql::sql(paths, &query[0]) {
-                Ok((0, _)) => ExitCode::SUCCESS,
-                Ok((problems, files)) => {
-                    let (n, s) = (if problems == 1 { "problem" } else { "problems" }, if files == 1 { "file" } else { "files" });
-                    eprintln!("cells sql: {problems} {n} in {files} {s} read, a broken cell read as null: cells check {}", paths.join(" "));
-                    ExitCode::from(1)
+        // DuckDB is `cells-sql`'s alone, so this binary (which every editor's language server
+        // is) stays small: the query is handed to it, found beside this binary or on the PATH
+        Some("sql") => {
+            let here = std::env::current_exe().ok().and_then(|e| e.parent().map(|d| d.join("cells-sql"))).filter(|p| p.is_file());
+            let sql = here.unwrap_or_else(|| PathBuf::from("cells-sql"));
+            match std::process::Command::new(&sql).args(&args[1..]).status() {
+                Ok(status) => ExitCode::from(status.code().map_or(2, |c| c as u8)),
+                Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+                    eprintln!(
+                        "cells sql: cells-sql is not installed: it holds DuckDB, apart from cells (`cargo install --path rust/cells-sql`)"
+                    );
+                    ExitCode::from(2)
                 }
                 Err(e) => {
-                    eprintln!("cells sql: {e}");
+                    eprintln!("cells sql: {}: {e}", sql.display());
                     ExitCode::from(2)
                 }
             }

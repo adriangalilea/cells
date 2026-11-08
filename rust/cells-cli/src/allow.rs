@@ -11,7 +11,7 @@ use std::path::Path;
 use cells_daemon::Engine;
 use cells_daemon::allowed::{Allowed, version};
 
-use crate::disk::Disk;
+use cells_disk::Disk;
 
 /// What was allowed and what was not, a line each.
 pub fn allow(path: &Path, only: Option<&str>) -> Result<Vec<String>, String> {

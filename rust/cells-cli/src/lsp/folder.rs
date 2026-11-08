@@ -11,7 +11,7 @@ use cells::files::is_url;
 use cells::{Doc, Statement};
 use tower_lsp::lsp_types::Url;
 
-use crate::disk::Disk;
+use cells_disk::Disk;
 
 #[derive(Clone)]
 pub struct Folder {

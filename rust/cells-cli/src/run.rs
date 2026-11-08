@@ -10,7 +10,7 @@ use std::path::Path;
 use cells_daemon::Engine;
 use cells_daemon::log::Outcome;
 
-use crate::disk::Disk;
+use cells_disk::Disk;
 
 /// What each script's run did, a line each, and whether every one succeeded.
 pub fn run(path: &Path, only: Option<&str>) -> Result<(Vec<String>, bool), String> {

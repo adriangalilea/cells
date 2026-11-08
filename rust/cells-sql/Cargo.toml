@@ -1,0 +1,19 @@
+[package]
+name = "cells-sql"
+version = "0.1.0"
+description = "cells sql: a folder of .cells files asked as one database, through DuckDB"
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[[bin]]
+name = "cells-sql"
+path = "src/main.rs"
+
+[dependencies]
+cells = { package = "cells-engine", path = "../cells" }
+cells-disk = { path = "../cells-disk" }
+# DuckDB 2.0.0's C API, built from its bundled sources. Only the C binding, never the
+# `duckdb` crate's Rust layer, which adds arrow-rs and reads results through it.
+libduckdb-sys = { version = "=1.20000.1", default-features = false, features = ["bundled", "capi-v1"] }

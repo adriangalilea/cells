@@ -4,9 +4,9 @@
 use std::fs;
 use std::path::Path;
 
-use crate::disk::{cache, fetch};
 use cells::Statement;
 use cells::files::is_url;
+use cells_disk::{cache, fetch};
 
 /// The import statement written again, its hash `sha256`, its other attributes kept.
 fn statement(default: &Option<String>, names: &[String], from: &str, with: &[(String, String)], sha256: &str) -> String {

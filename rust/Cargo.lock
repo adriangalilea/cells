@@ -82,8 +82,8 @@ name = "cells-cli"
 version = "0.1.0"
 dependencies = [
  "cells-daemon",
+ "cells-disk",
  "cells-engine",
- "libduckdb-sys",
  "tokio",
  "tower-lsp",
 ]
@@ -105,6 +105,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "cells-disk"
+version = "0.1.0"
+dependencies = [
+ "cells-engine",
+]
+
+[[package]]
 name = "cells-engine"
 version = "0.1.0"
 
@@ -113,6 +120,15 @@ name = "cells-ffi"
 version = "0.1.0"
 dependencies = [
  "cells-engine",
+]
+
+[[package]]
+name = "cells-sql"
+version = "0.1.0"
+dependencies = [
+ "cells-disk",
+ "cells-engine",
+ "libduckdb-sys",
 ]
 
 [[package]]

@@ -20,7 +20,7 @@ use cells::value::{self, Instant};
 use cells::{Base, Data, Decimal, Dialect, Doc, Separator, Statement};
 use libduckdb_sys as ffi;
 
-use crate::disk::Disk;
+use cells_disk::Disk;
 
 /// The column every table is given: the path of the file a row is read from.
 const FILE: &str = "file";
@@ -255,7 +255,7 @@ fn lexical(path: &Path) -> PathBuf {
 fn read(paths: &[String]) -> Result<(Vec<Table>, usize, usize), String> {
     let mut queue = Vec::new();
     for p in paths {
-        crate::files(Path::new(p), &mut queue)?;
+        cells_disk::files(Path::new(p), &mut queue)?;
     }
     let threads = std::thread::available_parallelism().map_or(1, |n| n.get());
     let mut seen: BTreeSet<PathBuf> = BTreeSet::new();
