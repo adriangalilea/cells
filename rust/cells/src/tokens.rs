@@ -489,7 +489,7 @@ fn statement(
                 out.push(j, j + 1, Kind::Punct, NONE);
                 type_parts(source, j + 1, end, NONE, named, tables, out);
                 if let Ok(ty) = types::parse_type(&source[j + 1..end], named, tables) {
-                    named.push(NamedType { name: source[after..name_end].into(), ty });
+                    named.push(NamedType::new(source[after..name_end].into(), ty));
                 }
             } else {
                 out.push(j, end, Kind::Error, NONE);
@@ -594,7 +594,7 @@ fn import(source: &str, s: usize, e: usize, named: &mut Vec<NamedType>, tables: 
                 // An attribute's key.
                 out.push(start, i, Kind::Keyword, NONE);
             } else if c.is_ascii_uppercase() {
-                named.push(NamedType { name: w.into(), ty: Type::plain(Base::Text) });
+                named.push(NamedType::new(w.into(), Type::plain(Base::Text)));
                 out.push(start, i, Kind::Type, NONE);
             } else {
                 tables.push(w.into());

@@ -36,6 +36,7 @@ pub mod intent;
 mod json;
 mod keys;
 pub mod layout;
+pub mod look;
 pub mod prelude;
 #[cfg(test)]
 mod properties;
@@ -57,6 +58,7 @@ pub use doc::{
 };
 pub use format::{Dialect, Separator, detect};
 pub use identity::{Change, Refused, RowAt, Version};
+pub use look::{Locale, Look, Rule, Tint, Tinted};
 pub use prelude::{Fenced, Schedule, Statement, Trigger};
 pub use scan::quote;
 

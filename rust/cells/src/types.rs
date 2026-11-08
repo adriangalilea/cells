@@ -11,6 +11,7 @@ use alloc::format;
 use alloc::string::{String, ToString};
 use alloc::vec::Vec;
 
+use crate::look::{Look, Tint};
 use crate::value::Decimal;
 
 /// What a column holds.
@@ -148,10 +149,10 @@ pub(crate) const BASES: [(&str, Base); 10] = [
 ];
 
 /// The explicit form's words: they end a `one of` list and are never a pair's words.
-pub(crate) const EXPLICIT: [&str; 11] = ["key", "optional", "one", "of", "bool", "min", "max", "above", "below", "between", "and"];
+pub(crate) const EXPLICIT: [&str; 12] = ["key", "optional", "one", "of", "bool", "min", "max", "above", "below", "between", "and", "tint"];
 
 /// Inside a type, outside single quotes.
-pub(crate) const RESERVED: &[u8] = b"|/!?<>=()':";
+pub(crate) const RESERVED: &[u8] = b"|/!?<>=()':#";
 
 /// A bound on a number's value or a text's length.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -255,18 +256,56 @@ pub struct Type {
     pub named: Option<Box<NamedType>>,
     /// Read from the values; the header said nothing.
     pub inferred: bool,
+    /// A choice's words that have a tint (`income#green`), each with its tint, in the
+    /// choice's order (SPEC.md, How a value looks).
+    pub tints: Vec<(String, Tint)>,
 }
 
-/// `type Name = <type>` from the prelude.
+/// `type Name = <type>` from the prelude, and the rules `look` statements give it, which
+/// hold wherever the type is used, an exported type's in the files importing it.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct NamedType {
     pub name: String,
     pub ty: Type,
+    pub looks: Vec<Look>,
+}
+
+impl NamedType {
+    pub fn new(name: String, ty: Type) -> NamedType {
+        NamedType { name, ty, looks: Vec::new() }
+    }
 }
 
 impl Type {
     pub fn plain(base: Base) -> Type {
-        Type { base, min: None, max: None, format: None, digits: None, key: false, optional: false, named: None, inferred: false }
+        Type {
+            base,
+            min: None,
+            max: None,
+            format: None,
+            digits: None,
+            key: false,
+            optional: false,
+            named: None,
+            inferred: false,
+            tints: Vec::new(),
+        }
+    }
+
+    /// The tint of a choice's word, when it has one.
+    pub fn tint(&self, word: &str) -> Option<Tint> {
+        self.tints.iter().find(|(w, _)| w == word).map(|(_, t)| *t)
+    }
+
+    /// Every rule its named types give it, the deepest's first (`type Cash = Money` holds
+    /// Money's rules, then its own).
+    pub fn looks(&self) -> Vec<&Look> {
+        let mut out = Vec::new();
+        if let Some(n) = &self.named {
+            out.extend(n.ty.looks());
+            out.extend(n.looks.iter());
+        }
+        out
     }
 
     /// An amount's scale (SPEC.md, Bases): the scale given (`EUR(6)`), else its currency's
@@ -290,7 +329,7 @@ impl Type {
         let under = self.named.as_deref().map(|n| &n.ty);
         let mut out = match &self.named {
             Some(n) => n.name.clone(),
-            None => base_shorthand(&self.base),
+            None => base_shorthand(&self.base, &self.tints),
         };
         let mine = |v: &Option<Bound>, theirs: Option<&Option<Bound>>| match theirs {
             Some(t) if t.is_some() => None,
@@ -335,12 +374,16 @@ impl Type {
     }
 }
 
-fn base_shorthand(base: &Base) -> String {
+fn base_shorthand(base: &Base, tints: &[(String, Tint)]) -> String {
+    let tinted = |w: &str| match tints.iter().find(|(x, _)| x == w) {
+        Some((_, t)) => format!("#{}", t.hashed()),
+        None => String::new(),
+    };
     match base {
         Base::Bool { yes, no } if yes == "true" && no == "false" => "bool".to_owned(),
         Base::Bool { yes, no } => format!("{}/{}", quote(yes), quote(no)),
         Base::Money(c) => c.as_str().to_owned(),
-        Base::Choice(words) if words.len() == 1 => quoted(&words[0]),
+        Base::Choice(words) if words.len() == 1 => format!("{}{}", quoted(&words[0]), tinted(&words[0])),
         Base::Choice(words) => {
             let mut s = String::new();
             for (k, w) in words.iter().enumerate() {
@@ -348,6 +391,7 @@ fn base_shorthand(base: &Base) -> String {
                     s.push('|');
                 }
                 s.push_str(&quote(w));
+                s.push_str(&tinted(w));
             }
             s
         }
@@ -411,7 +455,7 @@ impl Token<'_> {
     }
 }
 
-pub(crate) const OPS: [&str; 9] = [">=", "<=", "..", "|", "/", "!", "?", ">", "<"];
+pub(crate) const OPS: [&str; 10] = [">=", "<=", "..", "|", "/", "!", "?", ">", "<", "#"];
 
 fn tokens(spelled: &str) -> Result<Vec<Token<'_>>, String> {
     let s = spelled.as_bytes();
@@ -505,6 +549,14 @@ fn target<'a>(t: &Token<'a>, tables: &[String]) -> Option<Target> {
     (!column.is_empty() && tables.iter().any(|n| n == table)).then(|| Target { table: table.to_owned(), column: column.to_owned() })
 }
 
+/// The tint after a choice's `#` (or its explicit `tint`): a name, or six hex digits.
+fn tint_after(t: Option<&Token>) -> Result<Tint, String> {
+    match t {
+        Some(Token::Word(w)) => Tint::after_hash(w),
+        _ => Err("a # is followed by a tint: income#green, income#3fa34d".to_owned()),
+    }
+}
+
 /// What the column holds, from the type's first tokens.
 fn holder(t: &[Token], i: &mut usize, named: &[NamedType], tables: &[String]) -> Result<Type, String> {
     let x = &t[*i];
@@ -524,19 +576,26 @@ fn holder(t: &[Token], i: &mut usize, named: &[NamedType], tables: &[String]) ->
         }
         return Ok(Type::plain(Base::Ref(targets)));
     }
-    if let Some(word) = x.text()
-        && next.is_some_and(|n| n.is_op("|"))
-    {
-        let mut words = Vec::from([word.to_owned()]);
-        *i += 1;
-        while t.get(*i).is_some_and(|n| n.is_op("|")) {
-            let Some(w) = t.get(*i + 1).and_then(|n| n.text()) else {
+    // A choice: words joined by `|`, each with its tint after a `#` or none.
+    let joined = |k: usize| t.get(k).is_some_and(|n| n.is_op("|"));
+    if x.text().is_some() && (joined(*i + 1) || (next.is_some_and(|n| n.is_op("#")) && joined(*i + 3))) {
+        let (mut words, mut tints) = (Vec::new(), Vec::new());
+        loop {
+            let Some(w) = t.get(*i).and_then(|n| n.text()) else {
                 return Err("a | is followed by no choice".to_owned());
             };
             words.push(w.to_owned());
-            *i += 2;
+            *i += 1;
+            if t.get(*i).is_some_and(|n| n.is_op("#")) {
+                tints.push((w.to_owned(), tint_after(t.get(*i + 1))?));
+                *i += 2;
+            }
+            if !joined(*i) {
+                break;
+            }
+            *i += 1;
         }
-        return Ok(Type::plain(Base::Choice(choices(words)?)));
+        return Ok(Type { tints, ..Type::plain(Base::Choice(choices(words)?)) });
     }
     if let Some(yes) = x.text()
         && next.is_some_and(|n| n.is_op("/"))
@@ -549,19 +608,29 @@ fn holder(t: &[Token], i: &mut usize, named: &[NamedType], tables: &[String]) ->
     }
     if let Token::Quoted(q) = x {
         *i += 1;
-        return Ok(Type::plain(Base::Choice(choices(Vec::from([q.clone()]))?)));
+        let mut tints = Vec::new();
+        if t.get(*i).is_some_and(|n| n.is_op("#")) {
+            tints.push((q.clone(), tint_after(t.get(*i + 1))?));
+            *i += 2;
+        }
+        return Ok(Type { tints, ..Type::plain(Base::Choice(choices(Vec::from([q.clone()]))?)) });
     }
     if x.is_word("one") && next.is_some_and(|n| n.is_word("of")) {
         *i += 2;
-        let mut words = Vec::new();
+        let (mut words, mut tints) = (Vec::new(), Vec::new());
         while let Some(w) = t.get(*i).and_then(Token::listed) {
             words.push(w.to_owned());
             *i += 1;
+            // `tint green`, the explicit words for `#green`
+            if t.get(*i).is_some_and(|n| n.is_word("tint")) {
+                tints.push((w.to_owned(), tint_after(t.get(*i + 1))?));
+                *i += 2;
+            }
         }
         if words.is_empty() {
             return Err("one of names no choice".to_owned());
         }
-        return Ok(Type::plain(Base::Choice(choices(words)?)));
+        return Ok(Type { tints, ..Type::plain(Base::Choice(choices(words)?)) });
     }
     if x.is_word("bool") {
         if let (Some(yes), Some(no)) = (next.and_then(Token::listed), t.get(*i + 2).and_then(Token::listed)) {
@@ -706,6 +775,7 @@ pub fn parse_type(spelled: &str, named: &[NamedType], tables: &[String]) -> Resu
                 return Err("two types in one cell".to_owned());
             }
             Token::Word(w) if !EXPLICIT.contains(w) => return Err(format!("no type or currency \"{w}\"")),
+            Token::Op("#") | Token::Word("tint") => return Err("a tint follows a choice's word: income#green".to_owned()),
             other => return Err(format!("\"{}\" cannot stand here", other.shown())),
         }
     }
@@ -897,13 +967,28 @@ mod tests {
     }
 
     #[test]
+    fn tints() {
+        assert_eq!(sh("income#green|cost#red|transfer"), "income#green|cost#red|transfer");
+        assert_eq!(sh("income # green | cost"), "income#green|cost");
+        assert_eq!(sh("income#3FA34D|cost"), "income#3fa34d|cost");
+        assert_eq!(sh("one of income tint green cost tint red pending"), "income#green|cost#red|pending");
+        assert_eq!(sh("'only'#blue"), "'only'#blue");
+        assert_eq!(sh("'C#'|rust"), "'C#'|rust");
+        let t = parse_type("income#green|cost", &[], &[]).unwrap();
+        assert_eq!((t.tint("income"), t.tint("cost")), (Some(Tint::Named(3)), None));
+        for bad in ["income#grene|cost", "C#|rust", "income#|cost", "yes#green/no", "text#red", "income#green", "one of a tint"] {
+            assert!(parse_type(bad, &[], &[]).is_err(), "{bad:?} should not read");
+        }
+    }
+
+    #[test]
     fn named() {
-        let cat = NamedType { name: "Category".into(), ty: parse_type("travel|stay", &[], &[]).unwrap() };
+        let cat = NamedType::new("Category".into(), parse_type("travel|stay", &[], &[]).unwrap());
         let t = parse_type("Category?", core::slice::from_ref(&cat), &[]).unwrap();
         assert_eq!(t.base, Base::Choice(alloc::vec!["travel".into(), "stay".into()]));
         assert!(t.optional);
         assert_eq!(t.shorthand(), "Category?");
-        let opt = NamedType { name: "Note".into(), ty: parse_type("text?", &[], &[]).unwrap() };
+        let opt = NamedType::new("Note".into(), parse_type("text?", &[], &[]).unwrap());
         assert!(parse_type("Note?", core::slice::from_ref(&opt), &[]).is_err());
     }
 

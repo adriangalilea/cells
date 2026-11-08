@@ -1173,6 +1173,10 @@ pub enum CellsStatementKind {
     CellsStatementRun = 3,
     /// `name: type = formula`, a column of the file's table declared.
     CellsStatementColumn = 4,
+    /// `look amount: grouped, negative red`, how a column's, a named type's or the row's
+    /// values look: its name `CellsStatementName` (`row` for the row), its rules
+    /// `CellsStatementSpelled`, joined by `, `.
+    CellsStatementLook = 5,
 }
 
 /// A prelude statement: what it is and its lines; its words through `cells_statement_part`.
@@ -1254,6 +1258,7 @@ pub unsafe extern "C" fn cells_statement(d: *mut CellsDoc, i: usize) -> CellsSta
         S::Table { exported, body, .. } => (CellsStatementKind::CellsStatementTable, *exported, 0, at(None), at(Some(body))),
         S::Run { exported, code, stored, .. } => (CellsStatementKind::CellsStatementRun, *exported, 0, at(Some(code)), at(stored.as_ref())),
         S::Column { .. } => (CellsStatementKind::CellsStatementColumn, false, 0, at(None), at(None)),
+        S::Look { .. } => (CellsStatementKind::CellsStatementLook, false, 0, at(None), at(None)),
     };
     CellsStatement {
         kind,
@@ -1288,7 +1293,10 @@ pub unsafe extern "C" fn cells_statement_part(d: *mut CellsDoc, i: usize, part: 
             name.clone()
         }
         (P::CellsStatementName, S::Import { default, .. }) => default.clone().unwrap_or_default(),
+        (P::CellsStatementName, S::Look { target: cells::look::Target::Row, .. }) => "row".to_owned(),
+        (P::CellsStatementName, S::Look { target: cells::look::Target::Name(n), .. }) => n.clone(),
         (P::CellsStatementSpelled, S::Type { spelled, .. } | S::Column { spelled, .. }) => spelled.clone(),
+        (P::CellsStatementSpelled, S::Look { rules, .. }) => rules.join(", "),
         (P::CellsStatementFrom, S::Import { from, .. }) => from.clone(),
         (P::CellsStatementWord, S::Import { names, .. }) => names[word].clone(),
         (P::CellsStatementHash, S::Import { with, .. }) => {
@@ -1534,6 +1542,11 @@ pub unsafe extern "C" fn cells_prelude_line(
         CellsStatementKind::CellsStatementImport => p::import_line(Some(name), &[], said, &[]),
         CellsStatementKind::CellsStatementColumn => p::column_line(name, said),
         CellsStatementKind::CellsStatementRun => p::run_line(name, said, exported),
+        // `name` is what it names (`row`: the row), `said` its rules as written, `, ` between
+        CellsStatementKind::CellsStatementLook => {
+            let target = if name == "row" { cells::look::Target::Row } else { cells::look::Target::Name(name.to_owned()) };
+            p::look_line(&target, &cells::look::split(said))
+        }
         CellsStatementKind::CellsStatementTable => panic!("a table is more than one line"),
     };
     CellsStr::of(&d.out)

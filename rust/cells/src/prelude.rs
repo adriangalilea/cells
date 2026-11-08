@@ -75,6 +75,9 @@ pub enum Statement {
     /// cell spells it after its own (its type, then `=` and its formula), spaces around
     /// the `=` cut.
     Column { line: u32, name: String, spelled: String },
+    /// `look amount: grouped, negative red`: how the values of a column, a named type or
+    /// the row look (SPEC.md, How a value looks), each rule as written.
+    Look { line: u32, target: crate::look::Target, rules: Vec<String> },
 }
 
 impl Statement {
@@ -84,10 +87,15 @@ impl Statement {
             | Statement::Import { line, .. }
             | Statement::Table { line, .. }
             | Statement::Run { line, .. }
-            | Statement::Column { line, .. } => *line,
+            | Statement::Column { line, .. }
+            | Statement::Look { line, .. } => *line,
         }
     }
 }
+
+/// The words that open a statement: a declared column whose name opens with one and a
+/// space is quoted, so it never reads as that statement.
+const OPENING: [&str; 4] = ["type", "import", "export", "look"];
 
 /// A column's declaration, `name: type` or `name: type = formula`: its name and what
 /// follows its `:`; none for a statement whose first `:` is not before its first `=` (a
@@ -315,11 +323,24 @@ pub fn column_line(name: &str, spelled: &str) -> String {
     }
 }
 
+/// A look as a writer writes it: `look amount: grouped, negative red`; a column named `row`
+/// quoted, since `row` alone names the row.
+pub fn look_line(target: &crate::look::Target, rules: &[String]) -> String {
+    let named = match target {
+        crate::look::Target::Row => "row".into(),
+        crate::look::Target::Name(n) if n == "row" => "\"row\"".into(),
+        crate::look::Target::Name(n) => declared_name(n),
+    };
+    format!("look {named}: {}", rules.join(", "))
+}
+
 /// A column's name as its declaration writes it: quoted, `""` a quote inside, when it
-/// holds a `:`, a `,` or a `"`, or starts or ends with a space or a tab.
+/// holds a `:`, a `,` or a `"`, starts or ends with a space or a tab, or opens with a
+/// statement's word and a space (`"look ahead"`).
 pub fn declared_name(name: &str) -> alloc::borrow::Cow<'_, str> {
     let edges = name.starts_with(BLANK) || name.ends_with(BLANK);
-    if edges || name.contains([':', ',', '"']) {
+    let opens = OPENING.iter().any(|w| name.strip_prefix(w).is_some_and(|r| r.starts_with(BLANK)));
+    if edges || opens || name.contains([':', ',', '"']) {
         alloc::borrow::Cow::Owned(format!("\"{}\"", name.replace('"', "\"\"")))
     } else {
         alloc::borrow::Cow::Borrowed(name)
@@ -391,6 +412,15 @@ fn statement(source: &str, lines: &[(usize, &str)], k: &mut usize) -> Result<Opt
             return fail("an import is the file's own; export what it names instead".to_owned());
         }
         return import(n, rest.trim_start_matches(BLANK)).map(Some);
+    }
+    // a statement by its first word, as type and import are: a column named `look …` is
+    // declared quoted
+    if let Some(rest) = said.strip_prefix("look").filter(|r| r.starts_with(BLANK)) {
+        if exported {
+            return fail("a look goes with the type it names: export the type".to_owned());
+        }
+        let (target, rules) = crate::look::statement(rest.trim_start_matches(BLANK)).map_err(|why| (n, why))?;
+        return Ok(Some(Statement::Look { line: n, target, rules }));
     }
     match column(said) {
         Ok(Some(_)) if exported => return fail("export names a type or a table".to_owned()),
@@ -653,5 +683,30 @@ mod tests {
         assert!(matches!(&p.statements[2], Statement::Import { names, with, .. } if names.len() == 2 && with[0].1 == "ab"));
         assert!(matches!(&p.statements[3], Statement::Column { name, spelled, .. } if name == "total" && spelled == "EUR=cost * qty"));
         assert!(matches!(&p.statements[4], Statement::Column { name, .. } if name == "a:b"));
+    }
+
+    #[test]
+    fn looks() {
+        use crate::look::Target;
+        let lines = [
+            look_line(&Target::Name("amount".into()), &["grouped".into(), "negative red".into()]),
+            look_line(&Target::Row, &["gray when paid".into()]),
+            look_line(&Target::Name("row".into()), &["grouped".into()]),
+            column_line("look ahead", "text"),
+        ];
+        assert_eq!(lines[0], "look amount: grouped, negative red");
+        assert_eq!(lines[2], "look \"row\": grouped");
+        assert_eq!(lines[3], "\"look ahead\": text");
+        let src = format!("---\n{}\n---\nh\n", lines.join("\n"));
+        let p = parse(&src, 0).unwrap();
+        assert!(p.broken.is_empty(), "{:?}", p.broken);
+        assert!(matches!(&p.statements[0], Statement::Look { target: Target::Name(n), rules, .. } if n == "amount" && rules.len() == 2));
+        assert!(matches!(&p.statements[1], Statement::Look { target: Target::Row, .. }));
+        assert!(matches!(&p.statements[2], Statement::Look { target: Target::Name(n), .. } if n == "row"));
+        assert!(matches!(&p.statements[3], Statement::Column { name, .. } if name == "look ahead"));
+        // `look ahead: text` unquoted is a look of the column `ahead` whose rule is no rule
+        // the doc knows: the statement reads, its rule breaks where the doc settles it
+        assert!(matches!(&parse("---\nlook ahead: text\n---\nh\n", 0).unwrap().statements[0], Statement::Look { .. }));
+        assert_eq!(parse("---\nexport look x: grouped\n---\nh\n", 0).unwrap().broken.len(), 1);
     }
 }

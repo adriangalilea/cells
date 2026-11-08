@@ -13,6 +13,7 @@ use crate::column::{self, Bits, BitsBuilder, Building, Data, Decoder, Kind, Prob
 use crate::exact::Exact;
 use crate::expr::{self, Ir, K, V};
 use crate::format::{Dialect, Separator};
+use crate::look::{self, Locale, Look, Rule, Target, Tint, Tinted};
 use crate::prelude::{self, Fenced, Schedule, Statement};
 use crate::read::{self, CellRead, Part, Reading};
 use crate::scan::{self, Fields, Records, Stop};
@@ -374,6 +375,25 @@ pub struct Doc {
     /// What every stored column's values could be (`infer`), so a tail read later says
     /// whether an inferred type still holds.
     candidates: Vec<u8>,
+    /// Each column's look: the rules its named types give it then its own, in order, each
+    /// with what it needs to be drawn (SPEC.md, How a value looks).
+    painted: Vec<Vec<Painted>>,
+    /// The row's look: `look row:`'s rules.
+    row_painted: Vec<Painted>,
+    /// Each look statement that read, by what it names, and its rules that read.
+    looks: Vec<(Target, Vec<Look>)>,
+    /// The aggregate slots the looks' conditions use.
+    look_slots: usize,
+}
+
+/// A rule as it holds of a column or the row: a condition resolved and, after each
+/// computation, which rows it holds of; a scale's least and greatest values.
+#[derive(Clone, Debug)]
+struct Painted {
+    look: Look,
+    condition: Option<Ir>,
+    hits: Vec<bool>,
+    range: Option<(Decimal, Decimal)>,
 }
 
 /// Reads a `.cells` file. A broken cell is a problem, and a broken grammar takes out only
@@ -457,6 +477,10 @@ fn read_in(bytes: Vec<u8>, dialect: Dialect, threads: usize, imports: &mut dyn I
         header: None,
         edits: BTreeMap::new(),
         candidates: Vec::new(),
+        painted: Vec::new(),
+        row_painted: Vec::new(),
+        looks: Vec::new(),
+        look_slots: 0,
     };
     let header = match (body == src.len(), scan::record(src, body, how)) {
         (true, _) => None,
@@ -468,6 +492,8 @@ fn read_in(bytes: Vec<u8>, dialect: Dialect, threads: usize, imports: &mut dyn I
     };
     let Some((fields, first)) = header else {
         doc.source = source;
+        doc.resolve_looks(&mut broken);
+        broken.sort_by_key(|e| e.at.order());
         doc.broken = broken;
         return Ok(doc);
     };
@@ -592,6 +618,7 @@ fn read_in(bytes: Vec<u8>, dialect: Dialect, threads: usize, imports: &mut dyn I
     doc.problems = problems;
     doc.source = source;
     doc.resolve_formulas(&mut broken);
+    doc.resolve_looks(&mut broken);
     broken.sort_by_key(|e| e.at.order());
     doc.broken = broken;
     doc.recompute();
@@ -745,6 +772,19 @@ fn settle_prelude(
         match s {
             // A column's declaration names no type or table: the header settles it.
             Statement::Column { .. } => {}
+            // A named type's look, given to the type itself, so it holds wherever the type is
+            // used and travels with it when it is exported; a column's or the row's is
+            // settled once the header is read.
+            Statement::Look { target: Target::Name(n), rules, line } if named.iter().any(|t| &t.name == n) => {
+                let t = named.iter_mut().find(|t| &t.name == n).expect("a named type");
+                for r in rules {
+                    match look::rule(r).and_then(|rule| applies(&rule, &t.ty.base).map(|()| rule)) {
+                        Ok(rule) => t.looks.push(Look { spelled: r.clone(), rule, line: *line }),
+                        Err(why) => fail(format!("look {n}: {why}")),
+                    }
+                }
+            }
+            Statement::Look { .. } => {}
             Statement::Type { name, spelled, .. } => {
                 if !name.as_bytes().first().is_some_and(|c| c.is_ascii_uppercase()) {
                     fail(format!("a type's name starts with a capital letter, not \"{name}\""));
@@ -760,7 +800,7 @@ fn settle_prelude(
                 }
                 let names: Vec<String> = tables.iter().map(|t| t.name.clone()).collect();
                 match types::parse_type(spelled, named, &names) {
-                    Ok(ty) => named.push(NamedType { name: name.clone(), ty }),
+                    Ok(ty) => named.push(NamedType::new(name.clone(), ty)),
                     Err(why) => fail(format!("type {name}: {why}")),
                 }
             }
@@ -796,14 +836,16 @@ fn settle_prelude(
                     let Some(d) = &doc else {
                         // Unreachable: a capital names a type, read as unchecked text.
                         if name.as_bytes()[0].is_ascii_uppercase() {
-                            named.push(NamedType { name: name.clone(), ty: Type::plain(Base::Text) });
+                            named.push(NamedType::new(name.clone(), Type::plain(Base::Text)));
                         } else {
                             tables.push(Table { name: name.clone(), exported: false, doc: None, line: s.line(), own: false });
                         }
                         continue;
                     };
                     if let Some(t) = d.exported_type(name) {
-                        named.push(NamedType { name: name.clone(), ty: t.ty.clone() });
+                        // its looks with it (SPEC.md, How a value looks), said here at the
+                        // import's line, since that is where this file takes them
+                        named.push(imported_type(t, s.line()));
                     } else if let Some(t) = d.tables.iter().find(|t| t.exported && &t.name == name) {
                         tables.push(Table { name: name.clone(), exported: false, doc: t.doc.clone(), line: s.line(), own: false });
                     } else {
@@ -1417,6 +1459,80 @@ impl Doc {
                 _ => None,
             })
             .collect()
+    }
+
+    /// Each look statement that read (SPEC.md, How a value looks), by what it names, with
+    /// its rules that read, in the prelude's order.
+    pub fn looks(&self) -> &[(Target, Vec<Look>)] {
+        &self.looks
+    }
+
+    /// Every rule `column`'s look gives it: its named types' first, then its own, in order.
+    pub fn looks_of(&self, column: usize) -> Vec<&Look> {
+        self.painted.get(column).into_iter().flatten().map(|p| &p.look).collect()
+    }
+
+    /// The tint the cell at `row`, `column` is drawn in: its choice's word's, then each
+    /// rule of its column's look that holds of it, a later one over an earlier; nothing when
+    /// none does. Presentation alone: the value is untouched.
+    pub fn tint(&self, row: usize, column: usize) -> Option<Tinted> {
+        let c = &self.columns[column];
+        let v = c.value(row);
+        let n = decimal(v);
+        let mut out = match v {
+            Value::Choice(w) => c.ty.tint(w).map(Tinted::One),
+            _ => None,
+        };
+        for p in self.painted.get(column).into_iter().flatten() {
+            let paint = match &p.look.rule {
+                Rule::Negative(t) => n.filter(|d| d.mantissa < 0).map(|_| Tinted::One(*t)),
+                Rule::Positive(t) => n.filter(|d| d.mantissa > 0).map(|_| Tinted::One(*t)),
+                Rule::When { tint, .. } => p.hits.get(row).copied().unwrap_or(false).then_some(Tinted::One(*tint)),
+                Rule::Scale { from, to } => match (n, p.range) {
+                    (Some(d), Some((lo, hi))) => Some(Tinted::Between { from: *from, to: *to, at: between(d, lo, hi) }),
+                    _ => None,
+                },
+                _ => None,
+            };
+            if paint.is_some() {
+                out = paint;
+            }
+        }
+        out
+    }
+
+    /// The tint `look row:` gives the row at `row`: the last of its rules that holds.
+    pub fn row_tint(&self, row: usize) -> Option<Tint> {
+        self.row_painted.iter().rev().find_map(|p| match &p.look.rule {
+            Rule::When { tint, .. } if p.hits.get(row).copied().unwrap_or(false) => Some(*tint),
+            _ => None,
+        })
+    }
+
+    /// The cell at `row`, `column` as a reader draws it under its column's look, in
+    /// `locale`: a number at its `decimals`, `grouped`, negative in parentheses; a date or a
+    /// time in its display form; every other value, and a column with no look, as the file
+    /// writes it.
+    pub fn drawn(&self, row: usize, column: usize, locale: &Locale) -> String {
+        let c = &self.columns[column];
+        let rules: Vec<&Rule> = self.painted.get(column).into_iter().flatten().map(|p| &p.look.rule).collect();
+        let pattern = rules.iter().rev().find_map(|r| match r {
+            Rule::As(p) => Some(p),
+            _ => None,
+        });
+        let v = c.value(row);
+        match (v, pattern) {
+            (Value::Null, _) => String::new(),
+            (Value::Text(t) | Value::Choice(t), _) => t.to_owned(),
+            (Value::Int(_) | Value::Decimal(_), _) => look::number(decimal(v).expect("a number"), &rules, locale),
+            (Value::Date(d), Some(p)) => p.show(d, 0, locale),
+            (Value::Time(t), Some(p)) => p.show(0, t, locale),
+            (Value::DateTime(t), Some(p)) => {
+                let (d, s) = look::instant_parts(t);
+                p.show(d, s, locale)
+            }
+            (v, _) => c.form(v),
+        }
     }
 
     /// Whether any cell is computed, by its column's formula or its own.
@@ -2476,6 +2592,151 @@ impl Doc {
         self.formulas = formulas;
     }
 
+    /// The looks settled (SPEC.md, How a value looks): a column's and the row's rules read
+    /// and checked against what they colour, each column given its named types' rules then
+    /// its own, and every condition resolved as a formula over the row. A rule that does not
+    /// read, does not hold of its values or names what is not there is broken at its line
+    /// (an imported type's at its import's) and left out alone; the values are untouched.
+    fn resolve_looks(&mut self, broken: &mut Vec<Error>) {
+        let mut own: Vec<Vec<Look>> = (0..self.columns.len()).map(|_| Vec::new()).collect();
+        let mut row: Vec<Look> = Vec::new();
+        let mut stated: Vec<(Target, Vec<Look>)> = Vec::new();
+        for s in &self.statements {
+            let Statement::Look { line, target, rules } = s else { continue };
+            let at = At::PreludeLine(*line);
+            let mut read = |target: &str, base: Option<&Base>| -> Vec<Look> {
+                let mut out = Vec::new();
+                for r in rules {
+                    let rule = look::rule(r).and_then(|rule| match (base, &rule) {
+                        (Some(b), _) => applies(&rule, b).map(|()| rule),
+                        (None, Rule::When { .. }) => Ok(rule),
+                        (None, _) => Err("a row takes only a tint by a condition: gray when paid".to_owned()),
+                    });
+                    match rule {
+                        Ok(rule) => out.push(Look { spelled: r.clone(), rule, line: *line }),
+                        Err(why) => broken.push(error(at, format!("look {target}: {why}"))),
+                    }
+                }
+                out
+            };
+            match target {
+                Target::Name(n) if self.named.iter().any(|t| &t.name == n) => {
+                    let t = self.named.iter().find(|t| &t.name == n).expect("a named type");
+                    stated.push((target.clone(), t.looks.iter().filter(|l| l.line == *line).cloned().collect()));
+                }
+                Target::Name(n) => match self.columns.iter().position(|c| &c.name == n) {
+                    Some(k) => {
+                        let looks = read(n, Some(&self.columns[k].ty.base));
+                        own[k].extend(looks.iter().cloned());
+                        stated.push((target.clone(), looks));
+                    }
+                    None => broken.push(error(at, format!("look {n}: no column and no type is named {n}"))),
+                },
+                Target::Row => {
+                    let looks = read("row", None);
+                    row.extend(looks.iter().cloned());
+                    stated.push((target.clone(), looks));
+                }
+            }
+        }
+        // Every condition resolved against this file's columns, once per column it colours;
+        // a type's condition that names what this file lacks is broken once, at its line.
+        let scope = DocScope { columns: &self.columns, tables: &self.tables };
+        let mut slots = 0;
+        // each condition that does not resolve: its line, why, and the rule as written
+        let mut said: Vec<(u32, String, String)> = Vec::new();
+        let mut painted = |looks: Vec<Look>| -> Vec<Painted> {
+            let mut out = Vec::new();
+            for l in looks {
+                let condition = match &l.rule {
+                    Rule::When { condition, .. } => {
+                        let resolved =
+                            expr::parse(condition).and_then(|e| expr::resolve(&e, &scope, &mut slots)).and_then(|(ir, kind)| match kind {
+                                K::Bool | K::Null => Ok(ir),
+                                k => Err(expr::Fault::whole(format!("a condition is a boolean, and this gives {}", k.word()))),
+                            });
+                        match resolved {
+                            Ok(ir) => Some(ir),
+                            Err(fault) => {
+                                let why = format!("look: \"{}\": {}", l.spelled, fault.why);
+                                if !said.iter().any(|(line, w, _)| *line == l.line && *w == why) {
+                                    said.push((l.line, why, l.spelled.clone()));
+                                }
+                                continue;
+                            }
+                        }
+                    }
+                    _ => None,
+                };
+                out.push(Painted { look: l, condition, hits: Vec::new(), range: None });
+            }
+            out
+        };
+        let mut columns = Vec::with_capacity(self.columns.len());
+        for (k, c) in self.columns.iter().enumerate() {
+            let looks: Vec<Look> = c.ty.looks().into_iter().cloned().chain(own[k].iter().cloned()).collect();
+            columns.push(painted(looks));
+        }
+        let row = painted(row);
+        // a rule whose condition does not resolve here did not read
+        for (_, looks) in &mut stated {
+            looks.retain(|l| !said.iter().any(|(line, _, spelled)| *line == l.line && *spelled == l.spelled));
+        }
+        broken.extend(said.into_iter().map(|(line, why, _)| error(At::PreludeLine(line), why)));
+        self.painted = columns;
+        self.row_painted = row;
+        self.looks = stated;
+        self.look_slots = slots;
+    }
+
+    /// Each look's conditions evaluated over the rows as they are now, and each scale's
+    /// least and greatest values, after a computation.
+    fn paint(&mut self) {
+        let rows = self.rows();
+        for (column, c) in self.painted.iter_mut().zip(&self.columns) {
+            for p in column.iter_mut().filter(|p| matches!(p.look.rule, Rule::Scale { .. })) {
+                p.range = (0..rows).filter_map(|r| decimal(c.value(r))).fold(None, |range, v| match range {
+                    None => Some((v, v)),
+                    Some((lo, hi)) => Some((if v < lo { v } else { lo }, if v > hi { v } else { hi })),
+                });
+            }
+        }
+        let conditions = self.painted.iter().flatten().chain(&self.row_painted).any(|p| p.condition.is_some());
+        if !conditions {
+            return;
+        }
+        let cells = BTreeMap::new();
+        // Every computed cell is decoded already: the evaluation reads values, computing none.
+        let mut memo: Vec<Vec<Slot>> = self.columns.iter().map(|_| Vec::new()).collect();
+        let mut eval = Eval {
+            columns: &self.columns,
+            tables: &self.tables,
+            formulas: &self.formulas,
+            cells: &cells,
+            rows,
+            memo: &mut memo,
+            aggregates: alloc::vec![None; self.look_slots],
+            indexes: (0..=self.tables.len()).map(|_| None).collect(),
+            cycles: Vec::new(),
+            windows: alloc::vec![None; self.look_slots],
+            running: alloc::vec![Vec::new(); self.look_slots],
+        };
+        let mut hits = |p: &Painted| -> Vec<bool> {
+            let Some(ir) = &p.condition else { return Vec::new() };
+            (0..rows).map(|r| matches!(expr::eval(ir, None, r, &mut eval), V::Bool(true))).collect()
+        };
+        let columns: Vec<Vec<Vec<bool>>> = self.painted.iter().map(|c| c.iter().map(&mut hits).collect()).collect();
+        let row: Vec<Vec<bool>> = self.row_painted.iter().map(&mut hits).collect();
+        for (c, hs) in self.painted.iter_mut().zip(columns) {
+            for (p, h) in c.iter_mut().zip(hs) {
+                p.hits = h;
+            }
+        }
+        for (p, h) in self.row_painted.iter_mut().zip(row) {
+            p.hits = h;
+        }
+    }
+
     /// Every computed cell computed again, each column holding one decoded with what its
     /// cells gave, and every reference checked against its tables.
     fn recompute(&mut self) {
@@ -2489,6 +2750,7 @@ impl Doc {
         self.problems.sort_by_key(|p| p.order());
         // A cell has one problem: a record too long is its last cell's, before the cell's own.
         self.problems.dedup_by_key(|p| p.order());
+        self.paint();
     }
 
     fn compute(&mut self) {
@@ -2805,6 +3067,58 @@ impl Doc {
 /// What a formula giving `kind` may fill a column of `base` with: a number a numeric
 /// column, a boolean a boolean one; anything else is written as text and read by the
 /// column's type.
+/// Where `d` stands between `lo` and `hi`, from 0 to 1000: a scale's point, for display.
+fn between(d: Decimal, lo: Decimal, hi: Decimal) -> u16 {
+    let span = hi.to_f64() - lo.to_f64();
+    if span <= 0.0 {
+        return 0;
+    }
+    let at = (d.to_f64() - lo.to_f64()) / span * 1000.0 + 0.5;
+    if at <= 0.0 {
+        0
+    } else if at >= 1000.0 {
+        1000
+    } else {
+        at as u16
+    }
+}
+
+/// A number's value as a decimal; nothing for any other.
+fn decimal(v: Value) -> Option<Decimal> {
+    match v {
+        Value::Int(n) => Some(Decimal { mantissa: n as i128, scale: 0 }),
+        Value::Decimal(d) => Some(d),
+        _ => None,
+    }
+}
+
+/// Whether a rule of a look holds of values of `base`: a number's rules of a number, a
+/// display form of a date or a time, a condition of anything.
+fn applies(rule: &Rule, base: &Base) -> Result<(), String> {
+    match rule {
+        Rule::Decimals(_) if !matches!(base, Base::Num | Base::Pct) => {
+            Err(format!("decimals is a num's or a pct's, and this is {}: a currency shows its scale", base.tag()))
+        }
+        r if r.wants_number() && !base.is_number() => Err(format!("it is a number's rule, and this is {}", base.tag())),
+        Rule::As(p) => match base {
+            Base::Date if p.has_time() => Err(format!("'{}' shows a time, and this is a date", p.spelled)),
+            Base::Time if p.has_date() => Err(format!("'{}' shows a date, and this is a time", p.spelled)),
+            Base::Date | Base::Time | Base::DateTime => Ok(()),
+            other => Err(format!("as shows a date or a time, and this is {}", other.tag())),
+        },
+        _ => Ok(()),
+    }
+}
+
+/// A type another file exports, as this file takes it at its import's `line`: its looks,
+/// and its own named types', said at that line.
+fn imported_type(t: &NamedType, line: u32) -> NamedType {
+    fn retag(ty: &Type, line: u32) -> Type {
+        Type { named: ty.named.as_deref().map(|n| alloc::boxed::Box::new(imported_type(n, line))), ..ty.clone() }
+    }
+    NamedType { name: t.name.clone(), ty: retag(&t.ty, line), looks: t.looks.iter().map(|l| Look { line, ..l.clone() }).collect() }
+}
+
 fn holds(base: &Base, kind: K) -> Result<(), String> {
     let ok = match (base, kind) {
         (_, K::Null) => true,
@@ -3028,7 +3342,9 @@ impl expr::Source for Eval<'_> {
         }
         let c = &self.columns[column];
         let origin = c.origin(row);
-        if origin == Origin::Written {
+        // A column with no memo holds its computed values decoded already (a look's
+        // condition, evaluated after the computation).
+        if origin == Origin::Written || self.memo[column].is_empty() {
             return value_v(c, row);
         }
         match &self.memo[column][row] {
