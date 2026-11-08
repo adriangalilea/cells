@@ -645,6 +645,103 @@ pub unsafe extern "C" fn cells_text(d: *mut CellsDoc, row: usize, column: usize)
     CellsStr::of(&d.out)
 }
 
+/// A tint (SPEC.md, Choices): `kind` 0 none, 1 a name (`value` its place in
+/// `cells::look::TINTS`: red, orange, yellow, green, teal, blue, purple, pink, brown, gray),
+/// 2 an exact colour (`value` `0xRRGGBB`).
+#[repr(C)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub struct CellsTint {
+    pub kind: u8,
+    pub value: u32,
+}
+
+impl CellsTint {
+    const NONE: CellsTint = CellsTint { kind: 0, value: 0 };
+
+    fn of(t: Option<cells::Tint>) -> CellsTint {
+        match t {
+            None => CellsTint::NONE,
+            Some(cells::Tint::Named(k)) => CellsTint { kind: 1, value: k as u32 },
+            Some(cells::Tint::Hex(rgb)) => CellsTint { kind: 2, value: rgb },
+        }
+    }
+}
+
+/// What a cell is drawn in: `to` none for one tint (`from`), else a point `at` (0 to
+/// 1000) from `from` to `to`, a scale's, for the app to mix in its theme.
+#[repr(C)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub struct CellsTinted {
+    pub from: CellsTint,
+    pub to: CellsTint,
+    pub at: u16,
+}
+
+/// The tint the cell at `row`, `column` is drawn in (`Doc::tint`): its choice's word's, then
+/// its column's look's, a later rule over an earlier; `from` none when nothing tints it.
+///
+/// # Safety
+/// `d` is a live doc; `row < cells_rows(d)`, `column < cells_stored(d)`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn cells_tint(d: *mut CellsDoc, row: usize, column: usize) -> CellsTinted {
+    // SAFETY: the caller's promise.
+    let d = unsafe { doc(d) };
+    match d.doc.tint(row, column) {
+        None => CellsTinted { from: CellsTint::NONE, to: CellsTint::NONE, at: 0 },
+        Some(cells::Tinted::One(t)) => CellsTinted { from: CellsTint::of(Some(t)), to: CellsTint::NONE, at: 0 },
+        Some(cells::Tinted::Between { from, to, at }) => CellsTinted { from: CellsTint::of(Some(from)), to: CellsTint::of(Some(to)), at },
+    }
+}
+
+/// The tint row `row` is drawn in, by `look row:`'s conditions; none when none holds.
+///
+/// # Safety
+/// `d` is a live doc; `row < cells_rows(d)`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn cells_row_tint(d: *mut CellsDoc, row: usize) -> CellsTint {
+    // SAFETY: the caller's promise.
+    CellsTint::of(unsafe { doc(d) }.doc.row_tint(row))
+}
+
+/// The tint a choice's word has in `column`'s type: what a picker or a chip of the word
+/// shows where no cell holds it.
+///
+/// # Safety
+/// `d` is a live doc; `column < cells_stored(d)`; `word` points at `len` bytes of UTF-8.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn cells_word_tint(d: *mut CellsDoc, column: usize, word: *const c_char, len: usize) -> CellsTint {
+    // SAFETY: the caller's promise.
+    let (d, word) = unsafe { (doc(d), text_of(word, len)) };
+    CellsTint::of(d.doc.columns()[column].ty.tint(word))
+}
+
+/// The cell at `row`, `column` as drawn under its column's look (`Doc::drawn`), in the
+/// locale `locale` gives as its 42 lines (`cells::Locale::lines`; empty for English).
+///
+/// # Safety
+/// `d` is a live doc; `row < cells_rows(d)`, `column < cells_stored(d)`; `locale` points at
+/// `len` bytes of UTF-8.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn cells_drawn(d: *mut CellsDoc, row: usize, column: usize, locale: *const c_char, len: usize) -> CellsStr {
+    // SAFETY: the caller's promise.
+    let (d, locale) = unsafe { (doc(d), text_of(locale, len)) };
+    let locale = cells::Locale::lines(locale).unwrap_or_else(|why| panic!("the app hands its locale: {why}"));
+    d.out = d.doc.drawn(row, column, &locale);
+    CellsStr::of(&d.out)
+}
+
+/// The rules `column`'s look gives it, as written, a line each, its named types' first.
+///
+/// # Safety
+/// `d` is a live doc; `column < cells_stored(d)`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn cells_looks_of(d: *mut CellsDoc, column: usize) -> CellsStr {
+    // SAFETY: the caller's promise.
+    let d = unsafe { doc(d) };
+    d.out = d.doc.looks_of(column).iter().map(|l| l.spelled.as_str()).collect::<Vec<_>>().join("\n");
+    CellsStr::of(&d.out)
+}
+
 /// The file's text: what was read, but for what was changed.
 ///
 /// # Safety
@@ -1721,6 +1818,24 @@ mod tests {
                 .collect();
             let (c, _) = found.iter().find(|(_, l)| l == "Money").expect("the named type offered");
             assert_eq!((c.kind, c.from as usize, c.to as usize), (CellsCompletionKind::CellsCompletionClass, at - 2, at));
+            cells_free(d);
+        }
+    }
+
+    #[test]
+    fn looks() {
+        let src = "---\nlook amount: grouped, negative red\nlook row: gray when amount > 0\n---\nkind:income#green|cost#3fa34d,amount:EUR\ncost,-1234.50\nincome,2.00\n";
+        let mut f = CellsFailure { at: CellsAt::CellsAtNone, number: 0, why: ptr::null_mut(), why_len: 0 };
+        let text = |s: CellsStr| unsafe { String::from_utf8_lossy(std::slice::from_raw_parts(s.ptr as *const u8, s.len)).into_owned() };
+        // SAFETY: valid pointers throughout; the doc released once.
+        unsafe {
+            let d = cells_read(src.as_ptr(), src.len(), 1, &mut f);
+            assert_eq!(cells_tint(d, 0, 0).from, CellsTint { kind: 2, value: 0x3fa34d });
+            assert_eq!(cells_tint(d, 0, 1).from, CellsTint { kind: 1, value: 0 });
+            assert_eq!(cells_row_tint(d, 1), CellsTint { kind: 1, value: 9 });
+            assert_eq!(cells_word_tint(d, 0, "income".as_ptr() as *const c_char, 6), CellsTint { kind: 1, value: 3 });
+            assert_eq!(text(cells_drawn(d, 0, 1, ptr::null(), 0)), "-1,234.50");
+            assert_eq!(text(cells_looks_of(d, 1)), "grouped\nnegative red");
             cells_free(d);
         }
     }
