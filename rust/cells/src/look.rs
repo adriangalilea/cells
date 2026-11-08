@@ -465,6 +465,35 @@ pub const ENGLISH: Locale<'static> = Locale {
     pm: "PM",
 };
 
+impl<'a> Locale<'a> {
+    /// A locale handed across a boundary (wasm, the C ABI) as its 42 lines in order: the
+    /// grouping mark, the decimal mark, the 12 months' names, their 12 short names, the 7
+    /// weekdays' names from Monday, their 7 short names, the words for before and after
+    /// noon. An empty text is `ENGLISH`.
+    pub fn lines(text: &'a str) -> Result<Locale<'a>, String> {
+        if text.is_empty() {
+            return Ok(ENGLISH);
+        }
+        let l: Vec<&str> = text.split('\n').collect();
+        if l.len() != 42 {
+            return Err(format!("a locale is 42 lines, and this is {}", l.len()));
+        }
+        fn take<'a, const N: usize>(l: &[&'a str], from: usize) -> [&'a str; N] {
+            core::array::from_fn(|i| l[from + i])
+        }
+        Ok(Locale {
+            group: l[0],
+            decimal: l[1],
+            months: take(&l, 2),
+            months_short: take(&l, 14),
+            days: take(&l, 26),
+            days_short: take(&l, 33),
+            am: l[40],
+            pm: l[41],
+        })
+    }
+}
+
 /// `d` at `scale` digits after its point, half to even, for display.
 fn rounded(d: Decimal, scale: u8) -> Decimal {
     if d.scale <= scale {
@@ -572,6 +601,17 @@ mod tests {
         let es = Locale { group: ".", decimal: ",", ..ENGLISH };
         assert_eq!(number(d("1234.5"), &[&g], &es), "1.234,5");
         assert_eq!(number(d("1234.5"), &[&Rule::Negative(Tint::Named(0))], &es), "1234.5", "a colour says nothing of how it reads");
+    }
+
+    #[test]
+    fn a_locale_by_its_lines() {
+        let e = ENGLISH;
+        let mut l: Vec<&str> = Vec::from([e.group, e.decimal]);
+        l.extend(e.months.iter().chain(&e.months_short).chain(&e.days).chain(&e.days_short));
+        l.extend([e.am, e.pm]);
+        assert_eq!(Locale::lines(&l.join("\n")), Ok(ENGLISH));
+        assert_eq!(Locale::lines(""), Ok(ENGLISH));
+        assert!(Locale::lines(".\n,").is_err());
     }
 
     #[test]
