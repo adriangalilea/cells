@@ -137,6 +137,16 @@ impl Engine {
         }
     }
 
+    /// What changed in `file` since `version`: its cells as the file numbers them now and the
+    /// chains that changed them; nothing when the log names no such version.
+    #[allow(clippy::type_complexity)]
+    pub fn since(&self, file: &Path, version: &str) -> Result<Option<(Vec<crate::history::Mark>, Vec<crate::history::Chain>)>, String> {
+        match self.ask(&ToEngine::Since { file: file.to_path_buf(), version: version.to_owned() })? {
+            FromEngine::Since { known, marks, chains } => Ok(known.then_some((marks, chains))),
+            other => panic!("the engine answered what changed with {other:?}"),
+        }
+    }
+
     /// `file` returned to `version`, a change of its own: the version it held before.
     pub fn restore(&self, file: &Path, version: &str) -> Result<String, String> {
         match self.ask(&ToEngine::Restore { file: file.to_path_buf(), version: version.to_owned() })? {
@@ -184,6 +194,7 @@ fn hear(mut reader: BufReader<UnixStream>, changes: Sender<Vec<PathBuf>>, answer
                 | FromEngine::Version { .. }
                 | FromEngine::Restored { .. }
                 | FromEngine::Ran { .. }
+                | FromEngine::Since { .. }
                 | FromEngine::Refused { .. }),
             )) => {
                 let _ = answer.send(said);

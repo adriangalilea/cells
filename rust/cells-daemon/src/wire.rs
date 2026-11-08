@@ -35,6 +35,9 @@ pub enum ToEngine {
     Version { file: PathBuf, version: String },
     /// `file` returned to a version: a change of its own, a root, never history rewritten.
     Restore { file: PathBuf, version: String },
+    /// What changed in `file` since `version` (the one a person last worked on): its cells
+    /// as the file numbers them now, and the chains that changed them.
+    Since { file: PathBuf, version: String },
     /// The script `script` of `file` run now, outside its schedule: answered once its run
     /// has landed, refused when it is not allowed as written.
     Run { file: PathBuf, script: String },
@@ -71,6 +74,13 @@ pub enum FromEngine {
     Restored {
         file: PathBuf,
         was: String,
+    },
+    /// What changed since a version: nothing known (`known` false) when the log names no
+    /// such version.
+    Since {
+        known: bool,
+        marks: Vec<crate::history::Mark>,
+        chains: Vec<crate::history::Chain>,
     },
     /// A script's run landed: its number and what came of it.
     Ran {

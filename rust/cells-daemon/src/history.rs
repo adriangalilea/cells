@@ -56,6 +56,23 @@ pub struct Held {
     pub root: (PathBuf, u64),
 }
 
+/// A cell the versions after one changed, its row as the file numbers it now: what it held
+/// at that version and holds now, and the entry that last wrote it and that entry's root,
+/// so a client marks it and says where it came from with the history's own words.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Mark {
+    pub row: usize,
+    pub key: Option<String>,
+    /// Nothing for a row added since: the whole row is new.
+    pub column: Option<String>,
+    /// Nothing for a row added since.
+    pub was: Option<String>,
+    pub now: String,
+    pub at: u64,
+    pub entry: (PathBuf, u64),
+    pub root: (PathBuf, u64),
+}
+
 /// The chains of every log, newest root first: only those with an entry about a file
 /// `wanted` says yes to, at most `limit`.
 pub fn chains<'a>(logs: impl Iterator<Item = &'a Log>, wanted: impl Fn(&Path) -> bool, limit: usize) -> Vec<Chain> {
@@ -106,6 +123,102 @@ fn tree(root: &Event, followed: Vec<Event>) -> Vec<Followed> {
         out.push(Followed { event, under });
     }
     out
+}
+
+/// Every cell of `file` the versions after `version` changed, as `Mark`s: the rows each
+/// version added and removed followed down to the rows the file has now, a cell changed
+/// twice marked once with what it held at `version`, a cell changed back not marked.
+/// `version` is one the log names, as what an entry made or what one was made over; nothing
+/// when it names none (a version never logged, older than the log), since what came after
+/// it is not known. `current` is the version the file holds now: since it, nothing.
+pub fn since(log: &Log, file: &Path, version: &str, current: &str) -> Option<Vec<Mark>> {
+    if version == current {
+        return Some(Vec::new());
+    }
+    let path = log.shown(file);
+    let lines: Vec<&Line> = log.lines().iter().filter(|l| l.entry.path() == path).collect();
+    fn over(l: &Line) -> Option<&str> {
+        match &l.entry {
+            Logged::External { was, .. } => was.as_deref(),
+            Logged::Restore { was, .. } | Logged::Run { was, .. } => Some(was.as_str()),
+            Logged::Store { against, .. } => Some(against.as_str()),
+            Logged::Moved { .. } => None,
+        }
+    }
+    let start = lines
+        .iter()
+        .rposition(|l| l.entry.now() == Some(version))
+        .map(|i| i + 1)
+        .or_else(|| lines.iter().position(|l| over(l) == Some(version)))?;
+    let root_of = |l: &Line| match l.entry.cause() {
+        Some(c) => (c.folder.clone().unwrap_or_else(|| log.root.clone()), c.n),
+        None => (log.root.clone(), l.n),
+    };
+    let mut marks: Vec<Mark> = Vec::new();
+    for l in &lines[start..] {
+        let (cells, added, removed): (&[crate::log::Changed], &[usize], &[usize]) = match &l.entry {
+            Logged::Store { stored, .. } => (stored, &[], &[]),
+            Logged::External { edited: Some(e), .. } | Logged::Restore { edited: Some(e), .. } | Logged::Run { edited: Some(e), .. } => {
+                (&e.cells, &e.rows_added, &e.rows_removed)
+            }
+            // a version either side of which did not read says no cells: what it changed is
+            // not known, so nothing before it is either
+            Logged::External { .. } | Logged::Restore { .. } | Logged::Run { .. } => {
+                marks.clear();
+                continue;
+            }
+            Logged::Moved { .. } => continue,
+        };
+        let (entry, root) = ((log.root.clone(), l.n), root_of(l));
+        // removed rows, numbered as before the version; then added ones, as after it
+        let mut gone: Vec<usize> = removed.to_vec();
+        gone.sort_unstable_by(|a, b| b.cmp(a));
+        for r in gone {
+            marks.retain(|m| m.row != r);
+            marks.iter_mut().filter(|m| m.row > r).for_each(|m| m.row -= 1);
+        }
+        let mut new: Vec<usize> = added.to_vec();
+        new.sort_unstable();
+        for a in new {
+            marks.iter_mut().filter(|m| m.row >= a).for_each(|m| m.row += 1);
+            marks.push(Mark {
+                row: a,
+                key: None,
+                column: None,
+                was: None,
+                now: String::new(),
+                at: l.at,
+                entry: entry.clone(),
+                root: root.clone(),
+            });
+        }
+        for c in cells {
+            if marks.iter().any(|m| m.row == c.row && m.column.is_none()) {
+                continue;
+            }
+            match marks.iter_mut().find(|m| m.row == c.row && m.column.as_deref() == Some(c.column.as_str())) {
+                Some(m) => {
+                    m.now = c.now.clone();
+                    m.at = l.at;
+                    m.entry = entry.clone();
+                    m.root = root.clone();
+                }
+                None => marks.push(Mark {
+                    row: c.row,
+                    key: c.key.clone(),
+                    column: Some(c.column.clone()),
+                    was: Some(c.was.clone()),
+                    now: c.now.clone(),
+                    at: l.at,
+                    entry: entry.clone(),
+                    root: root.clone(),
+                }),
+            }
+        }
+        marks.retain(|m| m.was.as_deref() != Some(m.now.as_str()));
+    }
+    marks.sort_by(|a, b| (a.row, &a.column).cmp(&(b.row, &b.column)));
+    Some(marks)
 }
 
 /// Every value the cell at `row` (as the file numbers it now, from 1) of `column` held,

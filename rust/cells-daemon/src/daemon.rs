@@ -355,6 +355,21 @@ impl<W: World> Daemon<W> {
                 let key = key_of(doc, row - 1);
                 FromEngine::Values { values: history::cell(log, &file, row, key.as_deref(), &column) }
             }
+            ToEngine::Since { file, version } => {
+                let log = self.log_of(&file)?;
+                let current = self.folder.text(&key(&file)).map(hash).ok_or(format!("{}: not read", self.shown(&file)))?;
+                match history::since(log, &file, &version, &current) {
+                    None => FromEngine::Since { known: false, marks: Vec::new(), chains: Vec::new() },
+                    Some(marks) => {
+                        let roots: std::collections::BTreeSet<&(PathBuf, u64)> = marks.iter().map(|m| &m.root).collect();
+                        let chains = history::chains(self.served.iter(), |p| p == file, usize::MAX)
+                            .into_iter()
+                            .filter(|c| roots.contains(&(c.root.folder.clone(), c.root.line.n)))
+                            .collect();
+                        FromEngine::Since { known: true, marks, chains }
+                    }
+                }
+            }
             ToEngine::Version { file, version } => {
                 let log = self.log_of(&file)?;
                 match self.world.read(&log.version(&version)) {

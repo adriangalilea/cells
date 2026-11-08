@@ -533,3 +533,42 @@ fn a_script_runs_when_the_file_it_names_changes() {
     assert_eq!(*d.world().started.borrow(), ["rates"]);
     assert!(d.world().log().iter().any(|l| l.contains("\"by\":\"a change to notes.cells\"")), "{:#?}", d.world().log());
 }
+
+#[test]
+fn what_changed_since_a_version_is_marked_with_the_chain_that_changed_it() {
+    let mut d = daemon();
+    let opened = hash(INDEX);
+    let since = |d: &mut Daemon<Sim>, file: &str, version: &str| match ask(
+        d,
+        "app",
+        ToEngine::Since { file: file.into(), version: version.into() },
+    ) {
+        FromEngine::Since { known, marks, chains } => (known, marks, chains),
+        other => panic!("{other:?}"),
+    };
+    for cost in ["200.00", "250.00"] {
+        let held = d.world().get(Q4);
+        let line = held.lines().find(|l| l.starts_with("cost,")).unwrap().to_owned();
+        d.world().put(Q4, &held.replace(&line, &format!("cost,{cost},{}", line.rsplit(',').next().unwrap())));
+        heard(&mut d, &[Q4]);
+    }
+    let (known, marks, chains) = since(&mut d, QUARTERS, &opened);
+    assert!(known);
+    let [m] = &marks[..] else { panic!("one cell, changed twice: {marks:#?}") };
+    assert_eq!((m.row, m.column.as_deref(), m.was.as_deref(), m.now.as_str()), (1, Some("costs"), Some("180.00"), "250.00"));
+    assert_eq!(m.key.as_deref(), Some("q4"));
+    let root = chains.iter().find(|c| (c.root.folder.clone(), c.root.line.n) == m.root).expect("its chain");
+    assert_eq!(root.root.line.entry.path(), "q4/money.cells", "the save in q4 that reached it");
+    let now = hash(&d.world().get(QUARTERS));
+    assert!(since(&mut d, QUARTERS, &now).1.is_empty(), "nothing since the version it holds");
+    assert!(!since(&mut d, QUARTERS, &hash("a version never logged")).0);
+
+    // a row added above a cell changed since: the cell followed to where it is now
+    let before = hash(&d.world().get(Q4));
+    let held = d.world().get(Q4);
+    d.world().put(Q4, &held.replace("kind:Kind,amount:EUR,cost\n", "kind:Kind,amount:EUR,cost\ncost,1.00,0.00=\n"));
+    heard(&mut d, &[Q4]);
+    let (_, marks, _) = since(&mut d, Q4, &before);
+    assert!(marks.iter().any(|m| m.row == 1 && m.column.is_none()), "the row added: {marks:#?}");
+    assert!(marks.iter().any(|m| m.row == 1 && m.column.is_none() && m.was.is_none()));
+}
