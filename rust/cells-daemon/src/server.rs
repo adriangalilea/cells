@@ -3,14 +3,11 @@
 //! process is the engine, and the socket is bound under a name of its own, made private,
 //! listening, then renamed into place, so the socket's name answers the moment it exists.
 //!
-//! Who may connect: a process of the same user, the kernel's word for it (`getpeereid`),
-//! never the caller's. When the engine ships inside Cells.app, signed, a client is also
-//! held to the engine's own signing team (ENGINE.md, The protocol); a development build
-//! has no signature to hold anyone to.
+//! Who may connect is `trust`'s: the kernel's word for the process at the other end, held
+//! to the engine's own signature, never the caller's say.
 
 use std::fs::{self, File, Permissions, TryLockError};
 use std::io::BufReader;
-use std::os::fd::AsRawFd;
 use std::os::unix::fs::PermissionsExt;
 use std::os::unix::net::{UnixListener, UnixStream};
 use std::path::PathBuf;
@@ -20,6 +17,7 @@ use std::sync::{Arc, Mutex};
 use std::thread;
 
 use crate::daemon::Event;
+use crate::trust::Trust;
 use crate::wire::{self, FromEngine, ToEngine, VERSION};
 
 /// The engine's socket, listening. Its lock is held while it lives: the one engine of this
@@ -27,6 +25,8 @@ use crate::wire::{self, FromEngine, ToEngine, VERSION};
 pub struct Listening {
     _lock: File,
     pub socket: PathBuf,
+    /// Who it admits, as the trace says it.
+    pub admits: String,
 }
 
 /// Why the socket could not be made.
@@ -68,14 +68,16 @@ pub fn listen(events: Sender<Event>, held: Held) -> Result<Listening, Unbound> {
     fs::set_permissions(&staged, Permissions::from_mode(0o600)).map_err(|e| failed(&staged.display().to_string(), e))?;
     // holding the lock, any socket at the name is a dead engine's
     fs::rename(&staged, &socket).map_err(|e| failed(&socket.display().to_string(), e))?;
+    let trust = Trust::own();
+    let admits = trust.said();
     thread::Builder::new()
         .name("cells-accept".into())
-        .spawn(move || accept(listener, events))
+        .spawn(move || accept(listener, events, trust))
         .map_err(|e| failed("the accepting thread", e))?;
-    Ok(Listening { _lock: lock, socket })
+    Ok(Listening { _lock: lock, socket, admits })
 }
 
-fn accept(listener: UnixListener, events: Sender<Event>) {
+fn accept(listener: UnixListener, events: Sender<Event>, trust: Trust) {
     static NEXT: AtomicU64 = AtomicU64::new(1);
     for stream in listener.incoming() {
         let stream = match stream {
@@ -85,8 +87,15 @@ fn accept(listener: UnixListener, events: Sender<Event>) {
                 continue;
             }
         };
-        if !same_user(&stream) {
-            eprintln!("cells serve: a connection from another user, closed");
+        if let Err(why) = trust.admits(&stream) {
+            eprintln!("cells serve: a connection refused, closed: {why}");
+            // the refused program is told why (it is this user's: nothing the person
+            // cannot read already), and its greeting is never read
+            let mut told = stream;
+            let _ = wire::send(
+                &mut told,
+                &FromEngine::Refused { why: format!("this engine admits Cells and its signed `cells` command only: {why}") },
+            );
             continue;
         }
         let id = NEXT.fetch_add(1, Ordering::Relaxed);
@@ -102,15 +111,6 @@ fn accept(listener: UnixListener, events: Sender<Event>) {
             eprintln!("cells serve: no thread for client #{id}: {e}");
         }
     }
-}
-
-/// Whether the process at the other end runs as this user: the kernel's word.
-fn same_user(stream: &UnixStream) -> bool {
-    let (mut uid, mut gid) = (0, 0);
-    // SAFETY: getpeereid writes two integers through the pointers it is handed, both ours.
-    let ok = unsafe { libc::getpeereid(stream.as_raw_fd(), &mut uid, &mut gid) } == 0;
-    // SAFETY: getuid has no failure and touches nothing.
-    ok && uid == unsafe { libc::getuid() }
 }
 
 /// One client: its greeting answered, the files that change told to it as they change,

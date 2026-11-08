@@ -24,6 +24,7 @@ pub mod hosted;
 pub mod log;
 pub mod server;
 pub mod trace;
+pub mod trust;
 pub mod wire;
 pub mod world;
 
@@ -39,14 +40,22 @@ pub use world::{Disk, World};
 use server::{Held, Listening, Unbound};
 
 /// The engine run over its socket until the process ends, serving `folders` first.
-fn run(listening: Listening, events: std::sync::mpsc::Sender<Event>, heard: Receiver<Event>, verbose: bool, folders: &[PathBuf]) -> Result<Infallible, String> {
+fn run(
+    listening: Listening,
+    events: std::sync::mpsc::Sender<Event>,
+    heard: Receiver<Event>,
+    verbose: bool,
+    folders: &[PathBuf],
+) -> Result<Infallible, String> {
     let disk = events.clone();
     let world = Disk::new(move |path| {
         // fails only once the daemon is gone
         let _ = disk.send(Event::Disk(path));
     })?;
     let mut daemon = Daemon::new(world, Trace::new(verbose));
-    daemon.trace().said(daemon.world().now(), "listening", &format!("{} (pid {})", listening.socket.display(), std::process::id()));
+    let now = daemon.world().now();
+    daemon.trace().said(now, "listening", &format!("{} (pid {})", listening.socket.display(), std::process::id()));
+    daemon.trace().said(now, "admits", &listening.admits);
     for folder in folders {
         daemon.serve(folder)?;
     }
