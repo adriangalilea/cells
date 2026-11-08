@@ -1345,6 +1345,8 @@ pub enum CellsCompletionKind {
     /// A table.
     CellsCompletionModule = 6,
     CellsCompletionFunction = 7,
+    /// A tint.
+    CellsCompletionColor = 8,
 }
 
 /// A completion: what it is, and the bytes of the text it replaces (the word being
@@ -1473,6 +1475,7 @@ pub unsafe extern "C" fn cells_completion(d: *mut CellsDoc, i: usize) -> CellsCo
         K::Field => CellsCompletionKind::CellsCompletionField,
         K::Module => CellsCompletionKind::CellsCompletionModule,
         K::Function => CellsCompletionKind::CellsCompletionFunction,
+        K::Color => CellsCompletionKind::CellsCompletionColor,
     };
     CellsCompletion { kind, from: c.from, to: c.to }
 }

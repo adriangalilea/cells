@@ -841,6 +841,7 @@ pub unsafe extern "C" fn cells_complete(h: *mut Handle, ptr: *mut u8, len: usize
             K::Field => "column",
             K::Module => "table",
             K::Function => "function",
+            K::Color => "tint",
         };
         s.push_str("{\"label\":");
         json_str(&mut s, &c.label);

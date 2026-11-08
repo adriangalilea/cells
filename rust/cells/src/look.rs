@@ -12,6 +12,7 @@ use alloc::borrow::ToOwned;
 use alloc::format;
 use alloc::string::{String, ToString};
 use alloc::vec::Vec;
+use core::ops::Range;
 
 use crate::value::{Decimal, Instant, civil_from_days, pow10};
 
@@ -73,6 +74,14 @@ impl Tint {
             Tint::Hex(_) => None,
         }
     }
+
+    /// What it is, in words: what a hover says.
+    pub fn said(self) -> String {
+        match self {
+            Tint::Named(k) => format!("the tint {}: each reader draws its own theme's {}, light and dark", TINTS[k as usize], TINTS[k as usize]),
+            Tint::Hex(rgb) => format!("the colour #{rgb:06x}, the same in every theme"),
+        }
+    }
 }
 
 /// What a value is drawn in: one tint, or a point between two (a scale's), `at` from 0 (the
@@ -119,7 +128,34 @@ impl Rule {
     pub fn wants_number(&self) -> bool {
         matches!(self, Rule::Grouped | Rule::Decimals(_) | Rule::Parentheses | Rule::Negative(_) | Rule::Positive(_) | Rule::Scale { .. })
     }
+
+    /// What it does, in words: what a hover says.
+    pub fn said(&self) -> String {
+        match self {
+            Rule::Grouped => "its thousands grouped, in the reader's marks".to_owned(),
+            Rule::Decimals(n) => format!("shown at {n} digits after the point, rounded half to even for display only"),
+            Rule::Parentheses => "below zero shown in parentheses, as accounts write it: (950.00)".to_owned(),
+            Rule::Negative(t) => format!("drawn in {} below zero", t.spelled()),
+            Rule::Positive(t) => format!("drawn in {} above zero", t.spelled()),
+            Rule::When { tint, condition } => format!("drawn in {} where {condition} holds", tint.spelled()),
+            Rule::Scale { from, to } => {
+                format!("drawn from {} at the column's least value to {} at its greatest", from.spelled(), to.spelled())
+            }
+            Rule::As(p) => format!("a date or a time shown as {}, in the reader's words; the file writes it as ever", p.spelled),
+        }
+    }
 }
+
+/// The words a look's rule opens with, and what each says: what an editor completes.
+pub const RULE_WORDS: [(&str, &str); 7] = [
+    ("grouped", "thousands grouped, in the reader's marks"),
+    ("decimals", "decimals 2: a num or a pct at that many digits"),
+    ("negative", "negative red, or negative in parentheses"),
+    ("positive", "positive green: its colour above zero"),
+    ("scale", "scale red..green: from the least value to the greatest"),
+    ("as", "as 'D MMM YYYY': a date's or a time's display form"),
+    ("when", "red when balance < 0: a tint where a condition over the row holds"),
+];
 
 /// A rule as a look statement holds it: as written, what it says, and the prelude line it
 /// is written on in the file whose rule it is (the line of the import that brought it, for
@@ -168,9 +204,24 @@ pub fn statement(said: &str) -> Result<(Target, Vec<String>), String> {
 /// `s` split at its commas outside parentheses and quotes, each part's spaces cut: a
 /// look's rules as written.
 pub fn split(s: &str) -> Vec<String> {
+    ranges(s).into_iter().map(|r| s[r].to_owned()).collect()
+}
+
+/// Where each part of `s` stands, split as `split` splits it, its spaces cut.
+pub fn ranges(s: &str) -> Vec<Range<usize>> {
+    let b = s.as_bytes();
+    let trimmed = |mut from: usize, mut to: usize| {
+        while from < to && matches!(b[from], b' ' | b'\t') {
+            from += 1;
+        }
+        while to > from && matches!(b[to - 1], b' ' | b'\t') {
+            to -= 1;
+        }
+        from..to
+    };
     let mut out = Vec::new();
     let (mut depth, mut quote, mut from) = (0i32, 0u8, 0);
-    for (i, c) in s.bytes().enumerate() {
+    for (i, &c) in b.iter().enumerate() {
         match c {
             _ if quote != 0 => {
                 if c == quote {
@@ -181,14 +232,35 @@ pub fn split(s: &str) -> Vec<String> {
             b'(' => depth += 1,
             b')' => depth -= 1,
             b',' if depth == 0 => {
-                out.push(s[from..i].trim_matches([' ', '\t']).to_owned());
+                out.push(trimmed(from, i));
                 from = i + 1;
             }
             _ => {}
         }
     }
-    out.push(s[from..].trim_matches([' ', '\t']).to_owned());
+    out.push(trimmed(from, b.len()));
     out
+}
+
+/// A prelude line read as a look statement, for a client marking its parts: where its
+/// target stands, its `:`, and each rule; none for a line that opens no look statement
+/// or names nothing before a `:`.
+pub fn spans(line: &str) -> Option<(Range<usize>, usize, Vec<Range<usize>>)> {
+    let blank = [' ', '\t'];
+    let opened = line.trim_start_matches(blank).strip_prefix("look").filter(|r| r.starts_with(blank))?;
+    let start = line.len() - opened.trim_start_matches(blank).len();
+    let target = if line[start..].starts_with('"') {
+        start..start + 1 + line[start + 1..].find('"')? + 1
+    } else {
+        let colon = start + line[start..].find(':')?;
+        start..start + line[start..colon].trim_end_matches(blank).len()
+    };
+    let colon = target.end + line[target.end..].len() - line[target.end..].trim_start_matches(blank).len();
+    if target.is_empty() || line.as_bytes().get(colon) != Some(&b':') {
+        return None;
+    }
+    let rules = ranges(&line[colon + 1..]).into_iter().map(|r| colon + 1 + r.start..colon + 1 + r.end).collect();
+    Some((target, colon, rules))
 }
 
 /// A rule as written: `grouped`, `decimals 2`, `negative in parentheses`, `negative red`,

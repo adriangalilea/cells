@@ -484,8 +484,7 @@ fn statement(
         }
         let after = skip(word);
         if &source[i..word] == "look" && after > word {
-            out.push(i, word, Kind::Keyword, NONE);
-            look(source, after, end, named, out);
+            look(source, i, end, named, out);
         } else if &source[i..word] == "type" && after > word && b.get(after) != Some(&b'=') {
             // `type Name = <type>`
             out.push(i, word, Kind::Keyword, NONE);
@@ -619,33 +618,24 @@ fn import(source: &str, s: usize, e: usize, named: &mut Vec<NamedType>, tables: 
 fn look(source: &str, s: usize, e: usize, named: &[NamedType], out: &mut Out) {
     const WORDS: [&str; 9] = ["grouped", "decimals", "negative", "positive", "in", "parentheses", "scale", "as", "when"];
     let b = source.as_bytes();
-    let Some(colon) = (match b[s] {
-        b'"' => source[s + 1..e].find('"').map(|q| s + 1 + q + 1),
-        _ => source[s..e].find(':').map(|c| s + c),
-    })
-    .map(|j| j + source[j..e].len() - source[j..e].trim_start_matches([' ', '\t']).len())
-    .filter(|&j| j < e && b[j] == b':') else {
-        out.push(s, e, Kind::Error, NONE);
+    out.push(s, s + 4, Kind::Keyword, NONE);
+    let Some((target, colon, rules)) = crate::look::spans(&source[s..e]) else {
+        out.push(s + 4, e, Kind::Error, NONE);
         return;
     };
-    let target = source[s..colon].trim_end_matches([' ', '\t']);
-    let kind = match target {
+    let kind = match &source[s + target.start..s + target.end] {
         "row" => Kind::Keyword,
         t if named.iter().any(|n| n.name == t) => Kind::Type,
         _ => Kind::Name,
     };
-    out.push(s, s + target.len(), kind, NONE);
-    out.push(colon, colon + 1, Kind::Punct, NONE);
-    let blanks = |j: usize| j + source[j..e].len() - source[j..e].trim_start_matches([' ', '\t']).len();
-    let mut at = colon + 1;
-    for rule in crate::look::split(&source[colon + 1..e]) {
-        let start = blanks(at);
-        let end = start + rule.len();
-        let after = blanks(end);
-        if after < e && b[after] == b',' {
-            out.push(after, after + 1, Kind::Punct, NONE);
+    out.push(s + target.start, s + target.end, kind, NONE);
+    out.push(s + colon, s + colon + 1, Kind::Punct, NONE);
+    for (k, rule) in rules.iter().enumerate() {
+        let (start, end) = (s + rule.start, s + rule.end);
+        if let Some(next) = rules.get(k + 1) {
+            let comma = end + source[end..s + next.start].find(',').expect("a comma between two rules");
+            out.push(comma, comma + 1, Kind::Punct, NONE);
         }
-        at = after + 1;
         let mut i = start;
         while i < end {
             let c = b[i];
@@ -685,9 +675,6 @@ fn look(source: &str, s: usize, e: usize, named: &[NamedType], out: &mut Out) {
                 Kind::Error
             };
             out.push(from, i, kind, NONE);
-        }
-        if at >= e {
-            break;
         }
     }
 }

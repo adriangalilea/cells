@@ -20,6 +20,7 @@ use core::ops::Deref;
 
 use crate::complete::{Followed, Reach, Spot, follow, ident, shown, spot, summary};
 use crate::expr;
+use crate::look::{self, Rule, Tint};
 use crate::{At, Base, Column, Doc, Origin};
 
 /// A part of what is said, as each client writes it.
@@ -140,8 +141,15 @@ where
     let reach = Reach { doc, held };
     let said = |pieces: Vec<Piece>, from: u32, len: u32| Some(Hover { pieces, from, to: from + len });
     match spot(doc, text, at) {
+        Spot::Type(..) if tinted(text, at).is_some() => tinted(text, at),
         Spot::Name(c, s) | Spot::Type(c, s) => {
             let mut out = about(&doc.columns()[c]);
+            let looks = doc.looks_of(c);
+            if !looks.is_empty() {
+                out.push(Piece::Break);
+                out.push(plain("looks "));
+                out.push(Piece::Code(looks.iter().map(|l| l.spelled.as_str()).collect::<Vec<_>>().join(", ")));
+            }
             for e in doc.broken().iter().filter(|e| e.at == At::Column(c as u32 + 1)) {
                 out.push(Piece::Break);
                 out.push(plain(e.why.clone()));
@@ -199,19 +207,59 @@ where
     }
 }
 
-/// In the prelude, outside a fence: a named type where it is named or used, a table where
-/// it is named (an import's, an inline table's, a script's).
+/// A choice's tint at byte `at`, after its `#` or its `tint`: what it is.
+fn tinted(text: &str, at: usize) -> Option<Hover> {
+    let (w, start) = word(text, at);
+    let hashed = text[..start].ends_with('#');
+    let worded = text[..start].trim_end_matches([' ', '\t']).strip_suffix("tint").is_some_and(|b| b.ends_with([' ', '\t']));
+    if w.is_empty() || !(hashed || worded) {
+        return None;
+    }
+    let t = Tint::after_hash(w).ok()?;
+    Some(Hover { pieces: vec![plain(t.said())], from: (start - hashed as usize) as u32, to: (start + w.len()) as u32 })
+}
+
+/// In the prelude, outside a fence: a tint, a look's rule, a named type where it is named
+/// or used, a table where it is named (an import's, an inline table's, a script's).
 fn prelude(doc: &Doc, text: &str, at: usize) -> Option<Hover> {
     let line_start = text[..at].rfind('\n').map_or(0, |i| i + 1);
     let fences = text[..line_start].lines().filter(|l| l.trim_start().starts_with("```")).count();
     if fences % 2 == 1 {
         return None;
     }
+    if let Some(h) = tinted(text, at) {
+        return Some(h);
+    }
+    let line_end = text[at..].find('\n').map_or(text.len(), |i| at + i);
+    let line = crate::prelude::uncomment(&text[line_start..line_end]);
+    if let Some((_, _, rules)) = look::spans(line) {
+        let here = at - line_start;
+        if let Some(r) = rules.iter().find(|r| r.contains(&here) || r.end == here) {
+            let spelled = &line[r.clone()];
+            let rule = look::rule(spelled);
+            // A tint the rule names, before any condition.
+            let (w, start) = word(text, at);
+            let hashed = text[..start].ends_with('#');
+            let before_when = !matches!(&rule, Ok(Rule::When { .. })) || here < r.start + spelled.find("when").unwrap_or(0);
+            let named = if hashed { Tint::after_hash(w) } else { Tint::parse(w) };
+            if let (Ok(t), true) = (named, before_when && !w.is_empty()) {
+                let from = (start - hashed as usize) as u32;
+                return Some(Hover { pieces: vec![plain(t.said())], from, to: (start + w.len()) as u32 });
+            }
+            let said = rule.map_or_else(|why| why, |r| r.said());
+            let from = (line_start + r.start) as u32;
+            return Some(Hover { pieces: vec![Piece::Code(spelled.to_owned()), Piece::Break, plain(said)], from, to: from + spelled.len() as u32 });
+        }
+    }
     let (w, start) = word(text, at);
     if w.is_empty() {
         return None;
     }
     let (from, len) = (start as u32, w.len() as u32);
+    if w == "look" && text[line_start..start].trim().is_empty() {
+        let pieces = vec![Piece::Code("look".into()), Piece::Break, plain("how a column's, a named type's or the row's values show, wherever they show: a table's cell and a chart's mark alike; never a value")];
+        return Some(Hover { pieces, from, to: from + len });
+    }
     if let Some(t) = doc.named().iter().find(|t| t.name == w) {
         let pieces = vec![plain("type "), Piece::Code(format!("{} = {}", t.name, t.ty.shorthand()))];
         return Some(Hover { pieces, from, to: from + len });
@@ -270,6 +318,26 @@ mod tests {
         // inside its fence, the rows are the table's own: nothing said there
         let inside = text.find("card").unwrap() + 1;
         assert!(hovered(text, inside).is_none());
+    }
+
+    #[test]
+    fn tints_and_looks() {
+        let text = "---\ntype Kind = income#green|cost#3fa34d\nlook amount: grouped, red when amount < 0 // why\n---\nkind:Kind,amount:EUR\nincome,1.00\n";
+        let at = text.find("green").unwrap() + 1;
+        let h = hovered(text, at).unwrap();
+        assert!(h.text().starts_with("the tint green"), "{}", h.text());
+        assert_eq!(&text[h.from as usize..h.to as usize], "#green");
+        let h = hovered(text, text.find("3fa34d").unwrap()).unwrap();
+        assert_eq!(h.text(), "the colour #3fa34d, the same in every theme");
+        let h = hovered(text, text.find("grouped").unwrap() + 2).unwrap();
+        assert_eq!(h.text(), "grouped\nits thousands grouped, in the reader's marks");
+        let h = hovered(text, text.find("red when").unwrap() + 1).unwrap();
+        assert!(h.text().starts_with("the tint red"), "{}", h.text());
+        let h = hovered(text, text.find("< 0").unwrap()).unwrap();
+        assert_eq!(h.text(), "red when amount < 0\ndrawn in red where amount < 0 holds");
+        // a column says its looks
+        let h = hovered(text, text.find("amount:EUR").unwrap() + 1).unwrap();
+        assert!(h.text().ends_with("looks grouped, red when amount < 0"), "{}", h.text());
     }
 
     /// Every import the accounts table.

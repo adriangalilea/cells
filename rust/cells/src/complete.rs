@@ -19,6 +19,7 @@ use alloc::vec::Vec;
 use core::ops::Deref;
 
 use crate::expr::{self, Named};
+use crate::look;
 use crate::{Base, Column, Doc, Place, Span, Value};
 
 fn span(start: u32, len: u32) -> Span {
@@ -169,6 +170,8 @@ pub enum CompletionKind {
     /// A table.
     Module,
     Function,
+    /// A tint.
+    Color,
 }
 
 /// What may be written at a place: `insert` in place of the bytes `from..to` of the text
@@ -333,12 +336,26 @@ where
             let here = at - s.start as usize;
             let from = word[..here].rfind(|c: char| !(ident(c) || c == '.')).map_or(0, |i| i + 1);
             let to = here + word[here..].find(|c: char| !(ident(c) || c == '.')).unwrap_or(word.len() - here);
-            types(doc, s.start + from as u32, s.start + to as u32)
+            let (from, to) = (s.start + from as u32, s.start + to as u32);
+            if tinting(&text[..from as usize]) { tints(from, to) } else { types(doc, from, to) }
         }
         Spot::Formula(f) => formula(&reach, &f, at),
         Spot::Prelude => prelude(&reach, text, at),
         Spot::Name(..) | Spot::Nothing => Vec::new(),
     }
+}
+
+/// Whether what is typed next is a choice's tint: after its `#`, or its `tint`.
+fn tinting(before: &str) -> bool {
+    before.ends_with('#') || before.trim_end_matches([' ', '\t']).strip_suffix("tint").is_some_and(|b| b.ends_with([' ', '\t']))
+}
+
+/// The ten tints, each said: a choice's after its `#`, a look rule's.
+fn tints(from: u32, to: u32) -> Vec<Completion> {
+    look::TINTS
+        .iter()
+        .map(|t| item((*t).to_owned(), CompletionKind::Color, "a tint, drawn in each theme's own".into(), from, to))
+        .collect()
 }
 
 /// A type's names: the file's named types, its tables' keys, the bases.
@@ -477,6 +494,7 @@ fn prelude<D: Deref<Target = Doc>, H: Fn(&[&str]) -> Option<D>>(reach: &Reach<'_
             word("import", "a table from another file: import accounts from \"./accounts.cells\""),
             word("export", "what another file may import"),
             word("type", "a type with a name: type Money = EUR>=0"),
+            word("look", "how values show: look amount: grouped, negative red"),
         ];
         for (c, col) in doc.columns().iter().enumerate() {
             if doc.declaration_span(c).is_none() {
@@ -490,6 +508,48 @@ fn prelude<D: Deref<Target = Doc>, H: Fn(&[&str]) -> Option<D>>(reach: &Reach<'_
     }
     if before.starts_with("import") {
         return Vec::new();
+    }
+    if tinting(&text[..from as usize]) {
+        return tints(from, to);
+    }
+    if before == "look" {
+        // What it is for: a column, a named type, the row.
+        let mut out: Vec<Completion> = doc
+            .columns()
+            .iter()
+            .map(|c| item(crate::prelude::declared_name(&c.name).into_owned(), CompletionKind::Field, c.ty.shorthand(), from, to))
+            .collect();
+        out.extend(doc.named().iter().map(|t| item(t.name.clone(), CompletionKind::Class, t.ty.shorthand(), from, to)));
+        out.push(word("row", "every row, tinted by a condition: look row: gray when paid"));
+        return out;
+    }
+    if let Some((_, _, rules)) = look::spans(line) {
+        let rule = &line[rules.last().expect("one rule at least").start..start];
+        let said: Vec<&str> = rule.split_whitespace().collect();
+        let rule_word = |w: &str| word(w, look::RULE_WORDS.iter().find(|(x, _)| *x == w).expect("a rule's word").1);
+        return match said.as_slice() {
+            [] => {
+                let mut out: Vec<Completion> = look::RULE_WORDS.iter().filter(|(w, _)| *w != "when").map(|(w, _)| rule_word(w)).collect();
+                out.extend(tints(from, to));
+                out
+            }
+            ["negative"] => {
+                let mut out = vec![word("in", "negative in parentheses: (950.00)")];
+                out.extend(tints(from, to));
+                out
+            }
+            ["negative", "in"] => vec![word("parentheses", "(950.00), as accounts write a negative")],
+            ["positive"] | ["scale"] => tints(from, to),
+            ["scale", t] if t.ends_with("..") => tints(from, to),
+            [t] if look::Tint::parse(t).is_ok() => vec![rule_word("when")],
+            [_, "when", ..] => {
+                let begin = line_start + rules.last().expect("one rule").start + rule.find("when").expect("its when") + 4;
+                let src = &text[begin..at];
+                let skipped = src.len() - src.trim_start().len();
+                formula(reach, &Formula { src: &src[skipped..], base: (begin + skipped) as u32 }, at)
+            }
+            _ => Vec::new(),
+        };
     }
     let words: Vec<&str> = before.split_whitespace().collect();
     let scheduling = words.iter().position(|w| *w == "run").is_some_and(|r| r >= 2 && words[r - 1] == "=");
@@ -622,6 +682,32 @@ mod tests {
         let at = text.find("= co").unwrap() + 4;
         let found = labels(text, at);
         assert!(found.iter().any(|l| l == "cost"), "{found:?}");
+    }
+
+    #[test]
+    fn tints_and_looks() {
+        let has = |text: &str, after: &str, want: &[&str]| {
+            let at = text.find(after).unwrap() + after.len();
+            let found = labels(text, at);
+            for w in want {
+                assert!(found.iter().any(|l| l == w), "{w} after {after:?} in {found:?}");
+            }
+            found
+        };
+        // a choice's tint, in a header cell and in the prelude, after # and after tint
+        has("kind:income#gr\nincome\n", "#gr", &["green", "gray"]);
+        has("---\ntype Kind = income#|cost\n---\nkind:Kind\nincome\n", "income#", &["red", "teal"]);
+        has("---\nmood: one of yay tint b\n---\nmood\nyay\n", "tint b", &["blue", "brown"]);
+        // a look: what it is for, then each rule's words
+        let text = "---\ntype Money = EUR\nlook \nlook amount: neg\nlook amount: negative \nlook amount: red \nlook amount: red when am\nlook amount: scale red..g\n---\namount:Money,paid:yes/no\n1.00,yes\n";
+        let found = has(text, "look ", &["amount", "Money", "row"]);
+        assert!(!found.iter().any(|l| l == "grouped"), "{found:?}");
+        has(text, ": neg", &["negative", "grouped", "scale", "as", "red"]);
+        has(text, "negative ", &["in", "red"]);
+        has(text, ": red ", &["when"]);
+        has(text, "when am", &["amount", "paid"]);
+        has(text, "red..g", &["green"]);
+        has("---\n\n---\na:int\n1\n", "---\n", &["look"]);
     }
 
     #[test]
