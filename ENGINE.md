@@ -52,6 +52,16 @@ The language server is a client: it asks for the folder the editor names and eac
 
 `.cells/log.jsonl` in the folder, one line per entry: its number, the SHA-256 of the line before (the engine's own hash, so the core keeps no dependency; an edit or a removal breaks every later link), the intent id, its kind (`set`, `add`, `delete`, `rename`, `run`, `external`, `store`, `moved`, `done`), its arguments, for each file the hash it was made against and the hash it produced, its assigned ids and timestamp. Past a size, it continues in a new segment linked to the last. `cells serve` writes three kinds, the rest coming with intents: `external` (a version the engine did not write: the hash before, `null` for a new file, and now, `null` once removed), `store` (a write the engine made of what a change reached: which file's change, the version it was written over and the one written, each cell stored with its value before and after), and `moved` (a write not made, its file changed since). A `store` is logged once its file is written, not journalled before: it follows from the versions logged before it, so a crash between the two loses only a line saying what the files already show.
 
+### History
+
+Designed, not built. The log is what happened; history is a person reading it: what changed, what changed it, when, and the chain each change set off. Every surface reads the same events, and Ink draws them (swift-utils), so Cells.app, strata and any app with a history share one way of showing one.
+
+- **An event is a change with its cause.** Each entry names who made it (a person in Cells.app, an editor through `cells lsp`, `cells` in a terminal, a script's run, the engine storing what a change reached, or an outside writer: an editor without the server, `git pull`), the files and cells it changed with their values before and after (an outside edit's cells found by comparing the version before with the one after), and the entry that caused it, when one did. An outside edit, a person's edit and a script's run are roots; what the engine stores because of them points at them.
+- **A chain is a root and everything it reached**, shown as one line that says what was done, by whom, when (`q4/money.cells saved in Helix · 12:42`), with what followed folded under it as a tree (`q4/money.cells row 6, cost 180.00 → 200.00`, then `quarters.cells row 2, costs 404.90 → 424.90, net 7795.10 → 7775.10`) and a count while folded (`2 files followed`). The folder's history is its chains, newest first, filtered by file, by who, or by kind.
+- **Why, from anywhere.** A cell asks for its history: every value it held, each beside the chain that wrote it, so a total answers "why is this 424.90" with the cost saved in Q4 at 12:42. From a cell, up to the root that caused it; from a root, down to every cell it reached.
+- **A version shown whole**: the file as it was after any event, its changed cells marked, beside the file now.
+- **Going back is a new event.** A cell or a file returned to a version is written as a change of its own, its cause the version returned to; history is never rewritten.
+
 ### Editors
 
 The language server is a client like any other, so an editor goes through the engine too:

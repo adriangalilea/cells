@@ -287,10 +287,11 @@ Rust because it is as fast as C and reaches everything else: a C ABI, wasm, PyO3
 
 1. **Cells.app reading and writing through the engine.** It is a client already: its folders served by the engine and their changes heard from it (swift-utils' `Cells.Daemon`). Next, its documents read from the engine's parse, and its edits sent as intents.
 2. **A script's schedule kept by the engine**, each run only at a version its person allowed (`cells allow` and the editor's fix ask today; Cells.app next).
-3. **Cells.app's window**, designed and used until it is right: its folder, its prelude a first-class panel written with completions, heads saying what each column is. Then the site's Cells window and hero mirror it.
-4. **SQL/PGQ in `cells sql`**, references walked as edges, once DuckDB's `duckpgq` can be built into the binary ([rust/README.md](rust/README.md#cells-sql)).
-5. **Charts** from the types.
-6. **The npm package** `@adriangalilea/cells`: the wasm build and its wrapper, published.
+3. **History, first class** ([ENGINE.md](ENGINE.md#history)): every change with who made it, when, the cells it changed and the chain it set off, a cell's every value beside the change that wrote it, drawn by Ink for every app. Designed before it is built.
+4. **Cells.app's window**, designed and used until it is right: its folder, its prelude a first-class panel written with completions, heads saying what each column is. Then the site's Cells window and hero mirror it.
+5. **SQL/PGQ in `cells sql`**, references walked as edges, once DuckDB's `duckpgq` can be built into the binary ([rust/README.md](rust/README.md#cells-sql)).
+6. **Charts** from the types.
+7. **The npm package** `@adriangalilea/cells`: the wasm build and its wrapper, published.
 
 ### Open
 
