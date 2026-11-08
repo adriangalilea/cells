@@ -56,7 +56,9 @@ fn served(t: &Token) -> Option<(u32, Option<u32>)> {
         Kind::Mark => (of("modifier"), None),
         Kind::Bound | Kind::Operator => (of("operator"), None),
         Kind::Format | Kind::String => (of("string"), None),
-        Kind::Choice => (of("enumMember"), None),
+        // A tint is one of the format's ten names, as a choice's word is one of its type's;
+        // its swatch is documentColor's.
+        Kind::Choice | Kind::Tint => (of("enumMember"), None),
         Kind::Number => (of("number"), None),
         Kind::Fence => (of("macro"), None),
         Kind::Reference if t.reads != u32::MAX => (of("column"), Some(t.reads)),

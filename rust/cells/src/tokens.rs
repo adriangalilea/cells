@@ -65,12 +65,14 @@ pub enum Kind {
     /// A table a formula names, one the prelude imports or writes (`rates` in
     /// `rates['2026-08-14'].eur`).
     Table,
+    /// A tint: a choice's after its `#` or `tint`, a look rule's (`negative red`).
+    Tint,
 }
 
 impl Kind {
     /// Every kind, in declaration order: a kind's number across a boundary (wasm) is its
     /// place here, and its name the one `name` gives.
-    pub const ALL: [Kind; 24] = [
+    pub const ALL: [Kind; 25] = [
         Kind::Fence,
         Kind::Comment,
         Kind::Keyword,
@@ -95,6 +97,7 @@ impl Kind {
         Kind::String,
         Kind::Code,
         Kind::Table,
+        Kind::Tint,
     ];
 
     /// Its name in lower camel case (`cellNumber`), as a page or a language server's legend
@@ -125,6 +128,7 @@ impl Kind {
             Kind::String => "string",
             Kind::Code => "code",
             Kind::Table => "table",
+            Kind::Tint => "tint",
         }
     }
 }
@@ -479,7 +483,10 @@ fn statement(
             word = ident(i);
         }
         let after = skip(word);
-        if &source[i..word] == "type" && after > word && b.get(after) != Some(&b'=') {
+        if &source[i..word] == "look" && after > word {
+            out.push(i, word, Kind::Keyword, NONE);
+            look(source, after, end, named, out);
+        } else if &source[i..word] == "type" && after > word && b.get(after) != Some(&b'=') {
             // `type Name = <type>`
             out.push(i, word, Kind::Keyword, NONE);
             let name_end = ident(after);
@@ -603,6 +610,84 @@ fn import(source: &str, s: usize, e: usize, named: &mut Vec<NamedType>, tables: 
         } else {
             i += source[i..].chars().next().map_or(1, char::len_utf8);
             out.push(start, i, Kind::Punct, NONE);
+        }
+    }
+}
+
+/// What follows `look` on its line (SPEC.md, How a value looks): what it is for, then its
+/// rules, each's words, tints, pattern and condition.
+fn look(source: &str, s: usize, e: usize, named: &[NamedType], out: &mut Out) {
+    const WORDS: [&str; 9] = ["grouped", "decimals", "negative", "positive", "in", "parentheses", "scale", "as", "when"];
+    let b = source.as_bytes();
+    let Some(colon) = (match b[s] {
+        b'"' => source[s + 1..e].find('"').map(|q| s + 1 + q + 1),
+        _ => source[s..e].find(':').map(|c| s + c),
+    })
+    .map(|j| j + source[j..e].len() - source[j..e].trim_start_matches([' ', '\t']).len())
+    .filter(|&j| j < e && b[j] == b':') else {
+        out.push(s, e, Kind::Error, NONE);
+        return;
+    };
+    let target = source[s..colon].trim_end_matches([' ', '\t']);
+    let kind = match target {
+        "row" => Kind::Keyword,
+        t if named.iter().any(|n| n.name == t) => Kind::Type,
+        _ => Kind::Name,
+    };
+    out.push(s, s + target.len(), kind, NONE);
+    out.push(colon, colon + 1, Kind::Punct, NONE);
+    let blanks = |j: usize| j + source[j..e].len() - source[j..e].trim_start_matches([' ', '\t']).len();
+    let mut at = colon + 1;
+    for rule in crate::look::split(&source[colon + 1..e]) {
+        let start = blanks(at);
+        let end = start + rule.len();
+        let after = blanks(end);
+        if after < e && b[after] == b',' {
+            out.push(after, after + 1, Kind::Punct, NONE);
+        }
+        at = after + 1;
+        let mut i = start;
+        while i < end {
+            let c = b[i];
+            let from = i;
+            if c == b' ' || c == b'\t' {
+                i += 1;
+                continue;
+            }
+            if c == b'\'' {
+                i = source[i + 1..end].rfind('\'').map_or(end, |q| i + 1 + q + 1);
+                out.push(from, i, Kind::Format, NONE);
+                continue;
+            }
+            while i < end && !matches!(b[i], b' ' | b'\t') {
+                i += 1;
+            }
+            let w = &source[from..i];
+            if w == "when" {
+                out.push(from, i, Kind::Keyword, NONE);
+                expression(source, i, end, NONE, out);
+                break;
+            }
+            if let Some((a, z)) = w.split_once("..") {
+                let tint = |t: &str| if crate::look::Tint::parse(t).is_ok() { Kind::Tint } else { Kind::Error };
+                out.push(from, from + a.len(), tint(a), NONE);
+                out.push(from + a.len(), from + a.len() + 2, Kind::Punct, NONE);
+                out.push(i - z.len(), i, tint(z), NONE);
+                continue;
+            }
+            let kind = if WORDS.contains(&w) {
+                Kind::Keyword
+            } else if crate::look::Tint::parse(w).is_ok() {
+                Kind::Tint
+            } else if w.bytes().all(|c| c.is_ascii_digit()) {
+                Kind::Number
+            } else {
+                Kind::Error
+            };
+            out.push(from, i, kind, NONE);
+        }
+        if at >= e {
+            break;
         }
     }
 }
@@ -783,12 +868,17 @@ fn type_parts(source: &str, s: usize, e: usize, column: u32, named: &[NamedType]
             Lex::Quoted => Kind::Choice,
             Lex::Format => Kind::Format,
             Lex::Bad => Kind::Error,
-            Lex::Op("|" | "/") => Kind::Punct,
+            Lex::Op("|" | "/" | "#") => Kind::Punct,
             Lex::Op("!" | "?") => Kind::Mark,
             Lex::Op(_) => Kind::Bound,
             Lex::Word => {
                 let w = word(k);
-                if reference(w) {
+                let tinted = op_at(prev, "#") || prev.is_some_and(|p| lexed[p].2 == Lex::Word && word(p) == "tint");
+                if tinted {
+                    if crate::look::Tint::after_hash(w).is_ok() { Kind::Tint } else { Kind::Error }
+                } else if w == "tint" && (listing || prev.is_some_and(|p| lexed[p].2 == Lex::Quoted)) {
+                    Kind::Keyword
+                } else if reference(w) {
                     Kind::Reference
                 } else if matches!(w, "key" | "optional") {
                     listing = false;
@@ -802,6 +892,7 @@ fn type_parts(source: &str, s: usize, e: usize, column: u32, named: &[NamedType]
                 } else if (listing && !EXPLICIT.contains(&w))
                     || op_at(prev, "|")
                     || op_at(next, "|")
+                    || op_at(next, "#")
                     || op_at(prev, "/")
                     || op_at(next, "/")
                 {
@@ -884,7 +975,24 @@ mod tests {
         for (i, k) in Kind::ALL.iter().enumerate() {
             assert_eq!(*k as usize, i, "{k:?}");
         }
-        assert_eq!(Kind::Table as usize + 1, Kind::ALL.len(), "a kind declared after Table is missing from ALL");
+        assert_eq!(Kind::Tint as usize + 1, Kind::ALL.len(), "a kind declared after Tint is missing from ALL");
+    }
+
+    #[test]
+    fn tints_and_looks() {
+        let src = "---\ntype Kind = income#green|cost#3fa34d|pending\nlook Kind: grouped\nlook amount: negative in parentheses, red when amount < -10, scale red..green\nlook on: as 'D MMM YYYY'\nlook row: gray when paid\n---\nkind:Kind,amount:EUR,on:date,paid:yes/no,mood:one of yay tint blue meh\n";
+        let t = shown(src);
+        let kinds = |k: Kind| t.iter().filter(|x| x.1 == k).map(|x| x.0.as_str()).collect::<Vec<_>>();
+        assert_eq!(kinds(Kind::Tint), ["green", "3fa34d", "red", "red", "green", "gray", "blue"]);
+        assert_eq!(kinds(Kind::Choice), ["income", "cost", "pending", "yes", "no", "yay", "meh"]);
+        assert_eq!(
+            kinds(Kind::Keyword),
+            ["type", "look", "grouped", "look", "negative", "in", "parentheses", "when", "scale", "look", "as", "look", "row", "when", "tint"]
+        );
+        assert_eq!(kinds(Kind::Format), ["'D MMM YYYY'"]);
+        assert_eq!(kinds(Kind::Reference), ["amount", "paid"]);
+        assert!(kinds(Kind::Error).is_empty(), "{t:?}");
+        assert_eq!(shown("---\nlook amount: negative grene\n---\namount:EUR\n").iter().filter(|x| x.1 == Kind::Error).count(), 1);
     }
 
     #[test]

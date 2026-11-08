@@ -1616,6 +1616,7 @@ pub enum CellsTokenKind {
     CellsTokenString = 21,
     CellsTokenCode = 22,
     CellsTokenTable = 23,
+    CellsTokenTint = 24,
 }
 
 /// A span of the text in bytes, what it is, its column, and for a name a formula reads
@@ -1678,6 +1679,7 @@ pub unsafe extern "C" fn cells_tokens(bytes: *const c_char, len: usize) -> Cells
                 K::String => CellsTokenKind::CellsTokenString,
                 K::Code => CellsTokenKind::CellsTokenCode,
                 K::Table => CellsTokenKind::CellsTokenTable,
+                K::Tint => CellsTokenKind::CellsTokenTint,
             },
         })
         .collect();
