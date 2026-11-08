@@ -174,4 +174,25 @@ mod tests {
         assert!(receive::<ToEngine>(&mut b"".as_slice()).unwrap().is_none());
         assert!(receive::<ToEngine>(&mut b"{\"say\":\"shout\"}\n".as_slice()).is_err());
     }
+
+    /// An intent as swift-utils' `Cells.Daemon.apply` sends it (its DaemonTests pin the same).
+    #[test]
+    fn an_intent_as_a_client_sends_it() {
+        use crate::log::{Given, Op, Row};
+        let line = r#"{"say":"intent","id":"k7m2q9xa","file":"/w/money.cells","against":"ab","ops":[{"op":"set","row":{"key":"fuel"},"column":"cost","was":"84.20","text":"90.00"},{"op":"add","cells":[{"column":"item","text":"taxi"}]},{"op":"delete","row":{"id":"q4x9t1mz"}}]}"#;
+        let read: ToEngine = serde_json::from_str(line).unwrap();
+        assert_eq!(
+            read,
+            ToEngine::Intent {
+                id: "k7m2q9xa".into(),
+                file: "/w/money.cells".into(),
+                against: "ab".into(),
+                ops: vec![
+                    Op::Set { row: Row::Key("fuel".into()), column: "cost".into(), was: Some("84.20".into()), text: "90.00".into() },
+                    Op::Add { cells: vec![Given { column: "item".into(), text: "taxi".into() }] },
+                    Op::Delete { row: Row::Id("q4x9t1mz".into()), was: None },
+                ],
+            }
+        );
+    }
 }
