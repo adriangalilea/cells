@@ -25,6 +25,10 @@ rates = run every day at 18:00 in Europe/Madrid
 export default async () => []
 \`\`\`
 split dinner: EUR? = cost * 2
+type Mood = calm#green|loud
+look total: grouped, negative red, gray when score < 1
+look on: as 'D MMM'
+look row: gray when paid
 ---
 item:text!,category:Category,cost:EUR>=0,paid:yes/no,on:date(DD/MM/YYYY),note:text?,score:0..10,to:accounts.account,x:one of a b key,y:bool si no optional,z:num between 0 and 100,w:num min 1,total:EUR=ABS(cost) * (score - 1),fee:EUR(6),running:EUR=running[-1] + total,cum:EUR=SUM(total[FIRST:THIS]),low:num=round(cost)
 fuel,travel,32.25=96.75 / 3,yes,14/08/2026,"a ""b""",7,assets:bank,a,si,2026-08-14T10:00:00Z,https://example.com,84.20=,0.001200,84.20=,=SUM(TABLE.total),84=
@@ -64,6 +68,22 @@ const EXPECT: [string, string, string][] = [
   // a column declared: its name, its type, its formula
   ["split dinner", "variable.member", "variable.other.member"],
   ["EUR", "type.builtin", "type.builtin"],
+  // a choice's tint, and how values look
+  ["Mood", "type.definition", "type"],
+  ["calm", "constant", "type.enum.variant"],
+  ["#", "punctuation.special", "punctuation.special"],
+  ["green", "constant.builtin", "constant.builtin"],
+  ["look", "keyword", "keyword"],
+  ["total", "variable.member", "variable.other.member"],
+  ["grouped", "keyword", "keyword"],
+  [",", "punctuation.delimiter", "punctuation.delimiter"],
+  ["negative", "keyword", "keyword"],
+  ["red", "constant.builtin", "constant.builtin"],
+  ["gray", "constant.builtin", "constant.builtin"],
+  ["when", "keyword", "keyword"],
+  ["score", "variable.member", "variable.other.member"],
+  ["'D MMM'", "string.special", "string.special"],
+  ["row", "variable.builtin", "variable.builtin"],
   ["---", "punctuation.special", "punctuation.special"],
   // the header: each name in its column's colour, then its type's parts
   ["item", "variable", "variable"],

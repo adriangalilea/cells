@@ -43,6 +43,10 @@ const FORMAT_FIELDS = ['YYYY', 'MM', 'DD', 'HH', 'mm', 'ss'];
 
 const SCHEDULE_WORDS = ['every', 'at', 'on', 'in', 'cron', 'when', 'changes'];
 
+// The ten tints (SPEC, Choices); any other colour is six hexadecimal digits.
+const TINTS = ['red', 'orange', 'yellow', 'green', 'teal', 'blue', 'purple', 'pink', 'brown', 'gray'];
+const HEX = /[0-9A-Fa-f]{6}/;
+
 // A formula's keyword, in capitals and only in capitals (SPEC, The language: a
 // word in lower case is always a name), named by its lower-case spelling. Its
 // precedence over `identifier` makes `AND` a keyword before it is a name.
@@ -105,7 +109,42 @@ module.exports = grammar({
       $.import_statement,
       $.table_definition,
       $.script_definition,
+      $.look_statement,
       $.column_declaration,
+    ),
+
+    // `look amount: grouped, negative red` (SPEC, How a value looks): what it is for, a
+    // column, a named type or the row, then its rules. `look` opens it as `type` opens
+    // its own, so a column whose name opens with `look ` is declared quoted.
+    look_statement: $ => seq(
+      'look',
+      field('target', choice(
+        alias('row', $.row_target),
+        alias($._type_identifier, $.type_name),
+        alias($._declared_name, $.column_name),
+        seq('"', alias($._quoted_column_name, $.column_name), '"'),
+      )),
+      ':',
+      commaSep1($.look_rule),
+    ),
+
+    look_rule: $ => choice(
+      'grouped',
+      seq('decimals', field('digits', alias(token(prec(1, /\d+/)), $.number))),
+      seq('negative', 'in', 'parentheses'),
+      seq(choice('negative', 'positive'), field('tint', $.tint_name)),
+      seq('scale', field('from', $.tint_name), token.immediate('..'), field('to', $.tint_name)),
+      seq('as', field('pattern', $.display_pattern)),
+      seq(field('tint', $.tint_name), 'when', field('condition', $._expression)),
+    ),
+
+    tint_name: _ => token(choice(...TINTS, seq('#', HEX))),
+
+    // `'ddd D MMM YYYY'`: a date's or a time's display form, a word in brackets as it is.
+    display_pattern: $ => seq(
+      '\'',
+      repeat(choice(/[^'\r\n]+/, alias('\'\'', $.escape_sequence))),
+      '\'',
     ),
 
     // `total: Money = cost * qty`: a column of the file's table, declared, its header
@@ -410,14 +449,23 @@ module.exports = grammar({
     ),
 
     choices: $ => choice(
-      seq($.choice, repeat1(seq('|', $.choice))),
-      alias($._quoted_choice, $.choice),
-      prec.right(seq('one', 'of', repeat1(alias($._one_of_item, $.choice)))),
+      // A quoted word is a choice alone; a bare one only beside `|`, else it is a type.
+      seq(alias($._quoted_choice, $.choice), optional($.tint), repeat(seq('|', $.choice, optional($.tint)))),
+      seq(alias($._bare_head, $.choice), optional($.tint), repeat1(seq('|', $.choice, optional($.tint)))),
+      prec.right(seq('one', 'of', repeat1(seq(alias($._one_of_item, $.choice), optional($.explicit_tint))))),
     ),
+
+    // `income#green`, `income#3fa34d`: the word's tint, right after it (SPEC, Choices).
+    tint: $ => seq(token.immediate('#'), alias(token.immediate(choice(...TINTS, HEX)), $.tint_name)),
+
+    // `one of income tint green cost`: the same, in its explicit word.
+    explicit_tint: $ => seq('tint', alias(token(choice(...TINTS, HEX)), $.tint_name)),
 
     // A choice, bare or quoted. A base type's or a currency's word is a
     // choice when `|` joins it to others (`text|code` is two choices).
-    choice: $ => choice($._quoted_choice, $._bare_choice, 'one', 'of', 'and', 'bool'),
+    choice: $ => choice($._quoted_choice, $._bare_head),
+
+    _bare_head: $ => choice($._bare_choice, 'one', 'of', 'and', 'bool'),
 
     // `one of a b c` takes words until an explicit keyword.
     _one_of_item: $ => choice($._quoted_choice, $._bare_choice, 'bool'),
@@ -556,7 +604,7 @@ module.exports = grammar({
 
     // A bare word inside a type: anything but a reserved character, a space,
     // and `..`; a single `.` may stand inside one (`v1.2`).
-    _word: _ => /[^\s|\/!?<>=()',".]+(\.[^\s|\/!?<>=()',".]+)*/,
+    _word: _ => /[^\s|\/!?<>=()',".#]+(\.[^\s|\/!?<>=()',".#]+)*/,
 
     _newline: _ => /\r?\n/,
   },

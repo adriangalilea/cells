@@ -17,6 +17,7 @@ const HELIX: Record<string, string | null> = {
   "boolean": "constant.builtin.boolean",
   "comment": "comment.line",
   "constant": "type.enum.variant",
+  "constant.builtin": "constant.builtin",
   "constant.builtin.computed": "constant.builtin.computed",
   "function": "function",
   "keyword": "keyword",

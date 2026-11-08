@@ -512,6 +512,14 @@
         {
           "type": "choice",
           "named": true
+        },
+        {
+          "type": "explicit_tint",
+          "named": true
+        },
+        {
+          "type": "tint",
+          "named": true
         }
       ]
     }
@@ -790,6 +798,36 @@
     "type": "currency",
     "named": true,
     "fields": {}
+  },
+  {
+    "type": "display_pattern",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": true,
+      "required": false,
+      "types": [
+        {
+          "type": "escape_sequence",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "explicit_tint",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": false,
+      "required": true,
+      "types": [
+        {
+          "type": "tint_name",
+          "named": true
+        }
+      ]
+    }
   },
   {
     "type": "field",
@@ -1152,6 +1190,170 @@
     "type": "key_mark",
     "named": true,
     "fields": {}
+  },
+  {
+    "type": "look_rule",
+    "named": true,
+    "fields": {
+      "condition": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "binary_expression",
+            "named": true
+          },
+          {
+            "type": "boolean",
+            "named": true
+          },
+          {
+            "type": "call_expression",
+            "named": true
+          },
+          {
+            "type": "case_expression",
+            "named": true
+          },
+          {
+            "type": "column_reference",
+            "named": true
+          },
+          {
+            "type": "key_expression",
+            "named": true
+          },
+          {
+            "type": "member_expression",
+            "named": true
+          },
+          {
+            "type": "not_expression",
+            "named": true
+          },
+          {
+            "type": "null",
+            "named": true
+          },
+          {
+            "type": "null_test",
+            "named": true
+          },
+          {
+            "type": "number",
+            "named": true
+          },
+          {
+            "type": "parenthesized_expression",
+            "named": true
+          },
+          {
+            "type": "row_reference",
+            "named": true
+          },
+          {
+            "type": "string_literal",
+            "named": true
+          },
+          {
+            "type": "table_self",
+            "named": true
+          },
+          {
+            "type": "unary_expression",
+            "named": true
+          }
+        ]
+      },
+      "digits": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "number",
+            "named": true
+          }
+        ]
+      },
+      "from": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "tint_name",
+            "named": true
+          }
+        ]
+      },
+      "pattern": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "display_pattern",
+            "named": true
+          }
+        ]
+      },
+      "tint": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "tint_name",
+            "named": true
+          }
+        ]
+      },
+      "to": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "tint_name",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "look_statement",
+    "named": true,
+    "fields": {
+      "target": {
+        "multiple": true,
+        "required": true,
+        "types": [
+          {
+            "type": "\"",
+            "named": false
+          },
+          {
+            "type": "column_name",
+            "named": true
+          },
+          {
+            "type": "row_target",
+            "named": true
+          },
+          {
+            "type": "type_name",
+            "named": true
+          }
+        ]
+      }
+    },
+    "children": {
+      "multiple": true,
+      "required": true,
+      "types": [
+        {
+          "type": "look_rule",
+          "named": true
+        }
+      ]
+    }
   },
   {
     "type": "member_expression",
@@ -1572,6 +1774,10 @@
           "named": true
         },
         {
+          "type": "look_statement",
+          "named": true
+        },
+        {
           "type": "script_definition",
           "named": true
         },
@@ -1875,6 +2081,21 @@
           }
         ]
       }
+    }
+  },
+  {
+    "type": "tint",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": false,
+      "required": true,
+      "types": [
+        {
+          "type": "tint_name",
+          "named": true
+        }
+      ]
     }
   },
   {
@@ -2204,6 +2425,10 @@
   },
   {
     "type": "\"",
+    "named": false
+  },
+  {
+    "type": "#",
     "named": false
   },
   {
@@ -2939,6 +3164,10 @@
     "named": false
   },
   {
+    "type": "as",
+    "named": false
+  },
+  {
     "type": "at",
     "named": false
   },
@@ -2989,6 +3218,10 @@
   {
     "type": "datetime",
     "named": true
+  },
+  {
+    "type": "decimals",
+    "named": false
   },
   {
     "type": "desc",
@@ -3063,6 +3296,10 @@
     "named": true
   },
   {
+    "type": "grouped",
+    "named": false
+  },
+  {
     "type": "identifier",
     "named": true
   },
@@ -3091,6 +3328,10 @@
     "named": false
   },
   {
+    "type": "look",
+    "named": false
+  },
+  {
     "type": "max",
     "named": false
   },
@@ -3100,6 +3341,10 @@
   },
   {
     "type": "mm",
+    "named": false
+  },
+  {
+    "type": "negative",
     "named": false
   },
   {
@@ -3155,7 +3400,15 @@
     "named": false
   },
   {
+    "type": "parentheses",
+    "named": false
+  },
+  {
     "type": "pct",
+    "named": false
+  },
+  {
+    "type": "positive",
     "named": false
   },
   {
@@ -3175,7 +3428,15 @@
     "named": true
   },
   {
+    "type": "row_target",
+    "named": true
+  },
+  {
     "type": "run",
+    "named": false
+  },
+  {
+    "type": "scale",
     "named": false
   },
   {
@@ -3224,6 +3485,14 @@
   },
   {
     "type": "time",
+    "named": true
+  },
+  {
+    "type": "tint",
+    "named": false
+  },
+  {
+    "type": "tint_name",
     "named": true
   },
   {

@@ -428,3 +428,87 @@ total,split dinner,"price, net"
       (text))
     (field
       (number))))
+
+==================|||
+Tints in choices, and looks
+==================|||
+---
+type Kind = income#green|cost#3fa34d|pending
+type One = 'only'#blue
+look Kind: grouped
+look amount: negative in parentheses, red when amount < 0, scale red..green
+look on: as 'D [de] MMMM'
+look row: gray when paid
+look "look ahead": decimals 2
+mood: one of yay tint blue meh
+---
+kind:Kind
+---|||
+
+(source_file
+  (prelude
+    (fence)
+    (type_definition
+      name: (type_name)
+      type: (type
+        (choices
+          (choice)
+          (tint
+            (tint_name))
+          (choice)
+          (tint
+            (tint_name))
+          (choice))))
+    (type_definition
+      name: (type_name)
+      type: (type
+        (choices
+          (choice)
+          (tint
+            (tint_name)))))
+    (look_statement
+      target: (type_name)
+      (look_rule))
+    (look_statement
+      target: (column_name
+        (identifier))
+      (look_rule)
+      (look_rule
+        tint: (tint_name)
+        condition: (binary_expression
+          left: (column_reference
+            (identifier))
+          right: (number)))
+      (look_rule
+        from: (tint_name)
+        to: (tint_name)))
+    (look_statement
+      target: (column_name
+        (identifier))
+      (look_rule
+        pattern: (display_pattern)))
+    (look_statement
+      target: (row_target)
+      (look_rule
+        tint: (tint_name)
+        condition: (column_reference
+          (identifier))))
+    (look_statement
+      target: (column_name)
+      (look_rule
+        digits: (number)))
+    (column_declaration
+      name: (column_name
+        (identifier))
+      type: (type
+        (choices
+          (choice)
+          (explicit_tint
+            (tint_name))
+          (choice))))
+    (fence))
+  (header
+    (header_cell
+      name: (column_name)
+      type: (type
+        (named_type)))))

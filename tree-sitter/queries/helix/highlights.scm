@@ -99,6 +99,54 @@
 
 (schedule_time) @constant.numeric
 
+; How a value looks (SPEC): what it is for, its rules' words, tints and patterns.
+"look" @keyword
+
+(look_statement
+  target: (type_name) @type)
+
+(look_statement
+  target: (column_name) @variable.other.member)
+
+(look_statement
+  target: (row_target) @variable.builtin)
+
+(look_statement
+  [
+    ":"
+    ","
+  ] @punctuation.delimiter)
+
+(look_rule
+  [
+    "grouped"
+    "decimals"
+    "negative"
+    "positive"
+    "in"
+    "parentheses"
+    "scale"
+    "as"
+    "when"
+  ] @keyword)
+
+(look_rule
+  ".." @operator)
+
+(display_pattern) @string.special
+
+(display_pattern
+  (escape_sequence) @constant.character.escape)
+
+; A tint is a colour's name: a constant, beside the choice it tints.
+(tint_name) @constant.builtin
+
+(tint
+  "#" @punctuation.special)
+
+(explicit_tint
+  "tint" @keyword)
+
 (schedule_word) @string.special
 
 ; A fence's backticks are its frame; its language and label say what it holds,
