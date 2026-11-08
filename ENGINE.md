@@ -34,6 +34,7 @@ The language server is a client: it asks for the folder the editor names and eac
 
 ### Writing
 
+- **The engine keeps the approvals** (SPEC.md, Running): `allowed.jsonl` beside its socket, one line per script allowed (its file, its name, the version shown, who asked, when), the engine its one writer through `allow` and every client its reader (`cells_daemon::allowed`). `cells allow` asks in a terminal and nowhere else; the language server warns on a script not allowed and its fix allows the version shown, and allows a script whose code the person changed in that editor as they save it; Cells.app does the same for a script written in it.
 - **An edit is an intent addressed by identity**: the row `k7m2q9xa`, the column `amount`, the value `1000`. Never a row's position, which a line inserted elsewhere moves.
 - **Ids are the engine's.** No intent writes an `id`; a client built on the protocol cannot show or change one. Rows without one get theirs at the engine's next write (SPEC.md, "Every row has an identity").
 - **Every intent is idempotent by its own id**, eight base-32 characters made by the client: applying it a second time changes nothing and answers the first result.

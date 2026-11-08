@@ -183,7 +183,7 @@ The prelude, between two `---` lines, names types (`type Kind = …`), imports o
 - **Written back byte for byte** but for what changed: the line endings, the quoting, the header's spelling and the prelude as they were read. A write stores every computed value its change reaches, in one pass; a value typed over its `=` or left behind by a plain editor is a problem saying both numbers (`the formula gives 90.00, the file stores 84.20`), never overwritten unasked, and `cells fix` or a client's fix resolves it.
 - **Merged by git without conflicts on what is computed**: `cells merge`, git's merge driver, merges what was written and computes the rest again.
 - **Records quote as RFC 4180** (a field holding `,`, `"` or a line break is quoted, `""` inside), because it is the right rule for cells.
-- **Opening never runs anything.** A script runs when asked (`cells run`), and a file opens with the rows its last run stored.
+- **Opening never runs anything.** A script runs when asked (`cells run`), and a file opens with the rows its last run stored. A script runs only at a version its person allowed after reading it (`cells allow`, an editor's fix, Cells.app), so a file from anyone never runs a program unread.
 
 ## Where it is going
 
@@ -286,7 +286,7 @@ Rust because it is as fast as C and reaches everything else: a C ABI, wasm, PyO3
 ### Next, in order
 
 1. **Cells.app reading and writing through the engine.** It is a client already: its folders served by the engine and their changes heard from it (swift-utils' `Cells.Daemon`). Next, its documents read from the engine's parse, and its edits sent as intents.
-2. **A script runs only once its person allowed that version of it** (asked in Cells.app, the editor or `cells allow`), and its schedules are kept.
+2. **A script's schedule kept by the engine**, each run only at a version its person allowed (`cells allow` and the editor's fix ask today; Cells.app next).
 3. **Cells.app's window**, designed and used until it is right: its folder, its prelude a first-class panel written with completions, heads saying what each column is. Then the site's Cells window and hero mirror it.
 4. **SQL/PGQ in `cells sql`**, references walked as edges, once DuckDB's `duckpgq` can be built into the binary ([rust/README.md](rust/README.md#cells-sql)).
 5. **Charts** from the types.
