@@ -35,7 +35,8 @@ impl Tint {
             return Ok(Tint::Named(k as u8));
         }
         if word.len() == 6 && word.bytes().all(|c| c.is_ascii_hexdigit()) {
-            return Ok(Tint::Hex(u32::from_str_radix(word, 16).expect("six hex digits")));
+            // Folded by hand: a parse's error type would link its Debug formatting.
+            return Ok(Tint::Hex(word.bytes().fold(0, |n, c| n * 16 + (c as char).to_digit(16).unwrap())));
         }
         Err(format!("\"{word}\" is no tint: {}, or # and six hex digits", TINTS.join(", ")))
     }

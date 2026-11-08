@@ -492,9 +492,7 @@ fn read_in(bytes: Vec<u8>, dialect: Dialect, threads: usize, imports: &mut dyn I
     };
     let Some((fields, first)) = header else {
         doc.source = source;
-        doc.resolve_looks(&mut broken);
-        broken.sort_by_key(|e| e.at.order());
-        doc.broken = broken;
+        doc.settle_broken(broken);
         return Ok(doc);
     };
     let mut scratch = Vec::new();
@@ -618,9 +616,7 @@ fn read_in(bytes: Vec<u8>, dialect: Dialect, threads: usize, imports: &mut dyn I
     doc.problems = problems;
     doc.source = source;
     doc.resolve_formulas(&mut broken);
-    doc.resolve_looks(&mut broken);
-    broken.sort_by_key(|e| e.at.order());
-    doc.broken = broken;
+    doc.settle_broken(broken);
     doc.recompute();
     Ok(doc)
 }
@@ -2597,6 +2593,14 @@ impl Doc {
     /// its own, and every condition resolved as a formula over the row. A rule that does not
     /// read, does not hold of its values or names what is not there is broken at its line
     /// (an imported type's at its import's) and left out alone; the values are untouched.
+    /// The looks resolved, then every break in the file's order: one place, so one sort
+    /// is compiled.
+    fn settle_broken(&mut self, mut broken: Vec<Error>) {
+        self.resolve_looks(&mut broken);
+        broken.sort_by_key(|e| e.at.order());
+        self.broken = broken;
+    }
+
     fn resolve_looks(&mut self, broken: &mut Vec<Error>) {
         let mut own: Vec<Vec<Look>> = (0..self.columns.len()).map(|_| Vec::new()).collect();
         let mut row: Vec<Look> = Vec::new();
@@ -3068,19 +3072,24 @@ impl Doc {
 /// column, a boolean a boolean one; anything else is written as text and read by the
 /// column's type.
 /// Where `d` stands between `lo` and `hi`, from 0 to 1000: a scale's point, for display.
+/// In exact decimal, a half rounded up, so no float parser is linked for it.
 fn between(d: Decimal, lo: Decimal, hi: Decimal) -> u16 {
-    let span = hi.to_f64() - lo.to_f64();
-    if span <= 0.0 {
+    let lo = Exact::from_decimal(lo);
+    let span = Exact::from_decimal(hi).sub(&lo);
+    if span.is_zero() || span.negative {
         return 0;
     }
-    let at = (d.to_f64() - lo.to_f64()) / span * 1000.0 + 0.5;
-    if at <= 0.0 {
-        0
-    } else if at >= 1000.0 {
-        1000
-    } else {
-        at as u16
+    let from = Exact::from_decimal(d).sub(&lo);
+    if from.is_zero() || from.negative {
+        return 0;
     }
+    if from.order(&span).is_ge() {
+        return 1000;
+    }
+    // 0 < from / span < 1, so the thousandths are below 1000 and fit.
+    let half = Exact { negative: false, magnitude: alloc::vec![5], scale: 1 };
+    let at = from.mul(&Exact::from_int(1000)).div(&span).unwrap().add(&half).floor();
+    at.to_i128(0).unwrap() as u16
 }
 
 /// A number's value as a decimal; nothing for any other.

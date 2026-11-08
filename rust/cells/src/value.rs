@@ -207,19 +207,6 @@ impl Decimal {
         if m.unsigned_abs() >= pow10(PRECISION) as u128 { None } else { Some(m) }
     }
 
-    /// The nearest binary64: correctly rounded, as every implementation's number parser.
-    pub fn to_f64(self) -> f64 {
-        const EXACT: i128 = 1 << 53;
-        if self.mantissa.abs() < EXACT && self.scale <= 22 {
-            // Both exact, so one correctly rounded division.
-            return self.mantissa as f64 / pow10(self.scale as u32) as f64;
-        }
-        let mut buf = [0u8; 48];
-        let s = self.write(&mut buf);
-        // A decimal's own digits always parse.
-        s.parse::<f64>().unwrap()
-    }
-
     /// Its digits into `buf`, `-84.20`, no exponent.
     pub fn write(self, buf: &mut [u8; 48]) -> &str {
         let mut digits = [0u8; 40];
@@ -607,7 +594,6 @@ mod tests {
         assert!(d("84.2").unwrap() == d("84.2").unwrap());
         assert!(d("84.20").unwrap().cmp(&d("84.2").unwrap()).is_eq());
         assert!(d("-1").unwrap() < d("0.5").unwrap());
-        assert_eq!(d("0.1").unwrap().to_f64(), 0.1);
     }
 
     #[test]
