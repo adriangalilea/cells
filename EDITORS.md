@@ -28,12 +28,12 @@ What each part of a file is comes from one place, the engine's reading of it (`c
 | `cells lsp` | semantic tokens: a part with a standard type served as it (keyword, type, number, operator), so any theme colours it; a header's name, a cell and a formula's name that reads a column as `column` or `cell`, types no theme colours, so the grammar's colour stays, with the column as a modifier (`column1` to `column6`) | built |
 | wasm | `cells_tokens`, `cells_token_kinds` and `cells_layout` | built |
 | ui's `code` (`cells-code`) | the wasm's tokens: a colour per column, a formula's names in the colour of the column each reads, the rest ink | built; inline code (a fragment read by its shape) owed |
-
-The same reading lays a table out as a table: `cells::tokens::layout` gives the spaces after each cell that bring a column's cells to one end, and with a cap the middle of each wider cell to fold. Never written into the file, since a cell is read exactly as written. `cells lsp` serves the spaces as inlay hints, which Helix, VS Code, Neovim and Zed draw between the real characters (built); ui's code blocks draw them, the folds opened by a click (owed). Folding in an editor has no way through the protocol, and waits for a plugin per editor.
-| the C ABI, Swift | `cells_tokens`, as `Tokens.swift` draws them | built; Swift reads `reads` from the next Apple release |
-| the TextMate and tree-sitter grammars | the text by pattern, where no engine runs (GitHub, an editor without the server): each column a scope its theme already colours, a name in a formula without its column | TextMate built; tree-sitter's rows still by kind |
+| the C ABI, Swift | `cells_tokens`, as `Tokens.swift` draws them, a formula's names by the column each `reads` | built |
+| the TextMate and tree-sitter grammars | the text by pattern, where no engine runs (GitHub, an editor without the server): each column a scope its theme already colours, a name in a formula without its column | built; tree-sitter colours a row's text cells by column, its numbers, dates, booleans and quoted text by kind |
 
 A grammar is the reading without the engine, so it is held to the engine's: each grammar's scopes over the examples agree with the engine's kinds (owed).
+
+The same reading lays a table out as a table: `cells::tokens::layout` gives the spaces after each cell that bring a column's cells to one end, and with a cap the middle of each wider cell to fold. Never written into the file, since a cell is read exactly as written. `cells lsp` serves the spaces as inlay hints, which Helix, VS Code, Neovim and Zed draw between the real characters (built); ui's code blocks draw them, the folds opened by a click (owed). Folding in an editor has no way through the protocol, and needs a plugin per editor.
 
 ## Helix
 
