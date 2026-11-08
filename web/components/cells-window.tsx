@@ -6,7 +6,7 @@
 
 import * as React from "react"
 import { AppWindow } from "@/components/ui/app-window"
-import { Table, type TableColumn } from "@/components/ui/table"
+import { Table, type TableColumn, type TableProblem } from "@/components/ui/table"
 import { useEngine } from "@/components/use-engine"
 import { readFiles, type ViewCell, type ViewTable } from "@/lib/view"
 import { PRODUCT } from "@/lib/product"
@@ -70,8 +70,8 @@ export function CellsTable({
   if (scene?.cursor && at < 0) throw new Error(`cells-window: no column ${scene.cursor.column} for the hand`)
   const tableScene = scene ? { cursor: scene.cursor ? { row: String(scene.cursor.row), column: String(at) } : null, draft: scene.draft } : undefined
   const problems = React.useMemo(() => {
-    const m = new Map<string, string>()
-    for (const p of read.problems) m.set(`${p.row}:${p.at}`, p.reason)
+    const m = new Map<string, TableProblem>()
+    for (const p of read.problems) m.set(`${p.row}:${p.at}`, { why: p.reason, severity: p.severity })
     return m
   }, [read])
   const columns = React.useMemo<TableColumn<Row>[]>(
@@ -170,6 +170,8 @@ export function CellsWindow({
   const now = useRead(name, text, others)
   // A break in the grammar first (it names its column), then the cells' problems.
   const said = [...now.broken.map((b) => b.why), ...now.problems.map((p) => p.why)]
+  // The count in the tone of the worst: a break or a wrong value, else only what is absent.
+  const wrong = now.broken.length > 0 || now.problems.some((p) => p.severity === "error")
   return (
     <AppWindow
       data-slot="cells-window"
@@ -191,7 +193,7 @@ export function CellsWindow({
           className="flex h-6 shrink-0 items-center gap-2 overflow-hidden border-t border-white/8 px-3 font-mono text-[10px] whitespace-nowrap"
         >
           {/* The count in a slot of its own width, whatever it says: nothing beside it moves. */}
-          <span className={cn("w-[10ch] shrink-0 tabular-nums", said.length ? "text-haze" : "text-edge/80")}>
+          <span className={cn("w-[10ch] shrink-0 tabular-nums", !said.length ? "text-edge/80" : wrong ? "text-haze" : "text-tone-warn")}>
             {said.length ? `${said.length} ${said.length === 1 ? "problem" : "problems"}` : "no problems"}
           </span>
           <span className="min-w-0 truncate text-white/60">{said.join(" · ")}</span>

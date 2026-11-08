@@ -35,10 +35,12 @@ export interface ViewTable {
   rows: ViewCell[][]
   /** Each value by column name, for a step that asks questions of it. */
   values: Record<string, Value[]>
-  problems: { row: number; at: number; column: string; kind: Problem["kind"]; why: string; reason: string }[]
+  /** Each cell's problem, weighed as the engine weighs it (`severity`: `error` wrong,
+   *  `warning` absent or behind). */
+  problems: { row: number; at: number; column: string; kind: Problem["kind"]; severity: Problem["severity"]; why: string; reason: string }[]
   /** Where the file's grammar breaks (a header cell half typed, a prelude statement):
    *  only that part degrades, the table always reads. `why` names what broke; `span` is
-   *  its first byte and length in UTF-8 bytes of the text. */
+   *  its start and length in UTF-16 units of the text, a string's indices. */
   broken: { at: string; why: string; span?: [number, number] }[]
 }
 
@@ -83,7 +85,7 @@ export function readFiles(engine: Engine, files: readonly StoryFile[]): ViewTabl
           return { text: c.text(i), shown: shown(c, i, v), origin: c.origin(i), numeric: NUMERIC.has(c.base) }
         }),
       )
-    const problems = r.problems.map((p) => ({ row: p.row, at: p.at, column: p.column, kind: p.kind, why: p.why, reason: p.reason }))
+    const problems = r.problems.map((p) => ({ row: p.row, at: p.at, column: p.column, kind: p.kind, severity: p.severity, why: p.why, reason: p.reason }))
     const broken = r.broken.map((b) => ({ at: b.at, why: b.why, ...(b.span ? { span: b.span } : {}) }))
     return { columns, rows, values, problems, broken }
   } finally {

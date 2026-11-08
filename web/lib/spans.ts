@@ -10,6 +10,7 @@ export interface ProblemAt {
   /** The column's name: a message on its own line says which cell it is about. */
   column: string
   reason: string
+  severity: "error" | "warning"
   /** The characters that broke, inside the cell's text, when the engine says them. */
   span?: { start: number; length: number }
 }
@@ -20,6 +21,8 @@ export interface Placed {
   from: number
   to: number
   message: string
+  /** What it weighs, the engine's: a break of the grammar is always an error. */
+  severity: "error" | "warning"
 }
 
 /** The fence a prelude line opens, its backticks; `null` when it opens none. */
@@ -81,27 +84,24 @@ function recordsFrom(text: string, start: number): [number, number][][] {
 }
 
 /** A break in the file's grammar placed on its characters, as a problem is: the engine's
- *  span is in UTF-8 bytes of the text, turned here into the text's own characters. A
- *  break with no span is named in a list, never drawn on a guess. A span may cross lines
- *  (a fence never closed): it is marked on its first. */
+ *  span is in UTF-16 units of the text, a string's own indices. A break with no span is
+ *  named in a list, never drawn on a guess. A span may cross lines (a fence never
+ *  closed): it is marked on its first. */
 export function placeBroken(text: string, broken: readonly { why: string; span?: [number, number] }[]): Placed[] {
-  const bytes = new TextEncoder().encode(text)
-  const decoder = new TextDecoder()
-  const charAt = (byte: number) => decoder.decode(bytes.subarray(0, byte)).length
   const placed: Placed[] = []
   for (const b of broken) {
     if (!b.span) continue
-    const [start, length] = b.span
-    if (start + length > bytes.length) throw new Error(`spans: a break's span ${start}+${length} runs past the text's ${bytes.length} bytes`)
-    const from = charAt(start)
+    const [from, length] = b.span
+    if (from + length > text.length) throw new Error(`spans: a break's span ${from}+${length} runs past the text's ${text.length}`)
     const lineStart = text.lastIndexOf("\n", from - 1) + 1
     const lineEnd = text.indexOf("\n", from)
-    const to = Math.min(charAt(start + length), lineEnd === -1 ? text.length : lineEnd)
+    const to = Math.min(from + length, lineEnd === -1 ? text.length : lineEnd)
     placed.push({
       line: text.slice(0, from).split("\n").length,
       from: from - lineStart,
       to: Math.max(from - lineStart + 1, to - lineStart),
       message: b.why,
+      severity: "error",
     })
   }
   return placed
@@ -123,7 +123,7 @@ export function placeProblems(text: string, problems: readonly ProblemAt[]): Pla
     const to = p.span ? from + Math.max(1, p.span.length) : Math.max(end, start + 1)
     // The engine's own words without the row (the mark is on it): `to: "coffee" is no
     // key of accounts`, never a bare `is missing`.
-    placed.push({ line: lineOf(from), from: columnOf(from), to: columnOf(from) + (to - from), message: `${p.column}: ${p.reason}` })
+    placed.push({ line: lineOf(from), from: columnOf(from), to: columnOf(from) + (to - from), message: `${p.column}: ${p.reason}`, severity: p.severity })
   }
   return placed
 }

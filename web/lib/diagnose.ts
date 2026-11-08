@@ -2,7 +2,8 @@
 // diagnostics with every file's text at the instant (`CodeDiagnose`), and this answers
 // with the engine's own: the file read with the others as its imports, each break of its
 // grammar and each problem of its cells placed on the characters it names, in the
-// engine's words. A problem money.cells has because of accounts.cells shows, and goes once
+// engine's words and weighed as the engine weighs it (a value that is wrong an error, one
+// absent or behind a warning, as `cells lsp` says them). A problem money.cells has because of accounts.cells shows, and goes once
 // accounts.cells has the key. The page's editor reads it through `useCellsDiagnose`, a
 // build script (the og card) with the engine it loaded.
 
@@ -24,7 +25,7 @@ export function cellsDiagnose(engine: Engine): CodeDiagnose {
     return [...placeBroken(text, read.broken), ...placeProblems(text, read.problems)].map((p) => ({
       from: at(p.line, p.from),
       to: at(p.line, p.to),
-      severity: "error" as const,
+      severity: p.severity,
       message: p.message,
       source: "cells",
     }))
