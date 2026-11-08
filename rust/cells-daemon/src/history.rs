@@ -140,7 +140,7 @@ pub fn since(log: &Log, file: &Path, version: &str, current: &str) -> Option<Vec
     fn over(l: &Line) -> Option<&str> {
         match &l.entry {
             Logged::External { was, .. } => was.as_deref(),
-            Logged::Restore { was, .. } | Logged::Run { was, .. } => Some(was.as_str()),
+            Logged::Restore { was, .. } | Logged::Run { was, .. } | Logged::Edit { was, .. } => Some(was.as_str()),
             Logged::Store { against, .. } => Some(against.as_str()),
             Logged::Moved { .. } => None,
         }
@@ -158,12 +158,13 @@ pub fn since(log: &Log, file: &Path, version: &str, current: &str) -> Option<Vec
     for l in &lines[start..] {
         let (cells, added, removed): (&[crate::log::Changed], &[usize], &[usize]) = match &l.entry {
             Logged::Store { stored, .. } => (stored, &[], &[]),
-            Logged::External { edited: Some(e), .. } | Logged::Restore { edited: Some(e), .. } | Logged::Run { edited: Some(e), .. } => {
-                (&e.cells, &e.rows_added, &e.rows_removed)
-            }
+            Logged::External { edited: Some(e), .. }
+            | Logged::Restore { edited: Some(e), .. }
+            | Logged::Run { edited: Some(e), .. }
+            | Logged::Edit { edited: Some(e), .. } => (&e.cells, &e.rows_added, &e.rows_removed),
             // a version either side of which did not read says no cells: what it changed is
             // not known, so nothing before it is either
-            Logged::External { .. } | Logged::Restore { .. } | Logged::Run { .. } => {
+            Logged::External { .. } | Logged::Restore { .. } | Logged::Run { .. } | Logged::Edit { .. } => {
                 marks.clear();
                 continue;
             }
@@ -237,12 +238,13 @@ pub fn cell(log: &Log, file: &Path, row: usize, key: Option<&str>, column: &str)
     for l in lines.into_iter().rev() {
         let (cells, added, removed): (&[_], &[usize], &[usize]) = match &l.entry {
             Logged::Store { stored, .. } => (stored, &[], &[]),
-            Logged::External { edited: Some(e), .. } | Logged::Restore { edited: Some(e), .. } | Logged::Run { edited: Some(e), .. } => {
-                (&e.cells, &e.rows_added, &e.rows_removed)
-            }
+            Logged::External { edited: Some(e), .. }
+            | Logged::Restore { edited: Some(e), .. }
+            | Logged::Run { edited: Some(e), .. }
+            | Logged::Edit { edited: Some(e), .. } => (&e.cells, &e.rows_added, &e.rows_removed),
             // a file new, removed, or a version either side of which did not read, has no
             // cells to follow through
-            Logged::External { .. } | Logged::Restore { .. } | Logged::Run { .. } => break,
+            Logged::External { .. } | Logged::Restore { .. } | Logged::Run { .. } | Logged::Edit { .. } => break,
             Logged::Moved { .. } => continue,
         };
         let same =

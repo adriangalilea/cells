@@ -17,7 +17,7 @@ use cells::Trigger;
 
 use crate::allowed::{Allowed, Approval};
 use crate::history;
-use crate::log::{Cause, Changed, Edit, Log, Logged, Outcome, hash};
+use crate::log::{Cause, Changed, Edit, Log, Logged, Op, Outcome, hash};
 use crate::trace::ENGINE;
 use crate::wire::{FromEngine, ToEngine};
 use crate::world::{Found, Replaced, World, table_file};
@@ -116,6 +116,7 @@ enum RootKind {
     External { by: Option<String> },
     Restore { by: String },
     Run { script: String, run: u64, outcome: Outcome, by: String },
+    Edit { intent: String, by: String, ops: Vec<Op>, assigned: Vec<String> },
 }
 
 /// The longest the engine waits before looking at its scripts again: a Mac asleep stops
@@ -408,7 +409,65 @@ impl<W: World> Daemon<W> {
                 self.hand(Change::Changed { path: k, text }, Some(root));
                 FromEngine::Restored { file, was }
             }
+            ToEngine::Intent { id, file, against, ops } => self.intent(client, &id, &file, &against, ops)?,
         }))
+    }
+
+    /// A client's intent carried out (ENGINE.md, Writing): applied once, by its id, however
+    /// often it is sent; journalled as a root of history before what it reaches is stored;
+    /// written only over the version the engine holds, and over a version written since
+    /// (one the engine had not heard yet: heard first) only where it says what it saw.
+    fn intent(&mut self, client: &str, id: &str, file: &Path, against: &str, ops: Vec<Op>) -> Result<FromEngine, String> {
+        if !cells::value::is_id(id.as_bytes()) {
+            return Err(format!("{id:?} is no intent id: eight characters of 0-9 and a-z but i, l, o, u"));
+        }
+        let log = self.log_of(file)?;
+        let path = log.shown(file);
+        let done = log.lines().iter().find_map(|l| match &l.entry {
+            Logged::Edit { path: p, intent, now, assigned, .. } if intent == id && *p == path => Some((now.clone(), assigned.clone())),
+            _ => None,
+        });
+        if let Some((version, assigned)) = done {
+            detail!(path, intent = id, by = client, "applied already: answered again");
+            return Ok(FromEngine::Applied { file: file.to_path_buf(), intent: id.to_owned(), version, assigned });
+        }
+        let k = key(file);
+        let ops_core: Vec<cells::intent::Op> = ops.iter().map(Into::into).collect();
+        // twice at most: a version on disk the engine had not heard is heard, then applied over
+        for _ in 0..2 {
+            let text = self.folder.text(&k).ok_or(format!("{}: not read by the engine", self.shown(file)))?.to_owned();
+            let was = hash(&text);
+            let (folder, world) = (&self.folder, &self.world);
+            let mut read = |t: &str| folder.read_as(&k, t);
+            let applied = cells::intent::apply(&text, &ops_core, was != against, || world.bits(), &mut read)
+                .map_err(|why| format!("{}: {why}", self.shown(file)))?;
+            if applied.text == text {
+                return Ok(FromEngine::Applied { file: file.to_path_buf(), intent: id.to_owned(), version: was, assigned: Vec::new() });
+            }
+            match self.world.replace(file, &was, &applied.text) {
+                Replaced::Done => {}
+                Replaced::Moved => {
+                    self.hear(&BTreeSet::from([file.to_path_buf()]));
+                    continue;
+                }
+                Replaced::Failed(why) => return Err(format!("{}: {why}", self.shown(file))),
+            }
+            let now = hash(&applied.text);
+            let span = tracing::info_span!(target: ENGINE, "edit", path = %self.shown(file), intent = id, by = client);
+            let _editing = span.enter();
+            self.keep(file, &applied.text);
+            self.changed.insert(file.to_path_buf());
+            self.touched.insert(file.to_path_buf());
+            let root = Root {
+                path: file.to_path_buf(),
+                was: Some(was),
+                now: Some(now.clone()),
+                kind: RootKind::Edit { intent: id.to_owned(), by: client.to_owned(), ops, assigned: applied.assigned.clone() },
+            };
+            self.hand(Change::Changed { path: k, text: applied.text }, Some(root));
+            return Ok(FromEngine::Applied { file: file.to_path_buf(), intent: id.to_owned(), version: now, assigned: applied.assigned });
+        }
+        Err(format!("{}: written by another program twice while the engine applied this; send it again", self.shown(file)))
     }
 
     /// Every script of every file served looked at: each due run started when its person
@@ -771,6 +830,16 @@ impl<W: World> Daemon<W> {
                 by,
                 was: root.was.expect("a file run into was held"),
                 now: root.now.expect("a run writes a version"),
+                edited,
+            },
+            RootKind::Edit { intent, by, ops, assigned } => Logged::Edit {
+                path,
+                intent,
+                by,
+                ops,
+                assigned,
+                was: root.was.expect("a file edited was held"),
+                now: root.now.expect("an edit writes a version"),
                 edited,
             },
         };

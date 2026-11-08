@@ -11,6 +11,9 @@
 //!   removed), who wrote it when a client said it held that version (`by`), and what it
 //!   changed beside the version before (`edited`).
 //! - `restore`, a root: a file returned to a version by a client's request (`by`).
+//! - `run`, a root: a script's run, what started it and what came of it.
+//! - `edit`, a root: a client's intent (`intent` its id), its ops and the ids it gave, so
+//!   it is applied once however often it is sent.
 //! - `store`: the engine wrote the file, storing what a root reached: the root (`cause`),
 //!   the files of its chain this one reads directly (`via`), the version written over
 //!   (`against`) and written (`now`), and each cell stored, before and after.
@@ -73,6 +76,21 @@ pub enum Logged {
         #[serde(skip_serializing_if = "Option::is_none", default)]
         edited: Option<Edit>,
     },
+    /// A client's intent, a root (ENGINE.md, Writing): its id (the client's, what makes it
+    /// idempotent), who sent it, its ops, the ids the engine gave rows it wrote, the version
+    /// it was written over and the one written.
+    Edit {
+        path: String,
+        intent: String,
+        by: String,
+        ops: Vec<Op>,
+        #[serde(skip_serializing_if = "Vec::is_empty", default)]
+        assigned: Vec<String>,
+        was: String,
+        now: String,
+        #[serde(skip_serializing_if = "Option::is_none", default)]
+        edited: Option<Edit>,
+    },
     Store {
         path: String,
         cause: Cause,
@@ -94,6 +112,7 @@ impl Logged {
             Logged::External { path, .. }
             | Logged::Restore { path, .. }
             | Logged::Run { path, .. }
+            | Logged::Edit { path, .. }
             | Logged::Store { path, .. }
             | Logged::Moved { path, .. } => path,
         }
@@ -103,7 +122,7 @@ impl Logged {
     pub fn cause(&self) -> Option<&Cause> {
         match self {
             Logged::Store { cause, .. } | Logged::Moved { cause, .. } => Some(cause),
-            Logged::External { .. } | Logged::Restore { .. } | Logged::Run { .. } => None,
+            Logged::External { .. } | Logged::Restore { .. } | Logged::Run { .. } | Logged::Edit { .. } => None,
         }
     }
 
@@ -111,8 +130,78 @@ impl Logged {
     pub fn now(&self) -> Option<&str> {
         match self {
             Logged::External { now, .. } => now.as_deref(),
-            Logged::Restore { now, .. } | Logged::Run { now, .. } | Logged::Store { now, .. } => Some(now),
+            Logged::Restore { now, .. } | Logged::Run { now, .. } | Logged::Edit { now, .. } | Logged::Store { now, .. } => Some(now),
             Logged::Moved { .. } => None,
+        }
+    }
+
+    /// What the root's own version changed in its file, when both versions read.
+    pub fn edited(&self) -> Option<&Edit> {
+        match self {
+            Logged::External { edited, .. } | Logged::Restore { edited, .. } | Logged::Run { edited, .. } | Logged::Edit { edited, .. } => {
+                edited.as_ref()
+            }
+            Logged::Store { .. } | Logged::Moved { .. } => None,
+        }
+    }
+}
+
+/// A row as an intent names it (`cells::RowAt`): by its key, by its id, or, in a file
+/// that has given its rows neither yet, by its line exactly.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Row {
+    Key(String),
+    Id(String),
+    Line(String),
+}
+
+impl From<&Row> for cells::RowAt {
+    fn from(r: &Row) -> cells::RowAt {
+        match r {
+            Row::Key(k) => cells::RowAt::Key(k.clone()),
+            Row::Id(i) => cells::RowAt::Id(i.clone()),
+            Row::Line(l) => cells::RowAt::Line(l.clone()),
+        }
+    }
+}
+
+/// A column given its text, in a row an intent adds.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Given {
+    pub column: String,
+    pub text: String,
+}
+
+/// An op of an intent (`cells::intent::Op`), as a client sends it and the log keeps it.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "op", rename_all = "lowercase")]
+pub enum Op {
+    Set {
+        row: Row,
+        column: String,
+        #[serde(skip_serializing_if = "Option::is_none", default)]
+        was: Option<String>,
+        text: String,
+    },
+    Add {
+        cells: Vec<Given>,
+    },
+    Delete {
+        row: Row,
+        #[serde(skip_serializing_if = "Option::is_none", default)]
+        was: Option<String>,
+    },
+}
+
+impl From<&Op> for cells::intent::Op {
+    fn from(op: &Op) -> cells::intent::Op {
+        match op {
+            Op::Set { row, column, was, text } => {
+                cells::intent::Op::Set { row: row.into(), column: column.clone(), was: was.clone(), text: text.clone() }
+            }
+            Op::Add { cells } => cells::intent::Op::Add { cells: cells.iter().map(|g| (g.column.clone(), g.text.clone())).collect() },
+            Op::Delete { row, was } => cells::intent::Op::Delete { row: row.into(), was: was.clone() },
         }
     }
 }

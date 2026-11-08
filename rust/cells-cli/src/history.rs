@@ -70,6 +70,7 @@ fn headline(folder: &Path, root: &Event) -> String {
         Logged::Run { script, run, outcome: Outcome::Failed { why }, by, .. } => {
             format!("{file}: {script} run {run} by {by} failed: {why}")
         }
+        Logged::Edit { by, .. } => format!("{file} edited by {by}"),
         Logged::Store { .. } | Logged::Moved { .. } => unreachable!("a root is an edit, a restore or a run"),
     }
 }
@@ -105,9 +106,7 @@ fn list(rows: &[usize]) -> String {
 fn drawn(folder: &Path, chain: &Chain) -> Vec<String> {
     let pad = " ".repeat(18);
     let mut out = vec![format!("{}  {}", when(chain.root.line.at), headline(folder, &chain.root))];
-    if let Logged::External { edited: Some(e), .. } | Logged::Restore { edited: Some(e), .. } | Logged::Run { edited: Some(e), .. } =
-        &chain.root.line.entry
-    {
+    if let Some(e) = chain.root.line.entry.edited() {
         out.extend(edit(e).into_iter().map(|l| format!("{pad}{l}")));
     }
     // each entry's children, in the order they followed

@@ -23,6 +23,8 @@ struct Sim {
     started: RefCell<Vec<String>>,
     /// The clock, in milliseconds since the Unix epoch: `NOW` unless a test moves it.
     clock: std::cell::Cell<u64>,
+    /// The random bits handed out, counted: every run the same ids.
+    drawn: std::cell::Cell<u64>,
     /// What the daemon says back to itself (a run ended), read by `pump`.
     inbox: Option<std::sync::mpsc::Receiver<Event>>,
 }
@@ -98,6 +100,11 @@ impl World for Sim {
             0 => NOW,
             t => t,
         }
+    }
+
+    fn bits(&self) -> u64 {
+        self.drawn.set(self.drawn.get() + 1);
+        self.drawn.get().wrapping_mul(0x9E37_79B9_7F4A_7C15)
     }
 }
 
@@ -571,4 +578,101 @@ fn what_changed_since_a_version_is_marked_with_the_chain_that_changed_it() {
     let (_, marks, _) = since(&mut d, Q4, &before);
     assert!(marks.iter().any(|m| m.row == 1 && m.column.is_none()), "the row added: {marks:#?}");
     assert!(marks.iter().any(|m| m.row == 1 && m.column.is_none() && m.was.is_none()));
+}
+
+const INTENT: &str = "k7m2q9xa";
+
+fn intent(d: &mut Daemon<Sim>, id: &str, against: &str, ops: Vec<crate::log::Op>) -> FromEngine {
+    ask(d, "Cells Dev", ToEngine::Intent { id: id.into(), file: Q4.into(), against: against.into(), ops })
+}
+
+fn set_amount(was: &str, to: &str) -> crate::log::Op {
+    crate::log::Op::Set {
+        row: crate::log::Row::Line("cost,180.00,180.00=".into()),
+        column: "amount".into(),
+        was: Some(was.into()),
+        text: to.into(),
+    }
+}
+
+#[test]
+fn an_intent_is_journalled_its_rows_given_ids_and_what_it_reached_follows_it() {
+    let mut d = daemon();
+    let FromEngine::Applied { version, assigned, .. } = intent(&mut d, INTENT, &hash(MONEY), vec![set_amount("180.00", "200.00")]) else {
+        panic!("applied")
+    };
+    let q4 = d.world().get(Q4);
+    assert_eq!(version, hash(&q4));
+    assert_eq!(assigned.len(), 2, "a file with no key gets an id in every row at the engine's first write: {q4}");
+    assert!(q4.contains("id:id!,kind:Kind,amount:EUR,cost\n"), "{q4}");
+    assert!(q4.contains(&format!("{},cost,200.00,200.00=\n", assigned[1])), "the cell set, its computed cell stored: {q4}");
+    assert_eq!(d.world().get(QUARTERS), INDEX.replace("180.00=SUM", "200.00=SUM"), "what it reached follows");
+    let log = d.world().log();
+    assert!(log[0].contains("\"kind\":\"edit\",\"path\":\"q4/money.cells\",\"intent\":\"k7m2q9xa\",\"by\":\"Cells Dev\""), "{}", log[0]);
+    assert!(
+        log.iter().any(|l| l.contains("\"path\":\"quarters.cells\",\"cause\":{\"n\":1}")),
+        "the index's store follows the edit: {log:#?}"
+    );
+    // sent again, as a client that never heard the answer would: answered the same, nothing applied twice
+    let again = intent(&mut d, INTENT, &hash(MONEY), vec![set_amount("180.00", "200.00")]);
+    assert_eq!(again, FromEngine::Applied { file: Q4.into(), intent: INTENT.into(), version, assigned });
+    assert_eq!(d.world().log().len(), log.len(), "applied once");
+}
+
+#[test]
+fn an_intent_made_against_an_earlier_version_applies_only_where_it_saw_what_is_there() {
+    let mut d = daemon();
+    // someone saves the income row since the intent was made
+    d.world().put(Q4, &MONEY.replace("income,4200.00,0.00=", "income,4300.00,0.00="));
+    heard(&mut d, &[Q4]);
+    let applied = intent(&mut d, INTENT, &hash(MONEY), vec![set_amount("180.00", "200.00")]);
+    assert!(matches!(applied, FromEngine::Applied { .. }), "the cost row is untouched: {applied:?}");
+    let q4 = d.world().get(Q4);
+    assert!(q4.contains(",income,4300.00,0.00=\n") && q4.contains(",cost,200.00,200.00=\n"), "both kept: {q4}");
+    // an intent whose cell was changed since is refused, both said, nothing written
+    let before = d.world().get(Q4);
+    let FromEngine::Refused { why } = intent(
+        &mut d,
+        "a1b2c3d4",
+        &hash(MONEY),
+        vec![crate::log::Op::Set {
+            row: crate::log::Row::Line("income,4200.00,0.00=".into()),
+            column: "amount".into(),
+            was: Some("4200.00".into()),
+            text: "4250.00".into(),
+        }],
+    ) else {
+        panic!("refused")
+    };
+    assert!(why.contains("no row is that one"), "the row it named reads otherwise now: {why}");
+    assert_eq!(d.world().get(Q4), before);
+}
+
+#[test]
+fn a_version_on_disk_not_yet_heard_is_heard_before_an_intent_applies() {
+    let mut d = daemon();
+    // a save lands on disk; the engine has not heard it when the intent arrives
+    d.world().put(Q4, &MONEY.replace("income,4200.00,0.00=", "income,4300.00,0.00="));
+    let applied = intent(&mut d, INTENT, &hash(MONEY), vec![set_amount("180.00", "200.00")]);
+    assert!(matches!(applied, FromEngine::Applied { .. }), "{applied:?}");
+    let q4 = d.world().get(Q4);
+    assert!(q4.contains(",income,4300.00,0.00=\n") && q4.contains(",cost,200.00,200.00=\n"), "nobody's write lost: {q4}");
+    let log = d.world().log();
+    let kinds: Vec<&str> = log.iter().map(|l| l.split("\"kind\":\"").nth(1).unwrap().split('"').next().unwrap()).collect();
+    assert_eq!(&kinds[..2], ["external", "edit"], "the save it found, then the edit over it: {log:#?}");
+}
+
+#[test]
+fn an_intent_that_names_no_id_writes_one_or_breaks_a_rule_is_refused() {
+    let mut d = daemon();
+    let FromEngine::Refused { why } = intent(&mut d, "not-an-id", &hash(MONEY), vec![]) else { panic!() };
+    assert!(why.contains("is no intent id"), "{why}");
+    let add = crate::log::Op::Add { cells: vec![crate::log::Given { column: "id".into(), text: "k7m2q9xa".into() }] };
+    let FromEngine::Refused { why } = intent(&mut d, INTENT, &hash(MONEY), vec![add]) else { panic!() };
+    assert!(why.contains("the id column is the engine's"), "{why}");
+    let word = set_amount("180.00", "lots");
+    let FromEngine::Refused { why } = intent(&mut d, "a1b2c3d4", &hash(MONEY), vec![word]) else { panic!() };
+    assert!(why.contains("would break a rule"), "{why}");
+    assert_eq!(d.world().get(Q4), MONEY, "nothing written");
+    assert!(d.world().log().is_empty(), "nothing logged");
 }

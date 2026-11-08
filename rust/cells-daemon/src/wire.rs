@@ -41,6 +41,11 @@ pub enum ToEngine {
     /// The script `script` of `file` run now, outside its schedule: answered once its run
     /// has landed, refused when it is not allowed as written.
     Run { file: PathBuf, script: String },
+    /// An edit of `file` by row identity (ENGINE.md, Writing): `id`, eight base-32
+    /// characters the client makes, applies it once however often it is sent; `against`,
+    /// the SHA-256 of the version it was made against; `ops`, in order. Answered with the
+    /// version written, or refused whole with the reason.
+    Intent { id: String, file: PathBuf, against: String, ops: Vec<crate::log::Op> },
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -89,6 +94,14 @@ pub enum FromEngine {
         run: u64,
         #[serde(flatten)]
         outcome: crate::log::Outcome,
+    },
+    /// An intent applied (now, or before, when it is sent again): the version it wrote and
+    /// the ids it gave rows.
+    Applied {
+        file: PathBuf,
+        intent: String,
+        version: String,
+        assigned: Vec<String>,
     },
     /// A request refused, and why.
     Refused {

@@ -194,5 +194,6 @@ fn canonical(request: ToEngine) -> Result<ToEngine, String> {
         ToEngine::Restore { file, version } => ToEngine::Restore { file: path(file)?, version },
         ToEngine::Since { file, version } => ToEngine::Since { file: path(file)?, version },
         ToEngine::Run { file, script } => ToEngine::Run { file: path(file)?, script },
+        ToEngine::Intent { id, file, against, ops } => ToEngine::Intent { id, file: path(file)?, against, ops },
     })
 }

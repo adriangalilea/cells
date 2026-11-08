@@ -155,6 +155,17 @@ impl Engine {
         }
     }
 
+    /// An edit of `file` by row identity, made against the version whose SHA-256 is
+    /// `against`, applied once by its id (`id`, eight base-32 characters this client
+    /// makes): the version written and the ids the engine gave rows, or why it was refused.
+    pub fn intent(&self, id: &str, file: &Path, against: &str, ops: Vec<crate::log::Op>) -> Result<(String, Vec<String>), String> {
+        let asked = ToEngine::Intent { id: id.to_owned(), file: file.to_path_buf(), against: against.to_owned(), ops };
+        match self.ask(&asked)? {
+            FromEngine::Applied { version, assigned, .. } => Ok((version, assigned)),
+            other => panic!("the engine answered an intent with {other:?}"),
+        }
+    }
+
     /// The script `script` of `file` run now by the engine, as its person allowed it: its
     /// run's number and what came of it, once landed in the file.
     pub fn run(&self, file: &Path, script: &str) -> Result<(u64, crate::log::Outcome), String> {
@@ -194,6 +205,7 @@ fn hear(mut reader: BufReader<UnixStream>, changes: Sender<Vec<PathBuf>>, answer
                 | FromEngine::Version { .. }
                 | FromEngine::Restored { .. }
                 | FromEngine::Ran { .. }
+                | FromEngine::Applied { .. }
                 | FromEngine::Since { .. }
                 | FromEngine::Refused { .. }),
             )) => {

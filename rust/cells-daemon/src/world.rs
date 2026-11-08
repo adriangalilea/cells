@@ -63,6 +63,9 @@ pub trait World {
     fn home(&self) -> PathBuf;
     /// Milliseconds since the Unix epoch.
     fn now(&self) -> u64;
+    /// Random bits, 40 at least: what a new row id is made from, so the core assigning it
+    /// stays deterministic.
+    fn bits(&self) -> u64;
 }
 
 /// What starts a `ts` script and hands it and its rows over (`cells::run`, the contract):
@@ -276,5 +279,12 @@ impl World for Disk {
 
     fn now(&self) -> u64 {
         SystemTime::now().duration_since(UNIX_EPOCH).expect("the clock is after 1970").as_millis() as u64
+    }
+
+    fn bits(&self) -> u64 {
+        let mut b = [0u8; 8];
+        use std::io::Read as _;
+        File::open("/dev/urandom").and_then(|mut f| f.read_exact(&mut b)).expect("the kernel's random bytes");
+        u64::from_le_bytes(b)
     }
 }
