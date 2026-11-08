@@ -1,9 +1,9 @@
 {
   "from": "/Users/adrian/Developer/cells",
-  "copied": "2026-11-06T12:50:51.447Z",
+  "copied": "2026-11-08T14:50:54.668Z",
   "files": {
-    "lib/engine/cells.ts": "rust/cells-wasm/js/cells.ts sha256:b0285cd9b2cb1bf4",
-    "public/cells.wasm": "rust/cells-wasm/js/cells.wasm sha256:97eb66691f6a9c9c",
+    "lib/engine/cells.ts": "rust/cells-wasm/js/cells.ts sha256:a5dfcd24bfe71a3a",
+    "public/cells.wasm": "rust/cells-wasm/js/cells.wasm sha256:742998249c1bfb6b",
     "lib/engine/cells.tmLanguage.json": "syntaxes/cells.tmLanguage.json sha256:ebf069a55b4053e8"
   }
 }

@@ -45,6 +45,9 @@ interface Exports {
   cells_naming_why(h: number, i: number): number
   cells_spans(h: number): number
   cells_read_with(ptr: number, len: number, cap: number, files: number, filesLen: number, filesCap: number): number
+  cells_offers(h: number, column: number): number
+  cells_complete(h: number, ptr: number, len: number, cap: number, at: number): number
+  cells_hover(h: number, ptr: number, len: number, cap: number, at: number): number
 }
 
 
@@ -210,6 +213,14 @@ export class Column {
   get choices(): string[] | undefined {
     return this.m.choices
   }
+  /** What a cell of the column may hold, for a host offering it as the cell is typed
+   *  (`Doc::offers`): a choice's words, a boolean's two, a reference's keys (every row of
+   *  the column it names, in the table's order, each once; none for a table not read,
+   *  so a file read alone offers no keys); empty for any other type. */
+  offers(): string[] {
+    const all = returned(x.cells_offers(this.doc.handle, this.index))
+    return all === "" ? [] : all.slice(0, -1).split("\u001f")
+  }
   get length(): number {
     return this.doc.rowCount
   }
@@ -344,6 +355,11 @@ export interface Problem {
    *  two do; `stale`: a computed cell storing another value than its formula gives (its
    *  value the formula's; `fixStale` or `keepStale` resolve it). */
   kind: "type" | "missing" | "key" | "ragged" | "formula" | "reference" | "stale"
+  /** How much it weighs, the same in every reader (`Kind::severity`): `error`, a value
+   *  that is wrong (its type broken, a key repeated, a reference to no row, a formula
+   *  that does not compute); `warning`, something absent or behind (a value not written,
+   *  a stale value, a ragged row). */
+  severity: Severity
   /** The cell's text as written. */
   readonly text: string
   /** The problem in words: `row 3, cost: "8x.50" is not a number`. */
@@ -356,6 +372,10 @@ export interface Problem {
    *  empty span where a missing cell stands. */
   readonly span: Span
 }
+
+/** What a problem weighs: what is wrong, or what is not there yet. A break of the grammar
+ *  is always an error. */
+export type Severity = "error" | "warning"
 
 /** Where a file's grammar breaks, the rest read. */
 export interface Broken {
@@ -505,17 +525,18 @@ export class Doc {
 
   problems(): Problem[] {
     const n = this.meta.problemCount
-    const p = new Uint32Array(x.memory.buffer, this.meta.problems, 3 * n).slice()
+    const p = new Uint32Array(x.memory.buffer, this.meta.problems, 4 * n).slice()
     const out: Problem[] = []
     for (let k = 0; k < n; k++) {
-      const row = p[3 * k] as number
-      const at = p[3 * k + 1] as number
+      const row = p[4 * k] as number
+      const at = p[4 * k + 1] as number
       const doc = this
       out.push({
         row,
         at,
         column: (this.columns[at] as Column).name,
-        kind: KINDS[p[3 * k + 2] as number] as Problem["kind"],
+        kind: KINDS[p[4 * k + 2] as number] as Problem["kind"],
+        severity: p[4 * k + 3] === 1 ? "warning" : "error",
         get text() {
           return (doc.columns[at] as Column).text(row)
         },
@@ -683,6 +704,71 @@ export function layout(text: string, fold?: number): Layout {
   const cuts: Layout["cuts"] = []
   for (let i = 1 + 2 * count; i < raw.length; i += 2) cuts.push({ from: raw[i] as number, to: raw[i + 1] as number })
   return { pads, cuts }
+}
+
+/** What a completion is: a row's key or a yes or a no (`value`), a choice's word, a named
+ *  type, a table's key column (`reference`, `accounts.account`), the language's or the
+ *  prelude's word or a base type (`keyword`), a column, a table, a function. */
+export type CompletionKind = "value" | "choice" | "type" | "reference" | "keyword" | "column" | "table" | "function"
+
+/** What may be written at a place: `insert` in place of `from` to `to` of the text (the
+ *  word being typed, a string's indices), shown as `label` with its `detail`. */
+export interface Completion {
+  label: string
+  kind: CompletionKind
+  detail: string
+  insert: string
+  from: number
+  to: number
+  /** What it is matched by, where that is not its label (`#3 card`). */
+  filter?: string
+  /** Where it sorts, where that is not by its label. */
+  sort?: string
+}
+
+/** What may be written at `at` (a string's index) of `text`, the text `doc` was read from
+ *  or one like it, a draft spliced in where it is typed (the core's `cells::complete`,
+ *  what `cells lsp` completes): a cell's values (a reference's keys, a choice's words, a
+ *  boolean's), a type's names and bases, a formula's columns, tables, rows, functions and
+ *  words, the prelude's statements. The tables it names are those `doc` was read with. */
+export function complete(doc: Doc, text: string, at: number): Completion[] {
+  if (!(Number.isInteger(at) && at >= 0 && at <= text.length)) throw new CellsError(`at ${at}`, `is no place in a text of ${text.length}`)
+  const [p, len, cap] = put(text)
+  return JSON.parse(returned(x.cells_complete(doc.handle, p, len, cap, at))) as Completion[]
+}
+
+/** A part of what is said: plain words, words written as code (a header cell, a formula,
+ *  a name), what matters most (a cell's value), or a paragraph's end. */
+export type HoverPiece = { kind: "plain" | "code" | "strong"; text: string } | { kind: "break" }
+
+/** What is said of a place: its pieces, and `from` to `to` of the text it is about. */
+export interface Hover {
+  pieces: HoverPiece[]
+  from: number
+  to: number
+  /** In plain lines, a paragraph a line: what an app shows. */
+  readonly text: string
+}
+
+/** What is said of `at` (a string's index) of `text`, as for `complete` (the core's
+ *  `cells::hover`, what `cells lsp` says on hover): a header cell's column, a cell's
+ *  value (its problem, the row its reference names), a formula's name or function, a
+ *  named type or a table in the prelude; null where nothing is. */
+export function hover(doc: Doc, text: string, at: number): Hover | null {
+  if (!(Number.isInteger(at) && at >= 0 && at <= text.length)) throw new CellsError(`at ${at}`, `is no place in a text of ${text.length}`)
+  const [p, len, cap] = put(text)
+  const said = returned(x.cells_hover(doc.handle, p, len, cap, at))
+  if (said === "") return null
+  const raw = JSON.parse(said) as { pieces: [string, string?][]; from: number; to: number }
+  const pieces = raw.pieces.map(([kind, text]): HoverPiece => (kind === "break" ? { kind } : { kind: kind as "plain", text: text as string }))
+  return {
+    pieces,
+    from: raw.from,
+    to: raw.to,
+    get text() {
+      return pieces.map((q) => (q.kind === "break" ? "\n" : q.text)).join("")
+    },
+  }
 }
 
 /** A file read in a dialect: `cells`, or a plain file (a `.csv`, a `.tsv`, plain text) by
