@@ -73,7 +73,25 @@ fn imports_formulas_and_a_script() {
     let check = Command::new(cells).arg("check").arg(&money).output().unwrap();
     assert_eq!(String::from_utf8(check.stdout).unwrap(), format!("{shown} row 2, to: \"bar\" is no key of accounts\n"));
 
-    let run = Command::new(cells).arg("run").arg(&money).output().unwrap();
+    // A script runs only at a version its person allowed: not yet, so it is not run. The
+    // approvals are this test's own (`HOME` its folder), never the person's.
+    let home = dir.join("home");
+    let run = Command::new(cells).env("HOME", &home).arg("run").arg(&money).output().unwrap();
+    assert_eq!(run.status.code(), Some(1));
+    assert!(String::from_utf8(run.stdout).unwrap().starts_with("rates: not run, not allowed on this Mac as it is written"));
+    // allowed at this version, as the engine keeps an approval
+    let doc = cells::read(fs::read(&money).unwrap()).unwrap();
+    let approval = cells_daemon::allowed::Approval {
+        file: fs::canonicalize(&money).unwrap(),
+        script: "rates".into(),
+        version: cells_daemon::allowed::version(&doc.scripts()[0]),
+        by: "cli".into(),
+        at: 1,
+    };
+    let kept = home.join("Library/Application Support/Cells/allowed.jsonl");
+    fs::create_dir_all(kept.parent().unwrap()).unwrap();
+    fs::write(&kept, format!("{}\n", cells_daemon::allowed::line(&approval))).unwrap();
+    let run = Command::new(cells).env("HOME", &home).arg("run").arg(&money).output().unwrap();
     assert_eq!(String::from_utf8(run.stdout).unwrap(), "rates: run 1 ok, 1 added, 0 changed\n");
     let text = fs::read_to_string(&money).unwrap();
     assert!(text.contains("day:date!,rate:num>0,run:int?\n2026-11-03,0.25,\n2026-11-04,0.5,1\n```\n```cells runs\n"), "{text}");

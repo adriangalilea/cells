@@ -221,3 +221,16 @@ fn a_client_listening_is_told_every_file_whose_version_changed() {
     d.tell();
     assert!(d.trace().lines().iter().any(|l| l.contains("joined   lsp (#1)")));
 }
+
+#[test]
+fn an_approval_is_kept_by_the_engine_alone_and_said() {
+    let mut d = daemon();
+    let approval =
+        crate::allowed::Approval { file: PathBuf::from(Q4), script: "rates".into(), version: "ab12".into(), by: "lsp".into(), at: 1 };
+    let (answer, answered) = channel();
+    d.answer(Event::Allow { approval: approval.clone(), answer });
+    answered.try_recv().unwrap().unwrap();
+    let kept = d.world().files.borrow()[&crate::allowed::path()].clone();
+    assert_eq!(kept, format!("{}\n", crate::allowed::line(&approval)));
+    assert!(d.trace().lines().iter().any(|l| l.contains("allowed  rates in q4/money.cells, as shown to its person (by lsp)")));
+}

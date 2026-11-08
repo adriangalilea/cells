@@ -13,6 +13,9 @@ use cells::complete::{CompletionKind as Kind, HeaderCell, Spot, opened, written,
 use cells::expr::{self, Named};
 use cells::{Base, Doc, Origin, Span, Statement};
 
+use cells_daemon::allowed::Allowed;
+use tower_lsp::lsp_types::LSPAny;
+
 use super::folder::{File, Folder, Held, inline, names_main};
 use super::text::Lines;
 
@@ -61,7 +64,7 @@ fn error(range: Range, message: String) -> Diagnostic {
 }
 
 /// Every break and problem of a file, its own tables' included, where it is.
-pub fn diagnostics(file: &File) -> Vec<Diagnostic> {
+pub fn diagnostics(file: &File, allowed: &Allowed) -> Vec<Diagnostic> {
     let lines = Lines::new(&file.text);
     let doc = &file.doc;
     let mut out: Vec<Diagnostic> = doc
@@ -91,8 +94,30 @@ pub fn diagnostics(file: &File) -> Vec<Diagnostic> {
             problems(&d, base, Some(&t.name), &mut out);
         }
     }
+    for s in doc.scripts().iter().filter(|s| !allowed.allows(&file.path, s)) {
+        let mut d = error(
+            script_line(file, s),
+            format!("{} does not run: not allowed on this Mac as it is written. Read its code, then allow it from its fix.", s.name),
+        );
+        d.severity = Some(DiagnosticSeverity::WARNING);
+        out.push(d);
+    }
     out
 }
+
+/// A script's statement line, whole: where its warning and its fix stand.
+fn script_line(file: &File, script: &cells::Script) -> Range {
+    let n = script.line;
+    let len = file.text.lines().nth(n as usize).map_or(0, |l| l.encode_utf16().count() as u32);
+    Range {
+        start: tower_lsp::lsp_types::Position { line: n, character: 0 },
+        end: tower_lsp::lsp_types::Position { line: n, character: len },
+    }
+}
+
+/// The command the fix of a script not allowed runs: the engine keeps the approval of the
+/// version the editor shows (`cells_daemon::allowed`).
+pub const ALLOW: &str = "cells.allow";
 
 // ---- hover ----
 
@@ -261,7 +286,7 @@ fn whole(file: &File, lines: &Lines, text: String) -> TextEdit {
 ///   override (SPEC.md, Writing);
 /// - a word of the language written in lower case written in capitals;
 /// - a spreadsheet's formula (`=C2*D2`, `=SUM($E$2:E2)`) written in names.
-pub fn actions(folder: &Folder, file: &File, range: Range) -> Vec<CodeAction> {
+pub fn actions(folder: &Folder, file: &File, range: Range, allowed: &Allowed) -> Vec<CodeAction> {
     let lines = Lines::new(&file.text);
     let on = |s: Span| {
         let r = lines.range(s);
@@ -275,6 +300,25 @@ pub fn actions(folder: &Folder, file: &File, range: Range) -> Vec<CodeAction> {
             quickfix(folder, file, format!("#{} is the row {}: write its key", n.row, written_key(&n.key)), Vec::from([edit]))
         })
         .collect();
+    // a script not allowed, allowed at the version shown: no edit, the engine keeps it
+    for s in file.doc.scripts().iter().filter(|s| !allowed.allows(&file.path, s)) {
+        let at = script_line(file, s);
+        if at.start.line < range.start.line || at.start.line > range.end.line {
+            continue;
+        }
+        let title = format!("Allow {} to run, as written", s.name);
+        let arguments = Some(Vec::from([
+            LSPAny::String(file.path.display().to_string()),
+            LSPAny::String(s.name.clone()),
+            LSPAny::String(cells_daemon::allowed::version(s)),
+        ]));
+        out.push(CodeAction {
+            title: title.clone(),
+            kind: Some(CodeActionKind::QUICKFIX),
+            command: Some(tower_lsp::lsp_types::Command { title, command: ALLOW.to_owned(), arguments }),
+            ..CodeAction::default()
+        });
+    }
     let doc = &file.doc;
     for (p, s) in doc.problems().iter().zip(doc.spans()) {
         if p.kind() != cells::Kind::Stale || !on(s) {
@@ -609,7 +653,7 @@ mod tests {
     fn diagnostics_and_hover() {
         let (folder, _, money) = books("diagnose");
         let file = folder.read(&money).unwrap();
-        let d = diagnostics(&file);
+        let d = diagnostics(&file, &Allowed::default());
         let messages: Vec<&str> = d.iter().map(|d| d.message.as_str()).collect();
         assert_eq!(messages, ["to: \"pwer\" is no key of accounts", "amount: \"8x\" is not a number"]);
         let lines = Lines::new(MONEY);
@@ -628,7 +672,7 @@ mod tests {
         let text = "---\nqty: int>=1\ntotal: EUR = cost * qty\n---\nitem:text!,cost:EUR,qty,total\nfuel,2.00,3,6.00=\n";
         let folder = Folder { open: Arc::new(BTreeMap::from([(money.clone(), text.to_owned())])), ..folder };
         let file = folder.read(&money).unwrap();
-        assert!(diagnostics(&file).is_empty(), "{:?}", diagnostics(&file));
+        assert!(diagnostics(&file, &Allowed::default()).is_empty(), "{:?}", diagnostics(&file, &Allowed::default()));
         let lines = Lines::new(text);
         // Hover on the declaration and on the header's bare name says the column.
         let declared = said(hover(&folder, &file, at(text, "total:", 0)).unwrap());
@@ -660,7 +704,7 @@ mod tests {
         let text = MONEY.replace("to:accounts.account", "to:accounts.a");
         let folder = Folder { open: Arc::new(BTreeMap::from([(money.clone(), text.clone())])), ..folder };
         let file = folder.read(&money).unwrap();
-        let d = diagnostics(&file);
+        let d = diagnostics(&file, &Allowed::default());
         assert_eq!(d[0].message, "to: accounts has no column \"a\" (its key is account)");
         assert_eq!(d[0].range, Lines::new(&text).range(span(at(&text, "accounts.a,", 0) as u32, 10)));
         assert!(hover(&folder, &file, at(&text, "950", 0)).is_some());
@@ -732,13 +776,13 @@ mod tests {
         let folder = Folder { open: Arc::new(BTreeMap::from([(money.clone(), text.clone())])), ..folder };
         let file = folder.read(&money).unwrap();
         // The file holds it, so the formula breaks, and the action writes the key.
-        assert!(diagnostics(&file).iter().any(|d| d.message.starts_with("double: #2 is a row by where it shows")));
+        assert!(diagnostics(&file, &Allowed::default()).iter().any(|d| d.message.starts_with("double: #2 is a row by where it shows")));
         let header = Lines::new(&text).position(at(&text, "#2", 0)).line;
         let line = Range {
             start: tower_lsp::lsp_types::Position { line: header, character: 0 },
             end: tower_lsp::lsp_types::Position { line: header, character: 0 },
         };
-        let a = actions(&folder, &file, line);
+        let a = actions(&folder, &file, line, &Allowed::default());
         assert_eq!(a.len(), 1);
         assert_eq!(a[0].title, "#2 is the row 'a2': write its key");
         let edit = &a[0].edit.as_ref().unwrap().changes.as_ref().unwrap()[&folder.uri(&money)][0];
@@ -780,7 +824,7 @@ mod tests {
             start: tower_lsp::lsp_types::Position { line: row, character: 0 },
             end: tower_lsp::lsp_types::Position { line: row, character: 0 },
         };
-        let a = actions(&folder, &now, on);
+        let a = actions(&folder, &now, on, &Allowed::default());
         let titles: Vec<&str> = a.iter().map(|a| a.title.as_str()).collect();
         assert!(titles.contains(&"Use the formula's value, 1900.00"), "{titles:?}");
         assert!(titles.contains(&"Keep 1999.00 as this row's override"), "{titles:?}");
@@ -800,7 +844,7 @@ mod tests {
             start: tower_lsp::lsp_types::Position { line: header, character: 0 },
             end: tower_lsp::lsp_types::Position { line: header, character: 0 },
         };
-        let a = actions(&folder, &file, on);
+        let a = actions(&folder, &file, on, &Allowed::default());
         let titles: Vec<&str> = a.iter().map(|a| a.title.as_str()).collect();
         assert!(titles.contains(&"Write in capitals: SUM"), "{titles:?}");
         assert!(titles.iter().any(|t| t.contains("in names: sum(amount) + amount")), "{titles:?}");
@@ -830,5 +874,28 @@ mod tests {
         let edits = &e.changes.unwrap()[&folder.uri(&money)];
         assert_eq!(edits.len(), 2, "the header cell and the formula reading it");
         assert!(rename(&folder, &file, at(MONEY, "amount", 0), "two words").is_err());
+    }
+
+    #[test]
+    fn a_script_not_allowed_warns_and_its_fix_allows_the_version_shown() {
+        let (folder, _, money) = books("allow");
+        let rates = money.with_file_name("rates.cells");
+        fs::write(
+            &rates,
+            "---\nrates = run every hour\n```ts\nexport default async () => []\n```\n```cells\nday:date!,rate:num\n```\n---\na\n1\n",
+        )
+        .unwrap();
+        let file = folder.read(&rates).unwrap();
+        let warned: Vec<_> =
+            diagnostics(&file, &Allowed::default()).into_iter().filter(|d| d.message.starts_with("rates does not run")).collect();
+        assert_eq!(warned.len(), 1);
+        assert_eq!((warned[0].range.start.line, warned[0].severity), (1, Some(DiagnosticSeverity::WARNING)));
+        let fixes = actions(&folder, &file, warned[0].range, &Allowed::default());
+        let fix = fixes.iter().find(|a| a.title == "Allow rates to run, as written").expect("its fix");
+        let command = fix.command.as_ref().unwrap();
+        assert_eq!(command.command, ALLOW);
+        let version = cells_daemon::allowed::version(&file.doc.scripts()[0]);
+        assert_eq!(command.arguments.as_ref().unwrap()[2], LSPAny::String(version));
+        assert!(fix.edit.is_none(), "allowing edits no file");
     }
 }

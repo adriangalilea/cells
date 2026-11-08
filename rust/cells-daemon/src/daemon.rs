@@ -27,6 +27,11 @@ pub enum Event {
         folder: PathBuf,
         answer: Sender<Result<PathBuf, String>>,
     },
+    /// A script's approval to keep (`allowed`), answered once it is kept or why not.
+    Allow {
+        approval: crate::allowed::Approval,
+        answer: Sender<Result<(), String>>,
+    },
     /// A client told, from now on, every file whose version changed.
     Listen {
         id: u64,
@@ -155,6 +160,18 @@ impl<W: World> Daemon<W> {
                 }
                 // the client may be gone already
                 let _ = answer.send(served);
+            }
+            Event::Allow { approval, answer } => {
+                let kept = self.world.append(&crate::allowed::path(), &crate::allowed::line(&approval));
+                match &kept {
+                    Ok(()) => {
+                        let file = self.shown(&approval.file);
+                        self.say("allowed", &format!("{} in {file}, as shown to its person (by {})", approval.script, approval.by));
+                    }
+                    Err(why) => self.say("unkept", why),
+                }
+                // the client may be gone already
+                let _ = answer.send(kept);
             }
             Event::Listen { id, client, tell } => {
                 self.say("joined", &format!("{client} (#{id})"));

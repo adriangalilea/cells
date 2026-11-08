@@ -19,6 +19,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 
 use cells_daemon::Engine;
+use cells_daemon::allowed::Allowed;
 use tower_lsp::jsonrpc::{Error, Result};
 use tower_lsp::lsp_types::*;
 use tower_lsp::{Client, LanguageServer, LspService, Server};
@@ -40,11 +41,13 @@ struct Backend {
     align: AtomicBool,
 }
 
-/// Every open file's diagnostics, sent again.
+/// Every open file's diagnostics, sent again, its scripts held to the approvals as they
+/// are now.
 async fn diagnose(client: &Client, folder: Folder) {
+    let allowed = Allowed::read();
     for path in folder.open.keys() {
         let Some(file) = folder.read(path) else { continue };
-        client.publish_diagnostics(folder.uri(path), features::diagnostics(&file), None).await;
+        client.publish_diagnostics(folder.uri(path), features::diagnostics(&file, &allowed), None).await;
     }
 }
 
@@ -132,6 +135,10 @@ impl LanguageServer for Backend {
                 }),
                 definition_provider: Some(OneOf::Left(true)),
                 code_action_provider: Some(CodeActionProviderCapability::Simple(true)),
+                execute_command_provider: Some(ExecuteCommandOptions {
+                    commands: Vec::from([features::ALLOW.to_owned()]),
+                    ..ExecuteCommandOptions::default()
+                }),
                 rename_provider: Some(OneOf::Right(RenameOptions {
                     prepare_provider: Some(true),
                     work_done_progress_options: Default::default(),
@@ -206,10 +213,54 @@ impl LanguageServer for Backend {
         }
     }
 
+    /// A save: the text it wrote kept, and each script whose code the person changed in this
+    /// editor since the last save allowed at the version they saved, since they wrote it. A
+    /// script that arrives any other way (a file sent, cloned, copied in) never passes here,
+    /// and waits for its person's yes.
     async fn did_save(&self, p: DidSaveTextDocumentParams) {
-        if let (Some(path), Some(text)) = (path(&p.text_document.uri), p.text) {
-            self.saved.lock().unwrap().insert(path, text);
+        let (Some(path), Some(text)) = (path(&p.text_document.uri), p.text) else { return };
+        let before = self.saved.lock().unwrap().insert(path.clone(), text.clone());
+        let Some(engine) = self.engine.lock().unwrap().clone() else { return };
+        let folder = self.folder();
+        let (Some(now), Some(then)) = (folder.read_as(&path, text), before.and_then(|t| folder.read_as(&path, t))) else { return };
+        let written: Vec<(String, String)> = now
+            .doc
+            .scripts()
+            .iter()
+            .filter(|s| then.doc.scripts().iter().find(|t| t.name == s.name).is_none_or(|t| t.code != s.code || t.language != s.language))
+            .map(|s| (s.name.clone(), cells_daemon::allowed::version(s)))
+            .collect();
+        if written.is_empty() {
+            return;
         }
+        let file = path.clone();
+        let kept = tokio::task::spawn_blocking(move || {
+            written.iter().map(|(name, v)| engine.allow(&file, name, v)).collect::<std::result::Result<Vec<()>, String>>()
+        })
+        .await
+        .expect("allowing never panics");
+        if let Err(why) = kept {
+            self.client.log_message(MessageType::WARNING, format!("cells: {why}")).await;
+        }
+        self.diagnose().await;
+    }
+
+    /// The one command a fix runs: a script allowed at the version the editor showed.
+    async fn execute_command(&self, p: ExecuteCommandParams) -> Result<Option<LSPAny>> {
+        assert_eq!(p.command, features::ALLOW, "the server offers no other command");
+        let text = |i: usize| p.arguments.get(i).and_then(|a| a.as_str()).map(str::to_owned);
+        let (Some(file), Some(script), Some(version)) = (text(0), text(1), text(2)) else {
+            return Err(Error::invalid_params("cells.allow takes a file, a script and its version"));
+        };
+        let Some(engine) = self.engine.lock().unwrap().clone() else {
+            return Err(Error::invalid_params("no engine to keep the approval: `cells allow` in a terminal"));
+        };
+        tokio::task::spawn_blocking(move || engine.allow(Path::new(&file), &script, &version))
+            .await
+            .expect("allowing never panics")
+            .map_err(Error::invalid_params)?;
+        self.diagnose().await;
+        Ok(None)
     }
 
     async fn formatting(&self, p: DocumentFormattingParams) -> Result<Option<Vec<TextEdit>>> {
@@ -256,7 +307,7 @@ impl LanguageServer for Backend {
     async fn code_action(&self, p: CodeActionParams) -> Result<Option<CodeActionResponse>> {
         let folder = self.folder();
         let Some(file) = path(&p.text_document.uri).and_then(|path| folder.read(&path)) else { return Ok(None) };
-        let actions = features::actions(&folder, &file, p.range);
+        let actions = features::actions(&folder, &file, p.range, &Allowed::read());
         Ok((!actions.is_empty()).then(|| actions.into_iter().map(CodeActionOrCommand::CodeAction).collect()))
     }
 

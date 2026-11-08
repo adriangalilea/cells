@@ -20,6 +20,9 @@ pub enum ToEngine {
     Hello { version: u32, client: String },
     /// A folder served from now on, everything under it, as long as the engine runs.
     Serve { folder: PathBuf },
+    /// A script allowed to run, as its person saw it (`allowed`): the file, its name and
+    /// the version shown. Sent only after the person said yes, where they saw the code.
+    Allow { file: PathBuf, script: String, version: String },
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -32,6 +35,11 @@ pub enum FromEngine {
     /// A folder served, or one it was already serving.
     Served {
         folder: PathBuf,
+    },
+    /// A script's approval kept.
+    Allowed {
+        file: PathBuf,
+        script: String,
     },
     /// A request refused, and why.
     Refused {

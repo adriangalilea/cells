@@ -15,7 +15,10 @@
 //!   cells merge <base> <ours> <theirs> git's merge driver: what was written merged, what is
 //!                                     computed computed again (SPEC.md, Merging)
 //!   cells pin <file>...                every import from a URL pinned by its hash now
-//!   cells run <file> [script]          its scripts run once, their rows written under them
+//!   cells run <file> [script]          its scripts run once, their rows written under them;
+//!                                     a script runs only as its person allowed it
+//!   cells allow <file> [script]        each script not allowed as written shown whole and
+//!                                     allowed once its person says yes, in a terminal
 //!   cells show <file>                  its table as tab-separated text, computed cells
 //!                                     their values as the file stores them (`0.00`)
 //!   cells sql <file|folder>... <query> the query, DuckDB's SQL, over every file and the
@@ -35,6 +38,7 @@
 //! that cannot be read, a wrong argument, tables whose columns clash, a query DuckDB
 //! refuses).
 
+mod allow;
 mod disk;
 mod json;
 mod lsp;
@@ -50,7 +54,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 
 use disk::Disk;
 
-const USAGE: &str = "cells check <file|folder>...\ncells fmt [--check] [--align on|off] <file|folder>...\ncells diff <file>\ncells fix <file|folder>...\ncells merge <base> <ours> <theirs>\ncells pin <file>...\ncells run <file> [script]\ncells show <file>\ncells sql <file|folder>... <query>\ncells lsp\ncells serve [--verbose] <folder>...";
+const USAGE: &str = "cells check <file|folder>...\ncells fmt [--check] [--align on|off] <file|folder>...\ncells diff <file>\ncells fix <file|folder>...\ncells merge <base> <ours> <theirs>\ncells pin <file>...\ncells run <file> [script]\ncells allow <file> [script]\ncells show <file>\ncells sql <file|folder>... <query>\ncells lsp\ncells serve [--verbose] <folder>...";
 
 /// Every `.cells` file a path names, sorted.
 fn files(path: &Path, out: &mut Vec<PathBuf>) -> Result<(), String> {
@@ -322,6 +326,16 @@ fn main() -> ExitCode {
                 }
             }
         }
+        Some("allow") if (2..=3).contains(&args.len()) => match allow::allow(Path::new(&args[1]), args.get(2).map(String::as_str)) {
+            Ok(said) => {
+                said.iter().for_each(|l| println!("{l}"));
+                ExitCode::SUCCESS
+            }
+            Err(e) => {
+                eprintln!("cells: {e}");
+                ExitCode::from(2)
+            }
+        },
         Some("run") if (2..=3).contains(&args.len()) => match run::run(Path::new(&args[1]), args.get(2).map(String::as_str)) {
             Ok((said, ok)) => {
                 said.iter().for_each(|l| println!("{l}"));

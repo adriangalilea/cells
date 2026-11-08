@@ -16,6 +16,9 @@ use std::sync::mpsc::{Sender, channel};
 use std::sync::{Arc, Mutex};
 use std::thread;
 
+use std::time::{SystemTime, UNIX_EPOCH};
+
+use crate::allowed::Approval;
 use crate::daemon::Event;
 use crate::trust::Trust;
 use crate::wire::{self, FromEngine, ToEngine, VERSION};
@@ -130,7 +133,7 @@ fn converse(id: u64, stream: UnixStream, events: &Sender<Event>) -> Result<(), S
     };
     say(&FromEngine::Hello { version: VERSION, pid: std::process::id() })?;
     let (tell, told) = channel::<Vec<PathBuf>>();
-    events.send(Event::Listen { id, client, tell }).map_err(|_| "the daemon is gone")?;
+    events.send(Event::Listen { id, client: client.clone(), tell }).map_err(|_| "the daemon is gone")?;
     let teller = Arc::clone(&writer);
     thread::Builder::new()
         .name(format!("cells-tell-{id}"))
@@ -161,6 +164,23 @@ fn converse(id: u64, stream: UnixStream, events: &Sender<Event>) -> Result<(), S
                 events.send(Event::Serve { folder, answer }).map_err(|_| "the daemon is gone")?;
                 match answered.recv().map_err(|_| "the daemon is gone")? {
                     Ok(folder) => say(&FromEngine::Served { folder })?,
+                    Err(why) => say(&FromEngine::Refused { why })?,
+                }
+            }
+            ToEngine::Allow { file, script, version } => {
+                let file = match fs::canonicalize(&file) {
+                    Ok(f) => f,
+                    Err(e) => {
+                        say(&FromEngine::Refused { why: format!("{}: {e}", file.display()) })?;
+                        continue;
+                    }
+                };
+                let at = SystemTime::now().duration_since(UNIX_EPOCH).expect("the clock is after 1970").as_millis() as u64;
+                let approval = Approval { file: file.clone(), script: script.clone(), version, by: client.clone(), at };
+                let (answer, answered) = channel();
+                events.send(Event::Allow { approval, answer }).map_err(|_| "the daemon is gone")?;
+                match answered.recv().map_err(|_| "the daemon is gone")? {
+                    Ok(()) => say(&FromEngine::Allowed { file, script })?,
                     Err(why) => say(&FromEngine::Refused { why })?,
                 }
             }

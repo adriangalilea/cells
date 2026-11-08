@@ -18,8 +18,9 @@ use crate::wire::{self, FromEngine, ToEngine, VERSION};
 
 pub struct Engine {
     writer: Mutex<UnixStream>,
-    /// The engine's answers to requests, in the order they were asked.
-    answers: Mutex<Receiver<Result<PathBuf, String>>>,
+    /// The engine's answers to requests (`served`, `allowed`, `refused`), in the order they
+    /// were asked.
+    answers: Mutex<Receiver<FromEngine>>,
     /// The engine's process.
     pub pid: u32,
 }
@@ -89,16 +90,37 @@ impl Engine {
     /// `folder` served by the engine from now on: the folder served (it, or the folder
     /// served already holding it), or why the engine refused.
     pub fn serve(&self, folder: &Path) -> Result<PathBuf, String> {
+        match self.ask(&ToEngine::Serve { folder: folder.to_path_buf() })? {
+            FromEngine::Served { folder } => Ok(folder),
+            other => panic!("the engine answered a request to serve with {other:?}"),
+        }
+    }
+
+    /// `script` of the file at `file` allowed to run at `version` (`allowed::version`), the
+    /// one its person was just shown: sent only after their yes.
+    pub fn allow(&self, file: &Path, script: &str, version: &str) -> Result<(), String> {
+        let asked = ToEngine::Allow { file: file.to_path_buf(), script: script.to_owned(), version: version.to_owned() };
+        match self.ask(&asked)? {
+            FromEngine::Allowed { .. } => Ok(()),
+            other => panic!("the engine answered a request to allow with {other:?}"),
+        }
+    }
+
+    /// `request` sent and its answer read; a refusal is the error.
+    fn ask(&self, request: &ToEngine) -> Result<FromEngine, String> {
         // one request answered at a time, so each answer is its request's
         let answers = self.answers.lock().unwrap();
-        wire::send(&mut *self.writer.lock().unwrap(), &ToEngine::Serve { folder: folder.to_path_buf() }).map_err(|e| e.to_string())?;
-        answers.recv().map_err(|_| "the engine closed".to_owned())?
+        wire::send(&mut *self.writer.lock().unwrap(), request).map_err(|e| e.to_string())?;
+        match answers.recv().map_err(|_| "the engine closed".to_owned())? {
+            FromEngine::Refused { why } => Err(why),
+            answer => Ok(answer),
+        }
     }
 }
 
 /// What the engine says, sorted: changes to those listening for them, answers to whoever
 /// asked. Ends when the engine closes, which ends both.
-fn hear(mut reader: BufReader<UnixStream>, changes: Sender<Vec<PathBuf>>, answer: Sender<Result<PathBuf, String>>) {
+fn hear(mut reader: BufReader<UnixStream>, changes: Sender<Vec<PathBuf>>, answer: Sender<FromEngine>) {
     loop {
         match wire::receive(&mut reader) {
             Ok(Some(FromEngine::Changed { paths })) => {
@@ -106,11 +128,8 @@ fn hear(mut reader: BufReader<UnixStream>, changes: Sender<Vec<PathBuf>>, answer
                     return;
                 }
             }
-            Ok(Some(FromEngine::Served { folder })) => {
-                let _ = answer.send(Ok(folder));
-            }
-            Ok(Some(FromEngine::Refused { why })) => {
-                let _ = answer.send(Err(why));
+            Ok(Some(said @ (FromEngine::Served { .. } | FromEngine::Allowed { .. } | FromEngine::Refused { .. }))) => {
+                let _ = answer.send(said);
             }
             Ok(Some(FromEngine::Hello { .. })) => {
                 eprintln!("cells: the engine greeted twice");

@@ -18,6 +18,7 @@
 //!   what happened and why;
 //! - `wire`, `server` and `client`: the socket, the conversation over it, and its two ends.
 
+pub mod allowed;
 pub mod client;
 pub mod daemon;
 pub mod hosted;

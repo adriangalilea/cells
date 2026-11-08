@@ -205,9 +205,20 @@ pub fn run(path: &Path, only: Option<&str>) -> Result<(Vec<String>, bool), Strin
     }
     let mut said = Vec::new();
     let mut all_ok = true;
+    let file = fs::canonicalize(path).map_err(|e| format!("{}: {e}", path.display()))?;
+    let allowed = cells_daemon::allowed::Allowed::read();
     for name in names {
         let doc = read(&text)?;
         let script = doc.scripts().iter().find(|s| s.name == name).unwrap().clone();
+        // a script runs only at a version its person allowed (`cells allow`)
+        if !allowed.allows(&file, &script) {
+            all_ok = false;
+            said.push(format!(
+                "{name}: not run, not allowed on this Mac as it is written: `cells allow {} {name}` shows its code and asks",
+                path.display()
+            ));
+            continue;
+        }
         let nl = doc.newline().to_owned();
         let table = doc.tables().iter().find(|t| t.name == name).and_then(|t| t.doc.clone()).expect("a script's table, declared");
         let runs = script
