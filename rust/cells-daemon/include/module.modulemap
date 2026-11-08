@@ -1,0 +1,5 @@
+module CellsEngineCore {
+    header "cells_engine.h"
+    link "cells_daemon"
+    export *
+}

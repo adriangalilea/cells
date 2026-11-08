@@ -36,18 +36,30 @@ pub enum Unbound {
     Failed(String),
 }
 
+/// What a process does when another holds the engine's lock.
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub enum Held {
+    /// Returns `Unbound::Running`: `cells serve` typed by a person, or started by a client,
+    /// hands its folders to the engine running.
+    Leave,
+    /// Waits until it is free, then is the engine: Cells.app's own engine, kept by
+    /// launchd, outwaiting one a client started before it, never restarting against it.
+    Wait,
+}
+
 /// The socket made and listening, each client's requests handed to the daemon as events.
-pub fn listen(events: Sender<Event>) -> Result<Listening, Unbound> {
+pub fn listen(events: Sender<Event>, held: Held) -> Result<Listening, Unbound> {
     let folder = wire::folder();
     let failed = |what: &str, e: std::io::Error| Unbound::Failed(format!("{what}: {e}"));
     fs::create_dir_all(&folder).map_err(|e| failed(&folder.display().to_string(), e))?;
     fs::set_permissions(&folder, Permissions::from_mode(0o700)).map_err(|e| failed(&folder.display().to_string(), e))?;
     let lock_path = folder.join("engine.lock");
     let lock = File::create(&lock_path).map_err(|e| failed(&lock_path.display().to_string(), e))?;
-    match lock.try_lock() {
-        Ok(()) => {}
-        Err(TryLockError::WouldBlock) => return Err(Unbound::Running),
-        Err(TryLockError::Error(e)) => return Err(failed(&lock_path.display().to_string(), e)),
+    match (lock.try_lock(), held) {
+        (Ok(()), _) => {}
+        (Err(TryLockError::WouldBlock), Held::Leave) => return Err(Unbound::Running),
+        (Err(TryLockError::WouldBlock), Held::Wait) => lock.lock().map_err(|e| failed(&lock_path.display().to_string(), e))?,
+        (Err(TryLockError::Error(e)), _) => return Err(failed(&lock_path.display().to_string(), e)),
     }
     let socket = wire::socket();
     let staged = folder.join(format!("engine.sock.{}", std::process::id()));

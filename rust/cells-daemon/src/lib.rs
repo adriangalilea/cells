@@ -20,6 +20,7 @@
 
 pub mod client;
 pub mod daemon;
+pub mod hosted;
 pub mod log;
 pub mod server;
 pub mod trace;
@@ -28,14 +29,56 @@ pub mod world;
 
 use std::convert::Infallible;
 use std::path::PathBuf;
-use std::sync::mpsc::channel;
+use std::sync::mpsc::{Receiver, channel};
 
 pub use client::Engine;
 pub use daemon::{Daemon, Event};
 pub use trace::Trace;
 pub use world::{Disk, World};
 
-use server::Unbound;
+use server::{Held, Listening, Unbound};
+
+/// The engine run over its socket until the process ends, serving `folders` first.
+fn run(listening: Listening, events: std::sync::mpsc::Sender<Event>, heard: Receiver<Event>, verbose: bool, folders: &[PathBuf]) -> Result<Infallible, String> {
+    let disk = events.clone();
+    let world = Disk::new(move |path| {
+        // fails only once the daemon is gone
+        let _ = disk.send(Event::Disk(path));
+    })?;
+    let mut daemon = Daemon::new(world, Trace::new(verbose));
+    daemon.trace().said(daemon.world().now(), "listening", &format!("{} (pid {})", listening.socket.display(), std::process::id()));
+    for folder in folders {
+        daemon.serve(folder)?;
+    }
+    // the socket and its lock live as long as the daemon, which never returns
+    let _listening = listening;
+    daemon.run(heard)
+}
+
+/// The engine as Cells.app keeps it (`CellsEngine.app`, a launch agent): the lock waited
+/// for when another process holds it, so launchd's keeping it alive never turns into
+/// restarting it against an engine a client started first.
+pub fn hosted() -> Result<Infallible, String> {
+    // launchd hands a job no terminal: the trace goes to `engine.log` beside the socket,
+    // where a client starting the engine sends it too
+    let folder = wire::folder();
+    std::fs::create_dir_all(&folder).map_err(|e| format!("{}: {e}", folder.display()))?;
+    let log_path = folder.join("engine.log");
+    let log = std::fs::OpenOptions::new().create(true).append(true).open(&log_path).map_err(|e| format!("{}: {e}", log_path.display()))?;
+    use std::os::fd::AsRawFd;
+    // SAFETY: dup2 points the process's stdout and stderr at the log's descriptor, which
+    // stays open as long as `log`, held below for the process's life.
+    for fd in [1, 2] {
+        assert!(unsafe { libc::dup2(log.as_raw_fd(), fd) } == fd, "stdio onto {}", log_path.display());
+    }
+    let _log = log;
+    let (events, heard) = channel();
+    match server::listen(events.clone(), Held::Wait) {
+        Ok(listening) => run(listening, events, heard, false, &[]),
+        Err(Unbound::Running) => unreachable!("a hosted engine waits for the lock"),
+        Err(Unbound::Failed(why)) => Err(why),
+    }
+}
 
 pub const USAGE: &str = "cells serve [--verbose] [<folder>...]";
 
@@ -57,20 +100,8 @@ pub fn serve(args: &[String]) -> Result<Infallible, String> {
         folders.push(folder);
     }
     let (events, heard) = channel();
-    match server::listen(events.clone()) {
-        Ok(listening) => {
-            let disk = events.clone();
-            let world = Disk::new(move |path| {
-                // fails only once the daemon is gone
-                let _ = disk.send(Event::Disk(path));
-            })?;
-            let mut daemon = Daemon::new(world, Trace::new(verbose));
-            daemon.trace().said(daemon.world().now(), "listening", &format!("{} (pid {})", listening.socket.display(), std::process::id()));
-            for folder in &folders {
-                daemon.serve(folder)?;
-            }
-            daemon.run(heard)
-        }
+    match server::listen(events.clone(), Held::Leave) {
+        Ok(listening) => run(listening, events, heard, verbose, &folders),
         Err(Unbound::Running) => {
             let (engine, _) = Engine::connect("cli")?;
             if folders.is_empty() {

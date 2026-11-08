@@ -7,6 +7,11 @@ license.workspace = true
 repository.workspace = true
 rust-version.workspace = true
 
+# A library for `cells serve` and the language server, and a static one for the app that
+# hosts the engine (`hosted.rs`, `build-apple.sh`).
+[lib]
+crate-type = ["rlib", "staticlib"]
+
 [dependencies]
 cells = { package = "cells-engine", path = "../cells" }
 # the trace's local time (localtime_r), the one call std does not make
