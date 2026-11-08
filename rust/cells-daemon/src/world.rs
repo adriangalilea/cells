@@ -71,7 +71,7 @@ impl Disk {
         let watcher = notify::recommended_watcher(move |e: notify::Result<notify::Event>| match e {
             Ok(e) if !e.kind.is_access() => e.paths.into_iter().for_each(&heard),
             Ok(_) => {}
-            Err(e) => eprintln!("cells serve: the disk's change events failed: {e}"),
+            Err(e) => tracing::error!(target: crate::trace::ENGINE, why = %e, "the disk's change events failed"),
         })
         .map_err(|e| format!("no file watcher: {e}"))?;
         Ok(Disk { watcher, locks: Vec::new() })

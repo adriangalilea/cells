@@ -83,12 +83,12 @@ fn accept(listener: UnixListener, events: Sender<Event>, trust: Trust) {
         let stream = match stream {
             Ok(s) => s,
             Err(e) => {
-                eprintln!("cells serve: a connection failed: {e}");
+                tracing::warn!(target: crate::trace::ENGINE, why = %e, "a connection failed");
                 continue;
             }
         };
         if let Err(why) = trust.admits(&stream) {
-            eprintln!("cells serve: a connection refused, closed: {why}");
+            tracing::warn!(target: crate::trace::ENGINE, why, "a connection refused, closed");
             // the refused program is told why (it is this user's: nothing the person
             // cannot read already), and its greeting is never read
             let mut told = stream;
@@ -102,13 +102,13 @@ fn accept(listener: UnixListener, events: Sender<Event>, trust: Trust) {
         let events = events.clone();
         let spawned = thread::Builder::new().name(format!("cells-client-{id}")).spawn(move || {
             if let Err(e) = converse(id, stream, &events) {
-                eprintln!("cells serve: client #{id}: {e}");
+                tracing::warn!(target: crate::trace::ENGINE, id, why = e, "a client's conversation broke");
             }
             // the daemon outlives every client
             let _ = events.send(Event::Leave { id });
         });
         if let Err(e) = spawned {
-            eprintln!("cells serve: no thread for client #{id}: {e}");
+            tracing::error!(target: crate::trace::ENGINE, id, why = %e, "no thread for a client");
         }
     }
 }

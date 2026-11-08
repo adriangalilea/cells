@@ -16,7 +16,7 @@ use cells::folder::{Change, Edited, Folder, Write, key_of};
 use crate::allowed::Approval;
 use crate::history;
 use crate::log::{Cause, Changed, Edit, Log, Logged, hash};
-use crate::trace::Trace;
+use crate::trace::ENGINE;
 use crate::wire::{FromEngine, ToEngine};
 use crate::world::{Found, Replaced, World, table_file};
 
@@ -57,7 +57,6 @@ pub struct Daemon<W: World> {
     folder: Folder,
     /// Each folder served, canonical, as its log's root.
     served: Vec<Log>,
-    trace: Trace,
     /// Each directory watched, and whether everything under it is.
     watched: Vec<(PathBuf, bool)>,
     /// Each client told what changes, and its name.
@@ -103,18 +102,29 @@ fn said(e: &Edited) -> String {
     if parts.is_empty() { "nothing a table holds".into() } else { parts.join(", ") }
 }
 
+/// What the engine says (`trace`): `said!` always, `detail!` when asked for more, `warned!`
+/// for what did not go as it should.
+macro_rules! said {
+    ($($t:tt)*) => { tracing::info!(target: ENGINE, $($t)*) };
+}
+macro_rules! detail {
+    ($($t:tt)*) => { tracing::debug!(target: ENGINE, $($t)*) };
+}
+macro_rules! warned {
+    ($($t:tt)*) => { tracing::warn!(target: ENGINE, $($t)*) };
+}
+
 /// The folder's key for a path: the path, absolute, as text.
 fn key(path: &Path) -> String {
     path.to_str().unwrap_or_else(|| panic!("{} is not UTF-8: the engine keys files by their path as text", path.display())).to_owned()
 }
 
 impl<W: World> Daemon<W> {
-    pub fn new(world: W, trace: Trace) -> Daemon<W> {
+    pub fn new(world: W) -> Daemon<W> {
         Daemon {
             world,
             folder: Folder::default(),
             served: Vec::new(),
-            trace,
             watched: Vec::new(),
             listeners: BTreeMap::new(),
             changed: BTreeSet::new(),
@@ -140,11 +150,13 @@ impl<W: World> Daemon<W> {
                 inner.root.display()
             ));
         }
+        let span = tracing::info_span!(target: ENGINE, "serve", path = %root.display());
+        let _serving = span.enter();
         self.world.lock(root)?;
         self.watch(root, true)?;
         let (log, broken) = Log::open(root, &self.world);
         if let Some(why) = broken {
-            self.say("broken", &format!("{why}: kept, and continued; what it says past there cannot be trusted"));
+            warned!(why, "log broken: kept and continued, what it says past there cannot be trusted");
         }
         self.served.push(log);
         let held = self.folder.paths().count();
@@ -156,12 +168,11 @@ impl<W: World> Daemon<W> {
                     self.hand(Change::Seen { path: key(path), text }, None);
                 }
                 Found::Missing => {}
-                Found::Unreadable(why) => self.say("unread", &format!("{}: {why}", self.shown(path))),
+                Found::Unreadable(why) => warned!(path = %self.shown(path), why, "unread"),
             }
         }
-        let away = (self.folder.paths().count() - held).saturating_sub(found.len());
-        let through = if away == 0 { String::new() } else { format!(", {away} more read through imports") };
-        self.say("serving", &format!("{} ({} files{through})", root.display(), found.len()));
+        let through = (self.folder.paths().count() - held).saturating_sub(found.len());
+        said!(files = found.len(), through_imports = through, "serving");
         Ok(root.to_path_buf())
     }
 
@@ -206,7 +217,7 @@ impl<W: World> Daemon<W> {
                 let said = match self.asked(id, &client, request) {
                     Ok(said) => said,
                     Err(why) => {
-                        self.say("refused", &format!("{client} (#{id}): {why}"));
+                        warned!(client, id, why, "refused");
                         Some(FromEngine::Refused { why })
                     }
                 };
@@ -216,7 +227,7 @@ impl<W: World> Daemon<W> {
                 }
             }
             Event::Listen { id, client, tell } => {
-                self.say("joined", &format!("{client} (#{id})"));
+                said!(client, id, "joined");
                 self.listeners.insert(id, (client, tell));
             }
             Event::Leave { id } => {
@@ -225,7 +236,7 @@ impl<W: World> Daemon<W> {
                 }
                 self.holding.retain(|_, held| !held.is_empty());
                 if let Some((client, _)) = self.listeners.remove(&id) {
-                    self.say("left", &format!("{client} (#{id})"));
+                    said!(client, id, "left");
                 }
             }
         }
@@ -240,7 +251,7 @@ impl<W: World> Daemon<W> {
                 let approval =
                     Approval { file: file.clone(), script: script.clone(), version, by: client.to_owned(), at: self.world.now() };
                 self.world.append(&crate::allowed::path(), &crate::allowed::line(&approval))?;
-                self.say("allowed", &format!("{script} in {}, as shown to its person (by {client})", self.shown(&file)));
+                said!(path = %self.shown(&file), script, by = client, "allowed, as shown to its person");
                 FromEngine::Allowed { file, script }
             }
             ToEngine::Editing { file, version } => {
@@ -290,7 +301,8 @@ impl<W: World> Daemon<W> {
                     }
                     Replaced::Failed(why) => return Err(format!("{}: {why}", self.shown(&file))),
                 }
-                self.say("restored", &format!("{} to {} (by {client})", self.shown(&file), &version[..12]));
+                let span = tracing::info_span!(target: ENGINE, "restore", path = %self.shown(&file), to = &version[..12], by = client);
+                let _restoring = span.enter();
                 self.changed.insert(file.clone());
                 let root = Root {
                     path: file.clone(),
@@ -331,21 +343,17 @@ impl<W: World> Daemon<W> {
         &mut self.world
     }
 
-    pub fn trace(&self) -> &Trace {
-        &self.trace
-    }
-
     /// What the disk said changed: each table file read, and handed in when its text is
     /// not what the folder holds (the engine's own write coming back, or a file touched,
-    /// is the same text and changes nothing).
+    /// is the same text and changes nothing). Each change is a span, ending once every
+    /// file it reached is stored.
     pub fn hear(&mut self, paths: &BTreeSet<PathBuf>) {
         let tracked: Vec<&PathBuf> = paths.iter().filter(|p| self.tracked(p)).collect();
         if tracked.is_empty() {
             return;
         }
-        let started = Instant::now();
         let heard: Vec<String> = tracked.iter().map(|p| self.shown(p)).collect();
-        self.detail("heard", &heard.join(" "));
+        detail!(paths = heard.join(" "), "heard");
         let mut handed = 0;
         for path in tracked {
             let k = key(path);
@@ -357,8 +365,9 @@ impl<W: World> Daemon<W> {
                     }
                     let now = hash(&text);
                     let by = self.written_by(path, &now);
-                    let whom = by.as_ref().map_or(String::new(), |b| format!(" by {b}"));
-                    self.say(if was.is_some() { "changed" } else { "added" }, &format!("{}{whom}", self.shown(path)));
+                    let what = if was.is_some() { "changed" } else { "added" };
+                    let span = tracing::info_span!(target: ENGINE, "change", path = %self.shown(path), what, by = by.as_deref());
+                    let _changing = span.enter();
                     self.keep(path, &text);
                     self.changed.insert(path.to_path_buf());
                     let root = Root { path: path.to_path_buf(), was, now: Some(now), kind: RootKind::External { by } };
@@ -366,20 +375,19 @@ impl<W: World> Daemon<W> {
                     handed += 1;
                 }
                 Found::Missing if was.is_some() => {
-                    self.say("removed", &self.shown(path));
+                    let span = tracing::info_span!(target: ENGINE, "change", path = %self.shown(path), what = "removed");
+                    let _changing = span.enter();
                     self.changed.insert(path.to_path_buf());
                     let root = Root { path: path.to_path_buf(), was, now: None, kind: RootKind::External { by: None } };
                     self.hand(Change::Gone { path: k }, Some(root));
                     handed += 1;
                 }
                 Found::Missing => {}
-                Found::Unreadable(why) => self.say("unread", &format!("{}: {why}", self.shown(path))),
+                Found::Unreadable(why) => warned!(path = %self.shown(path), why, "unread"),
             }
         }
-        let took = started.elapsed().as_secs_f64() * 1000.0;
-        match handed {
-            0 => self.detail("same", "as held: the engine's own writes, or files touched"),
-            _ => self.detail("done", &format!("in {took:.1} ms, the disk's writes included")),
+        if handed == 0 {
+            detail!("same as held: the engine's own writes, or files touched");
         }
     }
 
@@ -422,7 +430,7 @@ impl<W: World> Daemon<W> {
             {
                 *edit = out.edited.as_ref().map(Edit::from);
                 if let Some(e) = &out.edited {
-                    self.detail("edited", &format!("{}: {}", self.shown(&r.path), said(e)));
+                    said!(cells = said(e), "edited");
                 }
                 // a root outside every folder served is logged where its first write is
                 if self.root_of(&r.path).is_some() {
@@ -432,15 +440,14 @@ impl<W: World> Daemon<W> {
                 }
             }
             for r in &out.read {
-                let found = match &r.refused {
-                    Some(why) => format!("refused: {why}"),
-                    None => format!("{} problems, {} stale", r.problems, r.stale),
-                };
-                self.detail("read", &format!("{}: {found}", self.shown(Path::new(&r.path))));
+                let path = self.shown(Path::new(&r.path));
+                match &r.refused {
+                    Some(why) => warned!(path, why, "refused by the reader"),
+                    None => detail!(path, problems = r.problems, stale = r.stale, "read"),
+                }
             }
             if !out.read.is_empty() {
-                let files = if out.read.len() == 1 { "file" } else { "files" };
-                self.detail("settled", &format!("{} {files} in {:.1} ms", out.read.len(), took.as_secs_f64() * 1000.0));
+                detail!(files = out.read.len(), ms = took.as_secs_f64() * 1000.0, "settled");
             }
             for need in out.needs {
                 queue.extend(self.needed(&need));
@@ -477,23 +484,23 @@ impl<W: World> Daemon<W> {
     /// in when it can be read.
     fn needed(&mut self, need: &str) -> Option<Change> {
         if is_url(need) {
-            self.detail("skipped", &format!("{need}: a URL import is fetched by `cells check` and `cells pin`, never by the daemon"));
+            detail!(url = need, "skipped: a URL import is fetched by `cells check` and `cells pin`, never by the engine");
             return None;
         }
         let path = PathBuf::from(need);
         if let Some(dir) = path.parent().filter(|d| d.is_absolute())
-            && let Err(e) = self.watch(dir, false)
+            && let Err(why) = self.watch(dir, false)
         {
-            self.say("unwatched", &e);
+            warned!(why, "unwatched");
         }
         match self.world.read(&path) {
             Found::Text(text) => Some(Change::Seen { path: need.to_owned(), text }),
             Found::Missing => {
-                self.detail("missing", &format!("{}: imported, not there", self.shown(&path)));
+                detail!(path = %self.shown(&path), "imported, not there");
                 None
             }
             Found::Unreadable(why) => {
-                self.say("unread", &format!("{}: {why}", self.shown(&path)));
+                warned!(path = %self.shown(&path), why, "unread");
                 None
             }
         }
@@ -504,7 +511,7 @@ impl<W: World> Daemon<W> {
     fn write(&mut self, w: Write, cause: Option<&(PathBuf, u64)>) -> Option<Change> {
         let path = PathBuf::from(&w.path);
         let Some(folder) = self.root_of(&path).map(Path::to_path_buf) else {
-            self.say("skipped", &format!("{}: outside every folder served, never written", self.shown(&path)));
+            said!(path = %self.shown(&path), "skipped: outside every folder served, never written");
             return None;
         };
         // nothing when the root's line could not be written, which was said
@@ -527,8 +534,8 @@ impl<W: World> Daemon<W> {
                     self.log(&folder, entry);
                 }
                 let cells: Vec<String> = w.stored.iter().map(|s| format!("{} row {} {} → {}", s.column, s.row, s.was, s.now)).collect();
-                let why = if w.via == [w.path.clone()] { String::new() } else { format!(" for {}", via.join(", ")) };
-                self.say("stored", &format!("{}{why}: {}", self.shown(&path), cells.join(", ")));
+                let via = (w.via != [w.path.clone()]).then(|| via.join(", "));
+                said!(path = %self.shown(&path), via, cells = cells.join(", "), "stored");
                 self.changed.insert(path);
                 Some(Change::Written { path: w.path, text: w.text })
             }
@@ -536,11 +543,11 @@ impl<W: World> Daemon<W> {
                 if let Some(cause) = cause {
                     self.log(&folder, Logged::Moved { path: shown(&path), cause, against: w.against.clone() });
                 }
-                self.say("moved", &format!("{}: changed since it was read, not written; its change is read next", self.shown(&path)));
+                said!(path = %self.shown(&path), "moved: changed since it was read, not written; its change is read next");
                 None
             }
             Replaced::Failed(why) => {
-                self.say("failed", &format!("{}: {why}", self.shown(&path)));
+                tracing::error!(target: ENGINE, path = %self.shown(&path), why, "not written");
                 None
             }
         }
@@ -574,8 +581,8 @@ impl<W: World> Daemon<W> {
         let log = self.served.iter_mut().find(|l| l.root == folder).expect("a folder served");
         match log.append(&self.world, at, entry) {
             Ok(n) => Some(n),
-            Err(e) => {
-                self.trace.said(at, "unlogged", &e);
+            Err(why) => {
+                tracing::error!(target: ENGINE, why, "not logged");
                 None
             }
         }
@@ -585,16 +592,8 @@ impl<W: World> Daemon<W> {
     /// log's every version can be shown and returned to.
     fn keep(&self, path: &Path, text: &str) {
         let Some(log) = self.served.iter().find(|l| path.starts_with(&l.root)) else { return };
-        if let Err(e) = log.keep(&self.world, text) {
-            self.say("unkept", &e);
+        if let Err(why) = log.keep(&self.world, text) {
+            tracing::error!(target: ENGINE, why, "version not kept");
         }
-    }
-
-    fn say(&self, verb: &str, what: &str) {
-        self.trace.said(self.world.now(), verb, what);
-    }
-
-    fn detail(&self, verb: &str, what: &str) {
-        self.trace.traced(self.world.now(), verb, what);
     }
 }

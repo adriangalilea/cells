@@ -36,7 +36,6 @@ use std::sync::mpsc::{Receiver, channel};
 
 pub use client::Engine;
 pub use daemon::{Daemon, Event};
-pub use trace::Trace;
 pub use world::{Disk, World};
 
 use server::{Held, Listening, Unbound};
@@ -46,7 +45,6 @@ fn run(
     listening: Listening,
     events: std::sync::mpsc::Sender<Event>,
     heard: Receiver<Event>,
-    verbose: bool,
     folders: &[PathBuf],
 ) -> Result<Infallible, String> {
     let disk = events.clone();
@@ -54,10 +52,8 @@ fn run(
         // fails only once the daemon is gone
         let _ = disk.send(Event::Disk(path));
     })?;
-    let mut daemon = Daemon::new(world, Trace::new(verbose));
-    let now = daemon.world().now();
-    daemon.trace().said(now, "listening", &format!("{} (pid {})", listening.socket.display(), std::process::id()));
-    daemon.trace().said(now, "admits", &listening.admits);
+    let mut daemon = Daemon::new(world);
+    tracing::info!(target: trace::ENGINE, socket = %listening.socket.display(), pid = std::process::id(), admits = listening.admits, "listening");
     for folder in folders {
         daemon.serve(folder)?;
     }
@@ -68,10 +64,12 @@ fn run(
 
 /// The engine as Cells.app keeps it (`CellsEngine.app`, a launch agent): the lock waited
 /// for when another process holds it, so launchd's keeping it alive never turns into
-/// restarting it against an engine a client started first.
-pub fn hosted() -> Result<Infallible, String> {
-    // launchd hands a job no terminal: the trace goes to `engine.trace` beside the socket,
-    // where a client starting the engine sends it too
+/// restarting it against an engine a client started first. Every record goes to `sink`,
+/// the host's writer (`trace`).
+pub fn hosted(sink: trace::Sink) -> Result<Infallible, String> {
+    trace::to_host(sink);
+    // launchd hands a job no terminal: what the host writes on stderr goes to
+    // `engine.trace` beside the socket, where a client starting the engine sends it too
     let folder = wire::folder();
     std::fs::create_dir_all(&folder).map_err(|e| format!("{}: {e}", folder.display()))?;
     let trace_path = wire::trace();
@@ -86,7 +84,7 @@ pub fn hosted() -> Result<Infallible, String> {
     let _trace = trace;
     let (events, heard) = channel();
     match server::listen(events.clone(), Held::Wait) {
-        Ok(listening) => run(listening, events, heard, false, &[]),
+        Ok(listening) => run(listening, events, heard, &[]),
         Err(Unbound::Running) => unreachable!("a hosted engine waits for the lock"),
         Err(Unbound::Failed(why)) => Err(why),
     }
@@ -99,6 +97,7 @@ pub const USAGE: &str = "cells serve [--verbose] [<folder>...]";
 /// folders are handed to it and this returns.
 pub fn serve(args: &[String]) -> Result<Infallible, String> {
     let verbose = args.iter().any(|a| a == "--verbose");
+    trace::to_stderr(verbose);
     let named: Vec<&String> = args.iter().filter(|a| *a != "--verbose").collect();
     if named.iter().any(|a| a.starts_with("--")) {
         return Err(USAGE.to_owned());
@@ -113,7 +112,7 @@ pub fn serve(args: &[String]) -> Result<Infallible, String> {
     }
     let (events, heard) = channel();
     match server::listen(events.clone(), Held::Leave) {
-        Ok(listening) => run(listening, events, heard, verbose, &folders),
+        Ok(listening) => run(listening, events, heard, &folders),
         Err(Unbound::Running) => {
             let (engine, _) = Engine::connect("cli")?;
             if folders.is_empty() {

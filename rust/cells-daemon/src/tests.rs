@@ -8,7 +8,7 @@ use std::sync::mpsc::channel;
 
 use crate::daemon::{Daemon, Event};
 use crate::log::{Logged, hash};
-use crate::trace::Trace;
+use crate::trace::caught;
 use crate::wire::{FromEngine, ToEngine};
 use crate::world::{Found, Replaced, World, table_file};
 
@@ -89,7 +89,7 @@ const MONEY: &str = "---\ntype Kind = income|cost\ncost: EUR = CASE WHEN kind = 
 const INDEX: &str = "---\nimport q4 from \"./q4/money.cells\"\n---\nquarter:text!,costs:EUR\nq4,180.00=SUM(q4.cost)\n";
 
 fn served(sim: Sim, root: &str) -> Daemon<Sim> {
-    let mut d = Daemon::new(sim, Trace::kept());
+    let mut d = Daemon::new(sim);
     assert_eq!(d.serve(Path::new(root)).unwrap(), PathBuf::from(root));
     d
 }
@@ -129,8 +129,16 @@ fn a_save_stores_what_it_reaches_in_every_file() {
         "{}",
         log[2]
     );
-    let said = d.trace().lines();
-    assert!(said.iter().any(|l| l.contains("stored   quarters.cells for q4/money.cells: costs row 1 180.00 → 200.00")), "{said:#?}");
+}
+
+#[test]
+fn a_change_is_said_as_a_span_and_what_it_stored_in_it() {
+    let mut d = daemon();
+    d.world().put(Q4, &MONEY.replace("cost,180.00,180.00=", "cost,200.00,180.00="));
+    let ((), said) = caught(|| heard(&mut d, &[Q4]));
+    assert_eq!(said[..2], ["heard    paths=q4/money.cells", "change   q4/money.cells what=changed"], "{said:#?}");
+    assert!(said.contains(&"  edited   cells=row 2 amount 180.00 → 200.00".to_owned()), "{said:#?}");
+    assert!(said.contains(&"  stored   quarters.cells via=q4/money.cells cells=costs row 1 180.00 → 200.00".to_owned()), "{said:#?}");
 }
 
 #[test]
@@ -218,7 +226,8 @@ fn a_folder_inside_one_served_is_that_one_and_a_wide_one_is_refused() {
 fn a_client_listening_is_told_every_file_whose_version_changed() {
     let mut d = daemon();
     let (tell, told) = channel();
-    d.answer(Event::Listen { id: 1, client: "lsp".into(), tell });
+    let ((), said) = caught(|| d.answer(Event::Listen { id: 1, client: "lsp".into(), tell }));
+    assert_eq!(said, ["joined   client=lsp id=1"]);
     d.world().put(Q4, &MONEY.replace("cost,180.00,180.00=", "cost,200.00,180.00="));
     heard(&mut d, &[Q4]);
     d.tell();
@@ -230,14 +239,15 @@ fn a_client_listening_is_told_every_file_whose_version_changed() {
     d.world().put(Q4, MONEY);
     heard(&mut d, &[Q4]);
     d.tell();
-    assert!(d.trace().lines().iter().any(|l| l.contains("joined   lsp (#1)")));
 }
 
 #[test]
 fn an_approval_is_kept_by_the_engine_alone_and_said() {
     let mut d = daemon();
     let asked = ToEngine::Allow { file: PathBuf::from(Q4), script: "rates".into(), version: "ab12".into() };
-    assert_eq!(ask(&mut d, "lsp", asked), FromEngine::Allowed { file: PathBuf::from(Q4), script: "rates".into() });
+    let (answer, said) = caught(|| ask(&mut d, "lsp", asked));
+    assert_eq!(answer, FromEngine::Allowed { file: PathBuf::from(Q4), script: "rates".into() });
+    assert_eq!(said, ["allowed, as shown to its person q4/money.cells script=rates by=lsp"]);
     let approval = crate::allowed::Approval {
         file: PathBuf::from(Q4),
         script: "rates".into(),
@@ -247,7 +257,6 @@ fn an_approval_is_kept_by_the_engine_alone_and_said() {
     };
     let kept = d.world().files.borrow()[&crate::allowed::path()].clone();
     assert_eq!(kept, format!("{}\n", crate::allowed::line(&approval)));
-    assert!(d.trace().lines().iter().any(|l| l.contains("allowed  rates in q4/money.cells, as shown to its person (by lsp)")));
 }
 
 fn ask(d: &mut Daemon<Sim>, client: &str, request: ToEngine) -> FromEngine {

@@ -19,7 +19,11 @@ libc = "0.2"
 notify = "8"
 # the socket's messages, typed (`wire`), and the log's lines
 serde = { version = "1", features = ["derive"] }
-serde_json = "1"
+# a record's fields kept in the order they were said
+serde_json = { version = "1", features = ["preserve_order"] }
+# what the engine says, as the utils logging contract writes it, to the host or stderr (`trace`)
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", default-features = false, features = ["registry", "std"] }
 
 # who connects, by code signature (`trust`): the Security framework's code-signing calls
 [target.'cfg(target_os = "macos")'.dependencies]
