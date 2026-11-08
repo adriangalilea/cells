@@ -1,0 +1,11 @@
+{
+  "columns": [
+    { "name": "tool", "type": "text" },
+    { "name": "lang", "type": "'C#'|rust" }
+  ],
+  "rows": [
+    { "tool": { "text": "lexer" }, "lang": { "choice": "C#" } }
+  ],
+  "problems": [],
+  "tints": {}
+}

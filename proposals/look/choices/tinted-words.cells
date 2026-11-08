@@ -1,0 +1,4 @@
+item:text,kind:income#green|cost#red|transfer
+salary,income
+rent,cost
+savings,transfer

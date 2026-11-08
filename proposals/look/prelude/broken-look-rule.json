@@ -1,0 +1,14 @@
+{
+  "columns": [
+    { "name": "item", "type": "text" },
+    { "name": "amount", "type": "EUR" }
+  ],
+  "rows": [
+    { "item": { "text": "rent" }, "amount": { "money": "-950.00", "currency": "EUR" } }
+  ],
+  "problems": [],
+  "broken": [
+    { "at": "prelude line 1", "span": [4, 27] }
+  ],
+  "looks": {}
+}

@@ -1,0 +1,8 @@
+---
+type Money = EUR
+look Money: grouped, negative red
+look amount: negative in parentheses
+look balance: red when balance < budget, green when balance >= budget
+---
+item:text,amount:Money,budget:Money,balance:Money
+rent,-950.00,1000.00,50.00

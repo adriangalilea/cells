@@ -1,0 +1,13 @@
+{
+  "columns": [
+    { "name": "item", "type": "text" },
+    { "name": "kind", "type": "income#green|cost#red|transfer" }
+  ],
+  "rows": [
+    { "item": { "text": "salary" }, "kind": { "choice": "income" } },
+    { "item": { "text": "rent" }, "kind": { "choice": "cost" } },
+    { "item": { "text": "savings" }, "kind": { "choice": "transfer" } }
+  ],
+  "problems": [],
+  "tints": { "kind": { "income": "green", "cost": "red" } }
+}

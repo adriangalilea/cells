@@ -1,0 +1,11 @@
+{
+  "columns": [
+    { "name": "item", "type": "text" },
+    { "name": "kind", "type": "income#3fa34d|cost" }
+  ],
+  "rows": [
+    { "item": { "text": "salary" }, "kind": { "choice": "income" } }
+  ],
+  "problems": [],
+  "tints": { "kind": { "income": "#3fa34d" } }
+}

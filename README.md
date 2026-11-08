@@ -150,6 +150,7 @@ Each column starts on a multiple of four characters, two spaces at least after i
 | [web/README.md](web/README.md) | the site, cellular.computer: how it is built from this repo's engine and ui's items, and its docs drawn from these documents |
 | [web/TODO.md](web/TODO.md) | what the site still owes |
 | [ACCOUNTING.md](ACCOUNTING.md) | books kept in Cells, drafted with the primitives the spec proposes |
+| [proposals/look/README.md](proposals/look/README.md) | the conformance cases SPEC.md's proposal "How a value looks" would add, kept outside the suite until it is decided |
 
 ## The syntax
 

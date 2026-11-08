@@ -1,0 +1,14 @@
+{
+  "columns": [
+    { "name": "item", "type": "text" },
+    { "name": "kind", "type": "text?" }
+  ],
+  "rows": [
+    { "item": { "text": "salary" }, "kind": { "text": "income" } }
+  ],
+  "problems": [],
+  "broken": [
+    { "at": "column 2", "span": [15, 17] }
+  ],
+  "tints": {}
+}

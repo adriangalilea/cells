@@ -1,0 +1,23 @@
+{
+  "types": { "Money": "EUR" },
+  "columns": [
+    { "name": "item", "type": "text" },
+    { "name": "amount", "type": "Money" },
+    { "name": "budget", "type": "Money" },
+    { "name": "balance", "type": "Money" }
+  ],
+  "rows": [
+    {
+      "item": { "text": "rent" },
+      "amount": { "money": "-950.00", "currency": "EUR" },
+      "budget": { "money": "1000.00", "currency": "EUR" },
+      "balance": { "money": "50.00", "currency": "EUR" }
+    }
+  ],
+  "problems": [],
+  "looks": {
+    "Money": ["grouped", "negative red"],
+    "amount": ["negative in parentheses"],
+    "balance": ["red when balance < budget", "green when balance >= budget"]
+  }
+}
