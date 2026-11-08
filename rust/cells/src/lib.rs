@@ -32,6 +32,7 @@ pub mod folder;
 mod format;
 pub mod hover;
 mod identity;
+pub mod intent;
 mod json;
 mod keys;
 pub mod layout;
