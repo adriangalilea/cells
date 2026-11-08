@@ -400,19 +400,24 @@ fn cell_kind(base: &Base) -> Kind {
 /// A header cell `s..e`: its name, `:`, its type's parts and its formula's. Its type when
 /// it reads.
 fn header_cell(source: &str, s: usize, e: usize, k: u32, named: &[NamedType], tables: &[String], out: &mut Out) -> Option<Type> {
-    let raw = &source[s..e];
-    let (from, to) = match raw.strip_prefix('"') {
+    match source[s..e].strip_prefix('"') {
+        // its quotes around what they hold, in the text's order
         Some(inner) if inner.ends_with('"') && !inner[..inner.len() - 1].contains('"') => {
             out.push(s, s + 1, Kind::Punct, k);
+            let ty = header_parts(source, s + 1, e - 1, k, named, tables, out);
             out.push(e - 1, e, Kind::Punct, k);
-            (s + 1, e - 1)
+            ty
         }
         Some(_) => {
             out.push(s, e, Kind::Name, k);
-            return None;
+            None
         }
-        None => (s, e),
-    };
+        None => header_parts(source, s, e, k, named, tables, out),
+    }
+}
+
+/// What a header cell holds `from..to`, its quotes aside.
+fn header_parts(source: &str, from: usize, to: usize, k: u32, named: &[NamedType], tables: &[String], out: &mut Out) -> Option<Type> {
     let cell = &source[from..to];
     let Some(colon) = cell.find(':') else {
         out.push(from, to, Kind::Name, k);
@@ -616,8 +621,6 @@ fn import(source: &str, s: usize, e: usize, named: &mut Vec<NamedType>, tables: 
 /// What follows `look` on its line (SPEC.md, How a value looks): what it is for, then its
 /// rules, each's words, tints, pattern and condition.
 fn look(source: &str, s: usize, e: usize, named: &[NamedType], out: &mut Out) {
-    const WORDS: [&str; 9] = ["grouped", "decimals", "negative", "positive", "in", "parentheses", "scale", "as", "when"];
-    let b = source.as_bytes();
     out.push(s, s + 4, Kind::Keyword, NONE);
     let Some((target, colon, rules)) = crate::look::spans(&source[s..e]) else {
         out.push(s + 4, e, Kind::Error, NONE);
@@ -632,50 +635,58 @@ fn look(source: &str, s: usize, e: usize, named: &[NamedType], out: &mut Out) {
     out.push(s + colon, s + colon + 1, Kind::Punct, NONE);
     for (k, rule) in rules.iter().enumerate() {
         let (start, end) = (s + rule.start, s + rule.end);
+        words(source, start, end, out);
+        // the comma after the rule, after its words: the spans go in the text's order
         if let Some(next) = rules.get(k + 1) {
             let comma = end + source[end..s + next.start].find(',').expect("a comma between two rules");
             out.push(comma, comma + 1, Kind::Punct, NONE);
         }
-        let mut i = start;
-        while i < end {
-            let c = b[i];
-            let from = i;
-            if c == b' ' || c == b'\t' {
-                i += 1;
-                continue;
-            }
-            if c == b'\'' {
-                i = source[i + 1..end].rfind('\'').map_or(end, |q| i + 1 + q + 1);
-                out.push(from, i, Kind::Format, NONE);
-                continue;
-            }
-            while i < end && !matches!(b[i], b' ' | b'\t') {
-                i += 1;
-            }
-            let w = &source[from..i];
-            if w == "when" {
-                out.push(from, i, Kind::Keyword, NONE);
-                expression(source, i, end, NONE, out);
-                break;
-            }
-            if let Some((a, z)) = w.split_once("..") {
-                let tint = |t: &str| if crate::look::Tint::parse(t).is_ok() { Kind::Tint } else { Kind::Error };
-                out.push(from, from + a.len(), tint(a), NONE);
-                out.push(from + a.len(), from + a.len() + 2, Kind::Punct, NONE);
-                out.push(i - z.len(), i, tint(z), NONE);
-                continue;
-            }
-            let kind = if WORDS.contains(&w) {
-                Kind::Keyword
-            } else if crate::look::Tint::parse(w).is_ok() {
-                Kind::Tint
-            } else if w.bytes().all(|c| c.is_ascii_digit()) {
-                Kind::Number
-            } else {
-                Kind::Error
-            };
-            out.push(from, i, kind, NONE);
+    }
+}
+
+/// A look rule's words `start..end`: its keywords, tints, number, pattern and condition.
+fn words(source: &str, start: usize, end: usize, out: &mut Out) {
+    const WORDS: [&str; 9] = ["grouped", "decimals", "negative", "positive", "in", "parentheses", "scale", "as", "when"];
+    let b = source.as_bytes();
+    let mut i = start;
+    while i < end {
+        let c = b[i];
+        let from = i;
+        if c == b' ' || c == b'\t' {
+            i += 1;
+            continue;
         }
+        if c == b'\'' {
+            i = source[i + 1..end].rfind('\'').map_or(end, |q| i + 1 + q + 1);
+            out.push(from, i, Kind::Format, NONE);
+            continue;
+        }
+        while i < end && !matches!(b[i], b' ' | b'\t') {
+            i += 1;
+        }
+        let w = &source[from..i];
+        if w == "when" {
+            out.push(from, i, Kind::Keyword, NONE);
+            expression(source, i, end, NONE, out);
+            break;
+        }
+        if let Some((a, z)) = w.split_once("..") {
+            let tint = |t: &str| if crate::look::Tint::parse(t).is_ok() { Kind::Tint } else { Kind::Error };
+            out.push(from, from + a.len(), tint(a), NONE);
+            out.push(from + a.len(), from + a.len() + 2, Kind::Punct, NONE);
+            out.push(i - z.len(), i, tint(z), NONE);
+            continue;
+        }
+        let kind = if WORDS.contains(&w) {
+            Kind::Keyword
+        } else if crate::look::Tint::parse(w).is_ok() {
+            Kind::Tint
+        } else if w.bytes().all(|c| c.is_ascii_digit()) {
+            Kind::Number
+        } else {
+            Kind::Error
+        };
+        out.push(from, i, kind, NONE);
     }
 }
 
@@ -1066,5 +1077,39 @@ mod tests {
         assert!(t.contains(&("x".into(), Kind::Choice, 1)));
         assert!(t.contains(&("key".into(), Kind::Mark, 1)));
         assert!(t.contains(&("\"q, r\"".into(), Kind::CellText, 0)));
+    }
+
+    /// The promise every client draws by (an editor painting a run per span, in order): every
+    /// file of the conformance suite gives its spans in the text's order, none overlapping.
+    #[test]
+    fn every_file_s_spans_are_in_order() {
+        fn walk(dir: &std::path::Path, files: &mut Vec<std::path::PathBuf>) {
+            for e in std::fs::read_dir(dir).unwrap().flatten() {
+                let p = e.path();
+                if p.is_dir() {
+                    walk(&p, files);
+                } else if p.extension().is_some_and(|x| x == "cells" || x == "csv" || x == "tsv") {
+                    files.push(p);
+                }
+            }
+        }
+        let mut files = Vec::new();
+        walk(&std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../tests"), &mut files);
+        assert!(files.len() > 100, "the suite's files: {}", files.len());
+        for path in files {
+            let Ok(src) = std::fs::read_to_string(&path) else { continue };
+            let mut end = 0;
+            for t in tokens(&src) {
+                assert!(
+                    t.start as usize >= end && t.end >= t.start,
+                    "{}: {:?} at {}..{} starts before the span before it ended, at {end}",
+                    path.display(),
+                    t.kind,
+                    t.start,
+                    t.end
+                );
+                end = t.end as usize;
+            }
+        }
     }
 }
