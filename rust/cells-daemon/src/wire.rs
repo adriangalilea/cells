@@ -10,7 +10,7 @@ use serde::{Deserialize, Serialize};
 
 /// The protocol's version: a client and an engine of different versions part at the
 /// greeting, the client saying so, never guessing at what the other means.
-pub const VERSION: u32 = 1;
+pub const VERSION: u32 = 2;
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "say", rename_all = "lowercase")]
@@ -23,6 +23,18 @@ pub enum ToEngine {
     /// A script allowed to run, as its person saw it (`allowed`): the file, its name and
     /// the version shown. Sent only after the person said yes, where they saw the code.
     Allow { file: PathBuf, script: String, version: String },
+    /// The client holds `version` of `file`, unsaved or about to be written: when that
+    /// version lands, the log says this client wrote it. Never answered: an editor says it
+    /// as it is typed.
+    Editing { file: PathBuf, version: String },
+    /// The chains reaching anything under `folder`, or only `file`, newest first.
+    History { folder: PathBuf, file: Option<PathBuf>, limit: usize },
+    /// Every value the cell at `row` (from 1, as the file numbers it now) of `column` held.
+    Cell { file: PathBuf, row: usize, column: String },
+    /// A version of `file` whole, by its SHA-256, as the log names it.
+    Version { file: PathBuf, version: String },
+    /// `file` returned to a version: a change of its own, a root, never history rewritten.
+    Restore { file: PathBuf, version: String },
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -40,6 +52,22 @@ pub enum FromEngine {
     Allowed {
         file: PathBuf,
         script: String,
+    },
+    History {
+        chains: Vec<crate::history::Chain>,
+    },
+    Values {
+        values: Vec<crate::history::Held>,
+    },
+    Version {
+        file: PathBuf,
+        version: String,
+        text: String,
+    },
+    /// A file returned to a version, and the version it held before.
+    Restored {
+        file: PathBuf,
+        was: String,
     },
     /// A request refused, and why.
     Refused {

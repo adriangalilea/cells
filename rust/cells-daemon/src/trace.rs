@@ -42,14 +42,26 @@ impl Trace {
     }
 }
 
-/// `HH:MM:SS.mmm` of a time in milliseconds since the Unix epoch, on the Mac's clock as a
-/// person reads it (its time zone).
-fn clock(ms: u64) -> String {
+/// A time in milliseconds since the Unix epoch on the Mac's clock as a person reads it (its
+/// time zone).
+fn local(ms: u64) -> libc::tm {
     let secs = (ms / 1000) as libc::time_t;
     // SAFETY: an all-zero `tm` is a valid value, and localtime_r writes into the one it is
     // handed, touching nothing shared.
     let mut tm: libc::tm = unsafe { std::mem::zeroed() };
     let found = unsafe { !libc::localtime_r(&secs, &mut tm).is_null() };
     assert!(found, "localtime_r has no local time for {secs}");
+    tm
+}
+
+/// `HH:MM:SS.mmm`, local.
+fn clock(ms: u64) -> String {
+    let tm = local(ms);
     format!("{:02}:{:02}:{:02}.{:03}", tm.tm_hour, tm.tm_min, tm.tm_sec, ms % 1000)
+}
+
+/// `YYYY-MM-DD HH:MM`, local: when history says something happened.
+pub fn when(ms: u64) -> String {
+    let tm = local(ms);
+    format!("{}-{:02}-{:02} {:02}:{:02}", tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday, tm.tm_hour, tm.tm_min)
 }

@@ -39,8 +39,9 @@ pub trait World {
     fn replace(&self, path: &Path, against: &str, text: &str) -> Replaced;
     /// `line` appended to the file at `path`, and flushed to the disk.
     fn append(&self, path: &Path, line: &str) -> Result<(), String>;
-    /// The last line of the file at `path`, nothing when it has none.
-    fn last_line(&self, path: &Path) -> Option<String>;
+    /// `text` written at `path` unless a file is there already: what is kept there is
+    /// named by its own hash, so one there holds the same text.
+    fn keep(&self, path: &Path, text: &str) -> Result<(), String>;
     /// `root` held for this process alone while it runs: two daemons never write one folder.
     fn lock(&mut self, root: &Path) -> Result<(), String>;
     /// Changes under `dir` heard from now on, everything under it when `whole`: each path
@@ -146,9 +147,24 @@ impl World for Disk {
         f.write_all(format!("{line}\n").as_bytes()).and_then(|()| f.sync_data()).map_err(|e| format!("{}: {e}", path.display()))
     }
 
-    fn last_line(&self, path: &Path) -> Option<String> {
-        let text = fs::read_to_string(path).ok()?;
-        text.lines().last().map(str::to_owned)
+    fn keep(&self, path: &Path, text: &str) -> Result<(), String> {
+        if path.exists() {
+            return Ok(());
+        }
+        let dir = path.parent().expect("a version is in a folder");
+        fs::create_dir_all(dir).map_err(|e| format!("{}: {e}", dir.display()))?;
+        // written beside and renamed, so a version kept is never half of one
+        let beside = dir.join(format!(".{}.{}", path.file_name().expect("a version has a name").to_string_lossy(), std::process::id()));
+        let written = (|| -> std::io::Result<()> {
+            let mut f = File::create(&beside)?;
+            f.write_all(text.as_bytes())?;
+            f.sync_all()?;
+            fs::rename(&beside, path)
+        })();
+        written.map_err(|e| {
+            let _ = fs::remove_file(&beside);
+            format!("{}: {e}", path.display())
+        })
     }
 
     fn lock(&mut self, root: &Path) -> Result<(), String> {

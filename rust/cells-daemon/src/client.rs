@@ -106,6 +106,45 @@ impl Engine {
         }
     }
 
+    /// The engine told this client holds `text` of `file`, unsaved or about to be written,
+    /// so the version it lands as is logged as this client's. Never answered.
+    pub fn editing(&self, file: &Path, text: &str) -> Result<(), String> {
+        let said = ToEngine::Editing { file: file.to_path_buf(), version: crate::log::hash(text) };
+        wire::send(&mut *self.writer.lock().unwrap(), &said).map_err(|e| e.to_string())
+    }
+
+    /// The chains reaching anything under `folder`, or `file` alone, newest first.
+    pub fn history(&self, folder: &Path, file: Option<&Path>, limit: usize) -> Result<Vec<crate::history::Chain>, String> {
+        match self.ask(&ToEngine::History { folder: folder.to_path_buf(), file: file.map(Path::to_path_buf), limit })? {
+            FromEngine::History { chains } => Ok(chains),
+            other => panic!("the engine answered a history with {other:?}"),
+        }
+    }
+
+    /// Every value the cell at `row` (from 1) of `column` in `file` held, newest first.
+    pub fn cell(&self, file: &Path, row: usize, column: &str) -> Result<Vec<crate::history::Held>, String> {
+        match self.ask(&ToEngine::Cell { file: file.to_path_buf(), row, column: column.to_owned() })? {
+            FromEngine::Values { values } => Ok(values),
+            other => panic!("the engine answered a cell's history with {other:?}"),
+        }
+    }
+
+    /// The version of `file` whose SHA-256 is `version`, whole.
+    pub fn version(&self, file: &Path, version: &str) -> Result<String, String> {
+        match self.ask(&ToEngine::Version { file: file.to_path_buf(), version: version.to_owned() })? {
+            FromEngine::Version { text, .. } => Ok(text),
+            other => panic!("the engine answered a version with {other:?}"),
+        }
+    }
+
+    /// `file` returned to `version`, a change of its own: the version it held before.
+    pub fn restore(&self, file: &Path, version: &str) -> Result<String, String> {
+        match self.ask(&ToEngine::Restore { file: file.to_path_buf(), version: version.to_owned() })? {
+            FromEngine::Restored { was, .. } => Ok(was),
+            other => panic!("the engine answered a restore with {other:?}"),
+        }
+    }
+
     /// `request` sent and its answer read; a refusal is the error.
     fn ask(&self, request: &ToEngine) -> Result<FromEngine, String> {
         // one request answered at a time, so each answer is its request's
@@ -128,7 +167,15 @@ fn hear(mut reader: BufReader<UnixStream>, changes: Sender<Vec<PathBuf>>, answer
                     return;
                 }
             }
-            Ok(Some(said @ (FromEngine::Served { .. } | FromEngine::Allowed { .. } | FromEngine::Refused { .. }))) => {
+            Ok(Some(
+                said @ (FromEngine::Served { .. }
+                | FromEngine::Allowed { .. }
+                | FromEngine::History { .. }
+                | FromEngine::Values { .. }
+                | FromEngine::Version { .. }
+                | FromEngine::Restored { .. }
+                | FromEngine::Refused { .. }),
+            )) => {
                 let _ = answer.send(said);
             }
             Ok(Some(FromEngine::Hello { .. })) => {

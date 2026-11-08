@@ -16,9 +16,6 @@ use std::sync::mpsc::{Sender, channel};
 use std::sync::{Arc, Mutex};
 use std::thread;
 
-use std::time::{SystemTime, UNIX_EPOCH};
-
-use crate::allowed::Approval;
 use crate::daemon::Event;
 use crate::trust::Trust;
 use crate::wire::{self, FromEngine, ToEngine, VERSION};
@@ -146,45 +143,54 @@ fn converse(id: u64, stream: UnixStream, events: &Sender<Event>) -> Result<(), S
         })
         .map_err(|e| e.to_string())?;
     while let Some(request) = wire::receive(&mut reader).map_err(|e| e.to_string())? {
-        match request {
-            ToEngine::Hello { .. } => return Err("a second greeting".into()),
-            ToEngine::Serve { folder } => {
-                let folder = match fs::canonicalize(&folder) {
-                    Ok(f) if f.is_dir() => f,
-                    Ok(f) => {
-                        say(&FromEngine::Refused { why: format!("{}: not a folder", f.display()) })?;
-                        continue;
-                    }
-                    Err(e) => {
-                        say(&FromEngine::Refused { why: format!("{}: {e}", folder.display()) })?;
-                        continue;
-                    }
-                };
-                let (answer, answered) = channel();
-                events.send(Event::Serve { folder, answer }).map_err(|_| "the daemon is gone")?;
-                match answered.recv().map_err(|_| "the daemon is gone")? {
-                    Ok(folder) => say(&FromEngine::Served { folder })?,
-                    Err(why) => say(&FromEngine::Refused { why })?,
-                }
+        if matches!(request, ToEngine::Hello { .. }) {
+            return Err("a second greeting".into());
+        }
+        let request = match canonical(request) {
+            Ok(r) => r,
+            Err(why) => {
+                say(&FromEngine::Refused { why })?;
+                continue;
             }
-            ToEngine::Allow { file, script, version } => {
-                let file = match fs::canonicalize(&file) {
-                    Ok(f) => f,
-                    Err(e) => {
-                        say(&FromEngine::Refused { why: format!("{}: {e}", file.display()) })?;
-                        continue;
-                    }
-                };
-                let at = SystemTime::now().duration_since(UNIX_EPOCH).expect("the clock is after 1970").as_millis() as u64;
-                let approval = Approval { file: file.clone(), script: script.clone(), version, by: client.clone(), at };
-                let (answer, answered) = channel();
-                events.send(Event::Allow { approval, answer }).map_err(|_| "the daemon is gone")?;
-                match answered.recv().map_err(|_| "the daemon is gone")? {
-                    Ok(()) => say(&FromEngine::Allowed { file, script })?,
-                    Err(why) => say(&FromEngine::Refused { why })?,
-                }
+        };
+        if matches!(request, ToEngine::Editing { .. }) {
+            events.send(Event::Ask { id, client: client.clone(), request, answer: None }).map_err(|_| "the daemon is gone")?;
+            continue;
+        }
+        let (answer, answered) = channel();
+        events.send(Event::Ask { id, client: client.clone(), request, answer: Some(answer) }).map_err(|_| "the daemon is gone")?;
+        say(&answered.recv().map_err(|_| "the daemon is gone")?)?;
+    }
+    Ok(())
+}
+
+/// A request's paths as the engine keys files: canonical, as the disk resolves them (a
+/// file not there yet, by its folder's), so `/tmp` and `/private/tmp` are one file.
+fn canonical(request: ToEngine) -> Result<ToEngine, String> {
+    fn path(p: PathBuf) -> Result<PathBuf, String> {
+        match fs::canonicalize(&p) {
+            Ok(c) => Ok(c),
+            Err(_) => {
+                let (dir, name) =
+                    (p.parent().ok_or(format!("{}: no folder", p.display()))?, p.file_name().ok_or(format!("{}: no file", p.display()))?);
+                Ok(fs::canonicalize(dir).map_err(|e| format!("{}: {e}", dir.display()))?.join(name))
             }
         }
     }
-    Ok(())
+    Ok(match request {
+        ToEngine::Hello { .. } => request,
+        ToEngine::Serve { folder } => {
+            let folder = fs::canonicalize(&folder).map_err(|e| format!("{}: {e}", folder.display()))?;
+            if !folder.is_dir() {
+                return Err(format!("{}: not a folder", folder.display()));
+            }
+            ToEngine::Serve { folder }
+        }
+        ToEngine::Allow { file, script, version } => ToEngine::Allow { file: path(file)?, script, version },
+        ToEngine::Editing { file, version } => ToEngine::Editing { file: path(file)?, version },
+        ToEngine::History { folder, file, limit } => ToEngine::History { folder: path(folder)?, file: file.map(path).transpose()?, limit },
+        ToEngine::Cell { file, row, column } => ToEngine::Cell { file: path(file)?, row, column },
+        ToEngine::Version { file, version } => ToEngine::Version { file: path(file)?, version },
+        ToEngine::Restore { file, version } => ToEngine::Restore { file: path(file)?, version },
+    })
 }

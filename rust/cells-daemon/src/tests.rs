@@ -7,8 +7,9 @@ use std::path::{Path, PathBuf};
 use std::sync::mpsc::channel;
 
 use crate::daemon::{Daemon, Event};
-use crate::log::hash;
+use crate::log::{Logged, hash};
 use crate::trace::Trace;
+use crate::wire::{FromEngine, ToEngine};
 use crate::world::{Found, Replaced, World, table_file};
 
 #[derive(Default)]
@@ -57,8 +58,9 @@ impl World for Sim {
         Ok(())
     }
 
-    fn last_line(&self, path: &Path) -> Option<String> {
-        self.files.borrow().get(path)?.lines().last().map(str::to_owned)
+    fn keep(&self, path: &Path, text: &str) -> Result<(), String> {
+        self.files.borrow_mut().entry(path.to_path_buf()).or_insert_with(|| text.to_owned());
+        Ok(())
     }
 
     fn lock(&mut self, root: &Path) -> Result<(), String> {
@@ -116,8 +118,17 @@ fn a_save_stores_what_it_reaches_in_every_file() {
     assert_eq!(kinds, ["external", "store", "store"]);
     assert!(log[0].starts_with("{\"n\":1,\"prev\":\"\","), "{}", log[0]);
     assert!(log[1].starts_with(&format!("{{\"n\":2,\"prev\":\"{}\",", hash(&log[0]))), "each line links the one before");
-    assert!(log[2].contains("\"path\":\"quarters.cells\",\"because\":\"q4/money.cells\""), "{}", log[2]);
-    assert!(log[2].contains("\"stored\":[{\"row\":1,\"column\":\"costs\",\"was\":\"180.00\",\"now\":\"200.00\"}]"), "{}", log[2]);
+    assert!(
+        log[0].contains("\"edited\":{\"cells\":[{\"row\":2,\"column\":\"amount\",\"was\":\"180.00\",\"now\":\"200.00\"}]}"),
+        "{}",
+        log[0]
+    );
+    assert!(log[2].contains("\"path\":\"quarters.cells\",\"cause\":{\"n\":1},\"via\":[\"q4/money.cells\"]"), "{}", log[2]);
+    assert!(
+        log[2].contains("\"stored\":[{\"row\":1,\"key\":\"q4\",\"column\":\"costs\",\"was\":\"180.00\",\"now\":\"200.00\"}]"),
+        "{}",
+        log[2]
+    );
     let said = d.trace().lines();
     assert!(said.iter().any(|l| l.contains("stored   quarters.cells for q4/money.cells: costs row 1 180.00 → 200.00")), "{said:#?}");
 }
@@ -190,7 +201,7 @@ fn a_file_added_then_removed_is_logged_and_read_by_its_readers() {
     d.world().files.borrow_mut().remove(Path::new(Q4));
     heard(&mut d, &[Q4]);
     assert!(d.world().log().last().unwrap().contains("\"kind\":\"external\",\"path\":\"q4/money.cells\",\"was\":\""));
-    assert!(d.world().log().last().unwrap().ends_with("\"now\":null}"));
+    assert!(d.world().log().last().unwrap().contains("\"now\":null"));
 }
 
 #[test]
@@ -225,12 +236,128 @@ fn a_client_listening_is_told_every_file_whose_version_changed() {
 #[test]
 fn an_approval_is_kept_by_the_engine_alone_and_said() {
     let mut d = daemon();
-    let approval =
-        crate::allowed::Approval { file: PathBuf::from(Q4), script: "rates".into(), version: "ab12".into(), by: "lsp".into(), at: 1 };
-    let (answer, answered) = channel();
-    d.answer(Event::Allow { approval: approval.clone(), answer });
-    answered.try_recv().unwrap().unwrap();
+    let asked = ToEngine::Allow { file: PathBuf::from(Q4), script: "rates".into(), version: "ab12".into() };
+    assert_eq!(ask(&mut d, "lsp", asked), FromEngine::Allowed { file: PathBuf::from(Q4), script: "rates".into() });
+    let approval = crate::allowed::Approval {
+        file: PathBuf::from(Q4),
+        script: "rates".into(),
+        version: "ab12".into(),
+        by: "lsp".into(),
+        at: d.world().now(),
+    };
     let kept = d.world().files.borrow()[&crate::allowed::path()].clone();
     assert_eq!(kept, format!("{}\n", crate::allowed::line(&approval)));
     assert!(d.trace().lines().iter().any(|l| l.contains("allowed  rates in q4/money.cells, as shown to its person (by lsp)")));
+}
+
+fn ask(d: &mut Daemon<Sim>, client: &str, request: ToEngine) -> FromEngine {
+    let (answer, answered) = channel();
+    d.answer(Event::Ask { id: 1, client: client.into(), request, answer: Some(answer) });
+    answered.try_recv().expect("answered")
+}
+
+const EDITED: &str = "cost,200.00,180.00=";
+
+#[test]
+fn a_save_is_its_editor_s_when_it_said_it_held_that_version() {
+    let mut d = daemon();
+    let typed = MONEY.replace("cost,180.00,180.00=", EDITED);
+    d.answer(Event::Ask {
+        id: 1,
+        client: "Helix".into(),
+        request: ToEngine::Editing { file: Q4.into(), version: hash(&typed) },
+        answer: None,
+    });
+    d.world().put(Q4, &typed);
+    heard(&mut d, &[Q4]);
+    assert!(d.world().log()[0].contains("\"by\":\"Helix\""), "{}", d.world().log()[0]);
+    d.world().put(Q4, MONEY);
+    heard(&mut d, &[Q4]);
+    assert!(
+        d.world().log().iter().filter(|l| l.contains("\"kind\":\"external\"")).nth(1).unwrap().contains("\"by\":null"),
+        "a version no client held is no one's"
+    );
+}
+
+#[test]
+fn a_chain_is_its_root_and_every_file_it_reached() {
+    let sim = Sim::default();
+    sim.put(Q4, MONEY);
+    sim.put(QUARTERS, INDEX);
+    sim.put(
+        "/w/year.cells",
+        "---\nimport quarters from \"./quarters.cells\"\n---\nyear:text!,costs:EUR\n2026,180.00=SUM(quarters.costs)\n",
+    );
+    let mut d = served(sim, "/w");
+    d.world().put(Q4, &MONEY.replace("cost,180.00,180.00=", EDITED));
+    heard(&mut d, &[Q4]);
+    let FromEngine::History { chains } = ask(&mut d, "app", ToEngine::History { folder: "/w".into(), file: None, limit: 10 }) else {
+        panic!()
+    };
+    let [chain] = &chains[..] else { panic!("one chain: {chains:#?}") };
+    assert_eq!(chain.root.line.entry.path(), "q4/money.cells");
+    let followed: Vec<(&str, Vec<String>, Option<usize>)> = chain
+        .followed
+        .iter()
+        .map(|f| match &f.event.line.entry {
+            Logged::Store { path, via, .. } => (path.as_str(), via.clone(), f.under),
+            other => panic!("{other:?}"),
+        })
+        .collect();
+    assert_eq!(
+        followed,
+        [
+            ("q4/money.cells", vec!["q4/money.cells".to_owned()], None),
+            ("quarters.cells", vec!["q4/money.cells".to_owned()], None),
+            ("year.cells", vec!["quarters.cells".to_owned()], Some(1))
+        ],
+        "the edit's own write and the quarters under the edit, the year under the quarters"
+    );
+    let raw = serde_json::to_string(&chains).unwrap();
+    assert_eq!(serde_json::from_str::<Vec<crate::history::Chain>>(&raw).unwrap(), chains, "a chain crosses the wire whole");
+    let FromEngine::History { chains } =
+        ask(&mut d, "app", ToEngine::History { folder: "/w".into(), file: Some("/w/year.cells".into()), limit: 10 })
+    else {
+        panic!()
+    };
+    assert_eq!(chains.len(), 1, "a file's chains are those reaching it");
+}
+
+#[test]
+fn a_cell_says_every_value_it_held_and_the_root_of_each() {
+    let mut d = daemon();
+    for (n, cost) in ["200.00", "250.00"].iter().enumerate() {
+        d.world().put(Q4, &MONEY.replace("cost,180.00,180.00=", &format!("cost,{cost},{}=", if n == 0 { "180.00" } else { "200.00" })));
+        heard(&mut d, &[Q4]);
+    }
+    let FromEngine::Values { values } = ask(&mut d, "app", ToEngine::Cell { file: QUARTERS.into(), row: 1, column: "costs".into() }) else {
+        panic!()
+    };
+    assert_eq!(values.iter().map(|v| (v.was.as_str(), v.value.as_str())).collect::<Vec<_>>(), [("200.00", "250.00"), ("180.00", "200.00")]);
+    let roots: Vec<u64> = values.iter().map(|v| v.root.1).collect();
+    let log = d.world().log();
+    for n in roots {
+        assert!(log[n as usize - 1].contains("\"kind\":\"external\",\"path\":\"q4/money.cells\""), "each value's root is the q4 edit");
+    }
+}
+
+#[test]
+fn a_file_returned_to_a_version_is_a_change_of_its_own() {
+    let mut d = daemon();
+    let first = hash(MONEY);
+    assert_eq!(d.world().get(&format!("/w/.cells/versions/{first}")), MONEY, "every version seen is kept");
+    d.world().put(Q4, &MONEY.replace("cost,180.00,180.00=", EDITED));
+    heard(&mut d, &[Q4]);
+    let FromEngine::Restored { .. } = ask(&mut d, "app", ToEngine::Restore { file: Q4.into(), version: first.clone() }) else { panic!() };
+    assert_eq!(d.world().get(Q4), MONEY);
+    assert_eq!(d.world().get(QUARTERS), INDEX, "what it reached follows it back");
+    let log = d.world().log();
+    let restore = log.iter().find(|l| l.contains("\"kind\":\"restore\"")).expect("logged");
+    assert!(restore.contains("\"by\":\"app\"") && restore.contains(&format!("\"now\":\"{first}\"")), "{restore}");
+    assert!(log.len() > 3, "history kept, never rewritten");
+    let stored = hash(&INDEX.replace("180.00=SUM", "200.00=SUM"));
+    let FromEngine::Version { text, .. } = ask(&mut d, "app", ToEngine::Version { file: QUARTERS.into(), version: stored }) else {
+        panic!()
+    };
+    assert_eq!(text, INDEX.replace("180.00=SUM", "200.00=SUM"), "the version the engine stored, shown whole");
 }

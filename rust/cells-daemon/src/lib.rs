@@ -21,6 +21,7 @@
 pub mod allowed;
 pub mod client;
 pub mod daemon;
+pub mod history;
 pub mod hosted;
 pub mod log;
 pub mod server;
@@ -74,7 +75,8 @@ pub fn hosted() -> Result<Infallible, String> {
     let folder = wire::folder();
     std::fs::create_dir_all(&folder).map_err(|e| format!("{}: {e}", folder.display()))?;
     let trace_path = wire::trace();
-    let trace = std::fs::OpenOptions::new().create(true).append(true).open(&trace_path).map_err(|e| format!("{}: {e}", trace_path.display()))?;
+    let trace =
+        std::fs::OpenOptions::new().create(true).append(true).open(&trace_path).map_err(|e| format!("{}: {e}", trace_path.display()))?;
     use std::os::fd::AsRawFd;
     // SAFETY: dup2 points the process's stdout and stderr at the trace's descriptor, which
     // stays open as long as `trace`, held below for the process's life.
