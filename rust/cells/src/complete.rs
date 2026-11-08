@@ -352,10 +352,7 @@ fn tinting(before: &str) -> bool {
 
 /// The ten tints, each said: a choice's after its `#`, a look rule's.
 fn tints(from: u32, to: u32) -> Vec<Completion> {
-    look::TINTS
-        .iter()
-        .map(|t| item((*t).to_owned(), CompletionKind::Color, "a tint, drawn in each theme's own".into(), from, to))
-        .collect()
+    look::TINTS.iter().map(|t| item((*t).to_owned(), CompletionKind::Color, "a tint, drawn in each theme's own".into(), from, to)).collect()
 }
 
 /// A type's names: the file's named types, its tables' keys, the bases.

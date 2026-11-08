@@ -79,7 +79,9 @@ impl Tint {
     /// What it is, in words: what a hover says.
     pub fn said(self) -> String {
         match self {
-            Tint::Named(k) => format!("the tint {}: each reader draws its own theme's {}, light and dark", TINTS[k as usize], TINTS[k as usize]),
+            Tint::Named(k) => {
+                format!("the tint {}: each reader draws its own theme's {}, light and dark", TINTS[k as usize], TINTS[k as usize])
+            }
             Tint::Hex(rgb) => format!("the colour #{rgb:06x}, the same in every theme"),
         }
     }

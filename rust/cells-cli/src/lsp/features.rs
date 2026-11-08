@@ -5,8 +5,8 @@
 use std::collections::HashMap;
 
 use tower_lsp::lsp_types::{
-    CodeAction, CodeActionKind, CompletionItem, CompletionItemKind, CompletionTextEdit, Diagnostic, DiagnosticSeverity, Documentation, Hover,
-    HoverContents, Location, MarkupContent, MarkupKind, Range, TextEdit, Url, WorkspaceEdit,
+    CodeAction, CodeActionKind, CompletionItem, CompletionItemKind, CompletionTextEdit, Diagnostic, DiagnosticSeverity, Documentation,
+    Hover, HoverContents, Location, MarkupContent, MarkupKind, Range, TextEdit, Url, WorkspaceEdit,
 };
 
 use cells::complete::{CompletionKind as Kind, HeaderCell, Spot, opened, written, written_key};

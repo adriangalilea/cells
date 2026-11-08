@@ -248,7 +248,11 @@ fn prelude(doc: &Doc, text: &str, at: usize) -> Option<Hover> {
             }
             let said = rule.map_or_else(|why| why, |r| r.said());
             let from = (line_start + r.start) as u32;
-            return Some(Hover { pieces: vec![Piece::Code(spelled.to_owned()), Piece::Break, plain(said)], from, to: from + spelled.len() as u32 });
+            return Some(Hover {
+                pieces: vec![Piece::Code(spelled.to_owned()), Piece::Break, plain(said)],
+                from,
+                to: from + spelled.len() as u32,
+            });
         }
     }
     let (w, start) = word(text, at);
@@ -257,7 +261,13 @@ fn prelude(doc: &Doc, text: &str, at: usize) -> Option<Hover> {
     }
     let (from, len) = (start as u32, w.len() as u32);
     if w == "look" && text[line_start..start].trim().is_empty() {
-        let pieces = vec![Piece::Code("look".into()), Piece::Break, plain("how a column's, a named type's or the row's values show, wherever they show: a table's cell and a chart's mark alike; never a value")];
+        let pieces = vec![
+            Piece::Code("look".into()),
+            Piece::Break,
+            plain(
+                "how a column's, a named type's or the row's values show, wherever they show: a table's cell and a chart's mark alike; never a value",
+            ),
+        ];
         return Some(Hover { pieces, from, to: from + len });
     }
     if let Some(t) = doc.named().iter().find(|t| t.name == w) {

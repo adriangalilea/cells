@@ -12,8 +12,8 @@
 use cells::Tint;
 use cells::tokens::{Kind, Token};
 use tower_lsp::lsp_types::{
-    Color, ColorInformation, ColorPresentation, InlayHint, InlayHintLabel, Range, SemanticToken, SemanticTokenModifier,
-    SemanticTokenType, SemanticTokensLegend, TextEdit,
+    Color, ColorInformation, ColorPresentation, InlayHint, InlayHintLabel, Range, SemanticToken, SemanticTokenModifier, SemanticTokenType,
+    SemanticTokensLegend, TextEdit,
 };
 
 use super::text::Lines;

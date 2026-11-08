@@ -974,7 +974,23 @@ mod tests {
         assert_eq!(kinds(Kind::Choice), ["income", "cost", "pending", "yes", "no", "yay", "meh"]);
         assert_eq!(
             kinds(Kind::Keyword),
-            ["type", "look", "grouped", "look", "negative", "in", "parentheses", "when", "scale", "look", "as", "look", "row", "when", "tint"]
+            [
+                "type",
+                "look",
+                "grouped",
+                "look",
+                "negative",
+                "in",
+                "parentheses",
+                "when",
+                "scale",
+                "look",
+                "as",
+                "look",
+                "row",
+                "when",
+                "tint"
+            ]
         );
         assert_eq!(kinds(Kind::Format), ["'D MMM YYYY'"]);
         assert_eq!(kinds(Kind::Reference), ["amount", "paid"]);
