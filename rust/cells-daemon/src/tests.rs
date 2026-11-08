@@ -246,8 +246,32 @@ fn a_folder_inside_one_served_is_that_one_and_a_wide_one_is_refused() {
     assert_eq!(d.serve(Path::new("/w/q4")).unwrap(), PathBuf::from("/w"));
     assert!(d.serve(Path::new("/")).unwrap_err().contains("too wide"));
     assert!(d.serve(Path::new("/home/someone")).unwrap_err().contains("too wide"));
-    let mut e = served(Sim::default(), "/w/q4");
-    assert!(e.serve(Path::new("/w")).unwrap_err().contains("holds /w/q4"));
+}
+
+#[test]
+fn a_book_opened_from_a_quarter_first_is_one_book_once_its_index_is() {
+    let sim = Sim::default();
+    sim.put(Q4, MONEY);
+    sim.put(QUARTERS, INDEX);
+    let mut d = served(sim, "/w/q4");
+    d.world().put(Q4, &MONEY.replace("cost,180.00,180.00=", "cost,190.00,180.00="));
+    heard(&mut d, &[Q4]);
+    assert_eq!(d.serve(Path::new("/w")).unwrap(), PathBuf::from("/w"), "the outer folder takes the inner in");
+    assert_eq!(d.serve(Path::new("/w/q4")).unwrap(), PathBuf::from("/w/q4"), "the inner stays served, its history its own");
+    d.world().put(Q4, &MONEY.replace("cost,180.00,180.00=", "cost,200.00,180.00="));
+    heard(&mut d, &[Q4]);
+    assert_eq!(d.world().get(QUARTERS), INDEX.replace("180.00=SUM", "200.00=SUM"), "the index follows its quarter");
+    let inner = d.world().files.borrow().get(Path::new("/w/q4/.cells/log.jsonl")).cloned().unwrap();
+    assert_eq!(inner.lines().filter(|l| l.contains("\"kind\":\"external\"")).count(), 2, "q4's saves logged where its history began");
+    let FromEngine::History { chains } = ask(&mut d, "app", ToEngine::History { folder: "/w".into(), file: None, limit: 10 }) else {
+        panic!()
+    };
+    let latest = &chains[0];
+    assert_eq!(latest.root.folder, PathBuf::from("/w/q4"));
+    assert!(
+        latest.followed.iter().any(|f| f.event.folder == PathBuf::from("/w") && f.event.line.entry.path() == "quarters.cells"),
+        "one chain across both logs: {latest:#?}"
+    );
 }
 
 #[test]

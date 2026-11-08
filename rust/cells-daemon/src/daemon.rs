@@ -199,21 +199,16 @@ impl<W: World> Daemon<W> {
 
     /// `root` (canonical) served from now on: locked, watched whole, every table file under
     /// it read as the start of its history, and the files they import from elsewhere read and
-    /// watched too. A folder inside one served already is that one; a folder holding one,
-    /// or the home folder or the disk's root whole, is refused.
+    /// watched too. A folder inside one served already is that one. A folder holding ones
+    /// served already takes them in: their files stay held, each logging where its history
+    /// began (the folder nearest it), so a book opened from a quarter's file first and from
+    /// its index next is one book. The home folder or the disk's root whole is refused.
     pub fn serve(&mut self, root: &Path) -> Result<PathBuf, String> {
-        if let Some(holder) = self.root_of(root) {
+        if let Some(holder) = self.served.iter().map(|l| l.root.as_path()).find(|r| root.starts_with(r)) {
             return Ok(holder.to_path_buf());
         }
         if root == self.world.home() || root.parent().is_none() {
             return Err(format!("{} is too wide to serve whole: serve the folder your files are in", root.display()));
-        }
-        if let Some(inner) = self.served.iter().find(|l| l.root.starts_with(root)) {
-            return Err(format!(
-                "{} holds {}, served already: serve the folders inside it one by one",
-                root.display(),
-                inner.root.display()
-            ));
         }
         let span = tracing::info_span!(target: ENGINE, "serve", path = %root.display());
         let _serving = span.enter();
@@ -227,6 +222,10 @@ impl<W: World> Daemon<W> {
         let held = self.folder.paths().count();
         let found = self.world.list(root);
         for path in &found {
+            // a file of a folder served already, taken in, is held as it was
+            if self.folder.text(&key(path)).is_some() {
+                continue;
+            }
             match self.world.read(path) {
                 Found::Text(text) => {
                     self.keep(path, &text);
@@ -590,7 +589,7 @@ impl<W: World> Daemon<W> {
 
     /// The log of the folder served holding `file`.
     fn log_of(&self, file: &Path) -> Result<&Log, String> {
-        self.served.iter().find(|l| file.starts_with(&l.root)).ok_or(format!("{}: in no folder served", file.display()))
+        self.log_for(file).ok_or(format!("{}: in no folder served", file.display()))
     }
 
     /// Every client told the files whose version changed since it was last told; a client
@@ -738,7 +737,7 @@ impl<W: World> Daemon<W> {
 
     /// `root` logged in the log of the folder holding `at`: its folder and number.
     fn log_root(&mut self, at: &Path, root: Root, edited: Option<Edit>) -> Option<(PathBuf, u64)> {
-        let log = self.served.iter().find(|l| at.starts_with(&l.root))?;
+        let log = self.log_for(at)?;
         let path = log.shown(&root.path);
         let entry = match root.kind {
             RootKind::External { by } => Logged::External { path, was: root.was, now: root.now, by, edited },
@@ -846,8 +845,15 @@ impl<W: World> Daemon<W> {
         Ok(())
     }
 
+    /// The log of the folder served nearest `path`.
+    fn log_for(&self, path: &Path) -> Option<&Log> {
+        let root = self.root_of(path)?;
+        self.served.iter().find(|l| l.root == root)
+    }
+
+    /// The folder served nearest `path`: the one its history is logged in.
     fn root_of(&self, path: &Path) -> Option<&Path> {
-        self.served.iter().map(|l| l.root.as_path()).find(|r| path.starts_with(r))
+        self.served.iter().map(|l| l.root.as_path()).filter(|r| path.starts_with(r)).max_by_key(|r| r.components().count())
     }
 
     /// A path as the trace says it: from its folder served, else whole.
@@ -875,7 +881,7 @@ impl<W: World> Daemon<W> {
     /// `text`, a version of `path`, kept whole in its folder's `.cells/versions`, so the
     /// log's every version can be shown and returned to.
     fn keep(&self, path: &Path, text: &str) {
-        let Some(log) = self.served.iter().find(|l| path.starts_with(&l.root)) else { return };
+        let Some(log) = self.log_for(path) else { return };
         if let Err(why) = log.keep(&self.world, text) {
             tracing::error!(target: ENGINE, why, "version not kept");
         }
