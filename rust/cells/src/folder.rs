@@ -161,6 +161,13 @@ impl Folder {
         self.known.get(path)?.doc.as_ref()
     }
 
+    /// `text` read as a version of `path`, its imports followed through the files held: a
+    /// version not held yet (what a run would write) read as the folder would read it.
+    pub fn read_as(&self, path: &str, text: &str) -> Result<Doc, String> {
+        let mut files = Files::new(&self.texts, path);
+        read_with(text.as_bytes().to_vec(), &mut files, 1).map_err(|e| alloc::format!("{e}"))
+    }
+
     /// Every file held, by path.
     pub fn paths(&self) -> impl Iterator<Item = &str> {
         self.texts.keys().map(String::as_str)
