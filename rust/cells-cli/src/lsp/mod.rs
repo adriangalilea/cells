@@ -140,7 +140,7 @@ impl LanguageServer for Backend {
                 document_formatting_provider: Some(OneOf::Left(true)),
                 hover_provider: Some(HoverProviderCapability::Simple(true)),
                 completion_provider: Some(CompletionOptions {
-                    trigger_characters: Some(vec![".".into(), "[".into(), ":".into(), ",".into()]),
+                    trigger_characters: Some(vec![".".into(), "[".into(), ":".into(), ",".into(), "#".into()]),
                     ..CompletionOptions::default()
                 }),
                 definition_provider: Some(OneOf::Left(true)),
@@ -154,6 +154,7 @@ impl LanguageServer for Backend {
                     work_done_progress_options: Default::default(),
                 })),
                 inlay_hint_provider: Some(OneOf::Left(true)),
+                color_provider: Some(ColorProviderCapability::Simple(true)),
                 semantic_tokens_provider: Some(SemanticTokensServerCapabilities::SemanticTokensOptions(SemanticTokensOptions {
                     legend: colour::legend(),
                     full: Some(SemanticTokensFullOptions::Bool(true)),
@@ -338,6 +339,18 @@ impl LanguageServer for Backend {
         let folder = self.folder();
         let Some(file) = path(&p.text_document.uri).and_then(|path| folder.read(&path)) else { return Ok(None) };
         Ok(Some(colour::aligned(&file.text, p.range)))
+    }
+
+    async fn document_color(&self, p: DocumentColorParams) -> Result<Vec<ColorInformation>> {
+        let folder = self.folder();
+        let Some(file) = path(&p.text_document.uri).and_then(|path| folder.read(&path)) else { return Ok(Vec::new()) };
+        Ok(colour::colours(&file.text))
+    }
+
+    async fn color_presentation(&self, p: ColorPresentationParams) -> Result<Vec<ColorPresentation>> {
+        let folder = self.folder();
+        let Some(file) = path(&p.text_document.uri).and_then(|path| folder.read(&path)) else { return Ok(Vec::new()) };
+        Ok(colour::presentations(&file.text, p.range, p.color))
     }
 
     async fn prepare_rename(&self, p: TextDocumentPositionParams) -> Result<Option<PrepareRenameResponse>> {

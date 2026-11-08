@@ -5,7 +5,7 @@
 use std::collections::HashMap;
 
 use tower_lsp::lsp_types::{
-    CodeAction, CodeActionKind, CompletionItem, CompletionItemKind, CompletionTextEdit, Diagnostic, DiagnosticSeverity, Hover,
+    CodeAction, CodeActionKind, CompletionItem, CompletionItemKind, CompletionTextEdit, Diagnostic, DiagnosticSeverity, Documentation, Hover,
     HoverContents, Location, MarkupContent, MarkupKind, Range, TextEdit, Url, WorkspaceEdit,
 };
 
@@ -194,8 +194,14 @@ pub fn complete(folder: &Folder, file: &File, at: usize) -> Vec<CompletionItem> 
         .into_iter()
         .map(|c| {
             let range = lines.range(span(c.from, c.to - c.from));
+            // An editor draws a colour's swatch from its documentation, a hex.
+            let documentation = (c.kind == Kind::Color)
+                .then(|| cells::Tint::parse(&c.label).ok())
+                .flatten()
+                .map(|t| Documentation::String(format!("#{:06x}", super::colour::swatch(t))));
             CompletionItem {
                 label: c.label,
+                documentation,
                 kind: Some(match c.kind {
                     Kind::Value => CompletionItemKind::VALUE,
                     Kind::EnumMember => CompletionItemKind::ENUM_MEMBER,
@@ -205,6 +211,7 @@ pub fn complete(folder: &Folder, file: &File, at: usize) -> Vec<CompletionItem> 
                     Kind::Field => CompletionItemKind::FIELD,
                     Kind::Module => CompletionItemKind::MODULE,
                     Kind::Function => CompletionItemKind::FUNCTION,
+                    Kind::Color => CompletionItemKind::COLOR,
                 }),
                 detail: Some(c.detail),
                 text_edit: Some(CompletionTextEdit::Edit(TextEdit { range, new_text: c.insert })),

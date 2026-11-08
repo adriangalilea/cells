@@ -6,11 +6,14 @@
 //! column as a modifier, `column1` to `column6` in turn, for a client that colours
 //! columns from the server (as Rainbow CSV's extension does). Punctuation, errors and a
 //! script's code are not served: the grammar draws the first, diagnostics the second,
-//! the script's own language the third.
+//! the script's own language the third. A tint is a colour as well, an editor's swatch
+//! and picker (`textDocument/documentColor`).
 
+use cells::Tint;
 use cells::tokens::{Kind, Token};
 use tower_lsp::lsp_types::{
-    InlayHint, InlayHintLabel, Range, SemanticToken, SemanticTokenModifier, SemanticTokenType, SemanticTokensLegend,
+    Color, ColorInformation, ColorPresentation, InlayHint, InlayHintLabel, Range, SemanticToken, SemanticTokenModifier,
+    SemanticTokenType, SemanticTokensLegend, TextEdit,
 };
 
 use super::text::Lines;
@@ -127,9 +130,85 @@ pub fn aligned(text: &str, range: Range) -> Vec<InlayHint> {
         .collect()
 }
 
+/// The ten tints (`cells::look::TINTS`) as an editor's swatch and picker show them: a
+/// middle tone that reads on a light and a dark theme alike. Every app draws a name in
+/// its own theme's colour; an editor has one swatch per tint, so this is the server's.
+const SWATCHES: [u32; 10] = [0xe5484d, 0xf76b15, 0xffc53d, 0x30a46c, 0x12a594, 0x0090ff, 0x8e4ec6, 0xd6409f, 0xad7f58, 0x8d8d8d];
+
+/// The colour an editor shows for a tint: its swatch, or its own hex.
+pub fn swatch(t: Tint) -> u32 {
+    match t {
+        Tint::Named(k) => SWATCHES[k as usize],
+        Tint::Hex(rgb) => rgb,
+    }
+}
+
+fn rgba(rgb: u32) -> Color {
+    let part = |shift: u32| ((rgb >> shift) & 0xff) as f32 / 255.0;
+    Color { red: part(16), green: part(8), blue: part(0), alpha: 1.0 }
+}
+
+/// A tint as the engine's tokens mark it: after a choice's `#` or `tint`, its name or its
+/// six hex digits; in a look's rule, a name or `#` and six.
+fn tint_of(spelled: &str) -> Tint {
+    match spelled.strip_prefix('#') {
+        Some(_) => Tint::parse(spelled),
+        None => Tint::after_hash(spelled),
+    }
+    .expect("a tint token is a tint")
+}
+
+/// Every tint of the file and its colour: what an editor draws a swatch beside and opens
+/// its picker on.
+pub fn colours(text: &str) -> Vec<ColorInformation> {
+    let lines = Lines::new(text);
+    cells::tokens::tokens(text)
+        .into_iter()
+        .filter(|t| t.kind == Kind::Tint)
+        .map(|t| ColorInformation {
+            range: lines.range(cells::Span { start: t.start, len: t.end - t.start }),
+            color: rgba(swatch(tint_of(&text[t.start as usize..t.end as usize]))),
+        })
+        .collect()
+}
+
+/// What a colour picked for the tint at `range` is written as: the tint whose swatch it is,
+/// by its name, else its hex, written as the place writes one (bare after a choice's `#`
+/// or `tint`, after a `#` of its own in a look's rule).
+pub fn presentations(text: &str, range: Range, c: Color) -> Vec<ColorPresentation> {
+    let lines = Lines::new(text);
+    let at = lines.offset(range.start);
+    let byte = |x: f32| (x.clamp(0.0, 1.0) * 255.0).round() as u32;
+    let rgb = byte(c.red) << 16 | byte(c.green) << 8 | byte(c.blue);
+    let line = &text[text[..at].rfind('\n').map_or(0, |i| i + 1)..];
+    let in_look = cells::look::spans(line.split('\n').next().unwrap_or("")).is_some();
+    let label = match SWATCHES.iter().position(|s| *s == rgb) {
+        Some(k) => cells::look::TINTS[k].to_owned(),
+        None if in_look && !text[..at].ends_with('#') => format!("#{rgb:06x}"),
+        None => format!("{rgb:06x}"),
+    };
+    let edit = TextEdit { range, new_text: label.clone() };
+    vec![ColorPresentation { label, text_edit: Some(edit), additional_text_edits: None }]
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn tints_are_colours_and_a_colour_picked_is_written_where_it_stands() {
+        use tower_lsp::lsp_types::Position;
+        let text = "---\ntype Kind = income#green|cost#3fa34d\nlook amount: negative red\n---\nkind:Kind,amount:EUR\nincome,1.00\n";
+        let found = colours(text);
+        let at = |c: &ColorInformation| (c.range.start.line, c.range.start.character, c.range.end.character);
+        assert_eq!(found.iter().map(at).collect::<Vec<_>>(), [(1, 19, 24), (1, 30, 36), (2, 22, 25)]);
+        assert_eq!(found[1].color, rgba(0x3fa34d));
+        let range = |line, from, to| Range { start: Position { line, character: from }, end: Position { line, character: to } };
+        let written = |r: Range, rgb: u32| presentations(text, r, rgba(rgb))[0].label.clone();
+        assert_eq!(written(range(1, 19, 24), 0x0090ff), "blue");
+        assert_eq!(written(range(1, 19, 24), 0x123456), "123456");
+        assert_eq!(written(range(2, 22, 25), 0x123456), "#123456");
+    }
 
     /// Each token back in absolute terms: its line, its start, its text, its type, its
     /// column modifier.
