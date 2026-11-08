@@ -1,7 +1,7 @@
 // Where in a file's text each problem's cell is: its line and the columns it spans,
 // what an editor underlines and where it hangs the message. The engine says a problem's
-// row and column today; when it says the span of the characters that broke (start and
-// length inside the cell's text, `span`), that span is used and the cell's edges only
+// row and column, and, where it has one, the span of the characters that broke (start
+// and length inside the cell's text, `span`): that span is used and the cell's edges only
 // place it. Framework-free.
 
 export interface ProblemAt {

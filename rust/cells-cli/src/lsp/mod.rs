@@ -178,6 +178,9 @@ impl LanguageServer for Backend {
             }
         });
         let held = self.folder();
+        // Each open file's own folder beside the editor's: an editor may name none (Helix,
+        // where no project marker is), and the engine watches what a served file imports,
+        // wherever it is.
         let folders: Vec<PathBuf> =
             held.root.iter().cloned().chain(held.open.keys().filter_map(|p| p.parent().map(Path::to_path_buf))).collect();
         for f in folders {

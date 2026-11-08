@@ -238,7 +238,7 @@
 
 (named_type) @type
 
-; PROVISIONAL: a column typed by another file's key (SPEC, Open).
+; A column typed by another table's key (SPEC, References).
 (reference_type
   file: (reference_file) @namespace
   "." @punctuation.delimiter
