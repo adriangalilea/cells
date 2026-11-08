@@ -58,6 +58,9 @@ pub enum Change {
 /// What a change led to, each list in the order it happened.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct Outcome {
+    /// What a `Changed` file's new version changed in it, beside the version before:
+    /// nothing for a file new to the folder, or one either version of failed to read.
+    pub edited: Option<Edited>,
     /// Each file read again.
     pub read: Vec<Read>,
     /// What the change reaches, a whole file each.
@@ -85,20 +88,50 @@ pub struct Write {
     pub path: String,
     pub against: String,
     pub text: String,
-    /// The file whose change reached this one: itself when a write after a hand edit
-    /// stores what the edit reached.
-    pub because: String,
-    pub stored: Vec<Stored>,
+    /// The files of this change this one reads directly, each changed by it or written
+    /// before it: what a chain draws as its parents. The changed file alone for its own
+    /// write, storing what its edit reached.
+    pub via: Vec<String>,
+    /// Each computed cell stored, its values as the file stores them before its `=`.
+    pub stored: Vec<Cell>,
 }
 
-/// One computed cell a write stores: its row as a table numbers it (from 1), its column,
-/// and what the file stored before its `=` and stores now.
+/// One cell of a table, changed: its row as the table numbers it (from 1), the row's key
+/// when the table has one (what names it across rows inserted above), its column, and
+/// its text before and after.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct Stored {
+pub struct Cell {
     pub row: usize,
+    pub key: Option<String>,
     pub column: String,
     pub was: String,
     pub now: String,
+}
+
+/// What a version changed in a file beside the version before it. Rows are matched by
+/// the table's key when it has one; without one, the lines the two versions share at
+/// their start and their end are the same rows, and between them rows pair by place when
+/// both versions hold as many, else are removed and added. Columns are matched by name.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct Edited {
+    /// Each cell whose text changed, of a row and a column both versions hold.
+    pub cells: Vec<Cell>,
+    /// Rows the new version holds and the one before did not, numbered as the new one.
+    pub rows_added: Vec<usize>,
+    /// Rows the version before held and the new one does not, numbered as before.
+    pub rows_removed: Vec<usize>,
+    pub columns_added: Vec<String>,
+    pub columns_removed: Vec<String>,
+}
+
+impl Edited {
+    pub fn is_empty(&self) -> bool {
+        self.cells.is_empty()
+            && self.rows_added.is_empty()
+            && self.rows_removed.is_empty()
+            && self.columns_added.is_empty()
+            && self.columns_removed.is_empty()
+    }
 }
 
 /// What the folder knows of a file beside its text: the doc it read, nothing when the
@@ -153,10 +186,18 @@ impl Folder {
                 }
                 let first = !self.texts.contains_key(&path);
                 self.texts.insert(path.clone(), text);
+                let mut changed = alloc::vec![path.clone()];
                 for p in self.reached_by(&path) {
-                    // a file new to the folder has no version before to store against
-                    let cause = (!(first && p == path)).then_some(path.as_str());
-                    self.read(&p, cause, &mut out);
+                    if p == path {
+                        // a file new to the folder has no version before to store against
+                        let via = (!first).then(|| alloc::vec![path.clone()]);
+                        self.read(&p, via, &mut out);
+                    } else {
+                        let via = self.via(&p, &changed);
+                        if self.read(&p, Some(via), &mut out) {
+                            changed.push(p);
+                        }
+                    }
                 }
             }
             Change::Written { path, text } => {
@@ -168,12 +209,24 @@ impl Folder {
                 let reached = self.reached_by(&path);
                 self.texts.remove(&path);
                 self.known.remove(&path);
-                for p in reached.iter().filter(|p| **p != path) {
-                    self.read(p, Some(&path), &mut out);
+                let mut changed = alloc::vec![path.clone()];
+                for p in reached.into_iter().filter(|p| *p != path) {
+                    let via = self.via(&p, &changed);
+                    if self.read(&p, Some(via), &mut out) {
+                        changed.push(p);
+                    }
                 }
             }
         }
         out
+    }
+
+    /// Of the files `changed` by one change so far, those `path` reads directly: every one
+    /// it reads but through another of them.
+    fn via(&self, path: &str, changed: &[String]) -> Vec<String> {
+        let reads = self.reads(path);
+        let read: Vec<&String> = changed.iter().filter(|c| reads.contains(c)).collect();
+        read.iter().filter(|c| !read.iter().any(|d| d != *c && self.reads(d).contains(*c))).map(|c| (*c).clone()).collect()
     }
 
     /// `path`, when held, and every file whose reads reach it, in the order their reads
@@ -193,8 +246,9 @@ impl Folder {
     }
 
     /// `path` read again from the texts held, replacing the version the folder knew; with
-    /// a `cause`, written as a write after that version leaves it.
-    fn read(&mut self, path: &str, cause: Option<&str>, out: &mut Outcome) {
+    /// `via`, written as a write after that version leaves it, and when `via` is the file
+    /// itself, what its new version edited said. Whether it is written.
+    fn read(&mut self, path: &str, via: Option<Vec<String>>, out: &mut Outcome) -> bool {
         let text = self.texts[path].clone();
         let mut files = Files::new(&self.texts, path);
         let read = read_with(text.as_bytes().to_vec(), &mut files, 1);
@@ -207,16 +261,21 @@ impl Folder {
             }
         }
         let before = self.known.get(path).and_then(|k| k.doc.as_ref());
+        let mut wrote = false;
         match &read {
             Ok(doc) => {
-                if let (Some(cause), Some(before)) = (cause, before) {
+                if let (Some(via), Some(before)) = (via, before) {
+                    if via.len() == 1 && via[0] == path {
+                        out.edited = Some(edited(before, doc));
+                    }
                     let mut after = doc.clone();
                     after.stored_since(before);
                     let written = after.write();
                     if written != text {
                         let against = crate::sha256::hex(text.as_bytes());
                         let stored = stored(doc, &after);
-                        out.writes.push(Write { path: path.to_owned(), against, text: written, because: cause.to_owned(), stored });
+                        out.writes.push(Write { path: path.to_owned(), against, text: written, via, stored });
+                        wrote = true;
                     }
                 }
                 let stale = doc.problems().iter().filter(|p| p.kind() == Kind::Stale).count();
@@ -225,11 +284,18 @@ impl Folder {
             Err(e) => out.read.push(Read { path: path.to_owned(), refused: Some(e.why.clone()), problems: 0, stale: 0 }),
         }
         self.known.insert(path.to_owned(), Known { doc: read.ok(), reads });
+        wrote
     }
 }
 
+/// The text of the key cell of `doc`'s `row` (from 0), when its table has a key.
+pub fn key_of(doc: &Doc, row: usize) -> Option<String> {
+    let k = doc.columns().iter().position(|c| c.ty.key)?;
+    Some(doc.text(row, k).into_owned())
+}
+
 /// Every computed cell `after` stores another value in than `now` does.
-fn stored(now: &Doc, after: &Doc) -> Vec<Stored> {
+fn stored(now: &Doc, after: &Doc) -> Vec<Cell> {
     let left = |cell: &str| crate::split_cell(cell).map_or(cell, |at| &cell[..at]).to_owned();
     let mut out = Vec::new();
     for (k, c) in now.columns().iter().enumerate() {
@@ -240,7 +306,75 @@ fn stored(now: &Doc, after: &Doc) -> Vec<Stored> {
         for r in 0..now.rows() {
             let (was, is) = (now.text(r, k), after.text(r, k));
             if was != is {
-                out.push(Stored { row: r + 1, column: c.name.clone(), was: left(&was), now: left(&is) });
+                out.push(Cell { row: r + 1, key: key_of(now, r), column: c.name.clone(), was: left(&was), now: left(&is) });
+            }
+        }
+    }
+    out
+}
+
+/// What `after` changed beside `before` (`Edited`): linear in the rows, whatever their
+/// number, since only the rows between the lines both share at their ends are compared.
+pub fn edited(before: &Doc, after: &Doc) -> Edited {
+    let mut out = Edited::default();
+    let name = |d: &Doc, k: usize| d.columns()[k].name.clone();
+    let find = |d: &Doc, n: &str| d.columns().iter().position(|c| c.name == n);
+    let shared: Vec<(usize, usize)> =
+        (0..before.columns().len()).filter_map(|k| find(after, &before.columns()[k].name).map(|j| (k, j))).collect();
+    out.columns_removed =
+        (0..before.columns().len()).filter(|&k| find(after, &before.columns()[k].name).is_none()).map(|k| name(before, k)).collect();
+    out.columns_added =
+        (0..after.columns().len()).filter(|&j| find(before, &after.columns()[j].name).is_none()).map(|j| name(after, j)).collect();
+
+    let keyed = |d: &Doc| d.columns().iter().position(|c| c.ty.key);
+    let pairs: Vec<(usize, usize)> = match (keyed(before), keyed(after)) {
+        (Some(kb), Some(ka)) if before.columns()[kb].name == after.columns()[ka].name => {
+            let mut at = BTreeMap::new();
+            for r in 0..before.rows() {
+                at.insert(before.text(r, kb).into_owned(), r);
+            }
+            let mut pairs = Vec::new();
+            for r in 0..after.rows() {
+                match at.remove(after.text(r, ka).as_ref()) {
+                    Some(b) => pairs.push((b, r)),
+                    None => out.rows_added.push(r + 1),
+                }
+            }
+            out.rows_removed = at.into_values().map(|b| b + 1).collect();
+            out.rows_removed.sort();
+            pairs
+        }
+        _ => {
+            let (nb, na) = (before.rows(), after.rows());
+            let mut head = 0;
+            while head < nb.min(na) && before.line(head) == after.line(head) {
+                head += 1;
+            }
+            let mut tail = 0;
+            while tail < (nb - head).min(na - head) && before.line(nb - 1 - tail) == after.line(na - 1 - tail) {
+                tail += 1;
+            }
+            let (mb, ma) = (nb - head - tail, na - head - tail);
+            if mb == ma {
+                (head..head + mb).map(|r| (r, r)).collect()
+            } else {
+                out.rows_removed = (head + 1..=head + mb).collect();
+                out.rows_added = (head + 1..=head + ma).collect();
+                Vec::new()
+            }
+        }
+    };
+    for (b, a) in pairs {
+        for &(kb, ka) in &shared {
+            let (was, now) = (before.text(b, kb), after.text(a, ka));
+            if was != now {
+                out.cells.push(Cell {
+                    row: a + 1,
+                    key: key_of(after, a),
+                    column: name(after, ka),
+                    was: was.into_owned(),
+                    now: now.into_owned(),
+                });
             }
         }
     }
@@ -278,10 +412,14 @@ mod tests {
         let out = changed(&mut f, Q4, &edited);
         assert_eq!(out.read.iter().map(|r| r.path.as_str()).collect::<Vec<_>>(), [Q4, QUARTERS], "the file read first");
         let [own, index] = &out.writes[..] else { panic!("two writes: {:?}", out.writes) };
-        assert_eq!((own.path.as_str(), own.because.as_str()), (Q4, Q4));
-        assert_eq!(own.stored, [Stored { row: 2, column: "cost".into(), was: "180.00".into(), now: "200.00".into() }]);
+        assert_eq!((own.path.as_str(), &own.via[..]), (Q4, &[Q4.to_owned()][..]));
+        assert_eq!(own.stored, [Cell { row: 2, key: None, column: "cost".into(), was: "180.00".into(), now: "200.00".into() }]);
         assert_eq!(index.path, QUARTERS);
-        assert_eq!(index.because, Q4);
+        assert_eq!(index.via, [Q4]);
+        assert_eq!(index.stored[0].key.as_deref(), Some("q4"), "a keyed table names its row");
+        let edited = out.edited.expect("the edit said");
+        assert_eq!(edited.cells, [Cell { row: 2, key: None, column: "amount".into(), was: "180.00".into(), now: "200.00".into() }]);
+        assert!(edited.rows_added.is_empty() && edited.rows_removed.is_empty());
         assert_eq!(index.text, INDEX.replace("180.00=SUM", "200.00=SUM"));
         assert_eq!(index.against, crate::sha256::hex(INDEX.as_bytes()));
     }
@@ -332,6 +470,46 @@ mod tests {
         let out = changed(&mut f, Q4, &MONEY.replace("cost,180.00,180.00=", "cost,200.00,180.00="));
         assert_eq!(out.writes.iter().map(|w| w.path.as_str()).collect::<Vec<_>>(), [Q4, QUARTERS, year]);
         assert!(out.writes[2].text.contains("2026,200.00=SUM"));
+        assert_eq!(out.writes[2].via, [QUARTERS], "the year follows the quarters, never the q4 it reaches through them");
+    }
+
+    #[test]
+    fn an_edit_says_its_rows_and_columns() {
+        let mut f = folder();
+        let added =
+            changed(&mut f, Q4, &MONEY.replace("income,4200.00,0.00=\n", "income,4200.00,0.00=\ncost,5.00,0.00=\n")).edited.unwrap();
+        assert_eq!(
+            (&added.rows_added[..], &added.rows_removed[..], added.cells.len()),
+            (&[2][..], &[][..], 0),
+            "a row inserted, the one under it the same"
+        );
+        let keyed = |t: &str| alloc::format!("---\nimport q4 from \"./q4/money.cells\"\n---\nquarter:text!,costs:EUR\n{t}");
+        let before = keyed("q3,1.00=SUM(q4.cost)\nq4,180.00=SUM(q4.cost)\n");
+        changed(&mut f, QUARTERS, &before);
+        let moved = changed(&mut f, QUARTERS, &keyed("q4,180.00=SUM(q4.cost)\nq3,2.00=SUM(q4.cost)\n")).edited.unwrap();
+        assert_eq!(
+            moved.cells,
+            [Cell {
+                row: 2,
+                key: Some("q3".into()),
+                column: "costs".into(),
+                was: "1.00=SUM(q4.cost)".into(),
+                now: "2.00=SUM(q4.cost)".into()
+            }],
+            "rows matched by key"
+        );
+        let wider =
+            changed(&mut f, QUARTERS, &keyed("q4,180.00=SUM(q4.cost)\nq3,2.00=SUM(q4.cost)\n").replace("costs:EUR\n", "costs:EUR,note\n"))
+                .edited
+                .unwrap();
+        assert_eq!(wider.columns_added, ["note"]);
+        let mut g = folder();
+        let aligned = MONEY.replace(
+            "kind:Kind,amount:EUR,cost\nincome,4200.00,0.00=\ncost,180.00,180.00=\n",
+            "kind:Kind,  amount:EUR,  cost\nincome,    4200.00,     0.00=\ncost,      180.00,      180.00=\n",
+        );
+        let realigned = changed(&mut g, Q4, &aligned);
+        assert!(realigned.edited.as_ref().is_some_and(Edited::is_empty), "padding is no part of a value: {:?}", realigned.edited);
     }
 
     #[test]
