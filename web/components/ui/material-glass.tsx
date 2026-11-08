@@ -420,8 +420,8 @@ export interface GlassLight {
    *  leaning toward its ground). Sets `--glass-rim-color`. */
   rimColor?: string
   /** A colour to stain the glass with: a brand or a project's accent, so glass on
-   *  its pages belongs to it, or a status (`var(--tone-ok)`: a success badge, an
-   *  error toast, an invalid field), stained the same amount, the colour said again
+   *  its pages belongs to it, or a status (`var(--tone-ok)`: a success badge, a
+   *  problem in the HUD, an invalid field), stained the same amount, the colour said again
    *  on its mark (an icon, a title, the rim) and never on all its words. Mixed into
    *  the face's own tint, never replacing it; unset, the glass is untouched. Sets
    *  `--glass-stain`, which a parent can set instead to stain every glass inside. */
@@ -609,7 +609,7 @@ export const PLAIN_BAND =
   "border-border bg-[color-mix(in_oklab,currentColor_5%,var(--band-base,var(--background)))]"
 
 /** THE FLARE RULE (tokens.css), for any surface that carries one hue (a card, a
- *  toast): it wears that ONE hue, alpha the only variable. The surface sets the hue
+ *  HUD entry): it wears that ONE hue, alpha the only variable. The surface sets the hue
  *  as `--flare-hue` and wears `FLARE_LIGHT` in glass: the hue stains the glass at 6%
  *  and its rim catches it, a step more of both under the hand or held (`data-lifted`),
  *  nothing moving. Plain wears no light of the hue: never a tinted fill nor a coloured

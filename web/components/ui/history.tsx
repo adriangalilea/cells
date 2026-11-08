@@ -11,9 +11,9 @@
 //   history.record({ label: "delete 3 rows", undo: () => set(before), redo: () => set(after) })
 //
 // Every undo and redo says what it took back or made again ("undid: delete 3 rows"), in
-// a toast that offers the way back (redo, or undo again), and to a screen reader. A
-// change a person could regret at once (a delete) is recorded with `offer: true`: the
-// toast says it was done and offers undo, as the change happens.
+// a toast on the page's HUD that offers the way back (redo, or undo again), and to a
+// screen reader. A change a person could regret at once (a delete) is recorded with
+// `offer: true`: the toast says it was done and offers undo, as the change happens.
 
 import { Redo2, Undo2 } from "lucide-react"
 import * as React from "react"
@@ -26,10 +26,10 @@ import {
   type RecordOptions,
 } from "@/lib/history-core"
 import { Button } from "@/components/ui/button"
+import { hud } from "@/components/ui/hud"
 import { useActions } from "@/components/ui/key-router"
 import type { MenuVerb } from "@/components/ui/menu"
 import { usePlatform } from "@/components/ui/shortcut"
-import { toast } from "@/components/ui/toast"
 import { Tip } from "@/components/ui/tooltip"
 
 export type {
@@ -65,7 +65,7 @@ export function useHistory({
     const kernel = createHistory({ limit })
     const said = (step: HistoryStep | null, undid: boolean) => {
       if (!step) return step
-      toast(`${undid ? "undid" : "redid"}: ${step.label}`, {
+      hud.toast(`${undid ? "undid" : "redid"}: ${step.label}`, {
         action: {
           label: undid ? "redo" : "undo",
           onClick: () => (undid ? page.redo() : page.undo()),
@@ -78,7 +78,7 @@ export function useHistory({
       record(step, { offer, ...options } = {}) {
         kernel.record(step, options)
         if (offer)
-          toast(step.label, {
+          hud.toast(step.label, {
             action: { label: "undo", onClick: () => page.undo() },
           })
       },
@@ -89,7 +89,7 @@ export function useHistory({
         const moved = kernel.goTo(count)
         if (moved > 0) {
           const at = kernel.state().done.at(-1)
-          toast(at ? `back to: ${at.label}` : "back to the start")
+          hud.toast(at ? `back to: ${at.label}` : "back to the start")
         }
         return moved
       },
