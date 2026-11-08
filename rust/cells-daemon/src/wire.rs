@@ -79,7 +79,14 @@ pub fn socket() -> PathBuf {
     folder().join("engine.sock")
 }
 
-/// The engine's own folder, private to its user: its socket, its lock, its log.
+/// Where the engine says each step when no terminal hears it (hosted, or started by a
+/// client): `Cells/engine.trace`, for a person debugging the engine. A folder's history is
+/// its log, `.cells/log.jsonl`, never this.
+pub fn trace() -> PathBuf {
+    folder().join("engine.trace")
+}
+
+/// The engine's own folder, private to its user: its socket, its lock, its trace.
 pub fn folder() -> PathBuf {
     let home = PathBuf::from(std::env::var_os("HOME").expect("HOME is set"));
     if cfg!(target_os = "macos") {

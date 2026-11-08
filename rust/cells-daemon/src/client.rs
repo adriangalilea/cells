@@ -51,7 +51,7 @@ impl Engine {
     }
 
     /// The running engine, or one started from `exe` (a `cells` binary) when nothing
-    /// answers: detached, in a process group of its own, its trace written to `engine.log`
+    /// answers: detached, in a process group of its own, its trace written to `engine.trace`
     /// in the engine's folder. Two clients starting one at once start two; the second finds
     /// the first holding the engine's lock and exits, and both clients reach the first.
     pub fn connect_or_start(client: &str, exe: &Path) -> Result<(Engine, Receiver<Vec<PathBuf>>), String> {
@@ -60,13 +60,13 @@ impl Engine {
         }
         let folder = wire::folder();
         std::fs::create_dir_all(&folder).map_err(|e| format!("{}: {e}", folder.display()))?;
-        let log_path = folder.join("engine.log");
-        let log = OpenOptions::new().create(true).append(true).open(&log_path).map_err(|e| format!("{}: {e}", log_path.display()))?;
-        let err = log.try_clone().map_err(|e| e.to_string())?;
+        let trace_path = wire::trace();
+        let trace = OpenOptions::new().create(true).append(true).open(&trace_path).map_err(|e| format!("{}: {e}", trace_path.display()))?;
+        let err = trace.try_clone().map_err(|e| e.to_string())?;
         Command::new(exe)
             .arg("serve")
             .stdin(Stdio::null())
-            .stdout(log)
+            .stdout(trace)
             .stderr(err)
             .process_group(0)
             .spawn()
@@ -79,7 +79,7 @@ impl Engine {
                     return Err(format!(
                         "started {} serve, and it did not answer in {START:?}: {e} (its trace: {})",
                         exe.display(),
-                        log_path.display()
+                        trace_path.display()
                     ));
                 }
                 Err(_) => thread::sleep(Duration::from_millis(20)),

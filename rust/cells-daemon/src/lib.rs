@@ -69,19 +69,19 @@ fn run(
 /// for when another process holds it, so launchd's keeping it alive never turns into
 /// restarting it against an engine a client started first.
 pub fn hosted() -> Result<Infallible, String> {
-    // launchd hands a job no terminal: the trace goes to `engine.log` beside the socket,
+    // launchd hands a job no terminal: the trace goes to `engine.trace` beside the socket,
     // where a client starting the engine sends it too
     let folder = wire::folder();
     std::fs::create_dir_all(&folder).map_err(|e| format!("{}: {e}", folder.display()))?;
-    let log_path = folder.join("engine.log");
-    let log = std::fs::OpenOptions::new().create(true).append(true).open(&log_path).map_err(|e| format!("{}: {e}", log_path.display()))?;
+    let trace_path = wire::trace();
+    let trace = std::fs::OpenOptions::new().create(true).append(true).open(&trace_path).map_err(|e| format!("{}: {e}", trace_path.display()))?;
     use std::os::fd::AsRawFd;
-    // SAFETY: dup2 points the process's stdout and stderr at the log's descriptor, which
-    // stays open as long as `log`, held below for the process's life.
+    // SAFETY: dup2 points the process's stdout and stderr at the trace's descriptor, which
+    // stays open as long as `trace`, held below for the process's life.
     for fd in [1, 2] {
-        assert!(unsafe { libc::dup2(log.as_raw_fd(), fd) } == fd, "stdio onto {}", log_path.display());
+        assert!(unsafe { libc::dup2(trace.as_raw_fd(), fd) } == fd, "stdio onto {}", trace_path.display());
     }
-    let _log = log;
+    let _trace = trace;
     let (events, heard) = channel();
     match server::listen(events.clone(), Held::Wait) {
         Ok(listening) => run(listening, events, heard, false, &[]),
