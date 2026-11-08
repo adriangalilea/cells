@@ -57,6 +57,9 @@ const INKS: Record<
   bound: "muted",
   format: "muted",
   choice: "muted",
+  // A word's tint (`income#green`, a look's `negative red`) describes how it shows, so
+  // it is ink as a type is: in its own hue it would read as a column's colour.
+  tint: "muted",
   punct: "muted",
   number: "plain",
   reference: "plain",

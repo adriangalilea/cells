@@ -111,6 +111,22 @@
      white 3.5:1. The same in both schemes: what is measured is white against it. */
   --tone-bad-fill: oklch(55% 0.2 27);
 
+  /* Tints: a colour a person gives a word (a tag's, a category's), the ten names a
+     Cells file writes (`income#green`), never a state's: that is a tone. One lightness
+     band and one chroma per scheme, yellow lighter so it stays yellow, brown and gray
+     quiet. Words drawn in one keep their contrast where they stand (a badge's rule:
+     the lightness held at 0.55 on a light ground, raised to 0.72 on a dark one). */
+  --tint-red: oklch(63% 0.2 27);
+  --tint-orange: oklch(70% 0.17 55);
+  --tint-yellow: oklch(80% 0.16 88);
+  --tint-green: oklch(68% 0.17 150);
+  --tint-teal: oklch(68% 0.12 190);
+  --tint-blue: oklch(62% 0.17 255);
+  --tint-purple: oklch(60% 0.18 300);
+  --tint-pink: oklch(66% 0.19 350);
+  --tint-brown: oklch(55% 0.08 55);
+  --tint-gray: oklch(60% 0 0);
+
   /* The ink's tiers, for words on a monochrome surface: a title, a body, a meta
      line. Fills are the fill ladder's, below. */
   --alpha-meta: 0.4;
@@ -343,6 +359,17 @@
   --tone-warn: oklch(84% 0.15 80);
   --tone-bad: oklch(70% 0.2 27);
   --tone-info: oklch(78% 0.12 230);
+
+  --tint-red: oklch(70% 0.19 27);
+  --tint-orange: oklch(76% 0.15 55);
+  --tint-yellow: oklch(85% 0.15 88);
+  --tint-green: oklch(76% 0.16 150);
+  --tint-teal: oklch(76% 0.11 190);
+  --tint-blue: oklch(72% 0.15 255);
+  --tint-purple: oklch(72% 0.16 300);
+  --tint-pink: oklch(74% 0.17 350);
+  --tint-brown: oklch(66% 0.07 55);
+  --tint-gray: oklch(70% 0 0);
 
   --alpha-meta: 0.45;
   --alpha-body: 0.62;
