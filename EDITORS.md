@@ -4,7 +4,7 @@ A `.cells` file in an editor takes two pieces from this repository: the tree-sit
 
 ## The language server
 
-`cells lsp` speaks the Language Server Protocol on stdin and stdout. It is the command line's (`rust/cells-cli`), built with `cargo build --release -p cells-cli` in `rust/` into `rust/target/release/cells`. It reads every file as the editor holds it, follows its imports from the folder the editor opened (a file the editor holds open is read as it holds it), and answers from the engine:
+`cells lsp` speaks the Language Server Protocol on stdin and stdout. It is the command line's (`rust/cells-cli`): on a Mac with Cells.app, the signed `cells` the app carries and links onto PATH (`~/.local/bin/cells`), the one its engine admits; an editor runs `cells`, never a path into a build. A `cargo build --release -p cells-cli` build is unsigned: it serves an editor where no engine is installed, and an installed engine refuses it. It reads every file as the editor holds it, follows its imports from the folder the editor opened (a file the editor holds open is read as it holds it), and answers from the engine:
 
 - **Diagnostics** as you type, in every open file: each break of the grammar and each problem, where it is (a cell's text, a header cell's type, the part of a formula that does not read, a prelude line). A change in one file that breaks a reference in another shows in the other, and so does a file written by anything else: the server is a client of the engine ([ENGINE.md](ENGINE.md), `cells serve`), which it starts when none answers, asks to serve the folder the editor names and each open file's own, and hears say what changed. The engine stores what a save reaches in every file reading it, and the editor reloads those files (Helix with its file watcher, `filesentry`).
 - **Hover**: a column's header cell, its type, its formula, what it references, and why it breaks; a cell's value, computed or written, its problem, and the row its reference finds.
@@ -55,7 +55,7 @@ name = "cells"
 source = { path = "/path/to/cells/tree-sitter" }
 
 [language-server.cells]
-command = "/path/to/cells/rust/target/release/cells"
+command = "cells"
 args = ["lsp"]
 ```
 
@@ -87,7 +87,7 @@ Neovim 0.11 configures a server natively:
 vim.filetype.add({ extension = { cells = "cells" } })
 
 vim.lsp.config("cells", {
-  cmd = { "/path/to/cells/rust/target/release/cells", "lsp" },
+  cmd = { "cells", "lsp" },
   filetypes = { "cells" },
   root_markers = { ".git" },
 })
@@ -114,7 +114,7 @@ export function activate() {
   const client = new LanguageClient(
     "cells",
     "Cells",
-    { command: "/path/to/cells/rust/target/release/cells", args: ["lsp"] },
+    { command: "cells", args: ["lsp"] },
     { documentSelector: [{ language: "cells" }] },
   )
   client.start()
