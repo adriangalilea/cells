@@ -313,9 +313,10 @@ fn addr<T>(v: &[T]) -> usize {
 /// Where everything is: the rows, the dialect (`"cells"`, or a plain file's separator), the
 /// named types, every column's type, formula, kind and buffers (its cells' origins too,
 /// bytes 0 written, 1 its formula's, 2 their own, when any is computed), the header
-/// problems, where the grammar breaks (`{at, why}`), the problems as `u32` triples (row, column, kind: 0 type, 1 missing, 2 key,
-/// 3 ragged, 4 formula, 5 reference, 6 stale). Read again after every edit: an edit may move a
-/// column's buffers.
+/// problems, where the grammar breaks (`{at, why}`), the problems as four `u32`s each (row,
+/// column, kind: 0 type, 1 missing, 2 key, 3 ragged, 4 formula, 5 reference, 6 stale; and
+/// its severity, `Kind::severity`: 0 wrong, 1 absent or behind). Read again after every
+/// edit: an edit may move a column's buffers.
 ///
 /// # Safety
 /// `h` is a live handle from `cells_read`.
@@ -326,7 +327,8 @@ pub unsafe extern "C" fn cells_meta(h: *mut Handle) -> *const u8 {
     let doc = &h.doc;
     h.problems.clear();
     for p in doc.problems() {
-        h.problems.extend([p.row, p.column, p.kind() as u32]);
+        let warning = p.kind().severity() == cells::Severity::Warning;
+        h.problems.extend([p.row, p.column, p.kind() as u32, warning as u32]);
     }
     let mut s = String::with_capacity(512);
     let _ = write!(s, "{{\"rows\":{},\"newline\":", doc.rows());
@@ -763,6 +765,142 @@ pub unsafe extern "C" fn cells_stored_since(h: *mut Handle, before: *mut Handle)
     // SAFETY: the caller's promise: two live handles, distinct.
     let (h, before) = unsafe { (handle(h), handle(before)) };
     h.doc.stored_since(&before.doc);
+}
+
+/// What a cell of `column` may hold (`Doc::offers`: a choice's words, a boolean's two, a
+/// reference's keys from the tables the doc holds), each followed by U+001F, which no
+/// value holds; empty for any other type.
+///
+/// # Safety
+/// `h` is a live handle; `column` below its columns.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn cells_offers(h: *mut Handle, column: usize) -> *const u8 {
+    // SAFETY: the caller's promise.
+    let h = unsafe { handle(h) };
+    h.out = h.doc.offers(column).into_iter().flat_map(|o| [o, "\u{1f}".to_owned()]).collect::<String>().into_bytes();
+    give(&h.out)
+}
+
+/// A table by the names that reach it: the doc's own, then each one's own.
+fn held(doc: &Doc) -> impl Fn(&[&str]) -> Option<std::sync::Arc<Doc>> + '_ {
+    move |path: &[&str]| {
+        let (first, rest) = path.split_first()?;
+        let mut t = doc.tables().iter().find(|t| t.name == *first)?.doc.clone()?;
+        for name in rest {
+            let next = t.tables().iter().find(|x| x.name == *name)?.doc.clone()?;
+            t = next;
+        }
+        Some(t)
+    }
+}
+
+/// The byte of `text` at UTF-16 unit `unit`, which must fall on a character's start.
+fn byte_at(text: &str, unit: u32) -> usize {
+    let mut u = 0u32;
+    for (b, c) in text.char_indices() {
+        if u >= unit {
+            assert!(u == unit, "unit {unit} is inside a character");
+            return b;
+        }
+        u += c.len_utf16() as u32;
+    }
+    assert!(u == unit, "unit {unit} is past the text's {u}");
+    text.len()
+}
+
+/// The UTF-16 units of `text` before byte `byte`.
+fn unit_at(text: &str, byte: u32) -> u32 {
+    text[..byte as usize].chars().map(|c| c.len_utf16() as u32).sum()
+}
+
+/// What may be written at UTF-16 unit `at` of a text (room from `cells_alloc(cap)`, `len`
+/// bytes of it written, which this call takes), the text `h` was read from or one like it
+/// (a draft spliced in): `cells::complete::complete`, the tables it names the ones `h`
+/// holds. JSON, `[{label, kind, detail, insert, from, to, filter?, sort?}]`, `from..to`
+/// the units of the text it replaces.
+///
+/// # Safety
+/// `h` is a live handle; `ptr`, `len`, `cap` as for `cells_read`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn cells_complete(h: *mut Handle, ptr: *mut u8, len: usize, cap: usize, at: u32) -> *const u8 {
+    // SAFETY: the caller's promise.
+    let (h, text) = unsafe { (handle(h), take(ptr, len, cap)) };
+    let found = cells::complete::complete(&h.doc, &text, byte_at(&text, at), held(&h.doc));
+    use cells::complete::CompletionKind as K;
+    let mut s = String::from("[");
+    for (k, c) in found.iter().enumerate() {
+        if k > 0 {
+            s.push(',');
+        }
+        let kind = match c.kind {
+            K::Value => "value",
+            K::EnumMember => "choice",
+            K::Class => "type",
+            K::Reference => "reference",
+            K::Keyword => "keyword",
+            K::Field => "column",
+            K::Module => "table",
+            K::Function => "function",
+        };
+        s.push_str("{\"label\":");
+        json_str(&mut s, &c.label);
+        let _ = write!(s, ",\"kind\":\"{kind}\",\"detail\":");
+        json_str(&mut s, &c.detail);
+        s.push_str(",\"insert\":");
+        json_str(&mut s, &c.insert);
+        let _ = write!(s, ",\"from\":{},\"to\":{}", unit_at(&text, c.from), unit_at(&text, c.to));
+        if let Some(f) = &c.filter {
+            s.push_str(",\"filter\":");
+            json_str(&mut s, f);
+        }
+        if let Some(o) = &c.sort {
+            s.push_str(",\"sort\":");
+            json_str(&mut s, o);
+        }
+        s.push('}');
+    }
+    s.push(']');
+    h.out = s.into_bytes();
+    give(&h.out)
+}
+
+/// What is said of UTF-16 unit `at` of a text, as for `cells_complete`
+/// (`cells::hover::hover`): JSON, `{pieces, from, to}`, each piece `["plain"|"code"|
+/// "strong", text]` or `["break"]`, `from..to` the units it is about; empty when nothing
+/// is said.
+///
+/// # Safety
+/// As `cells_complete`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn cells_hover(h: *mut Handle, ptr: *mut u8, len: usize, cap: usize, at: u32) -> *const u8 {
+    // SAFETY: the caller's promise.
+    let (h, text) = unsafe { (handle(h), take(ptr, len, cap)) };
+    let Some(said) = cells::hover::hover(&h.doc, &text, byte_at(&text, at), held(&h.doc)) else {
+        h.out.clear();
+        return give(&h.out);
+    };
+    use cells::hover::Piece;
+    let mut s = String::from("{\"pieces\":[");
+    for (k, p) in said.pieces.iter().enumerate() {
+        if k > 0 {
+            s.push(',');
+        }
+        let (tag, words) = match p {
+            Piece::Plain(w) => ("plain", Some(w)),
+            Piece::Code(w) => ("code", Some(w)),
+            Piece::Strong(w) => ("strong", Some(w)),
+            Piece::Break => ("break", None),
+        };
+        let _ = write!(s, "[\"{tag}\"");
+        if let Some(w) = words {
+            s.push(',');
+            json_str(&mut s, w);
+        }
+        s.push(']');
+    }
+    let _ = write!(s, "],\"from\":{},\"to\":{}}}", unit_at(&text, said.from), unit_at(&text, said.to));
+    h.out = s.into_bytes();
+    give(&h.out)
 }
 
 /// One column's type rewritten in shorthand; 0 when it read, else 1 with the error at
