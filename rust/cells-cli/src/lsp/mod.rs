@@ -39,6 +39,9 @@ struct Backend {
     /// Whether formatting aligns a table's columns: the client's `align` in its
     /// initialization options, on unless it says `false` (SPEC.md, Formatting).
     align: AtomicBool,
+    /// Who this server is to the engine, the editor named (`Helix, through cells lsp`): what
+    /// history says wrote a version this editor saved.
+    name: Mutex<String>,
 }
 
 /// Every open file's diagnostics, sent again, its scripts held to the approvals as they
@@ -119,6 +122,13 @@ impl LanguageServer for Backend {
         self.folder.lock().unwrap().root = spelled.map(|s| canonical(&s));
         let align = params.initialization_options.as_ref().and_then(|o| o.get("align")).and_then(|a| a.as_bool());
         self.align.store(align.unwrap_or(true), Ordering::Relaxed);
+        if let Some(editor) = &params.client_info {
+            let mut name = editor.name.clone();
+            if let Some(first) = name.get_mut(..1) {
+                first.make_ascii_uppercase();
+            }
+            *self.name.lock().unwrap() = format!("{name}, through cells lsp");
+        }
         Ok(InitializeResult {
             capabilities: ServerCapabilities {
                 text_document_sync: Some(TextDocumentSyncCapability::Options(TextDocumentSyncOptions {
@@ -159,7 +169,8 @@ impl LanguageServer for Backend {
     /// every file's open already, and what it says changed diagnosed from then on.
     async fn initialized(&self, _: InitializedParams) {
         let exe = std::env::current_exe().expect("the server knows its own binary");
-        let reached = tokio::task::spawn_blocking(move || Engine::connect_or_start("lsp", &exe)).await.expect("connecting never panics");
+        let name = self.name.lock().unwrap().clone();
+        let reached = tokio::task::spawn_blocking(move || Engine::connect_or_start(&name, &exe)).await.expect("connecting never panics");
         let (engine, changed) = match reached {
             Ok(reached) => reached,
             Err(why) => {
@@ -272,9 +283,15 @@ impl LanguageServer for Backend {
         Ok(features::formatted(&file, saved.as_ref(), self.align.load(Ordering::Relaxed)).map(|e| Vec::from([e])))
     }
 
+    /// An edit: the engine told the text this editor now holds, so the version it saves as
+    /// is logged as this editor's.
     async fn did_change(&self, p: DidChangeTextDocumentParams) {
         // Full sync: the last change is the whole text.
         if let (Some(path), Some(c)) = (path(&p.text_document.uri), p.content_changes.into_iter().last()) {
+            let engine = self.engine.lock().unwrap().clone();
+            if let Some(Err(why)) = engine.map(|e| e.editing(&path, &c.text)) {
+                self.client.log_message(MessageType::WARNING, format!("cells: the engine did not hear the edit: {why}")).await;
+            }
             self.change(path, Some(c.text));
             self.diagnose().await;
         }
@@ -348,6 +365,7 @@ pub fn serve() {
             engine: Mutex::new(None),
             saved: Mutex::new(BTreeMap::new()),
             align: AtomicBool::new(true),
+            name: Mutex::new("an editor, through cells lsp".into()),
         });
         Server::new(tokio::io::stdin(), tokio::io::stdout(), socket).serve(service).await;
     });
