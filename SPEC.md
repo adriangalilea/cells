@@ -431,7 +431,7 @@ The use it is designed against is **plain text accounting done properly**: books
 
 ### Decided in direction, not yet written
 
-- **The filesystem as a graph database.** A folder of `.cells` files is a graph of typed tables, its edges the references: written today, a reference that breaks is a problem naming the file and row. A rename is followed through every file that references the key (the language server, `cells lsp`). What is not yet: tools that notice before a break lands (a warning on a key renamed in the other file, a writer refusing to save a dangling reference without saying so).
+- **The filesystem as a graph database.** A folder of `.cells` files is a graph of typed tables, its edges the references: a reference that breaks is a problem naming the file and row, and the language server (`cells lsp`) follows a rename through every file that references the key. What is left: tools that notice before a break lands (a warning on a key renamed in the other file, a writer refusing to save a dangling reference without saying so).
   ```text
   ~/books/
   ├── accounts.cells              account:text!,kind:assets|liabilities|expenses|income
@@ -441,7 +441,7 @@ The use it is designed against is **plain text accounting done properly**: books
   └── studio/money.cells
   ```
 - **Fixes a reference offers**: `did you mean "rent"?`, `add it to accounts.cells`, so a new account never means opening the other file by hand; and for a plain text column, a value seen once beside a near spelling seen often a hint, never a problem.
-- **Schedules kept.** A file's schedules are read today, never kept: the daemon (ENGINE.md) runs each script on its schedule. A run missed while the machine slept runs once on waking, never once per miss; retries are the engine's, the same for every file; every run is in the engine's log.
+- **Schedules kept.** A file's schedules are read, and nothing keeps them yet: the daemon (ENGINE.md) will run each script on its schedule. A run missed while the machine slept runs once on waking, never once per miss; retries are the engine's, the same for every file; every run is in the engine's log.
 - **Every row has an identity.** A file's key (`!`) is its rows' identity. A file with none gets an `id` column the first time the engine writes it, eight characters from a base-32 alphabet, unique within the file, assigned only by the engine and never edited through it. Edits address a row by its identity, never by its position, so a line inserted by hand elsewhere never makes an edit land on the wrong row, and two versions of a file merge row by row. A row without one (added by a tool that bypasses the engine) is found by its text until the engine next writes the file, which gives it one; a copied row's repeated id is replaced on the later copy. Apps built on the engine never show the column.
 - **One fact, one row, one file.** A movement is one row holding both its sides (`account_from`, `account_to`), so recording it is one write. A change that must touch several files (an account renamed in every file that references it) is an intent the engine journals before applying file by file, and replays after a crash; every intent is safe to apply twice.
 - **What books need**, the accounting primitives (ACCOUNTING.md drafts the books with them):
@@ -451,38 +451,35 @@ The use it is designed against is **plain text accounting done properly**: books
   - **References to a file's own rows** (`pending:TABLE.id`, by the name formulas read the file's own table by, [The language](#the-language)), for a payment that settles a hold, a row that corrects another, rows that are one transaction.
   - **`check`**: a rule over many rows or files, a query in the prelude returning the rows that break it, checked before every write and by `cells check` (a balance that must hold on a date, an account open on a movement's date). The prelude is where it lives, beside the data it guards; it is SQL, the language formulas are a part of, whole, in DuckDB.
 - **Go's checksum log** for pinned imports, proving everyone got the same bytes and not only you, once files are published widely.
-- **Tooling, so the format is pleasant everywhere.** A tree-sitter grammar (highlighting in every editor that speaks tree-sitter, and in ui's code views), the language server (built, [EDITORS.md](EDITORS.md): types checked as typed, a broken reference underlined, a referenced file's keys completed, a rename followed across the folder), native apps (Cells.app, on the Mac) and web components (ui's table) built for it. Like rainbow CSV, but with the types.
+- **The query language: standards, never one of ours.** **SQL**, which every reader knows and which already runs over files; a folder of `.cells` is typed tables, so `amount` is a number and `date` a date. `cells sql` runs it, DuckDB's SQL whole over a folder's typed columns, each row with the `file` it is read from; how it maps the types and what it costs is in [rust/README.md](rust/README.md#cells-sql).
+  ```console
+  $ cells sql ~/books "
+    SELECT vendor, SUM(amount) FROM money
+    WHERE account_to LIKE 'expenses:home:%' AND YEAR(date) = 2026
+    GROUP BY vendor"
+  ```
+  `money` is every `money.cells` under the folder, one table, its words in capitals as a formula's are. **SQL/PGQ** (SQL:2023, property graph queries) walks the references: GQL's `MATCH` inside SQL, so one query walks the graph and then sums and groups. DuckDB has it as the extension `duckpgq`, not yet built into `cells sql` (rust/README.md). GQL alone (ISO/IEC 39075, 2024, Cypher's successor) has the graph's shape, a movement to its account, an account to its parent, a vendor to everything it touched, but is awkward for sums and grouping, which are most of accounting: so the two standards, composed, nothing invented.
+  ```console
+  $ cells sql ~/books "
+    FROM GRAPH_TABLE(books
+      MATCH (m:money)-[:account_to]->(a:accounts)
+      WHERE a.account LIKE 'expenses:%'
+      COLUMNS (a.account, m.amount))
+    SELECT account, SUM(amount) GROUP BY account"
+  ```
+- **Tooling, so the format is pleasant everywhere.** Like rainbow CSV, but with the types. The tree-sitter and TextMate grammars, the language server, Cells.app and ui's table are built ([EDITORS.md](EDITORS.md)); an editor that starts a server only from an extension (VS Code) has none yet.
 - **Visualisation for free, because it is typed.** A chart needs to know what each column is: a date is a time axis, money is a measure in its currency, a choice is a category, a reference a link to follow. An untyped CSV makes every chart guess or be configured; a Cells file says it, so a table can be charted as it is (spending by month, by account, by vendor), and the graph of files drawn as a graph. Every place that shows a Cells file shows its charts: ui's components, the Apple platforms' (Swift Charts over the typed columns), and the Mac app. What a chart needs beyond the types (which columns, which kind of chart) is declared in the prelude, never scripted, so a file sent as a chart is seen without running anything: a spreadsheet's charts are declarations too, and its macros apart.
 
 ### Undecided
 
-- **The query language.** Never one of ours. The candidates:
-  - **SQL**, which every reader knows and which already runs over files (DuckDB reads a folder of CSV as tables); a folder of `.cells` is typed tables, so `amount` is a number and `date` a date:
-    ```console
-    $ cells sql ~/books "
-      SELECT vendor, SUM(amount) FROM money
-      WHERE account_to LIKE 'expenses:home:%' AND YEAR(date) = 2026
-      GROUP BY vendor"
-    ```
-    `money` is every `money.cells` under the folder, one table, its words in capitals as a formula's are. `cells sql` runs this today, DuckDB's SQL whole over a folder's typed columns, each row with the `file` it is read from; how it maps the types and what it costs is in [rust/README.md](rust/README.md).
-  - **GQL** (ISO/IEC 39075, 2024, Cypher's successor), the shape of the graph: following references from a movement to its account, an account to its parent, a vendor to everything it touched; awkward for sums and grouping, which are most of accounting.
-  - **SQL/PGQ** (SQL:2023, property graph queries): GQL's `MATCH` inside SQL, so one query walks the graph and then sums and groups; DuckDB has it (`duckpgq`). The likely answer: the two standards, composed, nothing invented.
-    ```console
-    $ cells sql ~/books "
-      FROM GRAPH_TABLE(books
-        MATCH (m:money)-[:account_to]->(a:accounts)
-        WHERE a.account LIKE 'expenses:%'
-        COLUMNS (a.account, m.amount))
-      SELECT account, SUM(amount) GROUP BY account"
-    ```
-- **The command line beyond `check`, `fix`, `fmt --check`, `merge`, `pin`, `run` and `show`**: `cells sql` (above), and what else a folder-as-database needs (a visualisation of the graph, a rename followed through every file).
+- **The command line beyond `check`, `fix`, `fmt`, `diff`, `merge`, `pin`, `run`, `show`, `sql`, `serve` and `lsp`**: what else a folder-as-database needs (a visualisation of the graph, a rename followed through every file from the shell).
 - **The block's name.** "Prelude" reads well in prose, but to a programmer a prelude is the standard definitions a language loads into every file unasked (Haskell's `Prelude`, Rust's `std::prelude`), where this block is one file's own, explicit declarations. The candidates: frontmatter (the shape everyone knows and searches for; Astro puts code in its own, and calls it "component frontmatter" beside its "component script"; the one risk, a tool reading a `---` at a file's top as YAML, is met only in Markdown), preamble (LaTeX's exact role, imports and definitions before the body, but it needs explaining), or keeping prelude. A rename reaches the spec, the engine's messages, both grammars' names, the language server and ui, so it is made once and whole, with no alias kept, when it is decided.
 - **Words about a column and a title for the table.** A header cell has no room for a description without bloating it; a column's declaration in the prelude ([Columns](#columns)) is the natural place, its syntax for them open.
 - **Strictness.** A broken cell and a broken grammar load and are reported ([Reading](#reading)); whether a reader may also be asked to refuse a file is not decided.
 - **Narrowing a reference** to some of the rows it names (`from` an account of kind `assets` or `income`): in the header cell (`from:accounts.account(kind=assets|income)`), or as a `check`, which keeps the header readable where the rule spans two files.
 - **Provenance: what was known on a date, and who may write what.** Two problems. A run replaces a corrected row, so the rate a report used before the correction lives only in git. And anyone can edit a block the engine owns, or a file a process owns: locks on a Mac are advisory, so the engine can only detect an edit, never prevent one. The candidates, none decided:
   - **Owners.** A block or a file names who writes it; an edit by anyone else is refused through the engine and found by its hash otherwise. Solves who may write what; does not keep what was known.
-  - **Append-only with a hash chain.** `run …, append`: rows never replaced, each with two engine columns, `recorded` and `chain` (BLAKE3 of the previous row's `chain` and the row's bytes), so "as known on" is the latest row of each key recorded by then, and an edit or a removal breaks every later link. Solves what was known and makes tampering evident; does not stop a whole chain written again from scratch, which stays valid unless each link is signed by a device's key, as ENGINE.md's Later plans for the log.
+  - **Append-only with a hash chain.** `run …, append`: rows never replaced, each with two engine columns, `recorded` and `chain` (the SHA-256 of the previous row's `chain` and the row's bytes, the core's own hash, as the engine's log chains its lines), so "as known on" is the latest row of each key recorded by then, and an edit or a removal breaks every later link. Solves what was known and makes tampering evident; does not stop a whole chain written again from scratch, which stays valid unless each link is signed by a device's key, as ENGINE.md's Later plans for the log.
   - **Transitions as a type.** `phase:pending->post|void`: the values a cell may move to from the one it holds, checked on every write, replacing ACCOUNTING.md's `unique` on `pending` if adopted. Solves an illegal change of state; does not keep history or say who wrote it.
 - **A folder sent as one file.** `cells pack` writing one file whose prelude carries a frozen copy of each file it imports, every reference resolved, for someone who should open one thing.
 - **Several values in one cell** (`tags:text[]`, split on `;`): useful (tags on a movement), and where a table starts to stretch; undecided.
