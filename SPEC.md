@@ -98,6 +98,8 @@ mood:'yay!'|meh|'so-so?'|'it''s fine'
 
 A word beside `|` is always a choice's word, even one that spells a base or an explicit word (`text|image`, `key|lock`). A choice of one word is quoted (`'paperback'`), since a bare word alone is a type. A cell is one of the words exactly, case and spaces included. A choice's words differ from each other, and none is empty: `''` is refused, a blank cell being missing, never a word.
 
+**A word's tint** follows it after a `#`: `kind:income#green|cost#red|transfer#blue|pending`. A choice is the set of words people colour (a tag's colour, a status's), so the colour is written beside its word, once, in the type, and a header cell, a named type and an imported one carry it alike. A tint is one of ten names, `red` `orange` `yellow` `green` `teal` `blue` `purple` `pink` `brown` `gray`, which each reader draws in its own theme's colour, light and dark, at a contrast that reads; or six hexadecimal digits (`income#3fa34d`), a colour no name says, the same everywhere. No other word is a tint: `income#grene` breaks the column's type, naming the word. A cell holds the word alone (`income`), never its tint: a tint is how the word looks ([How a value looks](#how-a-value-looks)), never part of a value, a key or a reference. Considered: the tint in a `look` statement only, which keeps the type a contract and nothing else, but writes each word twice in two places that drift and leaves a file that is a header alone no way to tint; and CSS's hundred-odd colour names, which tie the format to a web list and draw badly in a dark theme.
+
 ### A boolean in the file's own words
 
 `paid:yes/no` is a boolean written `yes` for true and `no` for false, true first. `bool` alone reads `true`/`false`, and `true/false` is `bool`. The two words differ, are quoted as a choice's are, and are read exactly, case included.
@@ -146,6 +148,7 @@ Both are always valid and mean the same; a header cell may mix them.
 | `text!` | `text key` |
 | `text?` | `text optional` |
 | `travel\|stay\|food` | `one of travel stay food` |
+| `income#green\|cost` | `one of income tint green cost` |
 | `yes/no` | `bool yes no` |
 | `EUR>=0` | `EUR min 0` |
 | `int>0` | `int above 0` |
@@ -153,11 +156,11 @@ Both are always valid and mean the same; a header cell may mix them.
 | `num<10` | `num below 10` |
 | `0..100` | `num between 0 and 100` |
 
-Explicit words are separated by spaces or tabs, never commas (a comma would force the header cell into CSV quotes). A choice with a space inside is quoted: `one of travel 'sd cards'`. `between` takes two numbers joined by `and`, both bounds inclusive. `one of` takes every word after it up to the next explicit word (`key` `optional` `one` `of` `bool` `min` `max` `above` `below` `between` `and`) or mark, and at least one; a choice that spells an explicit word is quoted there: `one of 'key' lock`. `bool` followed by two words that are not explicit words is a pair, and a pair's word that spells one is quoted (`bool 'key' lock`); `bool` alone is `true`/`false`.
+Explicit words are separated by spaces or tabs, never commas (a comma would force the header cell into CSV quotes). A choice with a space inside is quoted: `one of travel 'sd cards'`. `between` takes two numbers joined by `and`, both bounds inclusive. `one of` takes every word after it up to the next explicit word (`key` `optional` `one` `of` `bool` `min` `max` `above` `below` `between` `and` `tint`) or mark, and at least one, each followed by `tint` and its tint when it has one; a choice that spells an explicit word is quoted there: `one of 'key' lock`. `bool` followed by two words that are not explicit words is a pair, and a pair's word that spells one is quoted (`bool 'key' lock`); `bool` alone is `true`/`false`.
 
 ### Reserved
 
-Inside a type, outside single quotes: `|` `/` `!` `?` `<` `>` `=` `..` `(` `)` `'` `:`. Inside single quotes nothing is, but `'` itself, doubled; `,` and `"` are never in a type. A name reserves only `:`. A value reserves `=`, which a text writes `'=` ([A cell](#a-cell)).
+Inside a type, outside single quotes: `|` `/` `!` `?` `<` `>` `=` `..` `(` `)` `'` `:` `#`, so a choice's word holding `#` is quoted (`'C#'|rust`). Inside single quotes nothing is, but `'` itself, doubled; `,` and `"` are never in a type. A name reserves only `:`. A value reserves `=`, which a text writes `'=` ([A cell](#a-cell)).
 
 ## The prelude
 
@@ -179,6 +182,7 @@ The prelude is the work; the header and rows after it are what the file shows, a
 - **`//`** starts a comment to the line's end, outside single and double quotes and outside fences (`type Path = 'a//b'|c`, `"https://example.com/r.cells"`).
 - **A fence** opens with three backticks or more and its language, `` ```cells ``, and closes at the first line that is as many backticks and nothing else, spaces and tabs aside. What it holds is its language's, so a `//` or a `---` inside one is no comment and no end of the prelude's. A fence never closed is an error naming the line it opens on.
 - **A column** is declared with a `:`, `total: Money = cost * qty` ([Columns](#columns)); `total = cost * qty`, with no type, is no statement and an error naming its line.
+- **A statement by its first word**: `type`, `import`, `export` and `look` ([How a value looks](#how-a-value-looks)), each followed by a space, open the statement they name, so a declared column whose name opens with one and a space is quoted (`"look ahead": text`).
 
 ### Named types
 
@@ -270,6 +274,45 @@ Any other fence after a script, or one of these twice, is an error naming the li
 | `when ../money.cells changes` | each time that file changes |
 
 A trigger with a time of day (and `cron`) needs the zone: a file moves between machines, and 18:00 must be one moment on all of them. A schedule that says none of these is an error naming the line.
+
+### How a value looks
+
+```cells
+---
+type Kind = income#green|cost#red|transfer#blue|pending
+type Money = EUR
+look Money: grouped, negative red
+look amount: negative in parentheses
+look balance: red when balance < budget, green when balance >= budget
+look score: scale red..green
+look on: as 'ddd D MMM YYYY'
+look row: gray when paid
+---
+item:text!,kind:Kind,amount:Money,budget:Money,balance:Money,score:0..10,on:date,paid:yes/no
+rent,cost,-950.00,1000.00,50.00,7,2026-11-03,yes
+```
+
+**`look <name>: <rule>, <rule>`** says how a column's values look, what a spreadsheet's number formats and conditional formats give. It names a column, a named type above it, or `row`, the whole row (a column named `row` is `look "row": …`). **A look is how a value shows wherever it shows**: a table's cell and a chart's mark alike, so `income#green` is the word's chip and its series' colour, `negative red` the cell and the bar. Composing a chart (its axes, its grouping, its kind) is a statement for later, which reads the same looks: one vocabulary for how values show, never a table's and a chart's.
+
+| Rule | A value shows |
+|---|---|
+| `grouped` | its thousands grouped, a number |
+| `decimals 1` | at that many digits after the point (0 to 18), rounded half to even for display only; a `num` or a `pct`, since a currency shows at its scale and an `int` has none |
+| `negative in parentheses` | below zero as `(950.00)`, accounting's form |
+| `negative red` · `positive green` | in that tint, by its sign |
+| `red when balance < budget` | in that tint when the condition holds |
+| `scale red..green` | in a tint between two, from the column's least value to its greatest |
+| `as 'D MMM YYYY'` | a date or a time in that form |
+
+- **A condition** is a formula over the row ([Formulas](#formulas)) giving a boolean, the language a row is already read in, so `>= budget` reads another column with nothing new to learn; a condition that gives null does not hold. `look row:` takes conditions alone: it tints the row.
+- **A pattern** says a date's or a time's display form, apart from the format the file writes it in ([Formats](#formats)): `YYYY` `YY` the year, `MMMM` `MMM` the month's name and short name, `MM` `M` its number, `DD` `D` the day, `dddd` `ddd` the weekday's name and short name, `HH` `H` the hour of 24, `hh` `h` of 12, `mm` `ss`, `A` before or after noon, a word between brackets as it is (`D [de] MMMM`), every other character as it is. A letter that is no piece is a broken rule, and so is a pattern the column's base cannot fill (`HH` on a date).
+- **The reader's locale** gives the marks and the words: the grouping and decimal marks (`1.234,60` where a comma is the decimal mark), the months' and the weekdays' names, the words for before and after noon. A file says how a value looks, never which country reads it; with no rule that formats numbers, a number shows as the file writes it.
+- **Which wins**: a column's looks are its type's (a named type's, then those of the types it names), then its own, in the order written, and where two say the same thing (two tints, two decimals) the later holds. A word's tint goes first, so a rule's tint over a choice's word holds over the word's own. The specific goes after the general.
+- **Where a look lives**: on a named type, it holds wherever the type is used, and an exported type carries its looks to every file that imports it (`export look` is no statement: a look travels with its type). On a column, it adds to its type's.
+- **A rule that does not read** (`look amount: negative grene`, a condition that does not compute, a target that names nothing, `decimals 2` on a date) breaks its prelude line, naming the rule; the file reads, its values whole, every other rule of the line kept and that rule alone left out ([Reading](#reading)).
+- **No value changes.** A look changes what a reader draws: `cells show`, `cells sql`, every export and every formula read values, never looks, and a reader that ignores looks reads every value as it would.
+
+Considered: `show` (the command `cells show`, which writes values), `style` (CSS's word, which promises far more), `format` (how the file writes a value already, [Formats](#formats)); a language of conditions of its own, refused since formulas are the language of a row; the first rule that applies, as a spreadsheet's "stop if true", where the later holding lets the general go first and the specific after it; the file naming its separators, which only a file meant for one country wants.
 
 ## Formulas
 
@@ -471,66 +514,7 @@ The use it is designed against is **plain text accounting done properly**: books
     SELECT account, SUM(amount) GROUP BY account"
   ```
 - **Tooling, so the format is pleasant everywhere.** Like rainbow CSV, but with the types. The tree-sitter and TextMate grammars, the language server, Cells.app and ui's table are built ([EDITORS.md](EDITORS.md)); an editor that starts a server only from an extension (VS Code) has none yet.
-- **Visualisation for free, because it is typed.** A chart needs to know what each column is: a date is a time axis, money is a measure in its currency, a choice is a category, a reference a link to follow. An untyped CSV makes every chart guess or be configured; a Cells file says it, so a table can be charted as it is (spending by month, by account, by vendor), and the graph of files drawn as a graph. Every place that shows a Cells file shows its charts: ui's components, the Apple platforms' (Swift Charts over the typed columns), and the Mac app. What a chart needs beyond the types (which columns, which kind of chart) is declared in the prelude, never scripted, so a file sent as a chart is seen without running anything: a spreadsheet's charts are declarations too, and its macros apart.
-
-### Proposed, not decided: how a value looks
-
-**A proposal waiting for a decision. No reader reads any of this yet**, and no case of the suite checks it; the cases it would add are drafted in [proposals/look/](proposals/look/README.md), outside the suite. What it covers is presentation only: a reader that ignores all of it reads every value exactly as it does now, and `cells show`, `cells sql` and every export write values, never looks.
-
-**A choice's word in a tint.** A choice is a set of words, and a set of words is what people colour (a tag's colour, a status's). The tint is said beside the word, in the type, so the word and its colour are written once together, and a header cell, a named type and an imported one carry it alike:
-
-```cells draft
----
-type Kind = income#green|cost#red|transfer#blue|pending
-look amount: grouped, negative red
----
-date:date,kind:Kind,amount:EUR
-2026-11-03,income,4200.00
-2026-11-04,cost,180.00
-```
-
-- A tint is one of ten names, `red` `orange` `yellow` `green` `teal` `blue` `purple` `pink` `brown` `gray`, or `#` and six hexadecimal digits (`income#3fa34d`), the escape hatch for a colour a name cannot say. A name is drawn by each reader in its own theme's colour, light and dark, at a contrast that reads; a hex is the same everywhere. No other name is a tint: `income#grene` breaks the column's type, naming the word.
-- `#` becomes reserved inside a type, outside quotes ([Reserved](#reserved)), so a choice holding one is quoted (`'C#'`), as one holding `!` is today. The cost: a file whose bare choice word holds `#` reads differently. A formula's `#n` is input in another place ([A formula in a cell](#a-formula-in-a-cell)) and is untouched.
-- Its explicit word, as every shorthand has one: `one of income tint green cost tint red pending`, `tint` joining the explicit words, a choice that spells it quoted.
-- A cell holds the word alone (`income`), never its tint: a tint changes what a reader draws, never a value, a key or a reference.
-- Weighed against it: the tint in a statement of its own (`look Kind: income green`, below), which keeps the type a pure contract but writes each word twice, in two places that drift, and leaves a header-only file no way to tint; and the sketch `income#[green]`, whose brackets add nothing a bare name lacks.
-
-**How a column's values look**, what a spreadsheet's number formats and conditional formats give, in one prelude statement, `look`, naming a column or a named type:
-
-```cells draft
----
-type Money = EUR
-look Money: grouped, negative red
-look amount: negative in parentheses
-look balance: red when balance < budget, green when balance >= budget
-look score: scale red..green
-look on: as 'D MMM YYYY'
-look row: gray when paid
----
-item:text!,amount:Money,budget:Money,balance:Money,score:0..10,on:date,paid:yes/no
-rent,-950.00,1000.00,50.00,7,2026-11-03,yes
-```
-
-- **A statement by its first word**, as `type` and `import` are: a line opening with `look` and a space is a look statement. Without that rule it is a column's declaration (`name: type`, [Columns](#columns)) of a column named `look amount`, since a name may hold a space; with it, a column whose name opens with `look ` is declared quoted (`"look ahead": text`), as a name holding a `:` is today.
-
-- **What a rule says**: `negative <tint>` and `positive <tint>` (a value's sign), `negative in parentheses` (accounting's `(42.10)`), `grouped` (thousands grouped in the reader's locale, its separators the reader's), `decimals <n>` (a `num` shown at `n` digits, rounded for display only; a currency shows its scale already), `<tint> when <condition>` (the condition a formula over the row, the language formulas already are, so `>= budget` reads another column with nothing new to learn), `scale <tint>..<tint>` (a colour from the column's least value to its greatest), and `as '<pattern>'` (a date's or a time's display form, apart from the format the file writes it in, [Formats](#formats)). `look row:` colours a whole row by its condition.
-- **Where a rule lives**: on a named type, it holds wherever the type is used, an exported type carrying its looks to the files that import it; on a column, it adds to its type's, a column's rule over its type's where the two say the same thing.
-- **Which wins**: rules are read in order and a later colour holds over an earlier one where both apply, so the specific goes after the general.
-- **A rule that does not read** (`look amount: negative grene`, a condition that does not compute) is a problem of its prelude line, never the data's: the file reads, its values whole, that rule alone left out ([Reading](#reading)).
-- Weighed: `show` (it is the command `cells show`, which writes values and never looks), `style` (CSS's word, which promises far more than this), `format` (a format is already how the file writes a value, [Formats](#formats)). A mini-language of conditions of its own: refused, since formulas are already the language of a row.
-
-**Editors get it free.** The grammars give a tint and a `look` statement their own scopes; the language server answers `textDocument/documentColor`, so an editor that has a colour picker (VS Code's) offers it on `#green` and writes back the name or the hex chosen; Cells.app and ui's table draw a choice's word in its tint (swift-utils' `InkTint`, `InkChoiceChip(word, tint:)`) and offer the same picker where the type is edited.
-
-**To decide**, each with what is proposed:
-
-1. The choice's tint inside the type (`income#green`), as proposed; or in `look` statements only.
-2. `#` reserved inside a type: proposed yes.
-3. Ten names and a hex: proposed; or CSS's hundred-odd colour names, which tie the format to a web list and draw badly in a dark theme.
-4. The statement's word, `look`, recognised by its first word so a declared column named `look …` is quoted: proposed; or another word.
-5. Conditions as formulas over the row: proposed.
-6. A later rule over an earlier: proposed; or the first that applies, as a spreadsheet's "stop if true".
-7. Grouping in the reader's locale: proposed; or the file naming its separators, which only a file meant for one country wants.
-8. An exported named type carrying its looks: proposed.
+- **Visualisation for free, because it is typed.** A chart needs to know what each column is: a date is a time axis, money is a measure in its currency, a choice is a category, a reference a link to follow. An untyped CSV makes every chart guess or be configured; a Cells file says it, so a table can be charted as it is (spending by month, by account, by vendor), and the graph of files drawn as a graph. Every place that shows a Cells file shows its charts: ui's components, the Apple platforms' (Swift Charts over the typed columns), and the Mac app. Its colours are the values' looks ([How a value looks](#how-a-value-looks)); what a chart needs beyond the types and the looks (which columns, which kind of chart) is declared in the prelude, never scripted, so a file sent as a chart is seen without running anything: a spreadsheet's charts are declarations too, and its macros apart.
 
 ### Undecided
 

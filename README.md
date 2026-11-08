@@ -150,7 +150,6 @@ Each column starts on a multiple of four characters, two spaces at least after i
 | [web/README.md](web/README.md) | the site, cellular.computer: how it is built from this repo's engine and ui's items, and its docs drawn from these documents |
 | [web/TODO.md](web/TODO.md) | what the site still owes |
 | [ACCOUNTING.md](ACCOUNTING.md) | books kept in Cells, drafted with the primitives the spec proposes |
-| [proposals/look/README.md](proposals/look/README.md) | the conformance cases SPEC.md's proposal "How a value looks" would add, kept outside the suite until it is decided |
 
 ## The syntax
 
@@ -167,6 +166,7 @@ A header cell is `name:type`, or `name:type=formula`. A cell with no `:` is a pl
 | `on:date` | an ISO date; `on:date(DD/MM/YYYY)` reads the file's own form |
 | `note:text?` | `?`: may be blank |
 | `mood:'yay!'\|meh` | a choice; single quotes hold a reserved character |
+| `kind:income#green\|cost#red` | a choice whose words show in their tints: ten names, or six hex digits (`income#3fa34d`) |
 | `score:0..10` | a number from 0 to 10 |
 | `to:accounts.account` | a key of the table the prelude names `accounts`: it must exist |
 | `total:EUR=cost * qty` | euros its formula computes on every row, each row storing what it gave (`84.20=`); a value written with no `=` is that row's override |
@@ -176,7 +176,7 @@ The bases are `text` `int` `num` `pct` `bool` `date` `time` `datetime` `url` `em
 
 A cell is a value (`84.20`), a value its column's formula computed (`84.20=`), or a value and its own formula (`32.25=96.75 / 3`): left of the `=` what the file stores, right of it how it is computed, so every value is in the file, readable in any editor. Formulas are SQL's expressions in exact decimal, the language in capitals (`CASE`, `COALESCE`, `ROUND`, `||`, `SUM(cost)`) and every lower-case word a name: a column of the row, `to.kind` through a reference, `fees['card'].pct` a row by its key, `running[-1]` the line above, `SUM(total[FIRST:THIS])` the rows down to this one. A spreadsheet's `=SUM($E$2:E2)` is accepted as typed and stored in names, so no line inserted by hand ever moves what a formula reads.
 
-The prelude, between two `---` lines, names types (`type Kind = …`), imports other files (`import accounts from "../accounts.cells"`, `import { Kind } from "./types.cells"`, a URL pinned by its hash), and holds tables of the file's own, written inline in a `` ```cells `` fence or filled by a script (`rates = run every hour`), with `//` comments.
+The prelude, between two `---` lines, names types (`type Kind = …`), imports other files (`import accounts from "../accounts.cells"`, `import { Kind } from "./types.cells"`, a URL pinned by its hash), holds tables of the file's own, written inline in a `` ```cells `` fence or filled by a script (`rates = run every hour`), and says how values look (`look amount: grouped, negative red`, `look row: gray when paid`), with `//` comments. A look is how a value shows wherever it shows, a table's cell and a chart's mark alike, and never changes a value.
 
 ## Reading and writing
 
@@ -194,7 +194,7 @@ Decided in direction, not yet in the spec ([SPEC.md, Open](SPEC.md#open)):
 - **Every row has an identity**, its key or an `id` the engine assigns, so an edit always lands on the row it meant and two versions of a file merge row by row.
 - **One engine every app reads and writes through**: a daemon on one Mac (`cells serve`: changes, history and schedules built) that every client reads through, standalone in a page; files parsed once, changes heard as they happen, nobody's write ever lost, even an editor's that bypasses it. Later every device a full replica, books owned by one of them. [ENGINE.md](ENGINE.md) is the design.
 - **Queries in standards, never our own language**: SQL (`cells sql` runs it), and SQL/PGQ to walk references.
-- **Charts with no setup**, because the columns are typed: a date is a time axis, money a measure, a choice a category, a reference a link to follow; what a chart needs beyond the types declared, never scripted.
+- **Charts with no setup**, because the columns are typed: a date is a time axis, money a measure, a choice a category, a reference a link to follow, its colours the values' looks; what a chart needs beyond the types and the looks declared, never scripted.
 - **Tooling**: highlighting in every editor, and the language server ([EDITORS.md](EDITORS.md)) warning before a break lands: a key renamed in the other file, a reference about to dangle.
 
 ## What it is for
