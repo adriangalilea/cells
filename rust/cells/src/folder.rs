@@ -320,8 +320,82 @@ fn stored(now: &Doc, after: &Doc) -> Vec<Cell> {
     out
 }
 
-/// What `after` changed beside `before` (`Edited`): linear in the rows, whatever their
-/// number, since only the rows between the lines both share at their ends are compared.
+/// The most rows two versions may differ by for their rows to be matched one by one; past
+/// it, the rows between the ones they share at their ends are compared by place, or, their
+/// counts differing, removed and added whole.
+const EDIT_LIMIT: usize = 1024;
+
+/// The items `a` and `b` share, in order, as pairs of their places: Myers' shortest edit
+/// script, in time and memory of the order of the differences squared plus the items, so
+/// a large file with few rows changed costs what its rows do. Nothing past `limit`
+/// differences.
+fn shortest_edit(a: &[String], b: &[String], limit: usize) -> Option<Vec<(usize, usize)>> {
+    let (n, m) = (a.len() as isize, b.len() as isize);
+    // each round's furthest reach on every diagonal it tried, the diagonal k at k + d
+    let mut rounds: Vec<Vec<isize>> = Vec::new();
+    let mut last: Vec<isize> = alloc::vec![0];
+    for d in 0..=(n + m).min(limit as isize) {
+        let mut reach = alloc::vec![0isize; (2 * d + 1) as usize];
+        let at = |v: &Vec<isize>, dd: isize, k: isize| v[(k + dd) as usize];
+        for k in (-d..=d).step_by(2) {
+            let mut x = if d == 0 {
+                0
+            } else if k == -d || (k != d && at(&last, d - 1, k - 1) < at(&last, d - 1, k + 1)) {
+                at(&last, d - 1, k + 1)
+            } else {
+                at(&last, d - 1, k - 1) + 1
+            };
+            let mut y = x - k;
+            while x < n && y < m && a[x as usize] == b[y as usize] {
+                x += 1;
+                y += 1;
+            }
+            reach[(k + d) as usize] = x;
+            if x >= n && y >= m {
+                rounds.push(reach);
+                return Some(walk_back(&rounds, a, b, n, m));
+            }
+        }
+        rounds.push(reach.clone());
+        last = reach;
+    }
+    None
+}
+
+/// The pairs a shortest edit script keeps, from its rounds' reaches, in order.
+fn walk_back(rounds: &[Vec<isize>], a: &[String], b: &[String], n: isize, m: isize) -> Vec<(usize, usize)> {
+    let mut kept = Vec::new();
+    let (mut x, mut y) = (n, m);
+    for d in (1..rounds.len() as isize).rev() {
+        let prev = &rounds[(d - 1) as usize];
+        let at = |k: isize| prev[(k + d - 1) as usize];
+        let k = x - y;
+        let down = k == -d || (k != d && at(k - 1) < at(k + 1));
+        let pk = if down { k + 1 } else { k - 1 };
+        let px = at(pk);
+        let py = px - pk;
+        // the snake after the move: items both share
+        while x > px.max(if down { px } else { px + 1 }) && y > py.max(if down { py + 1 } else { py }) {
+            x -= 1;
+            y -= 1;
+            kept.push((x as usize, y as usize));
+        }
+        (x, y) = (px, py);
+    }
+    // the first round's snake, from the start
+    while x > 0 && y > 0 {
+        debug_assert_eq!(a[(x - 1) as usize], b[(y - 1) as usize]);
+        x -= 1;
+        y -= 1;
+        kept.push((x as usize, y as usize));
+    }
+    kept.reverse();
+    kept
+}
+
+/// What `after` changed beside `before` (`Edited`): rows matched by the table's key, else by
+/// what their cells read, the rows both share at their ends set aside first, so a large file
+/// with a few rows changed costs what reading its rows does.
 pub fn edited(before: &Doc, after: &Doc) -> Edited {
     let mut out = Edited::default();
     let name = |d: &Doc, k: usize| d.columns()[k].name.clone();
@@ -352,23 +426,46 @@ pub fn edited(before: &Doc, after: &Doc) -> Edited {
             pairs
         }
         _ => {
+            // a row is the same row when its cells read the same, padding no part of them
+            let (cb, ca): (Vec<usize>, Vec<usize>) = shared.iter().copied().unzip();
+            let id =
+                |d: &Doc, r: usize, cols: &[usize]| -> String { cols.iter().map(|&k| d.text(r, k)).collect::<Vec<_>>().join("\u{1f}") };
+            let same = |b: usize, a: usize| before.line(b) == after.line(a) || id(before, b, &cb) == id(after, a, &ca);
             let (nb, na) = (before.rows(), after.rows());
             let mut head = 0;
-            while head < nb.min(na) && before.line(head) == after.line(head) {
+            while head < nb.min(na) && same(head, head) {
                 head += 1;
             }
             let mut tail = 0;
-            while tail < (nb - head).min(na - head) && before.line(nb - 1 - tail) == after.line(na - 1 - tail) {
+            while tail < (nb - head).min(na - head) && same(nb - 1 - tail, na - 1 - tail) {
                 tail += 1;
             }
-            let (mb, ma) = (nb - head - tail, na - head - tail);
-            if mb == ma {
-                (head..head + mb).map(|r| (r, r)).collect()
-            } else {
-                out.rows_removed = (head + 1..=head + mb).collect();
-                out.rows_added = (head + 1..=head + ma).collect();
-                Vec::new()
+            let olds: Vec<String> = (head..nb - tail).map(|r| id(before, r, &cb)).collect();
+            let news: Vec<String> = (head..na - tail).map(|r| id(after, r, &ca)).collect();
+            // between the rows both share, in order, each run of rows that differ: a row
+            // paired, in order, with the first row of the other side holding a cell it holds
+            // (a row edited), what is left over removed or added
+            let kept = shortest_edit(&olds, &news, EDIT_LIMIT).unwrap_or_default();
+            let shares = |b: usize, a: usize| shared.iter().any(|&(kb, ka)| before.text(b, kb) == after.text(a, ka));
+            let mut pairs = Vec::new();
+            let (mut i, mut j) = (0, 0);
+            for (x, y) in kept.into_iter().chain([(olds.len(), news.len())]) {
+                let mut next = head + j;
+                for b in (head + i)..(head + x) {
+                    match (next..head + y).find(|&a| shares(b, a)) {
+                        Some(a) => {
+                            out.rows_added.extend((next + 1)..=a);
+                            pairs.push((b, a));
+                            next = a + 1;
+                        }
+                        None => out.rows_removed.push(b + 1),
+                    }
+                }
+                out.rows_added.extend((next + 1)..=(head + y));
+                (i, j) = (x + 1, y + 1);
             }
+            out.rows_added.sort_unstable();
+            pairs
         }
     };
     for (b, a) in pairs {
@@ -478,6 +575,49 @@ mod tests {
         assert_eq!(out.writes.iter().map(|w| w.path.as_str()).collect::<Vec<_>>(), [Q4, QUARTERS, year]);
         assert!(out.writes[2].text.contains("2026,200.00=SUM"));
         assert_eq!(out.writes[2].via, [QUARTERS], "the year follows the quarters, never the q4 it reaches through them");
+    }
+
+    #[test]
+    fn the_shortest_edit_keeps_the_most_in_order() {
+        let s = |t: &str| t.chars().map(String::from).collect::<Vec<_>>();
+        // Myers' own example: ABCABBA to CBABAC keeps four
+        let (a, b) = (s("ABCABBA"), s("CBABAC"));
+        let kept = shortest_edit(&a, &b, EDIT_LIMIT).unwrap();
+        assert_eq!(kept.len(), 4);
+        assert!(kept.windows(2).all(|w| w[0].0 < w[1].0 && w[0].1 < w[1].1), "in order: {kept:?}");
+        assert!(kept.iter().all(|&(x, y)| a[x] == b[y]));
+        assert_eq!(shortest_edit(&a, &a, EDIT_LIMIT).unwrap().len(), 7, "the same: all kept");
+        assert!(shortest_edit(&s("ABCD"), &s("WXYZ"), 3).is_none(), "past the limit");
+        assert!(shortest_edit(&s(""), &s("AB"), EDIT_LIMIT).unwrap().is_empty());
+    }
+
+    #[test]
+    fn rows_edited_and_added_in_one_save_are_told_apart() {
+        let table = |rows: &[&str]| alloc::format!("what:text,amount:EUR\n{}\n", rows.join("\n"));
+        let before = read_with(
+            table(&["rent,900.00", "power,60.00", "water,30.00", "phone,20.00"]).into_bytes(),
+            &mut Files::new(&BTreeMap::new(), "/x"),
+            1,
+        )
+        .unwrap();
+        let after = read_with(
+            table(&["rent,900.00", "power,65.00", "water,30.00", "phone,20.00", "fuel,40.00"]).into_bytes(),
+            &mut Files::new(&BTreeMap::new(), "/x"),
+            1,
+        )
+        .unwrap();
+        let e = edited(&before, &after);
+        assert_eq!(e.cells, [Cell { row: 2, key: None, column: "amount".into(), was: "60.00".into(), now: "65.00".into() }]);
+        assert_eq!((&e.rows_added[..], &e.rows_removed[..]), (&[5][..], &[][..]), "the appended row alone");
+        let moved = read_with(
+            table(&["power,60.00", "rent,900.00", "water,31.00", "phone,20.00"]).into_bytes(),
+            &mut Files::new(&BTreeMap::new(), "/x"),
+            1,
+        )
+        .unwrap();
+        let e = edited(&before, &moved);
+        assert_eq!(e.cells.iter().map(|c| (c.row, c.now.as_str())).collect::<Vec<_>>(), [(3, "31.00")], "{e:?}");
+        assert_eq!((e.rows_added.len(), e.rows_removed.len()), (1, 1), "a row moved: removed where it was, added where it is");
     }
 
     #[test]
