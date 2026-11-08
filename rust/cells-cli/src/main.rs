@@ -15,8 +15,9 @@
 //!   cells merge <base> <ours> <theirs> git's merge driver: what was written merged, what is
 //!                                     computed computed again (SPEC.md, Merging)
 //!   cells pin <file>...                every import from a URL pinned by its hash now
-//!   cells run <file> [script]          its scripts run once, their rows written under them;
-//!                                     a script runs only as its person allowed it
+//!   cells run <file> [script]          its scripts run once by the engine, their rows written
+//!                                     under them; a script runs only as its person allowed
+//!                                     it, and the engine runs it on its schedule anyway
 //!   cells allow <file> [script]        each script not allowed as written shown whole and
 //!                                     allowed once its person says yes, in a terminal
 //!   cells show <file>                  its table as tab-separated text, computed cells
@@ -45,7 +46,6 @@
 mod allow;
 mod disk;
 mod history;
-mod json;
 mod lsp;
 mod merge;
 mod pin;

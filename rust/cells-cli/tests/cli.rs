@@ -1,6 +1,7 @@
 //! The command line on a folder written for the test: what it prints and how it exits.
 
 use std::fs;
+use std::path::PathBuf;
 use std::process::Command;
 
 #[test]
@@ -63,7 +64,7 @@ fn imports_formulas_and_a_script() {
     fs::write(dir.join("accounts.cells"), "account:text!\ncard\nhotel\n").unwrap();
     fs::write(
         dir.join("money.cells"),
-        "---\nimport accounts from \"./accounts.cells\"\nrates = run every hour\n```ts\nexport default async ({ last }) => [{ day: \"2026-11-04\", rate: 0.5 }]\n```\n```cells\nday:date!,rate:num>0\n2026-11-03,0.25\n```\n---\nday:date,usd:USD,to:accounts.account,eur:EUR=usd * rates[day].rate\n2026-11-03,100,hotel,\n2026-11-04,10,bar,\n",
+        "---\nimport accounts from \"./accounts.cells\"\nrates = run every day at 03:00 in UTC\n```ts\nexport default async ({ last }) => [{ day: \"2026-11-04\", rate: 0.5 }]\n```\n```cells\nday:date!,rate:num>0\n2026-11-03,0.25\n```\n---\nday:date,usd:USD,to:accounts.account,eur:EUR=usd * rates[day].rate\n2026-11-03,100,hotel,\n2026-11-04,10,bar,\n",
     )
     .unwrap();
     let cells = env!("CARGO_BIN_EXE_cells");
@@ -73,12 +74,14 @@ fn imports_formulas_and_a_script() {
     let check = Command::new(cells).arg("check").arg(&money).output().unwrap();
     assert_eq!(String::from_utf8(check.stdout).unwrap(), format!("{shown} row 2, to: \"bar\" is no key of accounts\n"));
 
-    // A script runs only at a version its person allowed: not yet, so it is not run. The
-    // approvals are this test's own (`HOME` its folder), never the person's.
-    let home = dir.join("home");
+    // A script runs only at a version its person allowed: not yet, so the engine does not run
+    // it. The engine and its approvals are this test's own (`HOME` a folder of its own, short
+    // enough for the engine's socket path), never the person's.
+    let home = PathBuf::from(format!("/tmp/cells-cli-{}", std::process::id()));
     let run = Command::new(cells).env("HOME", &home).arg("run").arg(&money).output().unwrap();
     assert_eq!(run.status.code(), Some(1));
-    assert!(String::from_utf8(run.stdout).unwrap().starts_with("rates: not run, not allowed on this Mac as it is written"));
+    let said = String::from_utf8(run.stdout).unwrap();
+    assert!(said.starts_with("rates: not run: rates is not allowed on this Mac as it is written"), "{said}");
     // allowed at this version, as the engine keeps an approval
     let doc = cells::read(fs::read(&money).unwrap()).unwrap();
     let approval = cells_daemon::allowed::Approval {
@@ -95,6 +98,17 @@ fn imports_formulas_and_a_script() {
     assert_eq!(String::from_utf8(run.stdout).unwrap(), "rates: run 1 ok, 1 added, 0 changed\n");
     let text = fs::read_to_string(&money).unwrap();
     assert!(text.contains("day:date!,rate:num>0,run:int?\n2026-11-03,0.25,\n2026-11-04,0.5,1\n```\n```cells runs\n"), "{text}");
+    // the run is history's: a root, by who asked
+    let history = Command::new(cells).env("HOME", &home).arg("history").arg(&money).output().unwrap();
+    let history = String::from_utf8(history.stdout).unwrap();
+    assert!(history.contains("money.cells: rates run 1 by cells run, 1 added, 0 changed"), "{history}");
+    // the engine this test started, stopped: `cells serve` names the one running
+    let serve = Command::new(cells).env("HOME", &home).arg("serve").output().unwrap();
+    let said = String::from_utf8(serve.stderr).unwrap();
+    let pid: i32 =
+        said.split("pid ").nth(1).and_then(|s| s.split(')').next()).and_then(|p| p.parse().ok()).unwrap_or_else(|| panic!("{said}"));
+    Command::new("kill").arg(pid.to_string()).status().unwrap();
+    fs::remove_dir_all(&home).unwrap();
 
     let show = Command::new(cells).arg("show").arg(&money).output().unwrap();
     assert_eq!(String::from_utf8(show.stdout).unwrap(), "day\tusd\tto\teur\n2026-11-03\t100\thotel\t25.00\n2026-11-04\t10\tbar\t5.00\n");

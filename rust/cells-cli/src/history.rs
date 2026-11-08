@@ -9,7 +9,7 @@ use std::path::Path;
 
 use cells_daemon::Engine;
 use cells_daemon::history::{Chain, Event};
-use cells_daemon::log::{Changed, Edit, Logged};
+use cells_daemon::log::{Changed, Edit, Logged, Outcome};
 use cells_daemon::trace::when;
 
 /// The chains a terminal shows at once.
@@ -64,7 +64,13 @@ fn headline(folder: &Path, root: &Event) -> String {
         Logged::External { now: None, .. } => format!("{file} removed"),
         Logged::External { by, .. } => format!("{file} saved{}", by_whom(by.as_deref())),
         Logged::Restore { now, by, .. } => format!("{file} returned to {} by {by}", &now[..12]),
-        Logged::Store { .. } | Logged::Moved { .. } => unreachable!("a root is an edit or a restore"),
+        Logged::Run { script, run, outcome: Outcome::Ok { added, changed }, by, .. } => {
+            format!("{file}: {script} run {run} by {by}, {added} added, {changed} changed")
+        }
+        Logged::Run { script, run, outcome: Outcome::Failed { why }, by, .. } => {
+            format!("{file}: {script} run {run} by {by} failed: {why}")
+        }
+        Logged::Store { .. } | Logged::Moved { .. } => unreachable!("a root is an edit, a restore or a run"),
     }
 }
 
@@ -99,7 +105,9 @@ fn list(rows: &[usize]) -> String {
 fn drawn(folder: &Path, chain: &Chain) -> Vec<String> {
     let pad = " ".repeat(18);
     let mut out = vec![format!("{}  {}", when(chain.root.line.at), headline(folder, &chain.root))];
-    if let Logged::External { edited: Some(e), .. } | Logged::Restore { edited: Some(e), .. } = &chain.root.line.entry {
+    if let Logged::External { edited: Some(e), .. } | Logged::Restore { edited: Some(e), .. } | Logged::Run { edited: Some(e), .. } =
+        &chain.root.line.entry
+    {
         out.extend(edit(e).into_iter().map(|l| format!("{pad}{l}")));
     }
     // each entry's children, in the order they followed
