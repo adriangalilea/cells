@@ -33,19 +33,25 @@ const CURRENCIES = (
   "UYU UZS VES VND VUV WST XAF XCD XCG XOF XPF YER ZAR ZMW ZWG"
 ).split(" ")
 
-const KEYWORDS = ["key", "optional", "one", "of", "min", "max", "between", "and"]
+const KEYWORDS = ["key", "optional", "one", "of", "min", "max", "between", "and", "tint"]
+
+// The ten tints (SPEC, Choices); any other colour is six hexadecimal digits.
+const TINTS = ["red", "orange", "yellow", "green", "teal", "blue", "purple", "pink", "brown", "gray"]
+const TINT = raw`(?:${TINTS.join("|")}|[0-9A-Fa-f]{6})`
 
 // ── Pieces of a type ────────────────────────────────────────────────────────
 // A word inside a type is anything but a reserved character or a space; a
 // single dot may stand inside one (v1.2), `..` never.
-const WORD_CHAR = raw`[^\s|/!?<>=()',":.]`
+const WORD_CHAR = raw`[^\s|/!?<>=()',":.#]`
 const BARE = raw`${WORD_CHAR}+(?:\.${WORD_CHAR}+)*`
 const QUOTED = raw`'(?:[^']|'')*'`
 const ITEM = raw`(?:${QUOTED}|${BARE})`
+// A choice's word and its tint after `#`: `income#green`.
+const TINTED = raw`${ITEM}(?:#${TINT})?`
 const NUM = raw`[+-]?(?:\d+(?:\.\d+)?|\.\d+)(?:[eE][+-]?\d+)?`
 // Word edges: no word character (a dot counts, so v1.2 is one word) on the side.
-const BEFORE = raw`(?<![^\s|/!?<>=()',":])`
-const AFTER = raw`(?![^\s|/!?<>=()',":])`
+const BEFORE = raw`(?<![^\s|/!?<>=()',":#])`
+const AFTER = raw`(?![^\s|/!?<>=()',":#])`
 const word = (alternatives: string[]) => raw`${BEFORE}(?:${alternatives.join("|")})${AFTER}`
 const NOT_KEYWORD = raw`(?!${word(KEYWORDS)})`
 
@@ -134,6 +140,12 @@ const S = {
   // themes (constant.other.symbol), never a string's colour.
   date: "constant.other.symbol.date.cells",
   link: "markup.underline.link.cells",
+  // A tint is a colour's name, as CSS's are: a theme paints constant.other.color.
+  tint: "constant.other.color.tint.cells",
+  tintMark: "punctuation.definition.constant.tint.cells",
+  look: "keyword.other.look.cells",
+  lookWord: "keyword.other.rule.look.cells",
+  pattern: "string.quoted.single.pattern.cells",
 }
 
 // ── The type ────────────────────────────────────────────────────────────────
@@ -145,6 +157,8 @@ const quotedChoice = (scope: string) => ({
 })
 const bareChoice = (scope: string) => ({ match: BARE, name: scope })
 const item = (scope: string) => [quotedChoice(scope), bareChoice(scope)]
+const tint = { match: raw`(#)(${TINT})`, captures: { 1: { name: S.tintMark }, 2: { name: S.tint } } }
+const tinted = (scope: string) => [tint, ...item(scope)]
 
 const type = [
   {
@@ -189,18 +203,28 @@ const type = [
     },
   },
   {
-    comment: "one of a b c: choices spelled out, until an explicit keyword.",
-    match: raw`${BEFORE}(one)\s+(of)${AFTER}((?:\s+${NOT_KEYWORD}${ITEM})+)`,
+    comment: "one of a b c: choices spelled out, until an explicit keyword; a word's tint after `tint`.",
+    match: raw`${BEFORE}(one)\s+(of)${AFTER}((?:\s+${NOT_KEYWORD}${ITEM}(?:\s+tint\s+${TINT}${AFTER})?)+)`,
     captures: {
       1: { name: S.oneOf },
       2: { name: S.oneOf },
-      3: { patterns: item(S.choice) },
+      3: {
+        patterns: [
+          { match: raw`${BEFORE}(tint)\s+(${TINT})${AFTER}`, captures: { 1: { name: S.oneOf }, 2: { name: S.tint } } },
+          ...item(S.choice),
+        ],
+      },
     },
   },
   {
-    comment: "a|b|c: choices.",
-    match: raw`${ITEM}(?:\s*\|\s*${ITEM})+`,
-    captures: { 0: { patterns: [...item(S.choice), { match: raw`\|`, name: S.pipe }] } },
+    comment: "a|b|c: choices, each word with its tint after `#` when it has one.",
+    match: raw`${TINTED}(?:\s*\|\s*${TINTED})+`,
+    captures: { 0: { patterns: [...tinted(S.choice), { match: raw`\|`, name: S.pipe }] } },
+  },
+  {
+    comment: "A lone quoted word and its tint, 'only'#blue.",
+    match: raw`(${QUOTED})(#)(${TINT})`,
+    captures: { 1: { patterns: [quotedChoice(S.choice)] }, 2: { name: S.tintMark }, 3: { name: S.tint } },
   },
   {
     comment: "A column typed by another table's key, accounts.account.",
@@ -490,6 +514,18 @@ const prelude = {
       captures: { 1: { name: S.export }, 2: { name: S.table }, 3: { name: S.assign } },
     },
     {
+      comment: "How a value looks: `look`, what it is for (the row, a named type, a column), then its rules.",
+      match: raw`^[ \t]*(look)[ \t]+(?:(row)|([A-Z][A-Za-z0-9_]*)|("(?:[^"]|"")*"|[^:\r\n]*?))[ \t]*(:)((?:[^/\r\n]|/(?!/))*)`,
+      captures: {
+        1: { name: S.look },
+        2: { name: S.languageWord },
+        3: { name: S.named },
+        4: { name: S.declared },
+        5: { name: S.colon },
+        6: { patterns: [{ include: "#look" }] },
+      },
+    },
+    {
       comment:
         "A column's declaration: its name (quoted when it holds a `:`, a `,` or a `\"`), then its type and its formula as a header cell's after its `:`.",
       match: raw`^[ \t]*("(?:[^"]|"")*"|[^:=,"\r\n/ \t][^:=,"\r\n/]*?)[ \t]*(:)((?:[^/\r\n]|/(?!/))*)`,
@@ -502,6 +538,39 @@ const prelude = {
     ...fenced,
   ],
 }
+
+// A look's rules (SPEC, How a value looks): its words, tints, digits and patterns, and a
+// condition, a formula over the row, up to the comma that opens the next rule.
+const RULE_WORDS = ["grouped", "decimals", "negative", "positive", "in", "parentheses", "scale", "as", "when"]
+const RULE_START = raw`(?:${[...RULE_WORDS, ...TINTS].join("|")}|#[0-9A-Fa-f]{6})\b`
+const look = [
+  {
+    comment: "A date's or a time's display form: its pieces, and a word in brackets as it is.",
+    match: raw`\b(as)\s+('(?:[^']|'')*')`,
+    captures: {
+      1: { name: S.lookWord },
+      2: {
+        name: S.pattern,
+        patterns: [
+          { match: raw`\[[^\]]*\]`, name: S.formatLiteral },
+          { match: "YYYY|YY|MMMM|MMM|MM|M|DD|D|dddd|ddd|HH|H|hh|h|mm|ss|A", name: S.formatField },
+          { match: "''", name: S.escape },
+        ],
+      },
+    },
+  },
+  {
+    comment: "A tint by a condition: `red when balance < budget`.",
+    match: raw`\b(when)\b(.*?)(?=\s*,\s*${RULE_START}|$)`,
+    captures: { 1: { name: S.lookWord }, 2: { name: S.formula, patterns: [{ include: "#formula" }] } },
+  },
+  { match: word(RULE_WORDS), name: S.lookWord },
+  { match: raw`(#)([0-9A-Fa-f]{6})\b`, captures: { 1: { name: S.tintMark }, 2: { name: S.tint } } },
+  { match: raw`\b(?:${TINTS.join("|")})\b`, name: S.tint },
+  { match: raw`\.\.`, name: S.range },
+  { match: raw`\b\d+\b`, name: S.number },
+  { match: ",", name: S.comma },
+]
 
 // ── The file ────────────────────────────────────────────────────────────────
 
@@ -548,6 +617,7 @@ const grammar = {
     },
     type: { patterns: type },
     formula: { patterns: formula },
+    look: { patterns: look },
     value: { patterns: valueOf("#written") },
     written: { patterns: written },
     cell: { patterns: valueOf("#plain") },

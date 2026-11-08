@@ -174,6 +174,34 @@
               }
             },
             {
+              "comment": "How a value looks: `look`, what it is for (the row, a named type, a column), then its rules.",
+              "match": "^[ \\t]*(look)[ \\t]+(?:(row)|([A-Z][A-Za-z0-9_]*)|(\"(?:[^\"]|\"\")*\"|[^:\\r\\n]*?))[ \\t]*(:)((?:[^/\\r\\n]|/(?!/))*)",
+              "captures": {
+                "1": {
+                  "name": "keyword.other.look.cells"
+                },
+                "2": {
+                  "name": "variable.language.cells"
+                },
+                "3": {
+                  "name": "entity.name.type.cells"
+                },
+                "4": {
+                  "name": "variable.other.member.column.declared.cells"
+                },
+                "5": {
+                  "name": "punctuation.separator.type.cells"
+                },
+                "6": {
+                  "patterns": [
+                    {
+                      "include": "#look"
+                    }
+                  ]
+                }
+              }
+            },
+            {
               "comment": "A column's declaration: its name (quoted when it holds a `:`, a `,` or a `\"`), then its type and its formula as a header cell's after its `:`.",
               "match": "^[ \\t]*(\"(?:[^\"]|\"\")*\"|[^:=,\"\\r\\n/ \\t][^:=,\"\\r\\n/]*?)[ \\t]*(:)((?:[^/\\r\\n]|/(?!/))*)",
               "captures": {
@@ -451,7 +479,7 @@
         },
         {
           "comment": "bool yes no: a boolean in the file's own words, spelled out.",
-          "match": "(?<![^\\s|/!?<>=()',\":])(bool)\\s+(?!(?<![^\\s|/!?<>=()',\":])(?:key|optional|one|of|min|max|between|and)(?![^\\s|/!?<>=()',\":]))((?:'(?:[^']|'')*'|[^\\s|/!?<>=()',\":.]+(?:\\.[^\\s|/!?<>=()',\":.]+)*))\\s+(?!(?<![^\\s|/!?<>=()',\":])(?:key|optional|one|of|min|max|between|and)(?![^\\s|/!?<>=()',\":]))((?:'(?:[^']|'')*'|[^\\s|/!?<>=()',\":.]+(?:\\.[^\\s|/!?<>=()',\":.]+)*))",
+          "match": "(?<![^\\s|/!?<>=()',\":#])(bool)\\s+(?!(?<![^\\s|/!?<>=()',\":#])(?:key|optional|one|of|min|max|between|and|tint)(?![^\\s|/!?<>=()',\":#]))((?:'(?:[^']|'')*'|[^\\s|/!?<>=()',\":.#]+(?:\\.[^\\s|/!?<>=()',\":.#]+)*))\\s+(?!(?<![^\\s|/!?<>=()',\":#])(?:key|optional|one|of|min|max|between|and|tint)(?![^\\s|/!?<>=()',\":#]))((?:'(?:[^']|'')*'|[^\\s|/!?<>=()',\":.#]+(?:\\.[^\\s|/!?<>=()',\":.#]+)*))",
           "captures": {
             "1": {
               "name": "support.type.primitive.cells"
@@ -473,7 +501,7 @@
                   }
                 },
                 {
-                  "match": "[^\\s|/!?<>=()',\":.]+(?:\\.[^\\s|/!?<>=()',\":.]+)*",
+                  "match": "[^\\s|/!?<>=()',\":.#]+(?:\\.[^\\s|/!?<>=()',\":.#]+)*",
                   "name": "constant.language.boolean.cells"
                 }
               ]
@@ -495,7 +523,7 @@
                   }
                 },
                 {
-                  "match": "[^\\s|/!?<>=()',\":.]+(?:\\.[^\\s|/!?<>=()',\":.]+)*",
+                  "match": "[^\\s|/!?<>=()',\":.#]+(?:\\.[^\\s|/!?<>=()',\":.#]+)*",
                   "name": "constant.language.boolean.cells"
                 }
               ]
@@ -504,7 +532,7 @@
         },
         {
           "comment": "yes/no: a boolean in the file's own words, true first.",
-          "match": "((?:'(?:[^']|'')*'|[^\\s|/!?<>=()',\":.]+(?:\\.[^\\s|/!?<>=()',\":.]+)*))\\s*(/)\\s*((?:'(?:[^']|'')*'|[^\\s|/!?<>=()',\":.]+(?:\\.[^\\s|/!?<>=()',\":.]+)*))",
+          "match": "((?:'(?:[^']|'')*'|[^\\s|/!?<>=()',\":.#]+(?:\\.[^\\s|/!?<>=()',\":.#]+)*))\\s*(/)\\s*((?:'(?:[^']|'')*'|[^\\s|/!?<>=()',\":.#]+(?:\\.[^\\s|/!?<>=()',\":.#]+)*))",
           "captures": {
             "1": {
               "patterns": [
@@ -523,7 +551,7 @@
                   }
                 },
                 {
-                  "match": "[^\\s|/!?<>=()',\":.]+(?:\\.[^\\s|/!?<>=()',\":.]+)*",
+                  "match": "[^\\s|/!?<>=()',\":.#]+(?:\\.[^\\s|/!?<>=()',\":.#]+)*",
                   "name": "constant.language.boolean.cells"
                 }
               ]
@@ -548,7 +576,7 @@
                   }
                 },
                 {
-                  "match": "[^\\s|/!?<>=()',\":.]+(?:\\.[^\\s|/!?<>=()',\":.]+)*",
+                  "match": "[^\\s|/!?<>=()',\":.#]+(?:\\.[^\\s|/!?<>=()',\":.#]+)*",
                   "name": "constant.language.boolean.cells"
                 }
               ]
@@ -556,8 +584,8 @@
           }
         },
         {
-          "comment": "one of a b c: choices spelled out, until an explicit keyword.",
-          "match": "(?<![^\\s|/!?<>=()',\":])(one)\\s+(of)(?![^\\s|/!?<>=()',\":])((?:\\s+(?!(?<![^\\s|/!?<>=()',\":])(?:key|optional|one|of|min|max|between|and)(?![^\\s|/!?<>=()',\":]))(?:'(?:[^']|'')*'|[^\\s|/!?<>=()',\":.]+(?:\\.[^\\s|/!?<>=()',\":.]+)*))+)",
+          "comment": "one of a b c: choices spelled out, until an explicit keyword; a word's tint after `tint`.",
+          "match": "(?<![^\\s|/!?<>=()',\":#])(one)\\s+(of)(?![^\\s|/!?<>=()',\":#])((?:\\s+(?!(?<![^\\s|/!?<>=()',\":#])(?:key|optional|one|of|min|max|between|and|tint)(?![^\\s|/!?<>=()',\":#]))(?:'(?:[^']|'')*'|[^\\s|/!?<>=()',\":.#]+(?:\\.[^\\s|/!?<>=()',\":.#]+)*)(?:\\s+tint\\s+(?:red|orange|yellow|green|teal|blue|purple|pink|brown|gray|[0-9A-Fa-f]{6})(?![^\\s|/!?<>=()',\":#]))?)+)",
           "captures": {
             "1": {
               "name": "keyword.other.one-of.cells"
@@ -568,6 +596,17 @@
             "3": {
               "patterns": [
                 {
+                  "match": "(?<![^\\s|/!?<>=()',\":#])(tint)\\s+((?:red|orange|yellow|green|teal|blue|purple|pink|brown|gray|[0-9A-Fa-f]{6}))(?![^\\s|/!?<>=()',\":#])",
+                  "captures": {
+                    "1": {
+                      "name": "keyword.other.one-of.cells"
+                    },
+                    "2": {
+                      "name": "constant.other.color.tint.cells"
+                    }
+                  }
+                },
+                {
                   "match": "'(?:[^']|'')*'",
                   "name": "variable.other.enummember.choice.cells",
                   "captures": {
@@ -582,7 +621,7 @@
                   }
                 },
                 {
-                  "match": "[^\\s|/!?<>=()',\":.]+(?:\\.[^\\s|/!?<>=()',\":.]+)*",
+                  "match": "[^\\s|/!?<>=()',\":.#]+(?:\\.[^\\s|/!?<>=()',\":.#]+)*",
                   "name": "variable.other.enummember.choice.cells"
                 }
               ]
@@ -590,11 +629,22 @@
           }
         },
         {
-          "comment": "a|b|c: choices.",
-          "match": "(?:'(?:[^']|'')*'|[^\\s|/!?<>=()',\":.]+(?:\\.[^\\s|/!?<>=()',\":.]+)*)(?:\\s*\\|\\s*(?:'(?:[^']|'')*'|[^\\s|/!?<>=()',\":.]+(?:\\.[^\\s|/!?<>=()',\":.]+)*))+",
+          "comment": "a|b|c: choices, each word with its tint after `#` when it has one.",
+          "match": "(?:'(?:[^']|'')*'|[^\\s|/!?<>=()',\":.#]+(?:\\.[^\\s|/!?<>=()',\":.#]+)*)(?:#(?:red|orange|yellow|green|teal|blue|purple|pink|brown|gray|[0-9A-Fa-f]{6}))?(?:\\s*\\|\\s*(?:'(?:[^']|'')*'|[^\\s|/!?<>=()',\":.#]+(?:\\.[^\\s|/!?<>=()',\":.#]+)*)(?:#(?:red|orange|yellow|green|teal|blue|purple|pink|brown|gray|[0-9A-Fa-f]{6}))?)+",
           "captures": {
             "0": {
               "patterns": [
+                {
+                  "match": "(#)((?:red|orange|yellow|green|teal|blue|purple|pink|brown|gray|[0-9A-Fa-f]{6}))",
+                  "captures": {
+                    "1": {
+                      "name": "punctuation.definition.constant.tint.cells"
+                    },
+                    "2": {
+                      "name": "constant.other.color.tint.cells"
+                    }
+                  }
+                },
                 {
                   "match": "'(?:[^']|'')*'",
                   "name": "variable.other.enummember.choice.cells",
@@ -610,7 +660,7 @@
                   }
                 },
                 {
-                  "match": "[^\\s|/!?<>=()',\":.]+(?:\\.[^\\s|/!?<>=()',\":.]+)*",
+                  "match": "[^\\s|/!?<>=()',\":.#]+(?:\\.[^\\s|/!?<>=()',\":.#]+)*",
                   "name": "variable.other.enummember.choice.cells"
                 },
                 {
@@ -622,8 +672,38 @@
           }
         },
         {
+          "comment": "A lone quoted word and its tint, 'only'#blue.",
+          "match": "('(?:[^']|'')*')(#)((?:red|orange|yellow|green|teal|blue|purple|pink|brown|gray|[0-9A-Fa-f]{6}))",
+          "captures": {
+            "1": {
+              "patterns": [
+                {
+                  "match": "'(?:[^']|'')*'",
+                  "name": "variable.other.enummember.choice.cells",
+                  "captures": {
+                    "0": {
+                      "patterns": [
+                        {
+                          "match": "''",
+                          "name": "constant.character.escape.cells"
+                        }
+                      ]
+                    }
+                  }
+                }
+              ]
+            },
+            "2": {
+              "name": "punctuation.definition.constant.tint.cells"
+            },
+            "3": {
+              "name": "constant.other.color.tint.cells"
+            }
+          }
+        },
+        {
           "comment": "A column typed by another table's key, accounts.account.",
-          "match": "(?<![^\\s|/!?<>=()',\":])([A-Za-z_][A-Za-z0-9_-]*)(\\.)([A-Za-z0-9_][A-Za-z0-9_-]*)(?![^\\s|/!?<>=()',\":])(?!\\s*[|/])",
+          "match": "(?<![^\\s|/!?<>=()',\":#])([A-Za-z_][A-Za-z0-9_-]*)(\\.)([A-Za-z0-9_][A-Za-z0-9_-]*)(?![^\\s|/!?<>=()',\":#])(?!\\s*[|/])",
           "captures": {
             "1": {
               "name": "entity.name.namespace.cells"
@@ -637,7 +717,7 @@
           }
         },
         {
-          "match": "(?<![^\\s|/!?<>=()',\":])(between)\\s+([+-]?(?:\\d+(?:\\.\\d+)?|\\.\\d+)(?:[eE][+-]?\\d+)?)\\s+(and)\\s+([+-]?(?:\\d+(?:\\.\\d+)?|\\.\\d+)(?:[eE][+-]?\\d+)?)",
+          "match": "(?<![^\\s|/!?<>=()',\":#])(between)\\s+([+-]?(?:\\d+(?:\\.\\d+)?|\\.\\d+)(?:[eE][+-]?\\d+)?)\\s+(and)\\s+([+-]?(?:\\d+(?:\\.\\d+)?|\\.\\d+)(?:[eE][+-]?\\d+)?)",
           "captures": {
             "1": {
               "name": "keyword.operator.word.cells"
@@ -679,7 +759,7 @@
           }
         },
         {
-          "match": "(?<![^\\s|/!?<>=()',\":])(min|max)\\s+([+-]?(?:\\d+(?:\\.\\d+)?|\\.\\d+)(?:[eE][+-]?\\d+)?)",
+          "match": "(?<![^\\s|/!?<>=()',\":#])(min|max)\\s+([+-]?(?:\\d+(?:\\.\\d+)?|\\.\\d+)(?:[eE][+-]?\\d+)?)",
           "captures": {
             "1": {
               "name": "keyword.operator.word.cells"
@@ -691,24 +771,24 @@
         },
         {
           "comment": "The key: in every row and unique.",
-          "match": "!|(?<![^\\s|/!?<>=()',\":])(?:key)(?![^\\s|/!?<>=()',\":])",
+          "match": "!|(?<![^\\s|/!?<>=()',\":#])(?:key)(?![^\\s|/!?<>=()',\":#])",
           "name": "storage.modifier.key.cells"
         },
         {
           "comment": "May be blank.",
-          "match": "\\?|(?<![^\\s|/!?<>=()',\":])(?:optional)(?![^\\s|/!?<>=()',\":])",
+          "match": "\\?|(?<![^\\s|/!?<>=()',\":#])(?:optional)(?![^\\s|/!?<>=()',\":#])",
           "name": "keyword.operator.optional.cells"
         },
         {
-          "match": "(?<![^\\s|/!?<>=()',\":])(?:text|int|num|pct|bool|date|time|datetime|url|email)(?![^\\s|/!?<>=()',\":])",
+          "match": "(?<![^\\s|/!?<>=()',\":#])(?:text|int|num|pct|bool|date|time|datetime|url|email)(?![^\\s|/!?<>=()',\":#])",
           "name": "support.type.primitive.cells"
         },
         {
-          "match": "(?<![^\\s|/!?<>=()',\":])(?:AED|AFN|ALL|AMD|AOA|ARS|AUD|AWG|AZN|BAM|BBD|BDT|BGN|BHD|BIF|BMD|BND|BOB|BRL|BSD|BTN|BWP|BYN|BZD|CAD|CDF|CHF|CLP|CNY|COP|CRC|CUP|CVE|CZK|DJF|DKK|DOP|DZD|EGP|ERN|ETB|EUR|FJD|FKP|GBP|GEL|GHS|GIP|GMD|GNF|GTQ|GYD|HKD|HNL|HTG|HUF|IDR|ILS|INR|IQD|IRR|ISK|JMD|JOD|JPY|KES|KGS|KHR|KMF|KPW|KRW|KWD|KYD|KZT|LAK|LBP|LKR|LRD|LSL|LYD|MAD|MDL|MGA|MKD|MMK|MNT|MOP|MRU|MUR|MVR|MWK|MXN|MYR|MZN|NAD|NGN|NIO|NOK|NPR|NZD|OMR|PAB|PEN|PGK|PHP|PKR|PLN|PYG|QAR|RON|RSD|RUB|RWF|SAR|SBD|SCR|SDG|SEK|SGD|SHP|SLE|SOS|SRD|SSP|STN|SVC|SYP|SZL|THB|TJS|TMT|TND|TOP|TRY|TTD|TWD|TZS|UAH|UGX|USD|UYU|UZS|VES|VND|VUV|WST|XAF|XCD|XCG|XOF|XPF|YER|ZAR|ZMW|ZWG)(?![^\\s|/!?<>=()',\":])",
+          "match": "(?<![^\\s|/!?<>=()',\":#])(?:AED|AFN|ALL|AMD|AOA|ARS|AUD|AWG|AZN|BAM|BBD|BDT|BGN|BHD|BIF|BMD|BND|BOB|BRL|BSD|BTN|BWP|BYN|BZD|CAD|CDF|CHF|CLP|CNY|COP|CRC|CUP|CVE|CZK|DJF|DKK|DOP|DZD|EGP|ERN|ETB|EUR|FJD|FKP|GBP|GEL|GHS|GIP|GMD|GNF|GTQ|GYD|HKD|HNL|HTG|HUF|IDR|ILS|INR|IQD|IRR|ISK|JMD|JOD|JPY|KES|KGS|KHR|KMF|KPW|KRW|KWD|KYD|KZT|LAK|LBP|LKR|LRD|LSL|LYD|MAD|MDL|MGA|MKD|MMK|MNT|MOP|MRU|MUR|MVR|MWK|MXN|MYR|MZN|NAD|NGN|NIO|NOK|NPR|NZD|OMR|PAB|PEN|PGK|PHP|PKR|PLN|PYG|QAR|RON|RSD|RUB|RWF|SAR|SBD|SCR|SDG|SEK|SGD|SHP|SLE|SOS|SRD|SSP|STN|SVC|SYP|SZL|THB|TJS|TMT|TND|TOP|TRY|TTD|TWD|TZS|UAH|UGX|USD|UYU|UZS|VES|VND|VUV|WST|XAF|XCD|XCG|XOF|XPF|YER|ZAR|ZMW|ZWG)(?![^\\s|/!?<>=()',\":#])",
           "name": "support.type.currency.cells"
         },
         {
-          "match": "(?<![^\\s|/!?<>=()',\":])[A-Z][A-Za-z0-9_]*(?![^\\s|/!?<>=()',\":])",
+          "match": "(?<![^\\s|/!?<>=()',\":#])[A-Z][A-Za-z0-9_]*(?![^\\s|/!?<>=()',\":#])",
           "name": "entity.name.type.cells"
         },
         {
@@ -849,6 +929,84 @@
         {
           "match": "[A-Za-z_][A-Za-z0-9_]*",
           "name": "variable.other.property.cells"
+        }
+      ]
+    },
+    "look": {
+      "patterns": [
+        {
+          "comment": "A date's or a time's display form: its pieces, and a word in brackets as it is.",
+          "match": "\\b(as)\\s+('(?:[^']|'')*')",
+          "captures": {
+            "1": {
+              "name": "keyword.other.rule.look.cells"
+            },
+            "2": {
+              "name": "string.quoted.single.pattern.cells",
+              "patterns": [
+                {
+                  "match": "\\[[^\\]]*\\]",
+                  "name": "punctuation.separator.format.cells"
+                },
+                {
+                  "match": "YYYY|YY|MMMM|MMM|MM|M|DD|D|dddd|ddd|HH|H|hh|h|mm|ss|A",
+                  "name": "constant.other.placeholder.format.cells"
+                },
+                {
+                  "match": "''",
+                  "name": "constant.character.escape.cells"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "comment": "A tint by a condition: `red when balance < budget`.",
+          "match": "\\b(when)\\b(.*?)(?=\\s*,\\s*(?:grouped|decimals|negative|positive|in|parentheses|scale|as|when|red|orange|yellow|green|teal|blue|purple|pink|brown|gray|#[0-9A-Fa-f]{6})\\b|$)",
+          "captures": {
+            "1": {
+              "name": "keyword.other.rule.look.cells"
+            },
+            "2": {
+              "name": "meta.formula.cells",
+              "patterns": [
+                {
+                  "include": "#formula"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "match": "(?<![^\\s|/!?<>=()',\":#])(?:grouped|decimals|negative|positive|in|parentheses|scale|as|when)(?![^\\s|/!?<>=()',\":#])",
+          "name": "keyword.other.rule.look.cells"
+        },
+        {
+          "match": "(#)([0-9A-Fa-f]{6})\\b",
+          "captures": {
+            "1": {
+              "name": "punctuation.definition.constant.tint.cells"
+            },
+            "2": {
+              "name": "constant.other.color.tint.cells"
+            }
+          }
+        },
+        {
+          "match": "\\b(?:red|orange|yellow|green|teal|blue|purple|pink|brown|gray)\\b",
+          "name": "constant.other.color.tint.cells"
+        },
+        {
+          "match": "\\.\\.",
+          "name": "keyword.operator.range.cells"
+        },
+        {
+          "match": "\\b\\d+\\b",
+          "name": "constant.numeric.cells"
+        },
+        {
+          "match": ",",
+          "name": "punctuation.separator.comma.cells"
         }
       ]
     },

@@ -23,6 +23,12 @@ rates = run every day at 18:00 in Europe/Madrid
 export default async () => []
 \`\`\`
 "price, net": EUR? = cost * 2
+type Mood = calm#green|loud#3fa34d|'C#'
+mood: one of yay tint blue meh
+look Mood: grouped
+look total: negative red, gray when score < 1, scale red..green
+look on: as 'D [de] MMM'
+look row: gray when paid
 ---
 item:text!,category:Category,cost:EUR>=0,paid:yes/no,on:date(DD/MM/YYYY),note:text?,score:0..10,to:accounts.account,x:one of a b key,y:bool si no optional,z:num between 0 and 100,w:num min 1,total:EUR=ABS(cost) * (score - 1),fee:EUR(6),running:EUR=running[-1] + total,cum:EUR=SUM(total[FIRST:THIS]),low:num=round(cost),memo:text,"vat:EUR=ROUND(cost, 2)","my ""best"" item"
 fuel,travel,32.25=96.75 / 3,yes,14/08/2026,"a ""b""",7,assets:bank,a,si,2026-08-14T10:00:00Z,https://example.com,84.20=,0.001200,84.20=,=SUM(TABLE.total),84=,'=> see invoice
@@ -70,6 +76,35 @@ const EXPECT: [string, string][] = [
   [":", "punctuation.separator.type.cells"],
   ["EUR", "support.type.currency.cells"],
   ["cost", "variable.other.property.cells"],
+  // a choice's tint, after `#` or `tint`
+  ["calm", "variable.other.enummember.choice.cells"],
+  ["#", "punctuation.definition.constant.tint.cells"],
+  ["green", "constant.other.color.tint.cells"],
+  ["3fa34d", "constant.other.color.tint.cells"],
+  ["'C#'", "variable.other.enummember.choice.cells"],
+  ["yay", "variable.other.enummember.choice.cells"],
+  ["tint", "keyword.other.one-of.cells"],
+  ["blue", "constant.other.color.tint.cells"],
+  ["meh", "variable.other.enummember.choice.cells"],
+  // how values look: what it is for, then its rules
+  ["look", "keyword.other.look.cells"],
+  ["Mood", "entity.name.type.cells"],
+  ["grouped", "keyword.other.rule.look.cells"],
+  ["total", "variable.other.member.column.declared.cells"],
+  ["negative", "keyword.other.rule.look.cells"],
+  ["red", "constant.other.color.tint.cells"],
+  ["gray", "constant.other.color.tint.cells"],
+  ["when", "keyword.other.rule.look.cells"],
+  ["score", "variable.other.property.cells"],
+  ["<", "keyword.operator.arithmetic.cells"],
+  ["scale", "keyword.other.rule.look.cells"],
+  ["..", "keyword.operator.range.cells"],
+  ["as", "keyword.other.rule.look.cells"],
+  ["D", "constant.other.placeholder.format.cells"],
+  ["[de]", "punctuation.separator.format.cells"],
+  ["MMM", "constant.other.placeholder.format.cells"],
+  ["row", "variable.language.cells"],
+  ["paid", "variable.other.property.cells"],
   ["---", "punctuation.separator.prelude.cells"],
   // the header: each name in its column's colour, then its type's parts
   ["item", "meta.column.1.cells"],
