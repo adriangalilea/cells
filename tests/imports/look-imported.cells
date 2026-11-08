@@ -1,0 +1,6 @@
+---
+import { Money } from "./look-exported.cells"
+---
+item:text,amount:Money
+fee,-3.00
+refund,4.00

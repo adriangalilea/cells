@@ -1,0 +1,28 @@
+{
+  "columns": [
+    { "name": "item", "type": "text!" },
+    { "name": "total", "type": "num" },
+    { "name": "on", "type": "date" },
+    { "name": "paid", "type": "yes/no" }
+  ],
+  "rows": [
+    { "item": { "text": "a" }, "total": { "num": "1234.56" }, "on": { "date": "2026-11-03" }, "paid": { "bool": true } },
+    { "item": { "text": "b" }, "total": { "num": "-2" }, "on": { "date": "2026-11-04" }, "paid": { "bool": false } },
+    { "item": { "text": "c" }, "total": { "num": "0" }, "on": { "date": "2026-11-05" }, "paid": { "bool": false } }
+  ],
+  "problems": [],
+  "looks": {
+    "total": ["grouped", "decimals 1", "scale red..green"],
+    "on": ["as 'ddd D MMM YYYY'"],
+    "row": ["gray when paid"]
+  },
+  "drawn": [
+    { "row": 0, "column": "total", "text": "1,234.6", "tint": { "from": "red", "to": "green", "at": 1000 } },
+    { "row": 1, "column": "total", "text": "-2.0", "tint": { "from": "red", "to": "green", "at": 0 } },
+    { "row": 2, "column": "total", "text": "0.0", "tint": { "from": "red", "to": "green", "at": 2 } },
+    { "row": 0, "column": "on", "text": "Tue 3 Nov 2026" },
+    { "row": 1, "column": "paid", "text": "no" },
+    { "row": 0, "tint": "gray" },
+    { "row": 1 }
+  ]
+}

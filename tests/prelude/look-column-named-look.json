@@ -1,0 +1,16 @@
+{
+  "columns": [
+    { "name": "item", "type": "text" },
+    { "name": "look ahead", "type": "int" }
+  ],
+  "rows": [
+    { "item": { "text": "far" }, "look ahead": { "int": "12000" } }
+  ],
+  "problems": [],
+  "looks": {
+    "look ahead": ["grouped"]
+  },
+  "drawn": [
+    { "row": 0, "column": "look ahead", "text": "12,000" }
+  ]
+}

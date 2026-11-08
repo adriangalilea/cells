@@ -24,6 +24,8 @@ const FOLDERS = [
   "plain",
 ]
 const SEPARATORS = [",", ";", "\t", "|"]
+// SPEC.md, How a value looks: the names a tint has
+const TINTS = ["red", "orange", "yellow", "green", "teal", "blue", "purple", "pink", "brown", "gray"]
 const NAMINGS = ["blank", "twice"]
 const ROOT_FILES = new Set(["README.md", "validate.ts", ".gitattributes"])
 const TAGS = new Set([
@@ -130,7 +132,7 @@ function readsCase(path: string, j: { [k: string]: Json }, plain: boolean) {
       if (typeof n.column !== "number" || !Number.isInteger(n.column) || n.column < 0) fault(path, `${what} names no column`)
       if (typeof n.kind !== "string" || !NAMINGS.includes(n.kind)) fault(path, `${what} has no known kind`)
     })
-  } else keysAre(path, "the case", j, ["columns", "rows", "problems"], ["types", "broken"])
+  } else keysAre(path, "the case", j, ["columns", "rows", "problems"], ["types", "broken", "tints", "looks", "drawn"])
   // A header cell that breaks may name its column as another does, or not at all.
   const broken = "broken" in j
   if (broken) {
@@ -233,6 +235,53 @@ function readsCase(path: string, j: { [k: string]: Json }, plain: boolean) {
     if (!["key", "ragged", "reference", "stale"].includes(p.kind) && v !== null) fault(path, `${what} is ${p.kind}, but the value is not null`)
     if (p.kind === "stale" && (v === null || v.from === undefined)) fault(path, `${what} is stale, but its value is no formula's`)
   })
+  looks(path, j, stored, rows.length)
+}
+
+/// How a value looks: `tints` (each column's tinted words), `looks` (each look statement's
+/// rules as written, by what it names) and `drawn` (cells and rows as a reader draws them).
+function looks(path: string, j: { [k: string]: Json }, columns: string[], rows: number) {
+  const isTint = (t: Json | undefined) => typeof t === "string" && (TINTS.includes(t) || /^#[0-9a-f]{6}$/.test(t))
+  const isTinted = (t: Json | undefined) =>
+    isTint(t) ||
+    (isObject(t) &&
+      Object.keys(t).sort().join() === "at,from,to" &&
+      isTint(t.from) &&
+      isTint(t.to) &&
+      typeof t.at === "number" &&
+      Number.isInteger(t.at) &&
+      t.at >= 0 &&
+      t.at <= 1000)
+  if ("tints" in j) {
+    if (!isObject(j.tints)) fault(path, `"tints" is not a map of columns`)
+    else
+      for (const [column, words] of Object.entries(j.tints)) {
+        if (!columns.includes(column)) fault(path, `tints name "${column}", no column`)
+        if (!isObject(words) || Object.keys(words).length === 0) fault(path, `tints of ${column} is not a map of words`)
+        else for (const [word, t] of Object.entries(words)) if (!isTint(t)) fault(path, `tints of ${column}: ${word}'s is no tint`)
+      }
+  }
+  if ("looks" in j) {
+    if (!isObject(j.looks)) fault(path, `"looks" is not a map of what each look names`)
+    else
+      for (const [target, rules] of Object.entries(j.looks))
+        if (!Array.isArray(rules) || rules.length === 0 || !rules.every((r) => typeof r === "string" && r.trim() === r && r !== ""))
+          fault(path, `looks of ${target} is not a list of rules as written`)
+  }
+  if ("drawn" in j) {
+    if (!Array.isArray(j.drawn) || j.drawn.length === 0) return fault(path, `"drawn" is not a list`)
+    j.drawn.forEach((d, i) => {
+      const what = `drawn ${i + 1}`
+      if (!isObject(d)) return fault(path, `${what} is not an object`)
+      keysAre(path, what, d, ["row"], ["column", "text", "tint"])
+      if (typeof d.row !== "number" || !Number.isInteger(d.row) || d.row < 0 || d.row >= rows) fault(path, `${what} names no row`)
+      if ("column" in d && (typeof d.column !== "string" || !columns.includes(d.column))) fault(path, `${what} names no column`)
+      if (!("column" in d) && "text" in d) fault(path, `${what}: a row has a tint, never a text`)
+      if ("text" in d && typeof d.text !== "string") fault(path, `${what}: "text" is not a string`)
+      if ("tint" in d && !(("column" in d ? isTinted : isTint) as (t: Json | undefined) => boolean)(d.tint))
+        fault(path, `${what}: "tint" is no tint`)
+    })
+  }
 }
 
 function errorCase(path: string, j: { [k: string]: Json }) {

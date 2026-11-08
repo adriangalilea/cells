@@ -1,0 +1,16 @@
+{
+  "columns": [
+    { "name": "item", "type": "text" },
+    { "name": "kind", "type": "income#green|cost#red|pending" }
+  ],
+  "rows": [
+    { "item": { "text": "salary" }, "kind": { "choice": "income" } },
+    { "item": { "text": "rent" }, "kind": { "choice": "pending" } }
+  ],
+  "problems": [],
+  "tints": { "kind": { "income": "green", "cost": "red" } },
+  "drawn": [
+    { "row": 0, "column": "kind", "text": "income", "tint": "green" },
+    { "row": 1, "column": "kind", "text": "pending" }
+  ]
+}

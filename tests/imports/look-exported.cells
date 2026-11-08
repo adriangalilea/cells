@@ -1,0 +1,6 @@
+---
+export type Money = EUR
+look Money: negative red
+---
+item:text,amount:Money
+rent,-10.00

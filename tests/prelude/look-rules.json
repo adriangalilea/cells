@@ -19,5 +19,11 @@
     "Money": ["grouped", "negative red"],
     "amount": ["negative in parentheses"],
     "balance": ["red when balance < budget", "green when balance >= budget"]
-  }
+  },
+  "drawn": [
+    { "row": 0, "column": "amount", "text": "(950.00)", "tint": "red" },
+    { "row": 0, "column": "budget", "text": "1,000.00" },
+    { "row": 0, "column": "balance", "text": "50.00", "tint": "red" },
+    { "row": 0, "column": "item", "text": "rent" }
+  ]
 }

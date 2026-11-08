@@ -1,0 +1,17 @@
+{
+  "types": { "Money": "EUR" },
+  "columns": [
+    { "name": "item", "type": "text" },
+    { "name": "amount", "type": "Money" }
+  ],
+  "rows": [
+    { "item": { "text": "fee" }, "amount": { "money": "-3.00", "currency": "EUR" } },
+    { "item": { "text": "refund" }, "amount": { "money": "4.00", "currency": "EUR" } }
+  ],
+  "problems": [],
+  "looks": {},
+  "drawn": [
+    { "row": 0, "column": "amount", "text": "-3.00", "tint": "red" },
+    { "row": 1, "column": "amount", "text": "4.00" }
+  ]
+}

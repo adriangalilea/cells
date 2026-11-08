@@ -1,0 +1,7 @@
+---
+look nothing: grouped
+look item: grouped
+look amount: red when nope > 0, negative red
+---
+item:text,amount:EUR
+rent,-950.00

@@ -1,0 +1,21 @@
+{
+  "columns": [
+    { "name": "item", "type": "text" },
+    { "name": "amount", "type": "EUR" }
+  ],
+  "rows": [
+    { "item": { "text": "rent" }, "amount": { "money": "-950.00", "currency": "EUR" } }
+  ],
+  "problems": [],
+  "broken": [
+    { "at": "prelude line 1", "span": [4, 21] },
+    { "at": "prelude line 2", "span": [26, 18] },
+    { "at": "prelude line 3", "span": [45, 44] }
+  ],
+  "looks": {
+    "amount": ["negative red"]
+  },
+  "drawn": [
+    { "row": 0, "column": "amount", "text": "-950.00", "tint": "red" }
+  ]
+}

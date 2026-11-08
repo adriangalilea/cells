@@ -1,0 +1,9 @@
+---
+look total: grouped, decimals 1, scale red..green
+look on: as 'ddd D MMM YYYY'
+look row: gray when paid
+---
+item:text!,total:num,on:date,paid:yes/no
+a,1234.56,2026-11-03,yes
+b,-2,2026-11-04,no
+c,0,2026-11-05,no

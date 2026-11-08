@@ -325,6 +325,85 @@ fn check_read(doc: &Doc, want: &Json) -> Vec<String> {
         let whys: Vec<String> = doc.broken().iter().map(|e| e.to_string()).collect();
         fails.push(format!("broken at {ours:?}, the suite says {theirs:?} ({})", whys.join("; ")));
     }
+    fails.extend(check_looks(doc, want));
+    fails
+}
+
+/// How a value looks (SPEC.md): each column's tints, each look's rules as written, and the
+/// cells and rows the case names as a reader draws them in English.
+fn check_looks(doc: &Doc, want: &Json) -> Vec<String> {
+    let mut fails = Vec::new();
+    if let Some(Json::Object(tints)) = want.get("tints") {
+        let ours: Vec<(String, String, String)> =
+            doc.columns().iter().flat_map(|c| c.ty.tints.iter().map(|(w, t)| (c.name.clone(), w.clone(), t.spelled()))).collect();
+        let theirs: Vec<(String, String, String)> = tints
+            .iter()
+            .flat_map(|(c, words)| {
+                let Json::Object(words) = words else { panic!("a column's tints are an object") };
+                words.iter().map(|(w, t)| (c.clone(), w.clone(), t.str().to_string())).collect::<Vec<_>>()
+            })
+            .collect();
+        if ours != theirs {
+            fails.push(format!("tints {ours:?}, the suite says {theirs:?}"));
+        }
+    }
+    if let Some(Json::Object(looks)) = want.get("looks") {
+        let ours: Vec<(String, Vec<String>)> = doc
+            .looks()
+            .iter()
+            .filter(|(_, rules)| !rules.is_empty())
+            .map(|(t, rules)| {
+                let target = match t {
+                    cells::look::Target::Row => "row".to_string(),
+                    cells::look::Target::Name(n) => n.clone(),
+                };
+                (target, rules.iter().map(|l| l.spelled.clone()).collect())
+            })
+            .collect();
+        let theirs: Vec<(String, Vec<String>)> =
+            looks.iter().map(|(t, rules)| (t.clone(), rules.array().iter().map(|r| r.str().to_string()).collect())).collect();
+        if ours != theirs {
+            fails.push(format!("looks {ours:?}, the suite says {theirs:?}"));
+        }
+    }
+    let tinted = |t: Option<cells::Tinted>| match t {
+        None => Json::Null,
+        Some(cells::Tinted::One(t)) => Json::Str(t.spelled()),
+        Some(cells::Tinted::Between { from, to, at }) => Json::Object(Vec::from([
+            ("from".to_string(), Json::Str(from.spelled())),
+            ("to".to_string(), Json::Str(to.spelled())),
+            ("at".to_string(), Json::Number(at.to_string())),
+        ])),
+    };
+    for d in want.get("drawn").map(|d| d.array()).unwrap_or_default() {
+        let Some(Json::Number(r)) = d.get("row") else { panic!("a drawn entry names its row") };
+        let row: usize = r.parse().unwrap();
+        let theirs = d.get("tint").cloned().unwrap_or(Json::Null);
+        match d.get("column") {
+            None => {
+                let ours = tinted(doc.row_tint(row).map(cells::Tinted::One));
+                if ours != theirs {
+                    fails.push(format!("row {row} drawn in {ours:?}, the suite says {theirs:?}"));
+                }
+            }
+            Some(c) => {
+                let Some(k) = doc.column(c.str()) else {
+                    fails.push(format!("drawn: no column {}", c.str()));
+                    continue;
+                };
+                let ours = tinted(doc.tint(row, k));
+                if ours != theirs {
+                    fails.push(format!("row {row}, {} drawn in {ours:?}, the suite says {theirs:?}", c.str()));
+                }
+                if let Some(text) = d.get("text") {
+                    let ours = doc.drawn(row, k, &cells::look::ENGLISH);
+                    if ours != text.str() {
+                        fails.push(format!("row {row}, {} drawn as {ours:?}, the suite says {:?}", c.str(), text.str()));
+                    }
+                }
+            }
+        }
+    }
     fails
 }
 

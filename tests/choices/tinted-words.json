@@ -9,5 +9,10 @@
     { "item": { "text": "savings" }, "kind": { "choice": "transfer" } }
   ],
   "problems": [],
-  "tints": { "kind": { "income": "green", "cost": "red" } }
+  "tints": { "kind": { "income": "green", "cost": "red" } },
+  "drawn": [
+    { "row": 0, "column": "kind", "text": "income", "tint": "green" },
+    { "row": 1, "column": "kind", "text": "cost", "tint": "red" },
+    { "row": 2, "column": "kind", "text": "transfer" }
+  ]
 }

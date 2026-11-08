@@ -1,0 +1,15 @@
+{
+  "types": { "Money": "EUR" },
+  "columns": [
+    { "name": "item", "type": "text" },
+    { "name": "amount", "type": "Money" }
+  ],
+  "rows": [
+    { "item": { "text": "rent" }, "amount": { "money": "-10.00", "currency": "EUR" } }
+  ],
+  "problems": [],
+  "looks": { "Money": ["negative red"] },
+  "drawn": [
+    { "row": 0, "column": "amount", "text": "-10.00", "tint": "red" }
+  ]
+}
