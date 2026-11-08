@@ -285,7 +285,7 @@ Rust because it is as fast as C and reaches everything else: a C ABI, wasm, PyO3
 
 ### Next, in order
 
-1. **Cells.app reading through the engine.**
+1. **Cells.app reading and writing through the engine.** It is a client already: its folders served by the engine and their changes heard from it (swift-utils' `Cells.Daemon`). Next, its documents read from the engine's parse, and its edits sent as intents.
 2. **A script runs only once its person allowed that version of it** (asked in Cells.app, the editor or `cells allow`), and its schedules are kept.
 3. **Cells.app's window**, designed and used until it is right: its folder, its prelude a first-class panel written with completions, heads saying what each column is. Then the site's Cells window and hero mirror it.
 4. **SQL/PGQ in `cells sql`**, references walked as edges, once DuckDB's `duckpgq` can be built into the binary ([rust/README.md](rust/README.md#cells-sql)).
