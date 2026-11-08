@@ -19,7 +19,7 @@ use crate::wire;
 /// A script's version: the SHA-256 of its language, a line break and its code.
 pub fn version(script: &cells::Script) -> String {
     let said = format!("{}\n{}", script.language, script.code);
-    cells::sha256::hex(&cells::sha256::digest(said.as_bytes()))
+    cells::sha256::hex(said.as_bytes())
 }
 
 /// Where the approvals are kept.
@@ -81,6 +81,10 @@ mod tests {
     fn a_version_is_the_code_and_one_character_is_another() {
         let doc = cells::read(FILE).unwrap();
         let script = &doc.scripts()[0];
+        // pinned: every client computes the same (swift-utils' `Cells.Approvals.version`)
+        // `shasum -a 256` of "ts\nexport default async () => []\n": a script's code ends with
+        // its line break
+        assert_eq!(version(script), "417af8deda266572d175f2fcc48b7429b87322668d511232a25569815a21010d");
         let changed = cells::read(FILE.replace("[]", "[ ]")).unwrap();
         assert_ne!(version(script), version(&changed.scripts()[0]));
         let mut allowed = Allowed::default();

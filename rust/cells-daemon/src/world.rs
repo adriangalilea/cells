@@ -113,7 +113,7 @@ impl World for Disk {
 
     fn replace(&self, path: &Path, against: &str, text: &str) -> Replaced {
         let Ok(now) = fs::read(path) else { return Replaced::Moved };
-        if cells::sha256::hex(&cells::sha256::digest(&now)) != against {
+        if cells::sha256::hex(&now) != against {
             return Replaced::Moved;
         }
         let dir = path.parent().expect("a file is in a folder");

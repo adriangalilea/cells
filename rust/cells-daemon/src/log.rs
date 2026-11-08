@@ -34,7 +34,7 @@ pub enum Entry<'a> {
 
 /// The SHA-256 of `text`, as every hash in the log is written.
 pub fn hash(text: &str) -> String {
-    cells::sha256::hex(&cells::sha256::digest(text.as_bytes()))
+    cells::sha256::hex(text.as_bytes())
 }
 
 /// A line of the log as written: its place in the chain, its time, and the entry, every

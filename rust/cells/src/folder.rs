@@ -214,7 +214,7 @@ impl Folder {
                     after.stored_since(before);
                     let written = after.write();
                     if written != text {
-                        let against = crate::sha256::hex(&crate::sha256::digest(text.as_bytes()));
+                        let against = crate::sha256::hex(text.as_bytes());
                         let stored = stored(doc, &after);
                         out.writes.push(Write { path: path.to_owned(), against, text: written, because: cause.to_owned(), stored });
                     }
@@ -283,7 +283,7 @@ mod tests {
         assert_eq!(index.path, QUARTERS);
         assert_eq!(index.because, Q4);
         assert_eq!(index.text, INDEX.replace("180.00=SUM", "200.00=SUM"));
-        assert_eq!(index.against, crate::sha256::hex(&crate::sha256::digest(INDEX.as_bytes())));
+        assert_eq!(index.against, crate::sha256::hex(INDEX.as_bytes()));
     }
 
     #[test]
