@@ -30,6 +30,10 @@
 //!                                     reaches, in that file and every file importing it,
 //!                                     each version logged in `.cells/log.jsonl`, each step
 //!                                     said on stderr (`--verbose`: every read, timed)
+//!   cells history <file|folder> [<row> <column>]
+//!                                     what changed, by whom, when, and what each change
+//!                                     reached, newest first; or a cell's every value, each
+//!                                     beside the change that wrote it (ENGINE.md, History)
 //!
 //! A folder means every `.cells` file under it, hidden folders (`.git`, the engine's `.cells`)
 //! left out. Exit 0 when nothing is found (or every run succeeds), 1 when something is (or
@@ -40,6 +44,7 @@
 
 mod allow;
 mod disk;
+mod history;
 mod json;
 mod lsp;
 mod merge;
@@ -54,7 +59,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 
 use disk::Disk;
 
-const USAGE: &str = "cells check <file|folder>...\ncells fmt [--check] [--align on|off] <file|folder>...\ncells diff <file>\ncells fix <file|folder>...\ncells merge <base> <ours> <theirs>\ncells pin <file>...\ncells run <file> [script]\ncells allow <file> [script]\ncells show <file>\ncells sql <file|folder>... <query>\ncells lsp\ncells serve [--verbose] <folder>...";
+const USAGE: &str = "cells check <file|folder>...\ncells fmt [--check] [--align on|off] <file|folder>...\ncells diff <file>\ncells fix <file|folder>...\ncells merge <base> <ours> <theirs>\ncells pin <file>...\ncells run <file> [script]\ncells allow <file> [script]\ncells show <file>\ncells sql <file|folder>... <query>\ncells lsp\ncells serve [--verbose] <folder>...\ncells history <file|folder> [<row> <column>]";
 
 /// Every `.cells` file a path names, sorted.
 fn files(path: &Path, out: &mut Vec<PathBuf>) -> Result<(), String> {
@@ -322,6 +327,26 @@ fn main() -> ExitCode {
                 }
                 Err(e) => {
                     eprintln!("cells sql: {e}");
+                    ExitCode::from(2)
+                }
+            }
+        }
+        Some("history") if args.len() == 2 || args.len() == 4 => {
+            let cell = match args.get(2).map(|r| r.parse::<usize>()) {
+                None => None,
+                Some(Ok(row)) => Some((row, args[3].as_str())),
+                Some(Err(_)) => {
+                    eprintln!("cells history: a row is its number, from 1: {}", args[2]);
+                    return ExitCode::from(2);
+                }
+            };
+            match history::history(Path::new(&args[1]), cell) {
+                Ok(said) => {
+                    said.iter().for_each(|l| println!("{l}"));
+                    ExitCode::SUCCESS
+                }
+                Err(e) => {
+                    eprintln!("cells history: {e}");
                     ExitCode::from(2)
                 }
             }
