@@ -145,6 +145,15 @@ impl Engine {
         }
     }
 
+    /// The script `script` of `file` run now by the engine, as its person allowed it: its
+    /// run's number and what came of it, once landed in the file.
+    pub fn run(&self, file: &Path, script: &str) -> Result<(u64, crate::log::Outcome), String> {
+        match self.ask(&ToEngine::Run { file: file.to_path_buf(), script: script.to_owned() })? {
+            FromEngine::Ran { run, outcome, .. } => Ok((run, outcome)),
+            other => panic!("the engine answered a run with {other:?}"),
+        }
+    }
+
     /// `request` sent and its answer read; a refusal is the error.
     fn ask(&self, request: &ToEngine) -> Result<FromEngine, String> {
         // one request answered at a time, so each answer is its request's
@@ -174,6 +183,7 @@ fn hear(mut reader: BufReader<UnixStream>, changes: Sender<Vec<PathBuf>>, answer
                 | FromEngine::Values { .. }
                 | FromEngine::Version { .. }
                 | FromEngine::Restored { .. }
+                | FromEngine::Ran { .. }
                 | FromEngine::Refused { .. }),
             )) => {
                 let _ = answer.send(said);

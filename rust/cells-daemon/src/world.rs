@@ -47,10 +47,74 @@ pub trait World {
     /// Changes under `dir` heard from now on, everything under it when `whole`: each path
     /// handed to what the world was made with (`Disk::new`).
     fn watch(&mut self, dir: &Path, whole: bool) -> Result<(), String>;
+    /// `code`, a script in `language`, started with `context` on its stdin, and `done`
+    /// handed each JSON line it wrote on stdout, or why it failed, once it ends: never on
+    /// the caller's thread when it takes time (a script fetches), so the engine keeps
+    /// answering meanwhile. What it says on stderr is said as the script's.
+    fn run_script(
+        &self,
+        name: &str,
+        language: &str,
+        code: &str,
+        context: String,
+        done: Box<dyn FnOnce(Result<Vec<String>, String>) + Send>,
+    );
     /// The user's home folder, which is never served whole.
     fn home(&self) -> PathBuf;
     /// Milliseconds since the Unix epoch.
     fn now(&self) -> u64;
+}
+
+/// What starts a `ts` script and hands it and its rows over (`cells::run`, the contract):
+/// the context on stdin, each row returned a JSON line on stdout, its words on stderr.
+const RUNNER: &str = r#"import script from "./script.ts"
+console.log = console.error
+const context = JSON.parse(await Bun.stdin.text())
+const rows = await script(context)
+if (!Array.isArray(rows)) throw new Error("the script returns no list of rows")
+for (const row of rows) process.stdout.write(JSON.stringify(row) + "\n")
+"#;
+
+/// Where Bun is: on the PATH, else where its installer and Homebrew put it, since a launch
+/// agent's PATH is the system's alone.
+fn bun_path() -> Option<PathBuf> {
+    let home = PathBuf::from(std::env::var_os("HOME")?);
+    let on_path = std::env::var_os("PATH").into_iter().flat_map(|p| std::env::split_paths(&p).collect::<Vec<_>>()).map(|d| d.join("bun"));
+    on_path.chain([home.join(".bun/bin/bun"), "/opt/homebrew/bin/bun".into(), "/usr/local/bin/bun".into()]).find(|p| p.is_file())
+}
+
+/// A `ts` script run with Bun, in a folder of its own: the lines it wrote, or why it failed.
+fn bun(name: &str, code: &str, context: &str) -> Result<Vec<String>, String> {
+    use std::process::{Command, Stdio};
+    let bun = bun_path().ok_or("bun is not installed (looked on the PATH, in ~/.bun/bin and Homebrew's): v0 runs ```ts with Bun")?;
+    let dir = std::env::temp_dir().join(format!("cells-run-{}-{name}", std::process::id()));
+    fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+    fs::write(dir.join("script.ts"), code).map_err(|e| e.to_string())?;
+    fs::write(dir.join("runner.ts"), RUNNER).map_err(|e| e.to_string())?;
+    let child = Command::new(bun)
+        .arg("run")
+        .arg(dir.join("runner.ts"))
+        .current_dir(&dir)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .map_err(|e| format!("bun: {e}"));
+    let out = child.and_then(|mut child| {
+        child.stdin.take().expect("piped").write_all(context.as_bytes()).map_err(|e| e.to_string())?;
+        child.wait_with_output().map_err(|e| e.to_string())
+    });
+    let _ = fs::remove_dir_all(&dir);
+    let out = out?;
+    let words = String::from_utf8_lossy(&out.stderr);
+    for line in words.lines() {
+        tracing::info!(target: crate::trace::ENGINE, script = name, line, "the script said");
+    }
+    if !out.status.success() {
+        let why = words.lines().rev().find(|l| !l.trim().is_empty()).unwrap_or("the script failed").trim();
+        return Err(why.to_owned());
+    }
+    Ok(String::from_utf8_lossy(&out.stdout).lines().filter(|l| !l.trim().is_empty()).map(str::to_owned).collect())
 }
 
 /// Whether a table is read from a file at `path`.
@@ -185,6 +249,24 @@ impl World for Disk {
     fn watch(&mut self, dir: &Path, whole: bool) -> Result<(), String> {
         let mode = if whole { RecursiveMode::Recursive } else { RecursiveMode::NonRecursive };
         self.watcher.watch(dir, mode).map_err(|e| format!("{}: {e}", dir.display()))
+    }
+
+    fn run_script(
+        &self,
+        name: &str,
+        language: &str,
+        code: &str,
+        context: String,
+        done: Box<dyn FnOnce(Result<Vec<String>, String>) + Send>,
+    ) {
+        if language != "ts" {
+            return done(Err(format!("no runner runs ```{language}: v0 runs ```ts, with Bun")));
+        }
+        let (script, code) = (name.to_owned(), code.to_owned());
+        let spawned = std::thread::Builder::new().name(format!("cells-run-{name}")).spawn(move || done(bun(&script, &code, &context)));
+        if let Err(e) = spawned {
+            tracing::error!(target: crate::trace::ENGINE, script = name, why = %e, "no thread to run a script");
+        }
     }
 
     fn home(&self) -> PathBuf {

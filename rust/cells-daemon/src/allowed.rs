@@ -49,6 +49,11 @@ impl Allowed {
     /// The approvals as they are now; none when nothing was ever allowed.
     pub fn read() -> Allowed {
         let Ok(text) = std::fs::read_to_string(path()) else { return Allowed::default() };
+        Allowed::parse(&text)
+    }
+
+    /// The approvals `allowed.jsonl` holds, as its text.
+    pub fn parse(text: &str) -> Allowed {
         let kept = text
             .lines()
             .map(|l| {

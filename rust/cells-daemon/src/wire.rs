@@ -35,6 +35,9 @@ pub enum ToEngine {
     Version { file: PathBuf, version: String },
     /// `file` returned to a version: a change of its own, a root, never history rewritten.
     Restore { file: PathBuf, version: String },
+    /// The script `script` of `file` run now, outside its schedule: answered once its run
+    /// has landed, refused when it is not allowed as written.
+    Run { file: PathBuf, script: String },
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -68,6 +71,14 @@ pub enum FromEngine {
     Restored {
         file: PathBuf,
         was: String,
+    },
+    /// A script's run landed: its number and what came of it.
+    Ran {
+        file: PathBuf,
+        script: String,
+        run: u64,
+        #[serde(flatten)]
+        outcome: crate::log::Outcome,
     },
     /// A request refused, and why.
     Refused {

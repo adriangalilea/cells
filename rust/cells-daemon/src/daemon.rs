@@ -13,9 +13,11 @@ use std::time::{Duration, Instant};
 use cells::files::is_url;
 use cells::folder::{Change, Edited, Folder, Write, key_of};
 
-use crate::allowed::Approval;
+use cells::Trigger;
+
+use crate::allowed::{Allowed, Approval};
 use crate::history;
-use crate::log::{Cause, Changed, Edit, Log, Logged, hash};
+use crate::log::{Cause, Changed, Edit, Log, Logged, Outcome, hash};
 use crate::trace::ENGINE;
 use crate::wire::{FromEngine, ToEngine};
 use crate::world::{Found, Replaced, World, table_file};
@@ -41,6 +43,19 @@ pub enum Event {
     Leave {
         id: u64,
     },
+    /// A script's run ended (`World::run_script`): what it returned, to land in its file.
+    Ran(Running, Result<Vec<String>, String>),
+}
+
+/// A run under way: whose, at which version (the one allowed), started when and by what,
+/// and the clients waiting for it to land.
+pub struct Running {
+    file: PathBuf,
+    script: String,
+    version: String,
+    at: u64,
+    by: String,
+    waiting: Vec<Sender<FromEngine>>,
 }
 
 /// How long the disk must be quiet before what was heard is read: a save is several events
@@ -66,6 +81,21 @@ pub struct Daemon<W: World> {
     /// The version of a file each client said it holds (`ToEngine::Editing`): when that
     /// version lands, that client wrote it.
     holding: BTreeMap<PathBuf, Vec<Holding>>,
+    /// Where a run that ends says so: the daemon's own channel.
+    back: Sender<Event>,
+    /// When the engine first saw each script, by file and name: a script never run is due
+    /// from then (`schedule`).
+    seen: BTreeMap<(PathBuf, String), u64>,
+    /// The scripts running now, and the clients waiting on each.
+    running: BTreeMap<(PathBuf, String), Vec<Sender<FromEngine>>>,
+    /// Runs that ended over a file changed meanwhile: landed once that change is heard.
+    landing: Vec<(Running, Result<Vec<String>, String>)>,
+    /// What was said once and not again until it changes: a script due and not allowed at
+    /// a version, a schedule that cannot be kept.
+    told: BTreeSet<String>,
+    /// The files a root changed since the scripts were last looked at: what starts a
+    /// script that runs `when <file> changes`.
+    touched: BTreeSet<PathBuf>,
 }
 
 struct Holding {
@@ -85,7 +115,13 @@ struct Root {
 enum RootKind {
     External { by: Option<String> },
     Restore { by: String },
+    Run { script: String, run: u64, outcome: Outcome, by: String },
 }
+
+/// The longest the engine waits before looking at its scripts again: a Mac asleep stops
+/// the clock a wait is measured on, so a run due while it slept is found this long after
+/// it wakes at most.
+const GLANCE: Duration = Duration::from_secs(30);
 
 /// What a version edited, as the trace says it: `row 2 amount 180.00 → 200.00, 1 row added`.
 fn said(e: &Edited) -> String {
@@ -114,13 +150,36 @@ macro_rules! warned {
     ($($t:tt)*) => { tracing::warn!(target: ENGINE, $($t)*) };
 }
 
+/// A path with its `.` and `..` taken out by their names: how a schedule's `when
+/// ../money.cells changes` names a file the engine holds by its canonical path.
+fn normal(path: &Path) -> PathBuf {
+    let mut out = PathBuf::new();
+    for c in path.components() {
+        match c {
+            std::path::Component::ParentDir => {
+                out.pop();
+            }
+            std::path::Component::CurDir => {}
+            other => out.push(other),
+        }
+    }
+    out
+}
+
+/// Milliseconds since the Unix epoch as a moment `schedule` reckons with.
+fn timestamp(ms: u64) -> jiff::Timestamp {
+    jiff::Timestamp::from_millisecond(ms as i64).expect("a moment the clock can say")
+}
+
 /// The folder's key for a path: the path, absolute, as text.
 fn key(path: &Path) -> String {
     path.to_str().unwrap_or_else(|| panic!("{} is not UTF-8: the engine keys files by their path as text", path.display())).to_owned()
 }
 
 impl<W: World> Daemon<W> {
-    pub fn new(world: W) -> Daemon<W> {
+    /// The daemon over `world`, a run that ends saying so on `back`, the channel `run`
+    /// reads.
+    pub fn new(world: W, back: Sender<Event>) -> Daemon<W> {
         Daemon {
             world,
             folder: Folder::default(),
@@ -129,6 +188,12 @@ impl<W: World> Daemon<W> {
             listeners: BTreeMap::new(),
             changed: BTreeSet::new(),
             holding: BTreeMap::new(),
+            back,
+            seen: BTreeMap::new(),
+            running: BTreeMap::new(),
+            landing: Vec::new(),
+            told: BTreeSet::new(),
+            touched: BTreeSet::new(),
         }
     }
 
@@ -177,10 +242,16 @@ impl<W: World> Daemon<W> {
     }
 
     /// Served until the process ends: each event as it comes, what the disk says changed
-    /// read once the disk is still, and the clients told what changed after each.
+    /// read once the disk is still, and the clients told what changed after each; between
+    /// them, each script run when it is due.
     pub fn run(&mut self, events: Receiver<Event>) -> ! {
         loop {
-            let first = events.recv().expect("the daemon's senders live as long as it does");
+            let wait = self.tick();
+            let first = match events.recv_timeout(wait) {
+                Ok(event) => event,
+                Err(RecvTimeoutError::Timeout) => continue,
+                Err(RecvTimeoutError::Disconnected) => panic!("the daemon's senders are gone"),
+            };
             let mut heard = BTreeSet::new();
             let mut asked = Vec::new();
             match first {
@@ -213,6 +284,14 @@ impl<W: World> Daemon<W> {
     pub(crate) fn answer(&mut self, event: Event) {
         match event {
             Event::Disk(_) => unreachable!("the disk's events are heard, never answered"),
+            Event::Ran(running, returned) => self.land(running, returned),
+            Event::Ask { id, client, request: ToEngine::Run { file, script }, answer } => {
+                let answer = answer.expect("a run is answered");
+                if let Err(why) = self.start(&file, &script, &client, Some(answer.clone())) {
+                    warned!(client, id, why, "refused");
+                    let _ = answer.send(FromEngine::Refused { why });
+                }
+            }
             Event::Ask { id, client, request, answer } => {
                 let said = match self.asked(id, &client, request) {
                     Ok(said) => said,
@@ -246,6 +325,7 @@ impl<W: World> Daemon<W> {
     fn asked(&mut self, id: u64, client: &str, request: ToEngine) -> Result<Option<FromEngine>, String> {
         Ok(Some(match request {
             ToEngine::Hello { .. } => unreachable!("a greeting is the server's"),
+            ToEngine::Run { .. } => unreachable!("a run is answered when it lands"),
             ToEngine::Serve { folder } => FromEngine::Served { folder: self.serve(&folder)? },
             ToEngine::Allow { file, script, version } => {
                 let approval =
@@ -304,6 +384,7 @@ impl<W: World> Daemon<W> {
                 let span = tracing::info_span!(target: ENGINE, "restore", path = %self.shown(&file), to = &version[..12], by = client);
                 let _restoring = span.enter();
                 self.changed.insert(file.clone());
+                self.touched.insert(file.clone());
                 let root = Root {
                     path: file.clone(),
                     was: Some(was.clone()),
@@ -314,6 +395,197 @@ impl<W: World> Daemon<W> {
                 FromEngine::Restored { file, was }
             }
         }))
+    }
+
+    /// Every script of every file served looked at: each due run started when its person
+    /// allowed it as written, a run that ended over a changed file landed again. How long
+    /// until the next is due, `GLANCE` at most.
+    pub fn tick(&mut self) -> Duration {
+        let pending = std::mem::take(&mut self.landing);
+        for (running, returned) in pending {
+            self.land(running, returned);
+        }
+        let now = self.world.now();
+        let allowed = match self.world.read(&crate::allowed::path()) {
+            Found::Text(t) => Allowed::parse(&t),
+            _ => Allowed::default(),
+        };
+        let touched = std::mem::take(&mut self.touched);
+        let mut soonest = now + GLANCE.as_millis() as u64;
+        let held: Vec<PathBuf> = self.folder.paths().map(PathBuf::from).filter(|p| self.root_of(p).is_some()).collect();
+        for path in held {
+            let Some(doc) = self.folder.doc(&key(&path)) else { continue };
+            let text = self.folder.text(&key(&path)).expect("a doc's text").to_owned();
+            let scripts = doc.scripts().to_vec();
+            for script in scripts {
+                let id = (path.clone(), script.name.clone());
+                if self.running.contains_key(&id) {
+                    continue;
+                }
+                let seen = *self.seen.entry(id).or_insert(now);
+                let dir = path.parent().expect("a file is in a folder");
+                let changed = script.schedule.triggers.iter().find_map(|t| match t {
+                    Trigger::Changes(p) => {
+                        let p = normal(&dir.join(p));
+                        (p != path && touched.contains(&p)).then(|| format!("a change to {}", self.shown(&p)))
+                    }
+                    _ => None,
+                });
+                let last = cells::run::last_ran(&text, &script).map(|i| i.seconds as u64 * 1000 + i.nanos as u64 / 1_000_000);
+                let next = match crate::schedule::next(&script.schedule, last.map(timestamp), timestamp(seen)) {
+                    Ok(next) => next.map(|t| t.as_millisecond() as u64),
+                    Err(why) => {
+                        if self.told.insert(format!("{}#{}: {why}", path.display(), script.name)) {
+                            warned!(path = %self.shown(&path), script = script.name, why, "its schedule is not kept");
+                        }
+                        None
+                    }
+                };
+                let by = match (changed, next) {
+                    (Some(change), _) => change,
+                    (None, Some(n)) if n <= now => "its schedule".to_owned(),
+                    (None, Some(n)) => {
+                        soonest = soonest.min(n);
+                        continue;
+                    }
+                    (None, None) => continue,
+                };
+                if !allowed.allows(&path, &script) {
+                    let version = crate::allowed::version(&script);
+                    if self.told.insert(format!("{}#{}@{version}", path.display(), script.name)) {
+                        warned!(path = %self.shown(&path), script = script.name, "due, and not run: not allowed on this Mac as it is written");
+                    }
+                    continue;
+                }
+                if let Err(why) = self.start(&path, &script.name, &by, None) {
+                    warned!(path = %self.shown(&path), script = script.name, why, "not run");
+                }
+            }
+        }
+        Duration::from_millis(soonest.saturating_sub(now)).min(GLANCE)
+    }
+
+    /// The script `name` of `file` started, as its person allowed it, by `by` (its schedule,
+    /// a change, a client), `waiting` told once it lands; joining a run under way.
+    fn start(&mut self, file: &Path, name: &str, by: &str, waiting: Option<Sender<FromEngine>>) -> Result<(), String> {
+        let id = (file.to_path_buf(), name.to_owned());
+        if let Some(waiters) = self.running.get_mut(&id) {
+            waiters.extend(waiting);
+            return Ok(());
+        }
+        let doc = self.folder.doc(&key(file)).ok_or(format!("{}: not read by the engine; is its folder served?", self.shown(file)))?;
+        let script = doc.scripts().iter().find(|s| s.name == name).ok_or(format!("{} has no script {name}", self.shown(file)))?.clone();
+        let allowed = match self.world.read(&crate::allowed::path()) {
+            Found::Text(t) => Allowed::parse(&t),
+            _ => Allowed::default(),
+        };
+        if !allowed.allows(file, &script) {
+            return Err(format!(
+                "{name} is not allowed on this Mac as it is written: `cells allow {} {name}` shows its code and asks",
+                file.display()
+            ));
+        }
+        let table = doc.tables().iter().find(|t| t.name == name).and_then(|t| t.doc.clone()).expect("a script's table, declared");
+        let at = self.world.now();
+        let context = cells::run::context(&table, cells::value::Instant::from(at as i64, 3));
+        said!(path = %self.shown(file), script = name, by, "running");
+        self.running.insert(id, waiting.into_iter().collect());
+        let running = Running {
+            file: file.to_path_buf(),
+            script: name.to_owned(),
+            version: crate::allowed::version(&script),
+            at,
+            by: by.to_owned(),
+            waiting: Vec::new(),
+        };
+        let back = self.back.clone();
+        // the daemon outlives every run
+        self.world.run_script(
+            name,
+            &script.language,
+            &script.code,
+            context,
+            Box::new(move |returned| _ = back.send(Event::Ran(running, returned))),
+        );
+        Ok(())
+    }
+
+    /// A run that ended landed in its file (`cells::run::landed`): its rows when they read,
+    /// its runs block either way, written over the version the engine holds, a root of
+    /// history with what it reached following; over a file changed meanwhile, landed once
+    /// that change is heard. A script edited while it ran lands nothing: its run was of
+    /// another version.
+    fn land(&mut self, mut running: Running, returned: Result<Vec<String>, String>) {
+        let id = (running.file.clone(), running.script.clone());
+        running.waiting.extend(self.running.remove(&id).unwrap_or_default());
+        let k = key(&running.file);
+        let shown = self.shown(&running.file);
+        let Some(text) = self.folder.text(&k).map(str::to_owned) else {
+            warned!(path = shown, script = running.script, "ran, and its file is gone: nothing landed");
+            return;
+        };
+        let doc = self.folder.doc(&k);
+        let now_version = doc.and_then(|d| d.scripts().iter().find(|s| s.name == running.script)).map(crate::allowed::version);
+        if now_version.as_deref() != Some(running.version.as_str()) {
+            warned!(path = shown, script = running.script, "ran, and the script changed meanwhile: nothing landed");
+            for w in running.waiting {
+                let _ = w.send(FromEngine::Refused { why: format!("{} changed while it ran: nothing landed", running.script) });
+            }
+            return;
+        }
+        let at = cells::value::Instant::from(running.at as i64, 3);
+        let folder = &self.folder;
+        let mut read = |t: &str| folder.read_as(&k, t);
+        let (written, ran) = match cells::run::landed(&text, &running.script, returned.clone(), at, &mut read) {
+            Ok(landed) => landed,
+            Err(why) => {
+                tracing::error!(target: ENGINE, path = shown, script = running.script, why, "ran, and its file does not read: nothing landed");
+                return;
+            }
+        };
+        let was = hash(&text);
+        match self.world.replace(&running.file, &was, &written) {
+            Replaced::Done => {}
+            Replaced::Moved => {
+                // held as running, so it is not started again before it lands
+                self.running.insert(id, Vec::new());
+                detail!(path = shown, script = running.script, "ran over a file changed meanwhile: landed once its change is heard");
+                self.landing.push((running, returned));
+                return;
+            }
+            Replaced::Failed(why) => {
+                tracing::error!(target: ENGINE, path = shown, script = running.script, why, "ran, and its file could not be written");
+                return;
+            }
+        }
+        let outcome = match &ran.outcome {
+            Ok((added, changed)) => Outcome::Ok { added: *added, changed: *changed },
+            Err(why) => Outcome::Failed { why: why.clone() },
+        };
+        let span = tracing::info_span!(target: ENGINE, "run", path = shown, script = running.script, run = ran.run, by = running.by);
+        let _ran = span.enter();
+        match &outcome {
+            Outcome::Ok { added, changed } => said!(added, changed, "ran"),
+            Outcome::Failed { why } => warned!(why, "failed"),
+        }
+        self.keep(&running.file, &written);
+        self.changed.insert(running.file.clone());
+        self.touched.insert(running.file.clone());
+        let root = Root {
+            path: running.file.clone(),
+            was: Some(was),
+            now: Some(hash(&written)),
+            kind: RootKind::Run { script: running.script.clone(), run: ran.run, outcome: outcome.clone(), by: running.by.clone() },
+        };
+        self.hand(Change::Changed { path: k, text: written }, Some(root));
+        for w in running.waiting {
+            let _ = w.send(FromEngine::Ran {
+                file: running.file.clone(),
+                script: running.script.clone(),
+                run: ran.run,
+                outcome: outcome.clone(),
+            });
+        }
     }
 
     /// The log of the folder served holding `file`.
@@ -370,6 +642,7 @@ impl<W: World> Daemon<W> {
                     let _changing = span.enter();
                     self.keep(path, &text);
                     self.changed.insert(path.to_path_buf());
+                    self.touched.insert(path.to_path_buf());
                     let root = Root { path: path.to_path_buf(), was, now: Some(now), kind: RootKind::External { by } };
                     self.hand(Change::Changed { path: k, text }, Some(root));
                     handed += 1;
@@ -378,6 +651,7 @@ impl<W: World> Daemon<W> {
                     let span = tracing::info_span!(target: ENGINE, "change", path = %self.shown(path), what = "removed");
                     let _changing = span.enter();
                     self.changed.insert(path.to_path_buf());
+                    self.touched.insert(path.to_path_buf());
                     let root = Root { path: path.to_path_buf(), was, now: None, kind: RootKind::External { by: None } };
                     self.hand(Change::Gone { path: k }, Some(root));
                     handed += 1;
@@ -473,6 +747,16 @@ impl<W: World> Daemon<W> {
                 was: root.was.expect("a restored file was held"),
                 now: root.now.expect("a restored file holds the version returned to"),
                 by,
+                edited,
+            },
+            RootKind::Run { script, run, outcome, by } => Logged::Run {
+                path,
+                script,
+                run,
+                outcome,
+                by,
+                was: root.was.expect("a file run into was held"),
+                now: root.now.expect("a run writes a version"),
                 edited,
             },
         };

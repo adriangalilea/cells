@@ -24,6 +24,7 @@ pub mod daemon;
 pub mod history;
 pub mod hosted;
 pub mod log;
+pub mod schedule;
 pub mod server;
 pub mod trace;
 pub mod trust;
@@ -52,7 +53,7 @@ fn run(
         // fails only once the daemon is gone
         let _ = disk.send(Event::Disk(path));
     })?;
-    let mut daemon = Daemon::new(world);
+    let mut daemon = Daemon::new(world, events.clone());
     tracing::info!(target: trace::ENGINE, socket = %listening.socket.display(), pid = std::process::id(), admits = listening.admits, "listening");
     for folder in folders {
         daemon.serve(folder)?;

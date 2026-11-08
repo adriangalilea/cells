@@ -124,12 +124,12 @@ pub fn cell(log: &Log, file: &Path, row: usize, key: Option<&str>, column: &str)
     for l in lines.into_iter().rev() {
         let (cells, added, removed): (&[_], &[usize], &[usize]) = match &l.entry {
             Logged::Store { stored, .. } => (stored, &[], &[]),
-            Logged::External { edited: Some(e), .. } | Logged::Restore { edited: Some(e), .. } => {
+            Logged::External { edited: Some(e), .. } | Logged::Restore { edited: Some(e), .. } | Logged::Run { edited: Some(e), .. } => {
                 (&e.cells, &e.rows_added, &e.rows_removed)
             }
             // a file new, removed, or a version either side of which did not read, has no
             // cells to follow through
-            Logged::External { .. } | Logged::Restore { .. } => break,
+            Logged::External { .. } | Logged::Restore { .. } | Logged::Run { .. } => break,
             Logged::Moved { .. } => continue,
         };
         let same =

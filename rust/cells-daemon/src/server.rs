@@ -192,5 +192,6 @@ fn canonical(request: ToEngine) -> Result<ToEngine, String> {
         ToEngine::Cell { file, row, column } => ToEngine::Cell { file: path(file)?, row, column },
         ToEngine::Version { file, version } => ToEngine::Version { file: path(file)?, version },
         ToEngine::Restore { file, version } => ToEngine::Restore { file: path(file)?, version },
+        ToEngine::Run { file, script } => ToEngine::Run { file: path(file)?, script },
     })
 }

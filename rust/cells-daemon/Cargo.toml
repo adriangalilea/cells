@@ -16,6 +16,8 @@ crate-type = ["rlib", "staticlib"]
 cells = { package = "cells-engine", path = "../cells" }
 # the trace's local time (localtime_r), the one call std does not make
 libc = "0.2"
+# a schedule's times of day in its zone, daylight saving included, from the system's tz data
+jiff = "0.2"
 notify = "8"
 # the socket's messages, typed (`wire`), and the log's lines
 serde = { version = "1", features = ["derive"] }

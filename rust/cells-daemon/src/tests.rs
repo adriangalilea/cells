@@ -17,7 +17,18 @@ struct Sim {
     files: RefCell<BTreeMap<PathBuf, String>>,
     locked: Vec<PathBuf>,
     watched: Vec<(PathBuf, bool)>,
+    /// What each script returns when run, by name: its lines, or why it failed.
+    scripts: RefCell<BTreeMap<String, Result<Vec<String>, String>>>,
+    /// Every script started, by name, in order.
+    started: RefCell<Vec<String>>,
+    /// The clock, in milliseconds since the Unix epoch: `NOW` unless a test moves it.
+    clock: std::cell::Cell<u64>,
+    /// What the daemon says back to itself (a run ended), read by `pump`.
+    inbox: Option<std::sync::mpsc::Receiver<Event>>,
 }
+
+/// The simulated clock's start: 2026-11-06T21:20:00Z.
+const NOW: u64 = 1_794_000_000_000;
 
 impl Sim {
     fn put(&self, path: &str, text: &str) {
@@ -73,12 +84,27 @@ impl World for Sim {
         Ok(())
     }
 
+    fn run_script(&self, name: &str, _: &str, _: &str, _: String, done: Box<dyn FnOnce(Result<Vec<String>, String>) + Send>) {
+        self.started.borrow_mut().push(name.to_owned());
+        done(self.scripts.borrow().get(name).cloned().unwrap_or_else(|| Err(format!("no script {name} in the simulation"))));
+    }
+
     fn home(&self) -> PathBuf {
         PathBuf::from("/home/someone")
     }
 
     fn now(&self) -> u64 {
-        1_794_000_000_000
+        match self.clock.get() {
+            0 => NOW,
+            t => t,
+        }
+    }
+}
+
+/// Everything the daemon said back to itself handed to it, as its loop would.
+fn pump(d: &mut Daemon<Sim>) {
+    while let Ok(e) = d.world().inbox.as_ref().expect("an inbox").try_recv() {
+        d.answer(e);
     }
 }
 
@@ -89,7 +115,9 @@ const MONEY: &str = "---\ntype Kind = income|cost\ncost: EUR = CASE WHEN kind = 
 const INDEX: &str = "---\nimport q4 from \"./q4/money.cells\"\n---\nquarter:text!,costs:EUR\nq4,180.00=SUM(q4.cost)\n";
 
 fn served(sim: Sim, root: &str) -> Daemon<Sim> {
-    let mut d = Daemon::new(sim);
+    let (back, inbox) = channel();
+    let mut d = Daemon::new(sim, back);
+    d.world_mut().inbox = Some(inbox);
     assert_eq!(d.serve(Path::new(root)).unwrap(), PathBuf::from(root));
     d
 }
@@ -369,4 +397,115 @@ fn a_file_returned_to_a_version_is_a_change_of_its_own() {
         panic!()
     };
     assert_eq!(text, INDEX.replace("180.00=SUM", "200.00=SUM"), "the version the engine stored, shown whole");
+}
+
+const TRIP: &str = "/w/trip.cells";
+
+/// A file whose table converts with the rates a script fetches every day at 18:00 UTC, last
+/// run on 2026-11-02 at 18:00: a run missed since.
+fn trip(schedule: &str) -> String {
+    format!(
+        "---\nrates = run {schedule}\n```ts\nexport default async () => []\n```\n```cells\ndate:date!,rate:num>0,run:int?\n2026-11-03,0.9,1\n```\n```cells runs\nrun:int!,at:datetime,outcome:ok|failed,error:text?\n1,2026-11-02T18:00:00Z,ok,\n```\n---\ndate:date,usd:USD,eur:EUR=usd * rates[date].rate\n2026-11-03,10.00,9.00=\n"
+    )
+}
+
+fn allow_all(d: &Daemon<Sim>, file: &str) {
+    let doc = d.folder().doc(file).expect("read");
+    let lines: Vec<String> = doc
+        .scripts()
+        .iter()
+        .map(|s| {
+            crate::allowed::line(&crate::allowed::Approval {
+                file: file.into(),
+                script: s.name.clone(),
+                version: crate::allowed::version(s),
+                by: "test".into(),
+                at: 0,
+            })
+        })
+        .collect();
+    d.world().put(crate::allowed::path().to_str().unwrap(), &format!("{}\n", lines.join("\n")));
+}
+
+fn with_trip(schedule: &str) -> Daemon<Sim> {
+    let sim = Sim::default();
+    sim.put(TRIP, &trip(schedule));
+    sim.scripts.borrow_mut().insert("rates".into(), Ok(vec![r#"{"date":"2026-11-03","rate":0.95}"#.into()]));
+    served(sim, "/w")
+}
+
+#[test]
+fn a_run_missed_runs_once_when_allowed_and_is_a_root_of_what_it_reached() {
+    let mut d = with_trip("every day at 18:00 in UTC");
+    let ((), said) = caught(|| _ = d.tick());
+    assert!(d.world().started.borrow().is_empty(), "not allowed: not run");
+    assert!(said.iter().any(|l| l.contains("due, and not run: not allowed")), "{said:#?}");
+    let ((), again) = caught(|| _ = d.tick());
+    assert!(!again.iter().any(|l| l.contains("not allowed")), "said once: {again:#?}");
+    allow_all(&d, TRIP);
+    d.tick();
+    pump(&mut d);
+    assert_eq!(*d.world().started.borrow(), ["rates"], "the run missed since 2026-11-03 18:00, once");
+    let file = d.world().get(TRIP);
+    assert!(file.contains("2026-11-03,0.95,2\n"), "{file}");
+    assert!(file.contains("2,2026-11-06T21:20:00Z,ok,\n"), "its runs block: {file}");
+    assert!(file.contains("2026-11-03,10.00,9.50=\n"), "what the rates reached, stored: {file}");
+    let log = d.world().log();
+    assert!(log[0].contains("\"kind\":\"run\",\"path\":\"trip.cells\",\"script\":\"rates\",\"run\":2,\"outcome\":\"ok\",\"added\":0,\"changed\":1,\"by\":\"its schedule\""), "{}", log[0]);
+    d.tick();
+    pump(&mut d);
+    assert_eq!(d.world().started.borrow().len(), 1, "ran, and next due tomorrow at 18:00");
+    d.world().clock.set(NOW + 21 * 3_600_000);
+    d.tick();
+    pump(&mut d);
+    assert_eq!(d.world().started.borrow().len(), 2, "2026-11-07 18:00 passed");
+}
+
+#[test]
+fn a_run_that_fails_writes_only_its_failure() {
+    let mut d = with_trip("every day at 18:00 in UTC");
+    d.world().scripts.borrow_mut().insert("rates".into(), Err("the bank's API answered 503".into()));
+    allow_all(&d, TRIP);
+    d.tick();
+    pump(&mut d);
+    let file = d.world().get(TRIP);
+    assert!(file.contains("2026-11-03,0.9,1\n") && file.contains("2026-11-03,10.00,9.00=\n"), "rows as they were: {file}");
+    assert!(file.contains("2,2026-11-06T21:20:00Z,failed,the bank's API answered 503\n"), "{file}");
+    assert!(d.world().log()[0].contains("\"outcome\":\"failed\",\"why\":\"the bank's API answered 503\""), "{}", d.world().log()[0]);
+    d.tick();
+    pump(&mut d);
+    assert_eq!(d.world().started.borrow().len(), 1, "a failure is a run: next due tomorrow, never retried in a loop");
+}
+
+#[test]
+fn a_client_runs_a_script_now_and_hears_when_it_landed() {
+    let mut d = with_trip("every day at 18:00 in UTC");
+    let run = ToEngine::Run { file: TRIP.into(), script: "rates".into() };
+    let FromEngine::Refused { why } = ask(&mut d, "cli", run.clone()) else { panic!("an unallowed script is refused") };
+    assert!(why.contains("cells allow"), "{why}");
+    allow_all(&d, TRIP);
+    let (answer, answered) = channel();
+    d.answer(Event::Ask { id: 1, client: "cli".into(), request: run, answer: Some(answer) });
+    pump(&mut d);
+    let FromEngine::Ran { run, outcome, .. } = answered.try_recv().expect("answered once landed") else { panic!() };
+    assert_eq!((run, outcome), (2, crate::log::Outcome::Ok { added: 0, changed: 1 }));
+    assert!(d.world().log()[0].contains("\"by\":\"cli\""));
+}
+
+#[test]
+fn a_script_runs_when_the_file_it_names_changes() {
+    let sim = Sim::default();
+    sim.put("/w/notes.cells", "note:text\nhello\n");
+    sim.put(TRIP, &trip("when ./notes.cells changes"));
+    sim.scripts.borrow_mut().insert("rates".into(), Ok(vec![r#"{"date":"2026-11-03","rate":0.95}"#.into()]));
+    let mut d = served(sim, "/w");
+    allow_all(&d, TRIP);
+    d.tick();
+    assert!(d.world().started.borrow().is_empty(), "nothing changed yet");
+    d.world().put("/w/notes.cells", "note:text\nbye\n");
+    heard(&mut d, &["/w/notes.cells"]);
+    d.tick();
+    pump(&mut d);
+    assert_eq!(*d.world().started.borrow(), ["rates"]);
+    assert!(d.world().log().iter().any(|l| l.contains("\"by\":\"a change to notes.cells\"")), "{:#?}", d.world().log());
 }

@@ -59,6 +59,20 @@ pub enum Logged {
         #[serde(skip_serializing_if = "Option::is_none", default)]
         edited: Option<Edit>,
     },
+    /// A script's run, a root: its rows landed in its table (or only its failure in its
+    /// runs block), who started it (`by`: its schedule, a file changing, a client).
+    Run {
+        path: String,
+        script: String,
+        run: u64,
+        #[serde(flatten)]
+        outcome: Outcome,
+        by: String,
+        was: String,
+        now: String,
+        #[serde(skip_serializing_if = "Option::is_none", default)]
+        edited: Option<Edit>,
+    },
     Store {
         path: String,
         cause: Cause,
@@ -77,7 +91,11 @@ pub enum Logged {
 impl Logged {
     pub fn path(&self) -> &str {
         match self {
-            Logged::External { path, .. } | Logged::Restore { path, .. } | Logged::Store { path, .. } | Logged::Moved { path, .. } => path,
+            Logged::External { path, .. }
+            | Logged::Restore { path, .. }
+            | Logged::Run { path, .. }
+            | Logged::Store { path, .. }
+            | Logged::Moved { path, .. } => path,
         }
     }
 
@@ -85,7 +103,7 @@ impl Logged {
     pub fn cause(&self) -> Option<&Cause> {
         match self {
             Logged::Store { cause, .. } | Logged::Moved { cause, .. } => Some(cause),
-            Logged::External { .. } | Logged::Restore { .. } => None,
+            Logged::External { .. } | Logged::Restore { .. } | Logged::Run { .. } => None,
         }
     }
 
@@ -93,10 +111,18 @@ impl Logged {
     pub fn now(&self) -> Option<&str> {
         match self {
             Logged::External { now, .. } => now.as_deref(),
-            Logged::Restore { now, .. } | Logged::Store { now, .. } => Some(now),
+            Logged::Restore { now, .. } | Logged::Run { now, .. } | Logged::Store { now, .. } => Some(now),
             Logged::Moved { .. } => None,
         }
     }
+}
+
+/// What came of a run: the rows its table gained and had replaced, or why it failed.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "outcome", rename_all = "lowercase")]
+pub enum Outcome {
+    Ok { added: usize, changed: usize },
+    Failed { why: String },
 }
 
 /// The root an entry follows: its number in its folder's log, and that folder when it is
