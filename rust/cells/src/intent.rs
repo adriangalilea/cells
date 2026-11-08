@@ -82,6 +82,38 @@ pub fn apply(
     let ids_before = ids(&first);
     // the rows given their identity first, so every op finds its row by it
     let mut text = given_ids(first.clone(), &mut bits, read)?;
+    // a row named by its line, in a file that gave its rows no identity, is the row that
+    // line was: named from now on by the id it was just given (ids keep the rows' order)
+    let with_ids = read(&text).map_err(Refused::Unread)?;
+    let by_line = |at: &RowAt| -> RowAt {
+        match at {
+            RowAt::Line(l) => match (0..first.rows()).find(|&r| first.line(r) == l) {
+                Some(r) if r < with_ids.rows() => with_ids.row_at(r),
+                _ => at.clone(),
+            },
+            other => other.clone(),
+        }
+    };
+    let ops: Vec<Op> = ops
+        .iter()
+        .map(|op| match op {
+            Op::Set { row, column, was, text } => {
+                Op::Set { row: by_line(row), column: column.clone(), was: was.clone(), text: text.clone() }
+            }
+            Op::Delete { row, was } => {
+                // the line it saw is the line as it was, before its id: what the row reads
+                // now is compared without it
+                let now = by_line(row);
+                let was = match (&now, was) {
+                    (RowAt::Id(_), Some(_)) if matches!(row, RowAt::Line(_)) => None,
+                    _ => was.clone(),
+                };
+                Op::Delete { row: now, was }
+            }
+            add => add.clone(),
+        })
+        .collect();
+    let ops = &ops[..];
     let mut touched: Vec<RowAt> = Vec::new();
     for (k, op) in ops.iter().enumerate() {
         let refuse = |why: String| Refused::Op { op: k, why };
@@ -129,7 +161,13 @@ pub fn apply(
     }
     let last = read(&text).map_err(Refused::Unread)?;
     breaks(&first, &last, &touched)?;
-    let assigned = ids(&last).into_iter().filter(|i| !ids_before.contains(i)).collect();
+    // in the rows' order, as the file holds them
+    let assigned = match last.identity() {
+        Some(c) if last.columns()[c].ty.base == Base::Id => {
+            (0..last.rows()).map(|r| last.text(r, c).into_owned()).filter(|i| !ids_before.contains(i)).collect()
+        }
+        _ => Vec::new(),
+    };
     Ok(Applied { text, assigned })
 }
 
