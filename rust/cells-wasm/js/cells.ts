@@ -48,6 +48,7 @@ interface Exports {
   cells_offers(h: number, column: number): number
   cells_complete(h: number, ptr: number, len: number, cap: number, at: number): number
   cells_hover(h: number, ptr: number, len: number, cap: number, at: number): number
+  cells_looks(h: number, ptr: number, len: number, cap: number): number
 }
 
 function decodeBase64(s: string): Uint8Array<ArrayBuffer> {
@@ -107,6 +108,8 @@ interface ColumnMeta {
   choices?: string[]
   words?: [string, string]
   format?: string
+  tints?: Record<string, string>
+  looks?: string[]
   nulls: number
   valid: number
   kind: "text" | "int" | "decimal" | "bool" | "date" | "time" | "datetime" | "choice"
@@ -136,7 +139,35 @@ interface Meta {
   problems: number
   problemCount: number
   named: Record<string, string>
+  looks: ({ row: true; rules: string[] } | { name: string; rules: string[] })[]
   columns: ColumnMeta[]
+}
+
+/** A tint (SPEC.md, Choices): one of the ten names, drawn in the reader's theme's own
+ *  colour, or `#rrggbb`, the same in every theme. */
+export type Tint = string
+/** What a value is drawn in: a tint, or a point `at` (0 to 1000) between two, a scale's,
+ *  for the reader to mix in its theme. */
+export type Tinted = Tint | { from: Tint; to: Tint; at: number }
+
+/** What the page's locale says of how values read (`cells::Locale`): its marks and its
+ *  words, the weekdays from Monday. */
+export interface Locale {
+  group: string
+  decimal: string
+  months: string[]
+  monthsShort: string[]
+  days: string[]
+  daysShort: string[]
+  am: string
+  pm: string
+}
+
+/** How a file's values look in a locale (`Doc.looks`): each row's tint, and for each
+ *  column with a look or a tinted choice, by its number, each cell as drawn and its tint. */
+export interface Looks {
+  rows: (Tint | null)[]
+  columns: Record<number, { drawn: string[]; tint: (Tinted | null)[] }>
 }
 
 const TWO32 = 2 ** 32
@@ -218,6 +249,14 @@ export class Column {
   }
   get choices(): string[] | undefined {
     return this.m.choices
+  }
+  /** Each choice's word that has a tint, and its tint: `{ income: "green" }`. */
+  get tints(): Record<string, Tint> {
+    return this.m.tints ?? {}
+  }
+  /** The rules its look gives it, as written, its named types' first, in order. */
+  get looks(): string[] {
+    return this.m.looks ?? []
   }
   /** What a cell of the column may hold, for a host offering it as the cell is typed
    *  (`Doc::offers`): a choice's words, a boolean's two, a reference's keys (every row of
@@ -560,6 +599,24 @@ export class Doc {
     return out
   }
 
+  /** Every look statement as written, what it is for and its rules (a rule that does not
+   *  read is a break, not here). */
+  get lookStatements(): Meta["looks"] {
+    return this.meta.looks
+  }
+
+  /** How the values look in `locale` (English when none is given): what a table draws in
+   *  each cell and in what tint, and each row's tint. Presentation alone: a value, a
+   *  write and an export are untouched. */
+  looks(locale?: Locale): Looks {
+    const lines = locale
+      ? [locale.group, locale.decimal, ...locale.months, ...locale.monthsShort, ...locale.days, ...locale.daysShort, locale.am, locale.pm]
+      : []
+    if (lines.some((w) => w.includes("\n"))) throw new CellsError("a locale", "holds a line break in a word")
+    const [p, len, cap] = put(lines.join("\n"))
+    return JSON.parse(returned(x.cells_looks(this.handle, p, len, cap))) as Looks
+  }
+
   /** Lets the module free the file now rather than when this is collected. */
   free(): void {
     live.unregister(this)
@@ -632,6 +689,7 @@ export const TOKEN_KINDS = [
   "string",
   "code",
   "table",
+  "tint",
 ] as const
 
 export type TokenKind = (typeof TOKEN_KINDS)[number]
@@ -715,7 +773,7 @@ export function layout(text: string, fold?: number): Layout {
 /** What a completion is: a row's key or a yes or a no (`value`), a choice's word, a named
  *  type, a table's key column (`reference`, `accounts.account`), the language's or the
  *  prelude's word or a base type (`keyword`), a column, a table, a function. */
-export type CompletionKind = "value" | "choice" | "type" | "reference" | "keyword" | "column" | "table" | "function"
+export type CompletionKind = "value" | "choice" | "type" | "reference" | "keyword" | "column" | "table" | "function" | "tint"
 
 /** What may be written at a place: `insert` in place of `from` to `to` of the text (the
  *  word being typed, a string's indices), shown as `label` with its `detail`. */

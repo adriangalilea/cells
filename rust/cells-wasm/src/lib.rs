@@ -380,7 +380,28 @@ pub unsafe extern "C" fn cells_meta(h: *mut Handle) -> *const u8 {
         s.push(':');
         json_str(&mut s, &t.ty.shorthand());
     }
-    s.push_str("},\"columns\":[");
+    s.push_str("},\"looks\":[");
+    for (k, (target, rules)) in doc.looks().iter().filter(|(_, rules)| !rules.is_empty()).enumerate() {
+        if k > 0 {
+            s.push(',');
+        }
+        match target {
+            cells::look::Target::Row => s.push_str("{\"row\":true"),
+            cells::look::Target::Name(n) => {
+                s.push_str("{\"name\":");
+                json_str(&mut s, n);
+            }
+        }
+        s.push_str(",\"rules\":[");
+        for (j, l) in rules.iter().enumerate() {
+            if j > 0 {
+                s.push(',');
+            }
+            json_str(&mut s, &l.spelled);
+        }
+        s.push_str("]}");
+    }
+    s.push_str("],\"columns\":[");
     for (k, c) in doc.columns().iter().enumerate() {
         if k > 0 {
             s.push(',');
@@ -443,6 +464,29 @@ pub unsafe extern "C" fn cells_meta(h: *mut Handle) -> *const u8 {
             s.push_str(",\"format\":");
             json_str(&mut s, &f.spelled);
         }
+        if !c.ty.tints.is_empty() {
+            s.push_str(",\"tints\":{");
+            for (j, (w, t)) in c.ty.tints.iter().enumerate() {
+                if j > 0 {
+                    s.push(',');
+                }
+                json_str(&mut s, w);
+                s.push(':');
+                json_str(&mut s, &t.spelled());
+            }
+            s.push('}');
+        }
+        let looks = doc.looks_of(k);
+        if !looks.is_empty() {
+            s.push_str(",\"looks\":[");
+            for (j, l) in looks.iter().enumerate() {
+                if j > 0 {
+                    s.push(',');
+                }
+                json_str(&mut s, &l.spelled);
+            }
+            s.push(']');
+        }
         let _ = write!(s, ",\"nulls\":{},\"valid\":{}", c.nulls(), addr(&c.valid.bytes));
         match &c.data {
             Data::Text { offsets, bytes } => {
@@ -474,6 +518,67 @@ pub unsafe extern "C" fn cells_meta(h: *mut Handle) -> *const u8 {
         s.push('}');
     }
     s.push_str("]}");
+    h.out = s.into_bytes();
+    give(&h.out)
+}
+
+fn tinted(s: &mut String, t: Option<cells::Tinted>) {
+    match t {
+        None => s.push_str("null"),
+        Some(cells::Tinted::One(t)) => json_str(s, &t.spelled()),
+        Some(cells::Tinted::Between { from, to, at }) => {
+            s.push_str("{\"from\":");
+            json_str(s, &from.spelled());
+            s.push_str(",\"to\":");
+            json_str(s, &to.spelled());
+            let _ = write!(s, ",\"at\":{at}}}");
+        }
+    }
+}
+
+/// How the file's values look, in the locale the text gives (`cells::Locale::lines`; an
+/// empty text is English): each row's tint, and for each column with a look or a tinted
+/// choice, each cell as drawn and its tint (a tint's name or `#rrggbb`, or `{from, to, at}`
+/// for a scale's, `at` from 0 to 1000), the column by its number.
+///
+/// # Safety
+/// `h` is a live handle; `ptr`, `len`, `cap` as for `cells_read`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn cells_looks(h: *mut Handle, ptr: *mut u8, len: usize, cap: usize) -> *const u8 {
+    // SAFETY: the caller's promise.
+    let (h, text) = unsafe { (handle(h), take(ptr, len, cap)) };
+    let locale = cells::Locale::lines(&text).unwrap_or_else(|why| panic!("the page hands its locale: {why}"));
+    let doc = &h.doc;
+    let mut s = String::from("{\"rows\":[");
+    for r in 0..doc.rows() {
+        if r > 0 {
+            s.push(',');
+        }
+        tinted(&mut s, doc.row_tint(r).map(cells::Tinted::One));
+    }
+    s.push_str("],\"columns\":{");
+    let shown = (0..doc.columns().len()).filter(|&c| !doc.looks_of(c).is_empty() || !doc.columns()[c].ty.tints.is_empty());
+    for (j, c) in shown.enumerate() {
+        if j > 0 {
+            s.push(',');
+        }
+        let _ = write!(s, "\"{c}\":{{\"drawn\":[");
+        for r in 0..doc.rows() {
+            if r > 0 {
+                s.push(',');
+            }
+            json_str(&mut s, &doc.drawn(r, c, &locale));
+        }
+        s.push_str("],\"tint\":[");
+        for r in 0..doc.rows() {
+            if r > 0 {
+                s.push(',');
+            }
+            tinted(&mut s, doc.tint(r, c));
+        }
+        s.push_str("]}");
+    }
+    s.push_str("}}");
     h.out = s.into_bytes();
     give(&h.out)
 }

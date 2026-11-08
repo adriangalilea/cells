@@ -74,6 +74,45 @@ interface Want {
   rows: Record<string, unknown>[]
   problems: { row: number; column: string; kind: string; span: [number, number] }[]
   broken?: { at: string; span: [number, number] }[]
+  tints?: Record<string, Record<string, string>>
+  looks?: Record<string, string[]>
+  drawn?: { row: number; column?: string; text?: string; tint?: unknown }[]
+}
+
+/** How the values look (SPEC.md, How a value looks), as the suite says: each column's
+ *  tints, each look's rules as written, each cell drawn in English and its tint. */
+function looked(doc: Doc, want: Want): string[] {
+  const f: string[] = []
+  if (want.tints) {
+    const ours = JSON.stringify(doc.columns.filter((c) => Object.keys(c.tints).length > 0).map((c) => [c.name, c.tints]))
+    const theirs = JSON.stringify(Object.entries(want.tints))
+    if (ours !== theirs) f.push(`tints ${ours}, the suite says ${theirs}`)
+  }
+  if (want.looks) {
+    const ours = JSON.stringify(doc.lookStatements.map((l) => ["row" in l ? "row" : l.name, l.rules]))
+    const theirs = JSON.stringify(Object.entries(want.looks))
+    if (ours !== theirs) f.push(`looks ${ours}, the suite says ${theirs}`)
+  }
+  if (want.drawn) {
+    const looks = doc.looks()
+    for (const d of want.drawn) {
+      const tint = JSON.stringify(d.tint ?? null)
+      if (d.column === undefined) {
+        const ours = JSON.stringify(looks.rows[d.row] ?? null)
+        if (ours !== tint) f.push(`row ${d.row} drawn in ${ours}, the suite says ${tint}`)
+        continue
+      }
+      const k = doc.columns.findIndex((c) => c.name === d.column)
+      const c = doc.columns[k] as Column
+      // A column with no look is drawn as the file writes its values.
+      const drawn = looks.columns[k]
+      const text = drawn ? drawn.drawn[d.row] : c.form(c.value(d.row))
+      const ours = JSON.stringify(drawn ? drawn.tint[d.row] : null)
+      if (d.text !== undefined && text !== d.text) f.push(`row ${d.row}, ${d.column} drawn ${JSON.stringify(text)}, the suite says ${JSON.stringify(d.text)}`)
+      if (ours !== tint) f.push(`row ${d.row}, ${d.column} drawn in ${ours}, the suite says ${tint}`)
+    }
+  }
+  return f
 }
 
 function check(doc: Doc, want: Want): string[] {
@@ -248,7 +287,7 @@ for (const path of all) {
       else if (got.where !== want.error.at) fails.push(`refused at ${got.where}, the suite says ${want.error.at}`)
     } else if (want.error) fails.push(`reads, the suite says it breaks at ${want.error.at}`)
     else {
-      fails.push(...check(got.doc, want), ...spanned(got.doc, want, bytes))
+      fails.push(...check(got.doc, want), ...spanned(got.doc, want, bytes), ...looked(got.doc, want))
       if (write(got.doc) !== text(bytes)) fails.push("does not round-trip")
     }
   }
