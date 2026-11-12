@@ -1,6 +1,6 @@
 # Books in Cells
 
-> **A draft.** Plain text accounting done properly is what Cells is designed against (SPEC.md, "What it is for"). These are the books written with what SPEC.md writes (imports, references, formulas in the header) and the primitives its Open section proposes (`money in`, `unique`, `final`, references to a file's own rows, `check`), which no reader implements yet, so these files do not read today. Every name and amount is invented.
+> **A draft.** Plain text accounting is what Cells is designed against (SPEC.md, "What it is for"). These are books written with what SPEC.md specifies (imports, references, formulas in the header) and the primitives its Open section proposes (`money in`, `unique`, `final`, references to a file's own rows, `check`), which no reader implements yet, so the files that use them do not read. Every name and amount is invented.
 
 ## What it takes from whom
 
