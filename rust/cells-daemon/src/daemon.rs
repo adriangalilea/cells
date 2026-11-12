@@ -433,13 +433,20 @@ impl<W: World> Daemon<W> {
         }
         let k = key(file);
         let ops_core: Vec<cells::intent::Op> = ops.iter().map(Into::into).collect();
+        // the version it was made against, kept whole: what a whole text is compared with
+        let named = against.len() == 64 && against.bytes().all(|b| b.is_ascii_hexdigit());
+        let base = match named.then(|| self.world.read(&log.version(against))) {
+            Some(Found::Text(text)) => Some(text),
+            _ => None,
+        };
+        let ops: Vec<Op> = ops.iter().map(Op::logged).collect();
         // twice at most: a version on disk the engine had not heard is heard, then applied over
         for _ in 0..2 {
             let text = self.folder.text(&k).ok_or(format!("{}: not read by the engine", self.shown(file)))?.to_owned();
             let was = hash(&text);
             let (folder, world) = (&self.folder, &self.world);
             let mut read = |t: &str| folder.read_as(&k, t);
-            let applied = cells::intent::apply(&text, &ops_core, was != against, || world.bits(), &mut read)
+            let applied = cells::intent::apply(&text, &ops_core, was != against, base.as_deref(), || world.bits(), &mut read)
                 .map_err(|why| format!("{}: {why}", self.shown(file)))?;
             if applied.text == text {
                 return Ok(FromEngine::Applied { file: file.to_path_buf(), intent: id.to_owned(), version: was, assigned: Vec::new() });

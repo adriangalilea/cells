@@ -6,9 +6,11 @@
 //! the file's imports, so an intent applied again to the same text gives the same bytes.
 //!
 //! The rows' identity is the engine's (SPEC.md, Every row has an identity). A file with a
-//! key is identified by it; any other file gets an `id` column the first time an intent
-//! writes it, an id in every row without one, and a new one on the later copy of a
-//! repeated one. No op writes an id.
+//! key is identified by it; any other Cells file gets an `id` column the first time an
+//! intent writes it, an id in every row without one, and a new one on the later copy of a
+//! repeated one. No op writes an id. A plain file (a CSV, a TSV) is never given a column:
+//! its rows are named by their lines. The file whole is an op too (`Op::Text`), what a
+//! client holding a document sends.
 //!
 //! An intent made against the version it applies to applies as made. Made against an
 //! earlier one (someone wrote the file since), it applies only where it says what it saw:
@@ -38,6 +40,11 @@ pub enum Op {
     Add { cells: Vec<(String, String)> },
     /// The row `row` removed; `was`, its line as it was when the op was made.
     Delete { row: RowAt, was: Option<String> },
+    /// The file whole, as the client holds it: an intent's one op. Made against the version
+    /// the engine holds, it is the file; made against an earlier one, what it changed beside
+    /// that version (cells set, rows added and deleted, `folder::edited`) is applied as those
+    /// ops, each saying what it saw, and a change to anything but rows is refused.
+    Text { text: String },
 }
 
 /// What an intent left: the file's text, and the ids it gave rows that had none.
@@ -69,15 +76,23 @@ impl core::fmt::Display for Refused {
 }
 
 /// `ops` applied, in order, to `text`. `stale` says the text is not the version the intent
-/// was made against. `bits` gives 40 random bits per id the engine assigns; `read` reads a
+/// was made against; `base` is that version, when the engine keeps it (what a whole text is
+/// compared with). `bits` gives 40 random bits per id the engine assigns; `read` reads a
 /// version of the file as its host does, imports followed.
 pub fn apply(
     text: &str,
     ops: &[Op],
     stale: bool,
+    base: Option<&str>,
     mut bits: impl FnMut() -> u64,
     read: &mut dyn FnMut(&str) -> Result<Doc, String>,
 ) -> Result<Applied, Refused> {
+    if let [Op::Text { text: mine }] = ops {
+        return whole(text, mine, stale, base, &mut bits, read);
+    }
+    if let Some(k) = ops.iter().position(|op| matches!(op, Op::Text { .. })) {
+        return Err(Refused::Op { op: k, why: "a whole text is its intent's one op".into() });
+    }
     let first = read(text).map_err(Refused::Unread)?;
     let ids_before = ids(&first);
     // the rows given their identity first, so every op finds its row by it
@@ -157,6 +172,7 @@ pub fn apply(
                 let (from, to) = (doc.records()[r] as usize, doc.records()[r + 1] as usize);
                 text = format!("{}{}", &written[..from], &written[to..]);
             }
+            Op::Text { .. } => unreachable!("a whole text is applied alone, before any op"),
         }
     }
     let last = read(&text).map_err(Refused::Unread)?;
@@ -169,6 +185,84 @@ pub fn apply(
         _ => Vec::new(),
     };
     Ok(Applied { text, assigned })
+}
+
+/// The file as the client holds it (`mine`), over `now`, the version the engine holds.
+fn whole(
+    now: &str,
+    mine: &str,
+    stale: bool,
+    base: Option<&str>,
+    bits: &mut dyn FnMut() -> u64,
+    read: &mut dyn FnMut(&str) -> Result<Doc, String>,
+) -> Result<Applied, Refused> {
+    if mine == now {
+        return Ok(Applied { text: now.to_owned(), assigned: Vec::new() });
+    }
+    if !stale {
+        let was = read(now).map_err(Refused::Unread)?;
+        let before = ids(&was);
+        // what its changes compute stored in it, as a write stores what it changes, so the
+        // version answered is the file the engine leaves
+        let mut is = read(mine).map_err(Refused::Unread)?;
+        is.stored_since(&was);
+        let stored = is.write();
+        let text = given_ids(read(&stored).map_err(Refused::Unread)?, bits, read)?;
+        let last = read(&text).map_err(Refused::Unread)?;
+        let assigned = match last.identity() {
+            Some(c) if last.columns()[c].ty.base == Base::Id => {
+                (0..last.rows()).map(|r| last.text(r, c).into_owned()).filter(|i| !before.contains(i)).collect()
+            }
+            _ => Vec::new(),
+        };
+        return Ok(Applied { text, assigned });
+    }
+    let refuse = |why: &str| Refused::Op { op: 0, why: why.into() };
+    let base = base.ok_or_else(|| refuse("the file changed since this was made, and the version it was made against is not kept"))?;
+    let (was, is) = (read(base).map_err(Refused::Unread)?, read(mine).map_err(Refused::Unread)?);
+    // what stands before the rows (the prelude and the header) is the file's shape: a change
+    // to it cannot be laid over another writer's
+    let head = |text: &str, doc: &Doc| text[..doc.records()[0] as usize].to_owned();
+    if head(base, &was) != head(mine, &is) {
+        return Err(refuse("the file changed since this was made, and this changes its prelude or its header"));
+    }
+    let Some(c) = is.identity() else {
+        return Err(refuse("the file changed since this was made, and its rows have no key or id to say which is which"));
+    };
+    // rows moved are no cell, row added or deleted: kept in their order or refused
+    let order = |d: &Doc| -> Vec<String> { (0..d.rows()).map(|r| d.text(r, c).into_owned()).collect() };
+    let (before, after) = (order(&was), order(&is));
+    let shared_before: Vec<&String> = before.iter().filter(|k| after.contains(k)).collect();
+    let shared_after: Vec<&String> = after.iter().filter(|k| before.contains(k)).collect();
+    if shared_before != shared_after {
+        return Err(refuse("the file changed since this was made, and this moves rows"));
+    }
+    // a column's own computed value, stored before its `=`, is the engine's to store again
+    let computed = |text: &str| crate::split_cell(text).is_some_and(|at| text[at + 1..].is_empty());
+    let edited = crate::folder::edited(&was, &is);
+    let mut ops = Vec::new();
+    for cell in &edited.cells {
+        if computed(&cell.was) && computed(&cell.now) {
+            continue;
+        }
+        let row = is.row_at(cell.row - 1);
+        ops.push(Op::Set { row, column: cell.column.clone(), was: Some(cell.was.clone()), text: cell.now.clone() });
+    }
+    for &r in &edited.rows_removed {
+        ops.push(Op::Delete { row: was.row_at(r - 1), was: Some(was.line(r - 1).to_owned()) });
+    }
+    for &r in &edited.rows_added {
+        let cells = is
+            .columns()
+            .iter()
+            .enumerate()
+            .filter(|(_, col)| col.ty.base != Base::Id)
+            .map(|(k, col)| (col.name.clone(), is.text(r - 1, k).into_owned()))
+            .filter(|(_, text)| !computed(text))
+            .collect();
+        ops.push(Op::Add { cells });
+    }
+    apply(now, &ops, true, None, bits, read)
 }
 
 /// A refusal of the core's in words, the column named.
@@ -191,8 +285,12 @@ fn ids(doc: &Doc) -> BTreeSet<String> {
 }
 
 /// The text with every row given its identity (`Doc::assign_ids`), read again as the host
-/// reads it.
+/// reads it. A plain file (a CSV, a TSV) is never given a column it does not have: its rows
+/// are named by their lines.
 fn given_ids(doc: Doc, bits: &mut dyn FnMut() -> u64, read: &mut dyn FnMut(&str) -> Result<Doc, String>) -> Result<String, Refused> {
+    if matches!(doc.dialect(), crate::Dialect::Plain(_)) {
+        return Ok(doc.write());
+    }
     let doc = doc.assign_ids(bits).map_err(|e| Refused::Unread(e.why))?;
     let text = doc.write();
     read(&text).map_err(Refused::Unread)?;
@@ -289,7 +387,7 @@ mod tests {
     #[test]
     fn a_cell_set_by_its_row_s_key_stores_what_it_reaches() {
         let ops = [Op::Set { row: RowAt::Key("ferry".into()), column: "qty".into(), was: Some("2".into()), text: "3".into() }];
-        let out = apply(KEYED, &ops, false, counter(), &mut read).unwrap();
+        let out = apply(KEYED, &ops, false, None, counter(), &mut read).unwrap();
         assert_eq!(out.text, KEYED.replace("ferry,50.00,2,100.00=", "ferry,50.00,3,150.00="));
         assert!(out.assigned.is_empty(), "a keyed file needs no ids");
     }
@@ -300,7 +398,7 @@ mod tests {
             Op::Add { cells: alloc::vec![("item".into(), "taxi".into()), ("cost".into(), "12.00".into()), ("qty".into(), "2".into())] },
             Op::Delete { row: RowAt::Key("fuel".into()), was: Some("fuel,84.20,1,84.20=".into()) },
         ];
-        let out = apply(KEYED, &ops, false, counter(), &mut read).unwrap();
+        let out = apply(KEYED, &ops, false, None, counter(), &mut read).unwrap();
         assert_eq!(out.text, "item:text!,cost:EUR>=0,qty:int>=1,total:EUR=cost * qty\nferry,50.00,2,100.00=\ntaxi,12.00,2,24.00=\n");
     }
 
@@ -308,20 +406,20 @@ mod tests {
     fn a_file_without_a_key_gets_ids_once_and_no_op_writes_one() {
         let plain = "item:text,cost:EUR\nfuel,84.20\nfuel,84.20\n";
         let ops = [Op::Add { cells: alloc::vec![("item".into(), "taxi".into())] }];
-        let out = apply(plain, &ops, false, counter(), &mut read).unwrap();
+        let out = apply(plain, &ops, false, None, counter(), &mut read).unwrap();
         let doc = read(&out.text).unwrap();
         assert_eq!(doc.columns()[0].name, "id");
         assert_eq!(out.assigned.len(), 3, "every row, the two copies apart");
         assert_ne!(doc.text(0, 0), doc.text(1, 0));
         // applied again to what it wrote, the ids stay
-        let again = apply(&out.text, &[], false, counter(), &mut read).unwrap();
+        let again = apply(&out.text, &[], false, None, counter(), &mut read).unwrap();
         assert_eq!((again.text, again.assigned), (out.text.clone(), Vec::new()));
         let id = doc.text(2, 0).into_owned();
         let write = [Op::Set { row: RowAt::Id(id), column: "id".into(), was: None, text: "k7m2q9xa".into() }];
-        assert!(matches!(apply(&out.text, &write, false, counter(), &mut read), Err(Refused::Op { op: 0, .. })));
+        assert!(matches!(apply(&out.text, &write, false, None, counter(), &mut read), Err(Refused::Op { op: 0, .. })));
         let add = [Op::Add { cells: alloc::vec![("id".into(), "k7m2q9xa".into())] }];
         assert_eq!(
-            apply(&out.text, &add, false, counter(), &mut read),
+            apply(&out.text, &add, false, None, counter(), &mut read),
             Err(Refused::Op { op: 0, why: "the id column is the engine's: no edit writes it".into() })
         );
     }
@@ -331,25 +429,76 @@ mod tests {
         // someone changed fuel's cost since; the intent sets ferry's qty, untouched
         let now = KEYED.replace("fuel,84.20,1,84.20=", "fuel,90.00,1,90.00=");
         let ops = [Op::Set { row: RowAt::Key("ferry".into()), column: "qty".into(), was: Some("2".into()), text: "3".into() }];
-        assert!(apply(&now, &ops, true, counter(), &mut read).unwrap().text.contains("ferry,50.00,3,150.00="));
+        assert!(apply(&now, &ops, true, None, counter(), &mut read).unwrap().text.contains("ferry,50.00,3,150.00="));
         // the cell it set was changed since: refused, both versions said
         let touched = [Op::Set { row: RowAt::Key("fuel".into()), column: "cost".into(), was: Some("84.20".into()), text: "85.00".into() }];
-        let why = apply(&now, &touched, true, counter(), &mut read).unwrap_err().to_string();
+        let why = apply(&now, &touched, true, None, counter(), &mut read).unwrap_err().to_string();
         assert_eq!(why, "op 1: cost changed since this intent was made: it holds \"90.00\" now");
         // saying nothing of what it saw, it cannot be applied to another version
         let blind = [Op::Set { row: RowAt::Key("ferry".into()), column: "qty".into(), was: None, text: "3".into() }];
-        assert!(apply(&now, &blind, true, counter(), &mut read).is_err());
-        assert!(apply(&now, &blind, false, counter(), &mut read).is_ok(), "made against this very version, it applies");
+        assert!(apply(&now, &blind, true, None, counter(), &mut read).is_err());
+        assert!(apply(&now, &blind, false, None, counter(), &mut read).is_ok(), "made against this very version, it applies");
+    }
+
+    #[test]
+    fn a_whole_text_over_its_own_version_is_the_file() {
+        // a column added and a row typed: anything, made against what the engine holds
+        let mine = "item:text!,cost:EUR>=0,qty:int>=1,total:EUR=cost * qty,note:text?\nfuel,84.20,1,84.20=,\nferry,50.00,2,100.00=,late\n";
+        let op = [Op::Text { text: mine.into() }];
+        assert_eq!(apply(KEYED, &op, false, None, counter(), &mut read).unwrap().text, mine);
+        // the same text again changes nothing
+        let same = [Op::Text { text: KEYED.into() }];
+        assert_eq!(apply(KEYED, &same, false, None, counter(), &mut read).unwrap().text, KEYED);
+        // with another op it is no whole text
+        let two = [Op::Text { text: mine.into() }, Op::Add { cells: Vec::new() }];
+        assert!(matches!(apply(KEYED, &two, false, None, counter(), &mut read), Err(Refused::Op { op: 0, .. })));
+    }
+
+    #[test]
+    fn a_whole_text_over_a_moved_file_lays_its_rows_over_the_other_writer_s() {
+        // made against KEYED: ferry's qty set, a row added, fuel deleted
+        let mine = "item:text!,cost:EUR>=0,qty:int>=1,total:EUR=cost * qty\nferry,50.00,3,150.00=\ntaxi,12.00,2,24.00=\n";
+        // meanwhile another writer added a row
+        let now = format!("{KEYED}bus,3.00,1,3.00=\n");
+        let op = [Op::Text { text: mine.into() }];
+        let out = apply(&now, &op, true, Some(KEYED), counter(), &mut read).unwrap();
+        assert_eq!(
+            out.text,
+            "item:text!,cost:EUR>=0,qty:int>=1,total:EUR=cost * qty\nferry,50.00,3,150.00=\nbus,3.00,1,3.00=\ntaxi,12.00,2,24.00=\n"
+        );
+        // the other writer set the same cell: refused, never guessed
+        let clash = KEYED.replace("ferry,50.00,2,100.00=", "ferry,50.00,5,250.00=");
+        assert!(apply(&clash, &op, true, Some(KEYED), counter(), &mut read).is_err());
+        // a header changed over a moved file is refused
+        let shaped = [Op::Text { text: KEYED.replace("qty:int>=1", "qty:int>=0") }];
+        let why = apply(&now, &shaped, true, Some(KEYED), counter(), &mut read).unwrap_err().to_string();
+        assert!(why.contains("prelude or its header"), "{why}");
+        // the version it was made against unknown: refused
+        assert!(apply(&now, &op, true, None, counter(), &mut read).is_err());
+    }
+
+    #[test]
+    fn a_plain_file_is_never_given_ids() {
+        let read_plain = &mut |t: &str| -> Result<Doc, String> {
+            crate::read_as(t, crate::Dialect::Plain(crate::Separator::Comma), 1).map_err(|e| e.why)
+        };
+        let csv = "item,cost\nfuel,84.20\nferry,50.00\n";
+        let ops =
+            [Op::Set { row: RowAt::Line("fuel,84.20".into()), column: "cost".into(), was: Some("84.20".into()), text: "90.00".into() }];
+        let out = apply(csv, &ops, false, None, counter(), read_plain).unwrap();
+        assert_eq!((out.text.as_str(), out.assigned.len()), ("item,cost\nfuel,90.00\nferry,50.00\n", 0));
+        let whole = [Op::Text { text: "item,cost\nfuel,84.20\nferry,51.00\n".into() }];
+        assert_eq!(apply(csv, &whole, false, None, counter(), read_plain).unwrap().text, "item,cost\nfuel,84.20\nferry,51.00\n");
     }
 
     #[test]
     fn an_intent_breaking_a_rule_in_its_rows_is_refused_whole() {
         let dup =
             [Op::Add { cells: alloc::vec![("item".into(), "fuel".into()), ("cost".into(), "1.00".into()), ("qty".into(), "1".into())] }];
-        assert!(matches!(apply(KEYED, &dup, false, counter(), &mut read), Err(Refused::Breaks(_))), "a key twice");
+        assert!(matches!(apply(KEYED, &dup, false, None, counter(), &mut read), Err(Refused::Breaks(_))), "a key twice");
         let below = [Op::Set { row: RowAt::Key("fuel".into()), column: "cost".into(), was: None, text: "-1.00".into() }];
-        assert!(matches!(apply(KEYED, &below, false, counter(), &mut read), Err(Refused::Breaks(_))), "a bound");
+        assert!(matches!(apply(KEYED, &below, false, None, counter(), &mut read), Err(Refused::Breaks(_))), "a bound");
         let word = [Op::Set { row: RowAt::Key("fuel".into()), column: "qty".into(), was: None, text: "two".into() }];
-        assert!(matches!(apply(KEYED, &word, false, counter(), &mut read), Err(Refused::Breaks(_))), "a type");
+        assert!(matches!(apply(KEYED, &word, false, None, counter(), &mut read), Err(Refused::Breaks(_))), "a type");
     }
 }

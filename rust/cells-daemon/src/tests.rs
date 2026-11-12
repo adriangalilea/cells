@@ -649,6 +649,34 @@ fn an_intent_made_against_an_earlier_version_applies_only_where_it_saw_what_is_t
 }
 
 #[test]
+fn a_whole_text_is_written_logged_by_its_version_and_laid_over_a_moved_file() {
+    let mut d = daemon();
+    let text = |t: &str| crate::log::Op::Text { text: t.into(), version: None };
+    // the app's text, made against what the engine holds: the file, its rows given ids
+    let mine = MONEY.replace("cost,180.00,180.00=", "cost,200.00,180.00=");
+    let FromEngine::Applied { version: first, assigned, .. } = intent(&mut d, INTENT, &hash(MONEY), vec![text(&mine)]) else {
+        panic!("applied")
+    };
+    let q4 = d.world().get(Q4);
+    assert_eq!(first, hash(&q4));
+    assert_eq!(assigned.len(), 2, "a .cells file without a key gets its ids: {q4}");
+    assert!(q4.contains(",cost,200.00,200.00=\n"), "its computed cell stored: {q4}");
+    let log = d.world().log();
+    let edit = log.iter().find(|l| l.contains("\"kind\":\"edit\"")).expect("the edit logged");
+    assert!(edit.contains(&format!("\"op\":\"text\",\"version\":\"{}\"", hash(&mine))), "by its version: {edit}");
+    assert!(!edit.contains("\"text\":"), "never its text: {edit}");
+    // someone saves the income row; the app, not having heard, sends its next text made
+    // against the version it holds: its row laid over theirs
+    d.world().put(Q4, &q4.replace(",income,4200.00,0.00=", ",income,4300.00,0.00="));
+    heard(&mut d, &[Q4]);
+    let next = q4.replace(",cost,200.00,200.00=", ",cost,210.00,200.00=");
+    let applied = intent(&mut d, "a1b2c3d4", &first, vec![text(&next)]);
+    assert!(matches!(applied, FromEngine::Applied { .. }), "{applied:?}");
+    let q4 = d.world().get(Q4);
+    assert!(q4.contains(",income,4300.00,0.00=\n") && q4.contains(",cost,210.00,210.00=\n"), "both kept: {q4}");
+}
+
+#[test]
 fn a_version_on_disk_not_yet_heard_is_heard_before_an_intent_applies() {
     let mut d = daemon();
     // a save lands on disk; the engine has not heard it when the intent arrives

@@ -192,6 +192,24 @@ pub enum Op {
         #[serde(skip_serializing_if = "Option::is_none", default)]
         was: Option<String>,
     },
+    /// The file whole, as the client holds it: sent with its `text`; kept in the log by the
+    /// SHA-256 of that text (`version`, its text whole in the versions kept), never twice.
+    Text {
+        #[serde(skip_serializing_if = "String::is_empty", default)]
+        text: String,
+        #[serde(skip_serializing_if = "Option::is_none", default)]
+        version: Option<String>,
+    },
+}
+
+impl Op {
+    /// The op as the log keeps it: a whole text by its version.
+    pub fn logged(&self) -> Op {
+        match self {
+            Op::Text { text, .. } => Op::Text { text: String::new(), version: Some(crate::log::hash(text)) },
+            other => other.clone(),
+        }
+    }
 }
 
 impl From<&Op> for cells::intent::Op {
@@ -202,6 +220,7 @@ impl From<&Op> for cells::intent::Op {
             }
             Op::Add { cells } => cells::intent::Op::Add { cells: cells.iter().map(|g| (g.column.clone(), g.text.clone())).collect() },
             Op::Delete { row, was } => cells::intent::Op::Delete { row: row.into(), was: was.clone() },
+            Op::Text { text, .. } => cells::intent::Op::Text { text: text.clone() },
         }
     }
 }
