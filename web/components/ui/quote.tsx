@@ -146,8 +146,7 @@ const FEATURE_CLIMB = 0.25
 /** The words are a QUOTATION and take a reading serif: `--font-quote` (tokens) names
  *  the face, the same slot the still fills with its `fontFamily`. NOT `--font-serif`: a
  *  page's serif is usually its heading face, and a display serif drawn for headlines
- *  (Instrument Serif on adriangalilea.com) was illegible at reading size the moment the
- *  quote inherited it. */
+ *  (Instrument Serif, say) is illegible at reading size once the quote inherits it. */
 const WORDS = "m-0 font-quote *:m-0 [&>p+p]:mt-2"
 /** The attribution line: one row, the page's muted voice, never italic (a figcaption is
  *  not a caption in the typographic sense here). */

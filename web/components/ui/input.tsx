@@ -201,7 +201,7 @@ function EndFront({ m, children }: { m: Material; children: React.ReactNode }) {
 }
 
 /** An address a person can be written to: something, `@`, a domain with a dot. The
- *  browser's own email rule takes `adrian@x`, a typo on the public internet. */
+ *  browser's own email rule takes `ada@x`, a typo on the public internet. */
 export const EMAIL_PATTERN = "[^@\\s]+@[^@\\s]+\\.[^@\\s]+"
 
 /** What a field of this type checks unless told otherwise; given before the caller's

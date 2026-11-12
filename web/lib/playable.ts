@@ -1,4 +1,4 @@
-// A PLAYABLE: anything with a clock that plays (swift-utils' WORDS.md: a file, a clip,
+// A PLAYABLE: anything with a clock that plays (a file, a clip,
 // a sequence, a scene, or content an app draws itself), told as the facts a driver
 // moves through it by: how long it runs, how it is cut, and (when it is told in
 // frames) its rate. The content's own lib makes its playable (macos-session's scene

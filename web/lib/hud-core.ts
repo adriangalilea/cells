@@ -1,6 +1,6 @@
 // HUD: what an app tells a person without being asked, as data and its laws, with no
-// React and no DOM. The kernel under `ui/hud`, Ink's `InkHUD` on the web (swift-utils,
-// Sources/Ink/HUD-DESIGN.md is the design both follow).
+// React and no DOM. The kernel under `ui/hud`, one design shared with its SwiftUI
+// twin.
 //
 // An ENTRY is keyed by its producer: posted again with its key, it changes in place.
 // Its KIND decides when it shows and leaves, never the caller:
@@ -296,7 +296,7 @@ export function toneOf(entry: HudEntry): HudTone {
 const same = (a: HudEntry, b: HudEntry) =>
   JSON.stringify(a) === JSON.stringify(b)
 
-/** A verb held unseen (`shown: false`) is never armed: one rule, as Ink's precondition. */
+/** A verb held unseen (`shown: false`) is never armed: one rule, asserted. */
 function heldUnseenNeverArmed(entry: HudEntry) {
   const check = (v: HudAction | undefined) => {
     if (v && v.shown === false && v.armed !== false)

@@ -30,7 +30,7 @@ export const glassLight = [
   // over (`--glass-background`, the picture's colour under it, set by ui/background), made
   // light and clear (lightness at least 0.85), by `--glass-background-share` (35% unless
   // set). Light catching a curve takes the colour around it, a red rock's edge
-  // warming, a sky's cooling (Apple's glass does; Adrian, 2026-10-11). No picture
+  // warming, a sky's cooling, as Apple's glass does. No picture
   // read, white (the registered property's own, material-glass.css). Registered, so
   // a change of ground eases.
   "[--glass-background-light:color-mix(in_oklab,oklch(from_var(--glass-background)_max(l,0.85)_min(calc(c*1.5),0.2)_h)_var(--glass-background-share,35%),white)]",
@@ -39,9 +39,9 @@ export const glassLight = [
   // reads as itself on the edge, where the glass is brightest.
   "[--glass-rim-ink:var(--glass-rim-color,var(--glass-hue,var(--glass-background-light)))]",
   // How strongly the rim reads against its ground, a multiple of all its light: the
-  // same white catch reads several times stronger on dark glass ("overpowering" as a
-  // full outline; as a corner catch alone, a touch less was right, Adrian,
-  // 2026-10-11), so the dark face carries 0.8 of it. Over a picture the picture under
+  // same white catch reads several times stronger on dark glass (overpowering as a
+  // full outline; as a corner catch alone, a touch less reads right), so the dark
+  // face carries 0.8 of it. Over a picture the picture under
   // the glass decides (`--glass-background-sheen`, set by ui/background on the surface or on
   // a group round several, and inherited: the face's own number is only the fallback,
   // so a group's reading reaches every glass inside it).
@@ -49,12 +49,12 @@ export const glassLight = [
   // Glass ON glass (a field in a glass card, a chosen segment in a glass bar):
   // what is under it is the outer glass, already frosted and tinted, never the
   // picture (the outer glass's blur makes it a backdrop root, so the inner one sees
-  // only that). A full tint over it doubled the darkening into a flat, washed-out
-  // slab ("too intense", Adrian, 2026-10-11), so inner glass carries
+  // only that). A full tint over it doubles the darkening into a flat, washed-out
+  // slab that reads too intense, so inner glass carries
   // `--glass-on-glass` of its thickness (0.65), and `--glass-on-glass-rim` of its
   // edge's light (0.85): less than full, as the outer glass already tints and lights
-  // what is under it, but at half of each an inner card read as faint, its body and
-  // its soft edge (Adrian, 2026-10-11). Told by `--glass-body`, which every glass
+  // what is under it, but at half of each an inner card reads as faint, its body and
+  // its soft edge. Told by `--glass-body`, which every glass
   // BODY sets (`glassVariants`) and what is inside inherits; asked of the parent (a
   // container style query asks the nearest ancestor), so a body's own mark never
   // counts for itself. Not `data-material`: every control's root wears that for its
@@ -63,7 +63,7 @@ export const glassLight = [
   "[--glass-stack:1] [--glass-stack-rim:1] [@container_style(--glass-body:1)]:[--glass-stack:var(--glass-on-glass,0.65)] [@container_style(--glass-body:1)]:[--glass-stack-rim:var(--glass-on-glass-rim,0.85)]",
   // How strong the edge's line is, the one multiple every part below reads: the
   // glass's state, its ground and what it stands on. At 1 the edge is the one set by
-  // eye on frames over pictures, dark and light (Adrian, 2026-10-11), and every glass
+  // eye on frames over pictures, dark and light, and every glass
   // wears it, a control's as a frame's. A look (`glassLooks`) carries a multiple of
   // its own, `--glass-look-rim`, inherited, so a page or a container can wear a look
   // while each glass in it keeps its own state.
@@ -88,12 +88,12 @@ export const glassLight = [
   // corner (`--glass-curve`), so the catch is brightest there (`--glass-corner`; the
   // far corner's `--glass-corner-far`, the same unless a shape squares one, a sheet
   // against the screen's edge, which sets it to 0). Taken as a share of the box's
-  // diagonal it peaked at the shape only for a circle: a pill's catch began at 57%
-  // and a wide field's at 81% of its light. From there each line falls to nothing
-  // over 120 px (to 27.5% at 0.4375 of it), the fall the edge was set by eye with
-  // on frames over pictures (a 372 × 209 frame, radius 20: within 4 px of it) and
-  // about a 320 × 200 card's; never past the middle of the line, where the other
-  // corner's begins (on a 40 px circle that is the fall it had, within 2 px).
+  // diagonal it would peak at the shape only for a circle: a pill's catch would begin
+  // at 57% and a wide field's at 81% of its light. From there each line falls to
+  // nothing over 120 px (to 27.5% at 0.4375 of it), the fall set by eye on frames
+  // over pictures (a 372 × 209 frame, radius 20: within 4 px of it) and about a
+  // 320 × 200 card's; never past the middle of the line, where the other corner's
+  // begins (on a 40 px circle, the same fall within 2 px).
   "[--glass-curve:calc(0.41421356*var(--glass-radius))] [--glass-corner:var(--glass-curve)] [--glass-corner-far:var(--glass-curve)] [--glass-fall:min(calc(var(--glass-corner)+120px),50%)] [--glass-fall-far:min(calc(var(--glass-corner-far)+120px),50%)]",
   // Each line's fall as the mask that draws it, from its own corner.
   "[--glass-catch-mask:linear-gradient(135deg,#000_var(--glass-corner),rgb(0_0_0/0.275)_calc(var(--glass-corner)+0.4375*(var(--glass-fall)-var(--glass-corner))),transparent_var(--glass-fall))] [--glass-far-mask:linear-gradient(315deg,#000_var(--glass-corner-far),rgb(0_0_0/0.275)_calc(var(--glass-corner-far)+0.4375*(var(--glass-fall-far)-var(--glass-corner-far))),transparent_var(--glass-fall-far))]",
@@ -112,9 +112,9 @@ export const glassLight = [
  *  it faces the light, brightest at that corner, nothing along the sides, the far
  *  corner's own light (`--glass-far`) at the opposite one. Nothing on it is the same
  *  all the way round: a hairline round the whole shape and a dark one along the foot
- *  drew a grey outline, the opposite of a reflection ("a classic gray, a bit thicker
- *  line", Adrian, 2026-10-11). A whole pixel, softened by one, so it melts into the
- *  glow under it (`--glass-inner`) as one soft rim: a crisp half pixel read as a fine,
+ *  draws a grey outline, a plain thick grey line, the opposite of a reflection. A
+ *  whole pixel, softened by one, so it melts into the
+ *  glow under it (`--glass-inner`) as one soft rim: a crisp half pixel reads as a fine,
  *  harsh line, a soft one as a curve.
  *
  *  Two lines, one profile mirrored: the catch on `::before`, brightest where the
@@ -123,7 +123,7 @@ export const glassLight = [
  *  corner's on `::after`, the same from its own corner. Each is an inset shadow ring
  *  (it follows the radius and is anti-aliased like an SVG stroke in Chrome and
  *  WebKit) shaped by a gradient mask; a ring cut out by masks draws heavier round
- *  the curves than along the sides in Chrome at 2x (measured, 2026-10-11). Both
+ *  the curves than along the sides in Chrome at 2x (measured). Both
  *  pseudo-elements are the edge's: an element wearing it draws nothing of its own
  *  on them. */
 const GLASS_RIM = [
@@ -167,8 +167,8 @@ export const glassShapes = {
  *  round several (inherited, so a page can wear one), never a value tuned on one
  *  glass. Each glass keeps its own state (`--glass-rim`) inside it.
  *
- *  `apple`: the edge macOS renders on an app's icon, set by eye beside those icons
- *  (Adrian, 2026-10-11): a fine crisp line (half a pixel, no softness) a little brighter
+ *  `apple`: the edge macOS renders on an app's icon, set by eye beside those icons:
+ *  a fine crisp line (half a pixel, no softness) a little brighter
  *  than the material's, a shallow light under it (2 px), and the body shaded across
  *  from the light's corner, a neutral grey lighter at the top left and darker at the
  *  bottom right. Glass among app icons wears it so it reads as one of them. */
@@ -182,8 +182,8 @@ export type GlassLook = keyof typeof glassLooks
  *  light or dark as the scheme it stands in says (`scheme-dark:`, from @ag/tokens).
  *  The light face frosts harder than the dark: its words are dark on a pale ground
  *  the picture's texture shows through, where the dark face's 60% black already
- *  hides it; at 5px a sky's clouds ran right under the words and the light glass read
- *  worse than the dark over the same picture (Adrian, 2026-10-11). The body is the
+ *  hides it; at 5px a sky's clouds run right under the words and the light glass reads
+ *  worse than the dark over the same picture. The body is the
  *  face (`--glass-face`: `--glass-tint`, else the face's own at `--glass-thickness`)
  *  with the stain's hue mixed in; unstained, the face mixed with itself.
  *
@@ -221,8 +221,8 @@ const GLASS_BODY = [
   // where the light comes from (top left), darker at the far corner, neutral, over
   // the face. `--glass-shade` of it (0 unless a look sets it: the body is the face
   // alone). It is the glass's light, so it goes with its rim: a flat sheet with no
-  // rim (a bar, a rail: `rim={0}`) has no shade, where a page-wide look laid a
-  // light patch across the whole sheet (Adrian, 2026-10-11); a brighter state
+  // rim (a bar, a rail: `rim={0}`) has no shade, where a page-wide look would lay a
+  // light patch across the whole sheet; a brighter state
   // keeps it as at rest.
   "[background-image:linear-gradient(135deg,rgb(255_255_255/calc(0.45*var(--glass-shade,0)*min(var(--glass-rim,1),1))),transparent_55%,rgb(24_32_44/calc(0.08*var(--glass-shade,0)*min(var(--glass-rim,1),1))))] scheme-dark:[background-image:linear-gradient(135deg,rgb(255_255_255/calc(0.12*var(--glass-shade,0)*min(var(--glass-rim,1),1))),transparent_55%,rgb(0_0_0/calc(0.3*var(--glass-shade,0)*min(var(--glass-rim,1),1))))]",
 ].join(" ")
@@ -244,8 +244,8 @@ export const glassVariants = cva(
     "relative isolate bg-clip-padding rounded-(--glass-radius)",
     // Its rim's state is its own, 1 until it says otherwise: `--glass-rim` is
     // inherited (so a bare edge follows the glass it belongs to), and a glass inside
-    // another took the outer one's state, a rail's flat sheet (`rim={0}`) putting out
-    // the edge of every icon on it. A control's states set it after this.
+    // another would take the outer one's state, a rail's flat sheet (`rim={0}`)
+    // putting out the edge of every icon on it. A control's states set it after this.
     "[--glass-rim:1]",
     glassLight,
     // Focus is @ag/tokens' ring, the keyboard's only: a fine line just off the
@@ -259,15 +259,15 @@ export const glassVariants = cva(
     // owner of its face's transition: a control's own motion goes in through
     // `--glass-moves`, whole items of `transition` (`opacity_150ms_ease-out,…`), never
     // a `transition-*`, `duration-*` or `ease-*` of its own, which tailwind-merge
-    // weighed against these and dropped one or the other: a tooltip lost its fade,
+    // weighs against these, dropping one or the other: a tooltip loses its fade,
     // an input its scheme ease (scripts/examples/glass-faces.tsx refuses one).
     // The shadow is never transitioned itself: the light in it eases through the
     // registered properties it is made of (`--glass-rim`, the sheen, the ground's
     // light), the shadow following them frame by frame. Transitioned as well, a layer
     // in the text's colour (an outline's ring, a pressed rim stained `currentColor`)
-    // computed transparent for the whole transition, Chrome unable to blend a colour
-    // still bound to the text: an outline lost its ring on every hover and every
-    // leave (Adrian, 2026-10-11, measured: transparent from the hover to 300 ms).
+    // computes transparent for the whole transition, Chrome unable to blend a colour
+    // still bound to the text: an outline loses its ring on every hover and every
+    // leave (measured: transparent from the hover to 300 ms).
     "[--glass-change:var(--glass-change-duration,300ms)_var(--glass-change-ease,var(--ease-out))] [transition:var(--glass-moves,background-color_0s),background-color_var(--glass-change),color_var(--glass-change),--glass-rim_var(--glass-change),--glass-ghost_var(--glass-change),--glass-sheen_var(--glass-change),--glass-background-light_var(--glass-change)] motion-reduce:[transition:none]",
     "forced-colors:border",
     // Its words are the scheme's foreground, so everything inside reads on it with no
@@ -592,8 +592,8 @@ export const glassFront: Record<GlassFrontAt, string> = {
 /** The same front, plain: a solid strip a step darker than what it is part of
  *  (black over the card: 4% on a light one, 25% on a dark one, where steps must be
  *  wider apart to read), its inner edge the page's hairline. A front of the card's
- *  own colour read as one flat box with a line in it, and one lighter than the card
- *  made a chosen tab a dark hole in it (Adrian, 2026-10-12). Its corners and its
+ *  own colour reads as one flat box with a line in it, and one lighter than the card
+ *  makes a chosen tab a dark hole in it. Its corners and its
  *  edge's side are its wearer's (`border-b`, `rounded-r-[inherit]`). */
 export const PLAIN_FRONT =
   "border-border bg-background bg-[linear-gradient(rgb(0_0_0/0.04),rgb(0_0_0/0.04)),linear-gradient(var(--color-card),var(--color-card))] scheme-dark:bg-[linear-gradient(rgb(0_0_0/0.25),rgb(0_0_0/0.25)),linear-gradient(var(--color-card),var(--color-card))]"
@@ -618,10 +618,10 @@ export const PLAIN_BAND =
  *  lightness, in either material (at least 0.84 in the dark scheme, at most 0.4 in
  *  the light: the lightness of 4.5:1 over the grounds glass keeps under its words,
  *  L* 34 and 71, lib/background-core `TINT`), so a dark blue holds on black and a
- *  yellow on white, on the page and on glass over any picture. Mixed 25% toward black or white, a pale green fell to
+ *  yellow on white, on the page and on glass over any picture. Mixed 25% toward black or white instead, a pale green falls to
  *  2.8:1 on light glass. Worked out from `--flare-hue` on the surface itself: the
  *  rim's own ink is computed on the glass's body, a layer inside, and read on the
- *  surface it was empty. */
+ *  surface it is empty. */
 export const FLARE_LIGHT =
   "[--glass-stain:var(--flare-hue)] [--glass-stain-amount:6%] [--glass-rim:1] hover:[--glass-stain-amount:9%] hover:[--glass-rim:1.6] data-[lifted]:[--glass-stain-amount:9%] data-[lifted]:[--glass-rim:1.6]"
 export const FLARE_INK =
@@ -676,32 +676,32 @@ export function GlassFront({
  *  gathers light from a wider patch, as a lens does), strongest at the edge and
  *  fading into the clear middle over about 14 px per unit of `bend` (`bendLayers`).
  *  What a frame over a picture has for depth, with no glass body to give it; a white
- *  glow there read as a wash, not as glass (Adrian, 2026-10-11).
+ *  glow there reads as a wash, not as glass.
  *
  *  Place it over the picture INSIDE the picture's rounded clip (absolute, inset 0,
  *  after the picture): a backdrop blur reads the square box behind it, and outside
- *  the clip that square's corners hold the page, which the blur dragged in as a dark
+ *  the clip that square's corners hold the page, which the blur drags in as a dark
  *  smudge at every corner; inside, they hold picture, and the clip cuts the result
  *  smoothly.
  *
  *  Its shape is the edge's own: a rounded rectangle at the box's radius, its
  *  outline blurred, so the band follows the rim round every corner. Fades from the
- *  four straight sides stayed square at a rounded corner while the rim curved away,
- *  and the two read misaligned (Adrian, 2026-10-11).
+ *  four straight sides stay square at a rounded corner while the rim curves away,
+ *  and the two read misaligned.
  *
  *  ONE LIGHT with the edge's line: what the band lifts the picture by is the
  *  line's own strength (`--glass-strength`: the state, the look, the ground's sheen,
  *  glass on glass), worked out by `glassLight` on each layer that lifts (`lit`) as on
  *  the edge, from the same inputs, so line and bend rise and fall together on
  *  either face and the line stays the brightest, crispest thing. A fixed lift with a colour boost of its own
- *  burned a blue sky to cyan and swallowed the line (Adrian, 2026-10-11). No
+ *  burns a blue sky to cyan and swallows the line. No
  *  colour of its own: a bend softens and lifts, it does not saturate.
  *
  *  It STEEPENS into the edge, as a curved surface does: the surface tilts faster
  *  the nearer the edge, so the picture is barely touched until the last few pixels
- *  and then bent hard right at the rim. One blur faded in by one wide mask bent the
- *  edge no harder than 20 px in, an even haze ("the intensity right as we approach
- *  the end doesn't match real glass", Adrian, 2026-10-11). So it is LAYERS, each
+ *  and then bent hard right at the rim. One blur faded in by one wide mask bends the
+ *  edge no harder than 20 px in, an even haze whose strength near the edge does not
+ *  match real glass. So it is LAYERS, each
  *  reaching less far and bending harder than the one under it (they compound,
  *  each blurring what the last left), the light's crest last: `bendLayers`. Each
  *  layer is `GLASS_BEND` with its filter (`--glass-bend-filter`) and its mask on
@@ -777,7 +777,7 @@ export function bendLayers(
  *  content and its edge is then lit by that content, never a flat strip. No face,
  *  no line: the band is the blur alone, deepest at the edge and gone `width` in,
  *  following the rounded outline (`edgeOutline`). Subtle by default (4px, 10px
- *  in; 12px and 28 spread deep into a picture and ate it, Adrian 2026-10-14).
+ *  in; 12px and 28 spread deep into a picture and eat it).
  *  Never a fade or a strip painted on.
  *
  *  A blur mixes both ways: at a corner where content meets the bare glass, the
@@ -793,8 +793,8 @@ export function bendLayers(
  *  beside it, and nothing between it and the container may be one, or its blur
  *  reads nothing. Nor inside a box clipped by `overflow` with uneven or elliptical
  *  corners (`8px 8px 2px 2px`, `8px / 4px`): Chrome clips one through a mask of its
- *  own and drops the spill's, which then blurs everything it covers (measured
- *  2026-10-15, a laptop display's clip); such a box clips with `clip-path: inset(0
+ *  own and drops the spill's, which then blurs everything it covers (measured on a
+ *  laptop display's clip); such a box clips with `clip-path: inset(0
  *  round …)`. `--glass-spill-blur` sets the blur. Server-safe. */
 export function GlassSpill({
   radius,

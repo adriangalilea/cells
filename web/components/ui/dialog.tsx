@@ -293,7 +293,7 @@ export function DialogSection({
   )
 }
 
-/** Where it is answered (swift-utils' `InkSections` footer): the material's own front
+/** Where it is answered: the material's own front
  *  along the dialog's foot (`PLAIN_BAND` on its popover, `glassFront`),
  *  edge to edge, square where it meets what is asked and on the dialog's curve along
  *  the foot. Placed here, as no panel's is: inside the dialog's scroller, staying at

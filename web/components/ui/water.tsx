@@ -13,9 +13,9 @@ import { cn } from "@/lib/utils"
 // an SVG filter on the content itself, so the water reads through the content's own
 // pixels, and the tint falls only where something is drawn. One drawing for every
 // loading state in the registry; the values are set by eye on a gallery's videos
-// waiting and loading (Adrian, 2026-10-11: a dimmed or blurred still read as
-// unavailable, a breathing one and a pane of frost with a light passing as cheap; the
-// pond he loved). No drop falls under reduced motion; the water stays calm.
+// waiting and loading (a dimmed or blurred still reads as unavailable, a breathing
+// one and a pane of frost with a light passing as cheap; the pond reads as waiting).
+// No drop falls under reduced motion; the water stays calm.
 
 export type WaterState = "calm" | "falling"
 
@@ -29,8 +29,8 @@ const DROP_DEPTH = 34
 const WATER_BLUR = 5
 /** How much of its colour the content keeps under the water, and how much of a dark
  *  grey (zinc-900, the dark glass's own ground) lies over it: a hint. Darker, the
- *  content coming clear jumped in brightness, a flash on a bright picture (Adrian,
- *  2026-10-11); the water is told by its swells, not by a shade. */
+ *  content coming clear jumps in brightness, a flash on a bright picture; the water
+ *  is told by its swells, not by a shade. */
 const WATER_SATURATION = 0.92
 const WATER_TINT = 0.1
 

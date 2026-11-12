@@ -83,7 +83,7 @@ interface Measure {
   hang: { top: number; left: number }
   /** The scroller stands on glass (a glass body says so, `--glass-body`): its
    *  thumbs take the plain face, a quiet line, by default, since glass on glass
-   *  nearly always looks bad (Adrian, 2026-10-14). A `material` given by the
+   *  nearly always looks bad. A `material` given by the
    *  caller still wins: the deliberate exception, made with care. */
   onGlass: boolean
 }

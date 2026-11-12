@@ -9,12 +9,12 @@
    defines the three variables with next/font; this file only maps them.
 
    Rhythm: one ladder, every gap a rung chosen by what two things are to each other,
-   the same as swift-utils' Ink and in the same unit, the type it separates (a gap is
+   in the unit of the type it separates (a gap is
    felt against the size of what it holds apart): a quarter of an em inside one
    thing, half an em between things that belong together (a label and its control,
    items in a row), an em and a quarter between controls and as a region's padding
    (a panel, a dialog, a sheet, a fieldset), two and a half between sections. At the
-   body's 16 px that is 4 · 8 · 20 · 40 (Tailwind 1 · 2 · 5 · 10); Ink's 13 pt Mac
+   body's 16 px that is 4 · 8 · 20 · 40 (Tailwind 1 · 2 · 5 · 10); a Mac's 13 pt
    type takes 16 between controls from the same rule. A control's own insets (a
    button's side, a pill's) are its geometry, sized by its height, not rungs.
 
@@ -42,7 +42,7 @@
   --color-tone-bad: var(--tone-bad);
   --color-tone-bad-fill: var(--tone-bad-fill);
   --color-tone-info: var(--tone-info);
-  /* The fill ladder (swift-utils' Ink names the same roles): what a surface is,
+  /* The fill ladder: what a surface is,
      never an alpha picked at a call site. Each a step of the page's ink over what it
      lies on, so it steps toward the text in either scheme. The page's ink, never the
      element's own words' colour: a fill and quiet words on one element (a badge)
@@ -253,8 +253,7 @@
      the rhythm's rung it was set to. Trimmed, that padding or gap is the distance the
      eye sees. Prose (a paragraph, a list's items, a definition, a quote, a caption)
      keeps the font's whole line: lines of prose take their rhythm from that room, and
-     a stack of paragraphs or items, each trimmed, lost its line spacing. The same
-     rule as swift-utils' Ink, by role there (`InkTextRole.trim`). At no specificity,
+     a stack of paragraphs or items, each trimmed, loses its line spacing. At no specificity,
      so any utility or a consumer's rule wins. Never on text that clips (a
      `truncate`, a `line-clamp-*`, a clipped overflow): a box trimmed to the capitals
      cuts the descenders and the accents that rise above them. A browser without
@@ -285,10 +284,10 @@
   /* The browser's scrollbar where one appears: thin, its thumb the words' colour at
      the quiet tier on a clear track, so it follows the scheme of what it scrolls and
      reads over a picture as on the page. A long scroller wears the registry's own
-     thumbs (scroll-thumb) and hides this one; this is the floor for every other, the
-     browser's grey bar and white track having read as broken (Adrian, 2026-10-11).
+     thumbs (scroll-thumb) and hides this one; this is the floor for every other, since
+     the browser's grey bar and white track read as broken.
      On every element, so each scroller mixes its own words' colour: set on the root
-     alone it resolved there, and a scroller in light glass on a dark page wore the
+     alone it resolves there, and a scroller in light glass on a dark page wears the
      page's white. */
   * {
     scrollbar-width: thin;

@@ -2,7 +2,7 @@
 // keys that answer, the menus and tooltips that teach them, `aria-keyshortcuts` and
 // the page's sheet of keys are all read from one place and can never disagree.
 // Framework-free; key-router binds a set to the page (`useActions`), ui/key-sheet
-// lists every set on the page. The twin of swift-utils' Keymap (ActionSet, ActionSpec).
+// lists every set on the page.
 //
 // A BINDING is a verb (`id`), what it is called (`label`), its keys in lib/keys
 // notation ("mod+z", "shift+left", a sequence "g g"; several are alternatives), and

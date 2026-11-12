@@ -41,15 +41,15 @@ import { Spinner, type SpinnerSize } from "@/components/ui/spinner"
 // pressed again. `scheme` is the colour scheme it stands in (material).
 //
 // ANSWERS: two actions that answer one thing (a card's foot, a dialog's, a form's, a
-// toast's), as macOS lays a sheet's and swift-utils' Ink its `InkScreenActions`:
+// toast's), as macOS lays a sheet's:
 //
 //   <Button variant="secondary">later</Button>
 //   <Button>publish</Button>
 //
-// The secondary keeps a resting fill (`secondary`, Ink's `.ink`), never `ghost`: words
+// The secondary keeps a resting fill (`secondary`), never `ghost`: words
 // with no fill read as loose text a padding's width away from the pill beside them.
-// The answering one is `default` (Ink's `.inkProminent`), or `destructive`. One gap
-// between them (gap-2, 8 px, Ink's `.inkGap`), both at the trailing end, the answering
+// The answering one is `default`, or `destructive`. One gap
+// between them (gap-2, 8 px), both at the trailing end, the answering
 // one last; a note or a status takes the leading side. CardFooter (a card's `footer`)
 // and its `foot`, DialogFooter and FormFooter lay them so; the caller gives the variants and the order.
 

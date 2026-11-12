@@ -348,7 +348,7 @@ function Stack({
 
 /** A chapter's headline in two tones: what it is, bright, and the rest, dimmer. */
 /** How wide a character of the headline's face is, in ems, on average over a
- *  line of words with their spaces (measured on e-id's Space Grotesk semibold,
+ *  line of words with their spaces (measured on Space Grotesk semibold,
  *  0.44; a little over it, so a line always fits). */
 const TITLE_CHAR_EM = 0.47
 

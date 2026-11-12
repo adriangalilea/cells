@@ -407,13 +407,13 @@ export function useBackgroundSource(
  *  icon): a blend applies to an element, not to bare text. And nothing between it
  *  and the picture may isolate (a transform, opacity, a filter): the blending words
  *  make the nearest such ancestor a layer of its own, and the frost then sees only
- *  what is inside that layer, not the picture (a card dragged by `translate` lost
+ *  what is inside that layer, not the picture (a card dragged by `translate` loses
  *  its frost; by its margin it keeps it). The host is glass's shape alone
  *  (`glassShapes`); its light (`rim`, `tint`) is set on it and the frost inherits it. */
 const FLUID_HOST =
   "relative rounded-(--glass-radius) text-white [&>*:not([data-slot=glass-frost])]:relative [&>*:not([data-slot=glass-frost])]:mix-blend-difference"
 // Over the frost, a veil of white: the contrast leaves the dark parts black and heavy
-// ("too dark and too much contrast", Adrian, 2026-10-11), and a filter cannot lift
+// (too dark, too much contrast), and a filter cannot lift
 // black (brightness multiplies it); a veil adds light to every pixel, black becoming
 // a deep grey and white staying white, so the words keep their contrast.
 const FLUID_FROST = cn(
@@ -423,13 +423,13 @@ const FLUID_FROST = cn(
 )
 /** The frost, in the order it needs: blurred, then its colour drained, THEN its
  *  contrast pushed, so contrast acts on lightness alone. Tailwind's composed filter
- *  pushes contrast before saturation, and a blue sky's channels clipped to cyan (the
- *  words, white minus cyan, turned red): "burned" (Adrian, 2026-10-11). Neutral, the
+ *  pushes contrast before saturation, and a blue sky's channels clip to cyan (the
+ *  words, white minus cyan, turn red): the frost reads burned. Neutral, the
  *  words blended against it are neutral too, black on the light glass, white on the
  *  dark. It is the frost's `--glass-backdrop`, the glass's one ground channel (a
  *  whole filter in its order), set on its style so it holds on either face. */
 // Contrast high enough that the frost is nearly black or nearly white, the mid grey
-// (where the words, inverted against it, turned the same grey and read as disabled)
+// (where the words, inverted against it, turn the same grey and read as disabled)
 // left to the soft edge between them; drained first, it never burns.
 const FLUID_FILTER = "blur(16px) grayscale(1) contrast(3.4)"
 const FROST_STYLE: GlassStyle = { "--glass-backdrop": FLUID_FILTER }
@@ -525,9 +525,8 @@ export function BackgroundGroup({
  *  the rock dark. The picture fills the box (`fit`, `cover` by default); it is
  *  decoration, hidden from assistive technology. It shows once it has been read,
  *  fading in over the glass's own 300 ms while the glass eases to its reading, one
- *  movement: shown on load, it stood a beat under glass still wearing the scheme of
- *  the empty page, which then snapped ("abrupt and too lagged", Adrian,
- *  2026-10-11). */
+ *  movement: shown on load instead, it would stand a beat under glass still wearing
+ *  the scheme of the empty page, which then snaps, abrupt and lagged. */
 export function Background({
   src,
   fit = "cover",

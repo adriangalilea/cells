@@ -90,11 +90,11 @@ export const GLIDE_ENTRY = 3
  *  shortened so it never slows under the hand (`GLIDE_ENTRY` times its average),
  *  which keeps a flick, and a run of them, quick.
  *
- *  Three rounds in the gym (2026-10-15). `GLIDE`'s key bounds took 800 px at
- *  1.9 px/ms in 119 ms, peaking near 10: "it doesn't move fluently". As long as the
- *  way took at the hand's speed was 400 ms of the slides moving on their own after
- *  the lift: "I don't like all the action that happens when I lift my finger...
- *  gravity pulled faster, tipping either one way or the other". */
+ *  Measured in a swipe rig. `GLIDE`'s key bounds take 800 px at 1.9 px/ms in
+ *  119 ms, peaking near 10, which does not move fluently. As long as the way takes
+ *  at the hand's speed is 400 ms of the slides moving on their own after the lift,
+ *  too much happening once the finger is up; a fall that tips one way or the other
+ *  reads right. */
 export const CARRY_MAX = 240
 export function carryMs(d: number, v: number, slideW: number): number {
   assert(slideW > 0, `a slide of ${slideW}`)
@@ -145,11 +145,11 @@ export const SWIPE_COMMIT = 0.18
  *  pushed past half falls to the other side, short of it falls back. So the outcome
  *  is on the screen before it happens, never a line nobody can see.
  *
- *  The gym measured why (2026-10-15): with the slides following a trackpad 1:1 and a
- *  slide bought at half of `swipeCommitPx`, 198 px of hand moved a 1533 px picture
- *  13% and it then shot the other 87% to the next: "chooses to go into next frame
- *  for no reason". Before that the slides leaned (quadratic) toward an invisible
- *  line and 215 px of hand wound back: "atrociously slow". Both hid the outcome. */
+ *  Measured in a swipe rig: with the slides following a trackpad 1:1 and a slide
+ *  bought at half of `swipeCommitPx`, 198 px of hand moves a 1533 px picture 13% and
+ *  it then shoots the other 87% to the next, a move to the next frame for no visible
+ *  reason. Slides leaning (quadratic) toward an invisible line instead wind 215 px of
+ *  hand back, far too slowly. Both hide the outcome. */
 export const SWIPE_TIP = 0.5
 
 /** How far a WHEEL moves the slides per px of hand: the hand a slide costs
@@ -181,9 +181,9 @@ export function swipeTip(offset: number, v: number, slideW: number): number {
  *  frame as the hand slowing, where the browser hands the late travel over as one
  *  BIGGER delta: by the event, a stall only ever reads faster.
  *
- *  Measured in the swipe gym (2026-10-15): a slow swipe at 3-4 px a frame, then
- *  2, 2, 1, 1, 0 over 600 ms after the lift, the slides inching the whole time and
- *  then winding back. The phase detector could not see it: it takes RATIOS of
+ *  Measured in a swipe rig: a slow swipe at 3-4 px a frame, then 2, 2, 1, 1, 0 over
+ *  600 ms after the lift, leaves the slides inching the whole time and then winding
+ *  back. The phase detector cannot see it: it takes RATIOS of
  *  1-2 px deltas, too coarse to fall inside its decay band. A mean of several
  *  sums them. */
 export const SWIPE_LIFT = 0.5
@@ -194,9 +194,9 @@ export const SWIPE_LIFT_EVENTS = 6
  *  pace rising by `SWIPE_AGAIN` over its lowest since, and past `SWIPE_AGAIN_MIN`
  *  px an event (a tail's 1-2 px jitter), is the hand pushing again: a new gesture.
  *  A share and not a double, because a pace is a mean of six and moves smoothly: a
- *  second push of 6 px an event over a 2-3 px tail was swallowed by a doubling, and
- *  by a rule asking it to match half the first push's 43 (the gym, 2026-10-15:
- *  "why didn't it move at all when I swiped there?"). */
+ *  second push of 6 px an event over a 2-3 px tail is swallowed by a doubling, and
+ *  by a rule asking it to match half the first push's 43 (measured in a swipe rig:
+ *  the second swipe moves nothing). */
 export const SWIPE_AGAIN = 1.5
 export const SWIPE_AGAIN_MIN = 2
 export function swipeAgain(pace: number, low: number): boolean {
@@ -240,7 +240,7 @@ export const swipeEnvelope = (dx: number, env: number): number =>
  *  against the direction the gesture just bought is a hand, with certainty rather than
  *  by inference. Either ends the spent gesture and opens the next one. The phase
  *  detector's `start` (a coast cut short against the LAST delta, not an envelope) is
- *  the third, and the slide track takes it too: measured in the swipe gym, a second
+ *  the third, and the slide track takes it too: measured in a swipe rig, a second
  *  flick the same way was seen by it 710 ms before the surge saw it, and the 2604 px
  *  the hand moved in between were swallowed as tail.
  *

@@ -1,8 +1,7 @@
 "use client"
 
 // The HUD: what an app tells a person without being asked, in one column at the
-// window's top end, under the page's header. Ink's `InkHUD` on the web: the same kinds,
-// the same laws (lib/hud-core), the same place.
+// window's top end, under the page's header. Its kinds and laws are lib/hud-core's.
 //
 //   <Hud />                                       once per page, in the layout
 //   hud.toast("exported wall.mov", { detail: "in your downloads" })

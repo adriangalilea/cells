@@ -74,8 +74,8 @@ export const BACKGROUND = {
   /** How long a frame must hold a new scheme before a visible surface takes it:
    *  longer than a flash or a strobe's half period (each turn back resets it), short
    *  enough that a cut is answered while it is still the cut. The change itself then
-   *  eases (the glass's own transition), so the hold is the only lag. A second felt
-   *  "very slow and too lagged" (Adrian, 2026-10-11). */
+   *  eases (the glass's own transition), so the hold is the only lag. A whole second
+   *  feels slow and lagged. */
   holdMs: 180,
 } as const
 
@@ -316,8 +316,8 @@ export function judge(
  *  Materials: "the regular variant blurs and adjusts the luminosity of background
  *  content to maintain legibility"; Color: "Liquid Glass appears more opaque in
  *  larger elements like sidebars to preserve legibility"). Held by the words whole
- *  at 7:1 until 2026-11-04, the secondary lines fell to 3:1 over a bright canyon and
- *  a white page (measured on the kanban, the panel and the cards). */
+ *  at 7:1 instead, the secondary lines fall to 3:1 over a bright canyon and a white
+ *  page (measured on the kanban, the panel and the cards). */
 export const WORDS = {
   contrast: 4.5,
   muted: 0.65,
@@ -387,8 +387,8 @@ export function tintFor(worn: Worn, read: Reading): number {
 /** The lightness right under a glass's rim: the picture seen through the glass's
  *  face, the face's own lightness (`TINT`'s ground) at its thickness. The rim is
  *  drawn on the glass, not on the picture: dark glass over a white sky is dark under
- *  its rim, and a rim made stronger for the sky's sake read a hard white line on a
- *  dark face ("too white, too intense for no reason", Adrian, 2026-10-11). */
+ *  its rim, and a rim made stronger for the sky's sake reads as a hard white line on
+ *  a dark face, too white and too intense. */
 export function underRim(worn: Worn, read: Reading, thickness: number): number {
   const face = worn === "dark" ? TINT.dark.ground : TINT.light.ground
   return read.mean * (1 - thickness) + face * thickness

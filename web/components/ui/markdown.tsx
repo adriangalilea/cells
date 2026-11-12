@@ -7,7 +7,7 @@
 // to the browser, `components` and `transform` free to be server functions) or inside
 // a client one. Only a code block is the browser's (markdown-code's `Highlighted`).
 //
-// THE LOOK (Adrian's site, adriangalilea.com, is the reference): body text a step
+// THE LOOK: body text a step
 // below the headings; h1 to h3 in the serif voice, regular weight, tight tracking, the
 // h2 over a hairline; links underlined by a hairline of their own colour that turns to
 // a highlighter's stroke under the hand; inline code on a quiet chip; code blocks in

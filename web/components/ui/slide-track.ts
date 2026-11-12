@@ -516,9 +516,9 @@ export function createSlideTrack(o: SlideTrackOptions): SlideTrack {
       spentLow = Math.min(spentLow, pace)
   }
   /** The lift needs BOTH the pace fallen under half its peak and the phase seeing
-   *  the device coast (`coasting`, its even decay). The pace alone read a slow hand
-   *  wobbling at 2-3 px an event (3, 3, 2, 2, 1) as one lifting, and the slides fell
-   *  back from under a finger still down (the gym, 2026-10-15). The two mistakes are
+   *  the device coast (`coasting`, its even decay). The pace alone reads a slow hand
+   *  wobbling at 2-3 px an event (3, 3, 2, 2, 1) as one lifting, and the slides fall
+   *  back from under a finger still down (measured in a swipe rig). The two mistakes are
    *  not equal: a lift called early tears the slides from the hand; one called late
    *  lets them follow the device's coast a moment, as any scroll does, until the
    *  silence. A slow hand barely coasts, so it ends on the silence. */

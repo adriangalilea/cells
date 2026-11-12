@@ -33,7 +33,7 @@ import { ScrollArea } from "@/components/ui/scroll-area"
 //
 //   <Card>                                   a region: a settings group, a list
 //     <CardHeader>
-//       <CardTitle>lore 1.4</CardTitle>
+//       <CardTitle>release 1.4</CardTitle>
 //       <CardDescription>ready to ship</CardDescription>
 //       <CardAction><Button …/></CardAction>
 //     </CardHeader>
@@ -48,8 +48,7 @@ import { ScrollArea } from "@/components/ui/scroll-area"
 // too: `<Card hue padding="compact" interactive>`, its hue, padding and the hand's
 // light being options here. What only an item has (its kind, its author, its counts,
 // opening it whole) is `item-card`, an item of its own on this one: those parts need
-// an avatar, a dialog and a button, which no region should install. swift-utils' Ink
-// draws the two as `InkPanel` and `inkCard`.
+// an avatar, a dialog and a button, which no region should install.
 //
 // THE FLARE RULE (tokens.css, material-glass `FLARE_LIGHT` and `FLARE_INK`): a card
 // that carries a hue (`hue`) wears that ONE hue, alpha the only variable. Glass: the
@@ -99,7 +98,7 @@ import { ScrollArea } from "@/components/ui/scroll-area"
 //
 // A frame is drawn once. What draws a box of its own when it stands alone (a log, a
 // trace) asks `useInFrame()` and draws none inside one: a card, or anything that says
-// so with `<InFrame>`. A box inside a box was two edges, two corners and two grounds a
+// so with `<InFrame>`. A box inside a box is two edges, two corners and two grounds a
 // few pixels apart; the default makes that impossible to write by accident, and the
 // item's own `frame` prop still decides when given. A card inside another frame draws
 // the inset face, a step off what it stands on.
@@ -287,8 +286,8 @@ const HAND: Record<Material, string> = {
  *  its TOP (its top and side edges, the top corners) and the body the rest (its
  *  sides, its foot, the bottom corners, the card's colour). Pinned mid-card the head
  *  is still the card's rounded top, the body's sides running on below it; drawn by
- *  the card round them, the pinned head was a square strip between two straight
- *  edges (Adrian, 2026-10-12). */
+ *  the card round them, the pinned head would be a square strip between two
+ *  straight edges. */
 const PLAIN_HEAD_EDGE = "border rounded-t-(--card-radius)"
 const PLAIN_BODY_EDGE =
   "border-border border-x border-b bg-background bg-[linear-gradient(var(--color-card),var(--color-card))] rounded-b-(--card-radius)"
@@ -351,7 +350,7 @@ function useDrawnRadius(node: HTMLElement | null, on: boolean): string {
   return drawn
 }
 
-/** A card inside a card nests as Ink's regions do (swift-utils `InkRadii.nested`).
+/** A card inside a card nests by the rule below.
  *  Hugging its holder, set in less than the holder's corner (a pane a gap inside its
  *  frame), it is concentric: the holder's corner less the inset, the two curves
  *  parallel. Standing well inside it (a block in, the default body's padding), it
@@ -466,7 +465,7 @@ export function Card({
     )
   // Asked of the material the caller chose, never the one drawn: a glass card in a
   // frame draws the inset face, and its light is simply not drawn there. Asked of the
-  // drawn one it threw on a nested glass card's own tint (garden's /s/lore).
+  // drawn one it would throw on a nested glass card's own tint.
   if (
     own !== "glass" &&
     [backColor, frontColor, rim, rimWidth, rimColor, tint, tintAmount].some(

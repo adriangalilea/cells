@@ -1,9 +1,8 @@
 // CARRY: a thing taken up under a press and put down elsewhere (a card in a list, a
 // card across a board's lanes, a column along a strip), the math of it with no DOM
 // and no framework: the numbers, one spring, the edge drive, and where the gap
-// opens. swift-utils' Ink carries the same way (InkDragList, InkKanban, DragBoard,
-// InkEdgeDrive); every number here is Ink's, measured there, said in the unit it is
-// felt in. ui/carry binds it to the pointer, the keys and the DOM.
+// opens. Its SwiftUI twin carries the same way, with the same numbers, each said in
+// the unit it is felt in. ui/carry binds it to the pointer, the keys and the DOM.
 //
 // A board is lanes of items (one lane for a list or a strip). An item has an extent
 // along the lanes' axis (its height in a column, its width in a strip). While one is
@@ -19,7 +18,7 @@ export function assert(cond: unknown, msg: string): asserts cond {
  *  critically damped, never past its target). */
 export type SpringSpec = { duration: number; bounce: number }
 
-/** Ink's carry, number for number (DragMetric, InkRefusal, Press). */
+/** The carry's numbers: the lift, the lean, the glide, the hold, the refusal's lean. */
 export const CARRY = {
   /** A carried card is the hand's, no longer a container under it: it grows a touch,
    *  from under the press. */
@@ -46,7 +45,7 @@ export const CARRY = {
   /** No movement for this long is a press slowing to a stop: the lean rights. */
   stillMs: 60,
   /** A finger takes a card up once held this long, so a stroke that starts at once
-   *  still scrolls (Ink's Press.holdSeconds). */
+   *  still scrolls. */
   holdMs: 280,
   /** A finger that travels this far before the hold is a scroll, never a carry. */
   holdSlop: 10,
@@ -130,7 +129,7 @@ export class Spring {
 
 // ── The edge drive ────────────────────────────────────────────────────────────────
 
-/** Where a held press starts scrolling a region and how fast (Ink's InkEdgeDrive):
+/** Where a held press starts scrolling a region and how fast:
  *  a zone inside each edge, a share of the region bounded in px so a fingertip always
  *  has room; the speed in region lengths a second, rising as the square of the depth
  *  into the zone (the first px creep, where precision lives), full at `reach` zones

@@ -60,9 +60,9 @@ export type Phase = {
  *  that made it. So inside a stream already moving one way (`AXIS_HELD` px on its
  *  axis), a delta of at least `AXIS_TURN` px that is mostly on the OTHER axis (twice
  *  its share of this one) is a hand starting a new gesture, and opens a stream.
- *  Measured in the swipe gym (2026-10-15): a swipe down to dismiss right after a
- *  sideways swipe waited for the sideways coast to be cut short by size alone, and
- *  went to the sideways track, spent, until then. A hand's diagonal jitter inside a
+ *  Measured in a swipe test rig: without this, a swipe down to dismiss right after a
+ *  sideways swipe waits for the sideways coast to be cut short by size alone, and
+ *  goes to the sideways track, spent, until then. A hand's diagonal jitter inside a
  *  live swipe stays under it: a few px, never twice the swipe's own delta. */
 export const AXIS_HELD = 24
 export const AXIS_TURN = 4

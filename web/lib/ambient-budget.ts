@@ -20,7 +20,7 @@
 // WHAT KEEPING UP COSTS: frame counts say whether the videos keep up, never what that
 // takes from the rest of the machine; a browser decodes a dozen videos without dropping
 // a frame while the machine's other work (an indexer, the window server, every other
-// app) starves (2026-10-12: a gallery taking files in froze a laptop with nothing
+// app) starves (a gallery taking files in has frozen a laptop with no frame
 // dropped). Where the machine says how loaded it is (`pressure`, the Compute Pressure
 // API's states, ui/machine-pressure), the budget grows only while it is `nominal` or
 // `fair`, holds while `serious`, and while `critical` gives up a decoder at once and one
@@ -28,9 +28,9 @@
 
 /** Where a budget starts: half the machine's cores, at least two (what any machine
  *  that plays video at all keeps up with). Started at two and grown on evidence, a
- *  screen of twenty took half a minute to wake one cell at a time ("so slowly",
- *  Adrian, 2026-10-11); started from the machine, the frame counts correct it within
- *  a window either way. */
+ *  screen of twenty takes half a minute to wake one cell at a time, far too slow;
+ *  started from the machine, the frame counts correct it within a window either
+ *  way. */
 export const ambientStart = (cores: number) =>
   Math.max(2, Math.floor(cores / 2))
 /** How often a playing video reads its frame counters. */

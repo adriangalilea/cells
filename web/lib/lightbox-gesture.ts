@@ -441,8 +441,8 @@ export function tapIntent(
 ): { last: Sample | null; intents: TapIntent[] } {
   const keep = { x: tap.x, y: tap.y, t: tap.t }
   // Off the picture a tap is Escape, zoomed or not: the ladder (`escRung`) takes it
-  // a rung down, back to fit when zoomed, closed at fit. Zoomed, it used to do
-  // nothing, and the dark beside a zoomed picture was the one place a click was dead.
+  // a rung down, back to fit when zoomed, closed at fit, so the dark beside a zoomed
+  // picture is never a place where a click does nothing.
   if (!g.onMedia) return { last: null, intents: [{ kind: "escape" }] }
   // A tap on a video is the video's (its controls, the platform's play toggle); a
   // tap on a frame is the frame's.

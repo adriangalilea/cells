@@ -2,7 +2,7 @@
 
 // CARRY, bound to the page: an item taken up under a press, a finger or the keys,
 // and put down elsewhere, in one lane (a list, a strip) or across lanes (a board).
-// lib/carry-core holds the numbers and the math, Ink's; this is the hand and the DOM.
+// lib/carry-core holds the numbers and the math; this is the hand and the DOM.
 //
 // The pointer: a mouse takes a card up once it moves 3 px (a press that never moves
 // opens it); a finger once held 280 ms, so a stroke that starts at once still scrolls.
@@ -24,7 +24,7 @@
 // consumer's lanes say where things are. The card lands where the next render puts
 // it; a move the consumer does not apply flies the card home.
 //
-// What a carry changes is split by how often it changes, as Ink's DragBoard splits it:
+// What a carry changes is split by how often it changes:
 // where the card is moves every frame and is written to the elements by one loop,
 // never rendered; where it would land (`target`) changes only when it crosses a
 // neighbour and is React state; the geometry is read once at the lift, and nothing is
@@ -150,7 +150,7 @@ const IDLE: CarrySnapshot<never> = {
 
 /** A lifted card's light, by the ground it stands on: a tight shadow where it nearly
  *  touches and a soft one well below it, more of both on a dark ground, which swallows
- *  shadow (Ink's DragLiftShadow). */
+ *  shadow. */
 export const LIFTED =
   "shadow-[0_1px_3px_rgb(0_0_0/0.12),0_16px_44px_rgb(0_0_0/0.2)] dark:shadow-[0_1px_3px_rgb(0_0_0/0.35),0_16px_44px_rgb(0_0_0/0.5)]"
 
@@ -168,8 +168,8 @@ const OWN_PRESS =
   "button, a[href], input, textarea, select, [contenteditable], [data-carry-ignore]"
 
 /** The press's feel on a touch screen, where a phone can (navigator.vibrate): a lift,
- *  a place crossed, a landing, and a refusal as two short pulses 70 ms apart (Ink's
- *  refusal on a Mac's trackpad). */
+ *  a place crossed, a landing, and a refusal as two short pulses 70 ms apart (as a
+ *  refusal is felt on a Mac's trackpad). */
 const FEEL = { lift: 8, tick: 4, confirm: 12, refuse: [8, 70, 8] } as const
 
 type Press<ID> = {
@@ -246,7 +246,7 @@ export class Carrier<ID> {
   /** The refusal the gap is held by, said on the drop. */
   private reason: string | null = null
   /** The way the refused place lies from home, (dx, dy) in lane and index steps:
-   *  a refused drop lands home and leans that way (Ink's `inkRefusal(.toward)`). */
+   *  a refused drop lands home and leans that way. */
   private refusedToward: [number, number] | null = null
   private leanOnLanding: [number, number] | null = null
   private touch = false
@@ -1309,7 +1309,7 @@ function towardOf(from: Slot, to: Slot, axis: CarryAxis): [number, number] {
 }
 
 /** "Not now", seen: the element leans `points` toward (dx, dy), out in 0.09 s, home on
- *  a spring that overshoots once (Ink's InkRefusal), on its own `translate` so the
+ *  a spring that overshoots once, on its own `translate` so the
  *  carry's `transform` is untouched. */
 export function refuse(
   el: Element | null | undefined,
@@ -1453,7 +1453,7 @@ export function CarryLayer<ID extends string | number>({
           >
             {render(state.carried as ID)}
             {/* Over a place that refuses it, the card says so where the eye is: a
-                wash of the bad tone over it (Ink's refusal, a state and never the
+                wash of the bad tone over it (a refusal, a state and never the
                 card's own colour) and, when the refusal has words, them under it. */}
             {state.refusing !== null && (
               <>

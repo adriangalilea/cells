@@ -10,7 +10,7 @@ export interface Person {
   /** The name where room is short (a caption's speaker, a chip, a mention in running
    *  text): "Kennedy". Absent, `name`. */
   short?: string
-  /** "@adriangalilea": what a mention types and a sub-line shows. */
+  /** "@ada": what a mention types and a sub-line shows. */
   handle?: string
   /** The picture's URL. Absent, a surface draws its own placeholder. */
   avatar?: string
