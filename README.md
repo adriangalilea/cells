@@ -1,10 +1,10 @@
 # Cells
 
-Programmable data: logic and data in a single file, open in any editor ([cellular.computer](https://cellular.computer)). A Cells file, `.cells`, is a table whose header cells carry their column's type, and its formula when it computes, in the file itself: one file, never a sidecar. Files import each other, so a folder of them is typed tables joined by references, and a table can be filled by a script. It is its own format, designed for its own ergonomics, never bent to suit readers that do not know it. **It is not meant to be compatible with CSV: adopting it is as simple as renaming a `.csv` to `.cells`, and that is the only bridge.** [SPEC.md](SPEC.md) is the whole format, and not final yet.
+Programmable data: logic and data in a single file, open in any editor ([cellular.computer](https://cellular.computer)). A Cells file, `.cells`, is a table whose header cells carry each column's type, and its formula when it computes: one file, never a sidecar. Files import each other, so a folder of them is typed tables joined by references, and a script can fill a table. Cells is its own format, never bent to suit readers that do not know it. **It is not meant to be compatible with CSV: adopting it is as simple as renaming a `.csv` to `.cells`, and that is the only bridge.** [SPEC.md](SPEC.md) is the format, still a draft.
 
 ## From a CSV
 
-A CSV is where most tables start, and it reads as a Cells file already: one with no types written.
+Most tables start as a CSV, and a CSV reads as a Cells file with no types written.
 
 ```cells
 item,cost,qty,paid,on
@@ -13,7 +13,7 @@ split dinner,32.25,1,no,2026-08-15
 ferry,5O.00,1,no,2026-08-17
 ```
 
-Nothing in it says `cost` is money, so the ferry's `5O.00`, typed with a letter O, is as good as any other value. A sum over the column is wrong, or fails somewhere far from the row that caused it.
+Nothing says `cost` is money, so the ferry's `5O.00`, typed with a letter O, passes as a value, and a sum over the column is wrong or fails far from the row that caused it.
 
 ### Types
 
@@ -43,7 +43,7 @@ Two rows named `fuel`, a cost below zero or a quantity of none would each be a p
 
 ### A computed column
 
-A CSV can hold a total, but only as a number: whether it is still `cost * qty` after a cost is edited, nothing knows. In a Cells file the formula is in the header, and each row stores the value it gave, before its `=`.
+A CSV holds a total only as a number, and nothing knows whether it is still `cost * qty` after a cost is edited. In a Cells file the formula is in the header, and each row stores the value it gave before its `=`.
 
 ```cells
 item:text!,cost:EUR>=0,qty:int>=1,total:EUR=cost * qty,paid:yes/no,on:date
@@ -117,7 +117,7 @@ date:date,usd:USD>0,from:accounts.account,to:accounts.account,eur:EUR=usd * euru
 2026-11-04,37.80=12.60 * 3,card,food,35.20=,three coffees
 ````
 
-What a person sees is the table under the second `---`: `eur` computed on every row from the day's rate and stored beside its `=`, a reference that must name an account, a cell holding its own formula and the value it gave (`37.80=12.60 * 3`). Above it is the work, which an app shows folded: the accounts imported from the next file, and the rates a script fetched and the file keeps.
+A reader sees the table under the second `---`: `eur` computed on every row from the day's rate and stored beside its `=`, a reference that must name an account, a cell holding its own formula and the value it gave (`37.80=12.60 * 3`). Above it is the work, which an app shows folded: the accounts imported from another file, and the rates a script fetched and the file keeps.
 
 ### Aligned, with its columns in the prelude
 
@@ -136,7 +136,7 @@ split dinner,   32.25=96.75 / 3,    1,          32.25=,     116.45=,    card
 ferry,          50.00,              2,          100.00=,    216.45=,    cash
 ```
 
-Each column starts on a multiple of four characters, two spaces at least after its widest value, so a small edit fits the padding already there, and a write takes it up so the line stays aligned. A value wider than 32 characters is left out of the reckoning. `cells diff` gives git a view with the padding taken out, so realigning a file is no change to review ([EDITORS.md](EDITORS.md)).
+Each column starts on a multiple of four characters, at least two spaces after its widest value, so a small edit fits the padding already there, and a write takes up the difference so the line stays aligned. A value wider than 32 characters is left out of the reckoning. `cells diff` gives git a view with the padding taken out, so realigning a file is no change to review ([EDITORS.md](EDITORS.md)).
 
 ## The documents
 
@@ -189,16 +189,16 @@ The prelude, between two `---` lines, names types (`type Kind = …`), imports o
 
 Decided in direction, not yet in the spec ([SPEC.md, Open](SPEC.md#open)):
 
-- **Your filesystem can be a graph database.** References join a folder's files, and one that names nothing is a problem; next, tools that see a break before it lands (a key renamed in one file, followed through every file that names it) and fixes offered where a reference names nothing (`did you mean "rent"?`).
-- **Every row has an identity**, its key or an `id` the engine assigns, so an edit always lands on the row it meant and two versions of a file merge row by row.
-- **One engine every app reads and writes through**: a daemon on one Mac (`cells serve`: changes, history and schedules built) that every client reads through, standalone in a page; files parsed once, changes heard as they happen, nobody's write ever lost, even an editor's that bypasses it. Later every device a full replica, books owned by one of them. [ENGINE.md](ENGINE.md) is the design.
-- **Queries in standards, never our own language**: SQL (`cells sql` runs it), and SQL/PGQ to walk references.
-- **Charts with no setup**, because the columns are typed: a date is a time axis, money a measure, a choice a category, a reference a link to follow, its colours the values' looks; what a chart needs beyond the types and the looks declared, never scripted.
-- **Tooling**: highlighting in every editor, and the language server ([EDITORS.md](EDITORS.md)) warning before a break lands: a key renamed in the other file, a reference about to dangle.
+- **A folder as a graph database.** References join a folder's files, and one that names nothing is a problem. Next: tools that see a break before it lands (a key renamed in one file, followed through every file that names it) and fixes offered where a reference names nothing (`did you mean "rent"?`).
+- **Every row has an identity**, its key or an `id` the engine assigns, so an edit lands on the row it meant and two versions of a file merge row by row. The engine assigns ids and applies edits by them, one file at a time; merging by identity is not built.
+- **One engine every app reads and writes through**: a daemon on one Mac (`cells serve`: changes stored across files, history, schedules and intents built), standalone in a page; files parsed once, changes heard as they happen, no write lost, even an editor's that bypasses it. Later, every device a full replica, books owned by one of them. [ENGINE.md](ENGINE.md) is the design.
+- **Queries in standards, never a language of our own**: SQL (`cells sql` runs DuckDB's), and SQL/PGQ to walk references (not built).
+- **Charts with no setup**, because the columns are typed: a date is a time axis, money a measure, a choice a category, a reference a link to follow, the colours the values' looks. Cells.app draws them from the types; what a chart needs beyond the types and the looks is to be declared in the file, never scripted.
+- **Tooling**: highlighting in every editor, and the language server ([EDITORS.md](EDITORS.md)) warning before a break lands: a key renamed in another file, a reference about to dangle.
 
 ## What it is for
 
-The use it is designed against is plain text accounting done properly. Books kept as plain files, typed like a database:
+The use Cells is designed against is plain text accounting: books kept as plain files, typed like a database.
 
 ```text
 ~/books/
@@ -246,9 +246,9 @@ expenses:home:rnet   950.00
 cells sql: 1 problem in 1 file read, a broken cell read as null: cells check books
 ```
 
-`cells show` writes tab-separated text (aligned here), each cell its value: `vat` is euros, so 64.30 at 21% is `11.16`, rounded half to even at the euro's two digits, the same value the file stores beside its `=`. `cells sql` asks the folder as one database, in DuckDB's SQL: every file is a table named by its file's name (every `money.cells` under the folder is one table, `money`), its columns typed (`amount` is `DECIMAL(38,2)`, summed exactly, `date` a date), and it answers as `show` writes. It ran over a file with a problem, so it says so and exits 1.
+`cells show` writes tab-separated text (aligned here), each cell its value: `vat` is euros, so 64.30 at 21% is `11.16`, rounded half to even at the euro's two digits, the same value the file stores beside its `=`. `cells sql` queries the folder as one database, in DuckDB's SQL: every file is a table named by its file's name (every `money.cells` under the folder is one table, `money`), its columns typed (`amount` is `DECIMAL(38,2)`, summed exactly, `date` a date), and it answers as `show` writes. It read a file with a problem, so it says so and exits 1.
 
-Ledgers in plain text (hledger, beancount) keep books readable, diffable and yours, but each invents a syntax of its own and cannot say that a column is euros, that an account must exist, or that VAT is derived from the amount. Cells is the table those books are. [ACCOUNTING.md](ACCOUNTING.md) drafts them whole: pending payments, a payslip in several rows, exchanges, lots, corrections, balances that must hold.
+Plain text ledgers (hledger, beancount) keep books readable, diffable and the owner's, but each has a syntax of its own and cannot say that a column is euros, that an account must exist, or that VAT is derived from the amount. Cells is the table those books are. [ACCOUNTING.md](ACCOUNTING.md) drafts them whole: pending payments, a payslip in several rows, exchanges, lots, corrections, balances that must hold.
 
 ## The pieces
 
@@ -258,10 +258,11 @@ One law and one engine. Every surface binds the same Rust core, so there is one 
 |---|---|---|
 | The format | [SPEC.md](SPEC.md) | prose |
 | The law: every rule as a case, run against every binding | [`tests/`](tests) | data |
-| The engine: parsing at memory speed, typed columns in Arrow's layout (exact decimals for money, days for dates, a dictionary for choices), formulas in exact decimal, imports followed, references checked, problems, the byte-for-byte writer | `rust/` | Rust, no dependencies |
-| The command line: `cells check` (a folder, its imports followed), `fmt` (and `--check`), `diff`, `pin`, `run`, `show`, `sql` (DuckDB over the columns, a folder one database, so SQL is the standard's); then SQL/PGQ, which DuckDB has only as an extension it downloads | `rust/` | Rust, DuckDB |
-| The daemon ([ENGINE.md](ENGINE.md)), `cells serve`: every client's one way to read and write, each file parsed once and re-parsed when it changes, the references held as a graph, a change stored in every file it reaches, edits by row identity, the schedules kept, never losing a write | `rust/cells-daemon`, `cells::folder` | Rust |
-| The protocol: intents and queries in, Arrow frames out, over a Unix socket | `rust/cells-daemon` | Rust |
+| The engine: parsing at gigabytes a second, typed columns in Arrow's layout (exact decimals for money, days for dates, a dictionary for choices), formulas in exact decimal, imports followed, references checked, problems, the byte-for-byte writer | `rust/` | Rust, no dependencies |
+| The command line: `cells check` (a folder, its imports followed), `fix`, `fmt` (and `--check`), `diff`, `merge`, `pin`, `run`, `allow`, `history`, `show`, `sql`, `serve`, `lsp` | `rust/cells-cli` | Rust |
+| `cells sql`: DuckDB over the engine's columns, a folder one database, in a binary of its own; SQL/PGQ not yet, which DuckDB has only as an extension it downloads | `rust/cells-sql` | Rust, DuckDB |
+| The daemon ([ENGINE.md](ENGINE.md)), `cells serve`: every client's one way to read and write, each file re-read when it changes, the references held as a graph, a change stored in every file it reaches, edits by row identity, the schedules kept, never losing a write | `rust/cells-daemon`, `cells::folder` | Rust |
+| The protocol: JSON lines over a Unix socket (folders served, changes heard, intents, history, runs); queries with Arrow frames out are designed, not built | `rust/cells-daemon` | Rust |
 | The language server, `cells lsp`: diagnostics as you type, hover, completion, definitions, renames followed across the folder | `rust/` | Rust |
 | The web: the engine as wasm, a synchronous `read(text)`, its imports followed through the files a page holds, columns read as typed arrays without a copy | `rust/` | Rust, wasm |
 | The Apple platforms: the engine behind a C header, swift-utils' `Cells` and `CellsTable` over it | `rust/` + swift-utils | Rust, Swift |
@@ -269,28 +270,26 @@ One law and one engine. Every surface binds the same Rust core, so there is one 
 | Highlighting in Helix, Neovim, Zed | `tree-sitter/` | tree-sitter |
 | Highlighting in VS Code, GitHub, Shiki | `syntaxes/` | TextMate |
 
-Rust because it is as fast as C and reaches everything else: a C ABI, wasm, PyO3, `tower-lsp`, DuckDB's bindings. Arrow because typed columns are what it is: DuckDB, Python, the browser and Swift take them as they lie, and a chart reads a column, never a row. DuckDB ships with the command line, the daemon and the apps, never in a page. Bun runs a file's scripts, never the core: it is a program, and no page or app can link it. Parquet is an export of the same columns, never the source: in memory both are Arrow, and what text costs at load the daemon's cache pays once, while Parquet can never be read, diffed in git or fixed by hand.
+Rust because it runs as fast as C and reaches every other surface: a C ABI, wasm, PyO3, `tower-lsp`, DuckDB's bindings. Arrow because a Cells table is typed columns: DuckDB, Python, the browser and Swift take them as they lie, and a chart reads a column, never a row. DuckDB is in `cells-sql` alone, which ships beside `cells` and in Cells.app, never in a page. Bun runs a file's scripts, never the core: it is a program, and no page or app can link it. Parquet is an export of the same columns, never the source: in memory both are Arrow, and what text costs at load the daemon's cache pays once, while Parquet can never be read, diffed in git or fixed by hand.
 
 ### Built
 
-- **The law**: the suite, 490 cases (`plain/` the files that are not Cells files), run by the engine in Rust, through its wasm build and through Swift.
+- **The law**: the suite, 502 cases (`plain/` the files that are not Cells files), run by the engine in Rust, through its wasm build and through Swift.
 - **The engine** passes every case, the format as SPEC.md writes it: formulas in header cells and in cells, SQL's expressions in exact decimal, the language in capitals and `TABLE`, `[-1]` and ranges in the lines' order, windows over an order (a running balance, `lag`), names looked for nearest first, a spreadsheet's references taken as input, a currency's scale; tables written inline, columns declared in the prelude, imports and exports (a URL pinned by its hash, a `rev` through git), references checked across files, scripts' tables and schedules read; every computed value stored beside its `=`, a write storing what it changes, the `stale` problem and its two fixes; padding no part of a value, and a write keeping its line aligned; a broken grammar taking out only what it breaks, every break and problem carrying its span (the characters a client marks, pinned by the suite). It reads what people's files are (a `.csv` or `.tsv` by the separator its first lines agree on, never refused for its records, a ragged row read as blanks with its problem), inserts, removes, moves and renames columns, and writes a file in another dialect. It says what completes at a place of the text and what is said of it (`cells::complete`, `cells::hover`), what a cell may hold, and each problem's severity. 1M rows read in 13.8 ms on 18 threads ([rust/README.md](rust/README.md#numbers)).
 - **The command line**: `cells check` over a folder with its imports followed, `fix`, `fmt` (aligning the columns) and `fmt --check`, `diff` (git's textconv), `merge` (git's merge driver), `pin`, `run` (a script run by the engine, with Bun), `allow`, `history`, `show`, `sql` (a folder asked as one database through DuckDB, same-named files one table, every column its exact type; DuckDB in `cells-sql` alone, so `cells` is 3.6 MB), `serve` and `lsp`.
 - **The daemon**, `cells serve` (`rust/cells-daemon`, [ENGINE.md](ENGINE.md)): a change written to a file by anything stores every computed cell it reaches, in that file and in every file reading it through its imports, nobody opening them; a value typed over its `=` is left stale for a person. Each version is logged in `.cells/log.jsonl`, kept whole, with who made it and the chain it set off, and read back as history (`cells history`: what changed, by whom, when, and what it reached; a cell's every value; a version returned to as a change of its own). It runs each script on its schedule, only at a version its person allowed, a run missed while the Mac slept run once on waking. It takes a client's edits as intents by row identity (a cell set, a row added or deleted, by key or by the ids it gives a file's rows): applied once however often sent, journalled before what they reach is stored, applied over a version written since only where they say what they saw, refused whole when they would break a rule. Each step is said through the utils logging contract, spans included. `cells::folder`, in the core, decides (no disk, clock or thread, so it replays from the changes handed in), and one `World` trait, the disk's or a simulation's, carries it out. Clients reach it over its socket (`Cells/engine.sock`, JSON lines), admitted by their code signature (Cells.app and its signed `cells` command), ask for folders and hear every file that changes. Cells.app keeps it running (`CellsEngine.app`, a launch agent nested in the app); without Cells.app, a client that finds none answering starts it.
 - **The language server**, `cells lsp` ([EDITORS.md](EDITORS.md)), checked in Helix: diagnostics, hover, completion, definitions, renames across the folder, computed values stored on save, the layout as inlay hints. It is a client of the daemon and watches nothing itself.
-- **The web**: the wasm build, 184 KB brotli, with a synchronous `read`, each problem's severity, what a cell may hold, how each value looks in the page's locale (`doc.looks()`), and the completions and hover `cells lsp` gives; ui's table and code blocks on it; the site, [cellular.computer](https://cellular.computer) ([web/README.md](web/README.md)).
-- **The Apple platforms**: the XCFramework, released as `apple-<version>`. swift-utils pins `apple-0.4.0`; its `Cells` binding passes every case through Swift on macOS, iOS and tvOS with its imports followed (`cells_read_with`, and `cells_read_at` from the disk), and has what the other bindings have: padding, a formula's names and the columns they read, the prelude as statements edited by lines, what a cell may hold, each problem's severity, and the completions and hover `cells lsp` gives. Its `CellsTable` and Cells.app show a computed cell's value and edit its formula.
-- **The grammars**, tree-sitter and TextMate: imports, tables, fences, formulas, a computed value its own node.
-- **[`ts/`](ts)**, the first TypeScript reader, kept as a readable reference: `read`, `write`, `setCell`, `setType`, `parseHeader`, `compose`, and `Infer<"header">`, the row type from a header line at compile time. It predates the suite and fails many of its cases.
+- **The web**: the wasm build, 170 KB brotli, with a synchronous `read`, each problem's severity, what a cell may hold, how each value looks in the page's locale (`doc.looks()`), and the completions and hover `cells lsp` gives; ui's table and code blocks on it; the site, [cellular.computer](https://cellular.computer) ([web/README.md](web/README.md)).
+- **The Apple platforms**: the XCFramework, released as `apple-<version>`. swift-utils pins `apple-0.5.1`; its `Cells` binding passes every case through Swift on macOS, iOS and tvOS with its imports followed (`cells_read_with`, and `cells_read_at` from the disk), and has what the other bindings have: padding, a formula's names and the columns they read, the prelude as statements edited by lines, what a cell may hold, each problem's severity, how each value looks, and the completions and hover `cells lsp` gives. Its `CellsTable` and Cells.app show a computed cell's value and edit its formula; Cells.app draws the engine's history (a cell's every value, a version shown and returned to) and charts from the types.
+- **The grammars**, tree-sitter and TextMate: imports, tables, fences, formulas, looks and tints, a computed value its own node.
+- **[`ts/`](ts)**, the first TypeScript reader, kept as a readable reference: `read`, `write`, `setCell`, `setType`, `parseHeader`, `compose`, and `Infer<"header">`, the row type from a header line at compile time. It fails many of the suite's cases.
 
 ### Next, in order
 
-1. **Cells.app writing through the engine.** It is a client already: its folders served by the engine, their changes heard from it, its windows following them (swift-utils' `Cells.Daemon`). The engine takes intents (`Cells.Daemon.apply`); next, the app's edits sent as them instead of its saves, the `id` column never shown, a refusal shown where the edit was made; then intents across several files, and replay after a crash.
-2. **History in Cells.app** ([ENGINE.md](ENGINE.md#history)): the engine's chains drawn by swift-utils' `InkHistory`, a cell's "why" one gesture away, a version shown and returned to.
-3. **Cells.app's window**, designed and used until it is right: its folder, its prelude a first-class panel written with completions, heads saying what each column is. Then the site's Cells window and hero mirror it.
-4. **SQL/PGQ in `cells sql`**, references walked as edges, once DuckDB's `duckpgq` can be built into the binary ([rust/README.md](rust/README.md#cells-sql)).
-5. **Charts** from the types.
-6. **The npm package** `@adriangalilea/cells`: the wasm build and its wrapper, published.
+1. **Cells.app writing through the engine.** It is a client already: its folders served by the engine, their changes and history read from it (swift-utils' `Cells.Daemon`). The engine takes intents (`Cells.Daemon.apply`); next, the app's edits sent as intents instead of its saves, the `id` column never shown, a refusal shown where the edit was made; then intents across several files, and replay after a crash.
+2. **Cells.app's window**, designed and used until it is right: its folder, its prelude a first-class panel written with completions, heads saying what each column is. Then the site's Cells window and hero follow it.
+3. **SQL/PGQ in `cells sql`**, references walked as edges, once DuckDB's `duckpgq` can be built into the binary ([rust/README.md](rust/README.md#cells-sql)).
+4. **The npm package** `@adriangalilea/cells`: the wasm build and its wrapper, published.
 
 
 ## Where it is used
