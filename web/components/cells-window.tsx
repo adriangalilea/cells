@@ -9,6 +9,15 @@ import { AppWindow } from "@/components/ui/app-window"
 import { Table, type TableColumn, type TableProblem } from "@/components/ui/table"
 import { useEngine } from "@/components/use-engine"
 import { readFiles, type ViewCell, type ViewTable } from "@/lib/view"
+import { useCodeColours } from "@/components/ui/use-code-colours"
+import { runsOf } from "@/lib/code-tokens"
+import { CELLS_COLUMNS } from "@/lib/cells-code"
+
+/** Column `k`'s colour (`CELLS_COLUMNS`), each scheme its own. */
+const inkOf = (k: number) => {
+  const c = CELLS_COLUMNS[k % CELLS_COLUMNS.length] as (typeof CELLS_COLUMNS)[number]
+  return `light-dark(${c.light}, ${c.dark})`
+}
 import { PRODUCT } from "@/lib/product"
 import { revealX } from "@/lib/reveal"
 import { cn } from "@/lib/utils"
@@ -36,6 +45,45 @@ export interface TableLight {
 export interface CellsScene {
   cursor: { row: number; column: string } | null
   draft: string | null
+}
+
+/** The lines of a file's prelude (between its first two `---` lines), by their place in
+ *  the file's lines; nothing for a file without one. */
+function preludeLines(text: string): { from: number; to: number } | null {
+  const lines = text.split("\n")
+  if (lines[0] !== "---") return null
+  const end = lines.indexOf("---", 1)
+  return end > 1 ? { from: 1, to: end } : null
+}
+
+/** The prelude's panel along the window's foot, as the app opens it for a Cells file: its
+ *  name, then its lines as written, coloured as the engine reads the whole file (a declared
+ *  column in its column's colour, a script in its language). As tall as its lines, up to
+ *  two fifths of the window, so the table keeps the most of it. */
+function Prelude({ text }: { text: string }) {
+  const range = preludeLines(text)
+  const colours = useCodeColours(text, "cells")
+  if (!range) return null
+  const lines = runsOf(text, colours).slice(range.from, range.to)
+  return (
+    <div data-slot="cells-window-prelude" className="flex max-h-[40%] shrink-0 flex-col border-t border-white/8">
+      <div className="flex h-6 shrink-0 items-center px-3 text-[10px] font-medium text-white/70">Prelude</div>
+      {/* its text as code, in a well sunk in the window, as the app shows a script's */}
+      <pre className="mx-2 mb-2 min-h-0 overflow-hidden rounded-md bg-black/30 px-2.5 py-1.5 font-mono text-[10px] leading-[1.6] text-white/85">
+        {lines.map((line, i) => (
+          <div key={i} className="truncate">
+            {line.length === 0
+              ? " "
+              : line.map((run, j) => (
+                  <span key={j} style={run.ink ? { color: run.ink.dark, fontWeight: run.ink.bold ? 600 : undefined } : undefined}>
+                    {run.text}
+                  </span>
+                ))}
+          </div>
+        ))}
+      </pre>
+    </div>
+  )
 }
 
 /** A file as a table: its columns, its rows, its problems by cell. */
@@ -79,6 +127,8 @@ export function CellsTable({
       read.columns.map((c, k) => ({
         id: String(k),
         label: c.name,
+        // its name in its column's colour, as the app's head and the file's text wear it
+        tint: inkOf(k),
         text: (r) => r.cells[k]?.shown ?? "",
         kind: r0Numeric(read.rows, k) ? "number" : "text",
         render: (r) => {
@@ -188,6 +238,7 @@ export function CellsWindow({
           {/* The table's own type size: its columns are counted in its characters. */}
           <CellsTable name={name} text={text} others={others} label={name} light={light} scene={scene} className="h-full text-[11px]" />
         </div>
+        <Prelude text={text} />
         <div
           data-slot="cells-window-problems"
           className="flex h-6 shrink-0 items-center gap-2 overflow-hidden border-t border-white/8 px-3 font-mono text-[10px] whitespace-nowrap"
