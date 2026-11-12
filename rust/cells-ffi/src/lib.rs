@@ -742,6 +742,48 @@ pub unsafe extern "C" fn cells_looks_of(d: *mut CellsDoc, column: usize) -> Cell
     CellsStr::of(&d.out)
 }
 
+/// How many look statements the prelude gives that hold a rule that reads, in the file's
+/// order: what `cells_look_target` and `cells_look_rules` index.
+///
+/// # Safety
+/// `d` is a live doc.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn cells_look_count(d: *mut CellsDoc) -> usize {
+    // SAFETY: the caller's promise.
+    let d = unsafe { doc(d) };
+    d.doc.looks().iter().filter(|(_, rules)| !rules.is_empty()).count()
+}
+
+/// What look statement `i` is for: a column's or a named type's name, or empty for `row`.
+///
+/// # Safety
+/// `d` is a live doc; `i < cells_look_count(d)`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn cells_look_target(d: *mut CellsDoc, i: usize) -> CellsStr {
+    // SAFETY: the caller's promise.
+    let d = unsafe { doc(d) };
+    let (target, _) = d.doc.looks().iter().filter(|(_, rules)| !rules.is_empty()).nth(i).expect("a look below cells_look_count");
+    d.out = match target {
+        cells::look::Target::Row => String::new(),
+        cells::look::Target::Name(n) => n.clone(),
+    };
+    CellsStr::of(&d.out)
+}
+
+/// The rules of look statement `i` that read, as written, a line each: a rule that does not
+/// read is a problem of the file, and not here.
+///
+/// # Safety
+/// `d` is a live doc; `i < cells_look_count(d)`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn cells_look_rules(d: *mut CellsDoc, i: usize) -> CellsStr {
+    // SAFETY: the caller's promise.
+    let d = unsafe { doc(d) };
+    let (_, rules) = d.doc.looks().iter().filter(|(_, rules)| !rules.is_empty()).nth(i).expect("a look below cells_look_count");
+    d.out = rules.iter().map(|l| l.spelled.as_str()).collect::<Vec<_>>().join("\n");
+    CellsStr::of(&d.out)
+}
+
 /// The file's text: what was read, but for what was changed.
 ///
 /// # Safety
@@ -1836,6 +1878,9 @@ mod tests {
             assert_eq!(cells_word_tint(d, 0, "income".as_ptr() as *const c_char, 6), CellsTint { kind: 1, value: 3 });
             assert_eq!(text(cells_drawn(d, 0, 1, ptr::null(), 0)), "-1,234.50");
             assert_eq!(text(cells_looks_of(d, 1)), "grouped\nnegative red");
+            assert_eq!(cells_look_count(d), 2);
+            assert_eq!((text(cells_look_target(d, 0)), text(cells_look_rules(d, 0))), ("amount".into(), "grouped\nnegative red".into()));
+            assert_eq!((text(cells_look_target(d, 1)), text(cells_look_rules(d, 1))), ("".into(), "gray when amount > 0".into()));
             cells_free(d);
         }
     }
