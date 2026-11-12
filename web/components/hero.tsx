@@ -67,15 +67,20 @@ function useFrame(ms: number) {
   }
 }
 
+/** The money window's height on the page, at its stage width: shorter than the Mac's half
+ *  of the screen, as tall as its rows, its prelude and some air. */
+const LANDED_H = 340
+
 /** The money window as the page keeps it once the hand is done: the window that leaves
- *  the Mac, at its stage size, scaled to `width` as a whole, so the flight between the
- *  two is a move and a scale and nothing else. */
-function MoneyWindow({ width }: { width: number }) {
+ *  the Mac, at its stage width and `height` (its stage height while it flies, from the
+ *  Mac's to the page's, is `--stage-h`), scaled to `width` as a whole, so the flight is a
+ *  move, a scale and the window's own height easing to the page's. */
+function MoneyWindow({ width, height }: { width: number; height: number }) {
   const h = useHero()
   const end = h.checkpoints.fixed
   return (
-    <div style={{ width, height: (width * WINDOW_H) / WINDOW_W }}>
-      <div style={{ width: WINDOW_W, height: WINDOW_H, transform: `scale(${width / WINDOW_W})`, transformOrigin: "0 0" }}>
+    <div style={{ width, height: `calc(var(--stage-h, ${height}px) * ${width / WINDOW_W})` }}>
+      <div style={{ width: WINDOW_W, height: `var(--stage-h, ${height}px)`, transform: `scale(${width / WINDOW_W})`, transformOrigin: "0 0" }}>
         <CellsWindow name={h.money} text={end.money} others={[{ name: h.accounts, text: end.accounts }]} className="h-full" />
       </div>
     </div>
@@ -83,7 +88,7 @@ function MoneyWindow({ width }: { width: number }) {
 }
 
 /** The landing's width on the page: the window a little larger than on the Mac. */
-const LANDING_W = 600
+const LANDING_W = 520
 
 /** Where the window the Mac lets go of lands: the page's first block. On a phone the hero
  *  already shows the windows, stacked, and nothing flies, so there is none. */
@@ -94,7 +99,7 @@ export function Landing() {
     // Before it knows the width (the server's HTML) a phone collapses it rather than
     // `display: none`.
     <div data-hero-landing className="overflow-hidden rounded-[10px] max-md:invisible max-md:h-0" style={{ width: LANDING_W }}>
-      <MoneyWindow width={LANDING_W} />
+      <MoneyWindow width={LANDING_W} height={LANDED_H} />
     </div>
   )
 }
@@ -190,7 +195,7 @@ export function Hero() {
           // Hidden by visibility, never display: laid out while it waits, so its table has
           // measured its columns before it is first seen.
           <div ref={flight} aria-hidden className="pointer-events-none fixed top-0 left-0 z-30 origin-top-left rounded-[10px] will-change-transform" style={{ visibility: "hidden" }}>
-            <MoneyWindow width={WINDOW_W} />
+            <MoneyWindow width={WINDOW_W} height={WINDOW_H} />
           </div>,
           document.body,
         )}
@@ -263,6 +268,8 @@ function useDeparture(
       const x = lerp(from.left, l.left, e) - (w * LIFT * near) / 2
       const y = lerp(from.top, vh * LAND_AT, e) - (h * LIFT * near) / 2
       flight.style.transform = `translate3d(${x}px, ${y}px, 0) scale(${k})`
+      // its own height eases from the Mac's half of the screen to the page's, with the rest
+      flight.style.setProperty("--stage-h", `${lerp(WINDOW_H, LANDED_H, e)}px`)
       flight.style.boxShadow = `0 ${24 * near}px ${70 * near}px -16px rgb(0 0 0 / ${0.75 * near})`
     }
     const schedule = () => {
