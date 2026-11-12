@@ -66,10 +66,9 @@ function Prelude({ text }: { text: string }) {
   if (!range) return null
   const lines = runsOf(text, colours).slice(range.from, range.to)
   return (
-    <div data-slot="cells-window-prelude" className="flex max-h-[40%] shrink-0 flex-col border-t border-white/8">
-      <div className="flex h-6 shrink-0 items-center px-3 text-[10px] font-medium text-white/70">Prelude</div>
+    <div data-slot="cells-window-prelude" aria-label="prelude" className="flex max-h-[40%] shrink-0 flex-col border-t border-white/8 p-2">
       {/* its text as code, in a well sunk in the window, as the app shows a script's */}
-      <pre className="mx-2 mb-2 min-h-0 overflow-hidden rounded-md bg-black/30 px-2.5 py-1.5 font-mono text-[10px] leading-[1.6] text-white/85">
+      <pre className="min-h-0 overflow-hidden rounded-md bg-black/30 px-2.5 py-1.5 font-mono text-[10px] leading-[1.6] text-white/85">
         {lines.map((line, i) => (
           <div key={i} className="truncate">
             {line.length === 0

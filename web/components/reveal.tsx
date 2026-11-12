@@ -91,8 +91,9 @@ export function LinkedScene() {
         const people = { name: PEOPLE.path, text: f.texts[PEOPLE.path] as string }
         return (
           <div className="grid gap-3 sm:grid-cols-[1.4fr_1fr]">
-            <CellsWindow name={TRIP.path} text={f.texts[TRIP.path] as string} others={[people]} scene={sceneOf(f, TRIP.path)} className="h-[12rem]" />
-            <CellsWindow name={people.name} text={people.text} className="h-[12rem]" />
+            {/* room for its rows as they are typed and its prelude under them */}
+            <CellsWindow name={TRIP.path} text={f.texts[TRIP.path] as string} others={[people]} scene={sceneOf(f, TRIP.path)} className="h-[14rem]" />
+            <CellsWindow name={people.name} text={people.text} className="h-[14rem]" />
           </div>
         )
       }}
