@@ -228,11 +228,6 @@ export default function Page() {
       </section>
       <div className="mx-auto mt-10 max-w-3xl px-6">
         <Block filename={ONE_FILE.name}>{ONE_FILE.text}</Block>
-        <p className="mt-6 text-center">
-          <a href="#story" className="text-[15px] text-muted-foreground underline decoration-border underline-offset-4 hover:text-foreground">
-            See it built from a CSV, a step at a time
-          </a>
-        </p>
       </div>
 
       <div id="story" className="mt-24 scroll-mt-20 md:mt-32">
