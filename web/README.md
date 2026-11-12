@@ -1,6 +1,6 @@
 # cellular.computer
 
-The Cells site: the landing, every example live on the real engine (this repository's wasm build, copied into `lib/engine`), and the docs at `/docs`, drawn from this repository's own markdown. Built from ui's @ag items, served as static files by a Cloudflare Worker.
+The Cells site: the landing, every example read live by the engine (this repository's wasm build, copied into `lib/engine`), and the docs at `/docs`, drawn from this repository's Markdown. Built from ui's @ag items, served as static files by a Cloudflare Worker.
 
 | | |
 |---|---|
@@ -12,7 +12,7 @@ The Cells site: the landing, every example live on the real engine (this reposit
 | `scripts/docs.ts` | builds every docs page and reads every `cells` block with the engine: it must read whole, and a `cells draft` must not yet |
 
 ```bash
-UI=~/Developer/ui pnpm ui                 # first, every time: each @ag item as ui main has it
+UI=<ui checkout> pnpm ui                  # first, every time: each @ag item as ui main has it
 pnpm install
 pnpm engine                               # the engine and grammar from this repo, after they change
 pnpm dev                                  # :3200; ?still=0.5 holds the hero at a moment
