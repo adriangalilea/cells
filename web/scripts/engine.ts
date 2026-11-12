@@ -45,5 +45,5 @@ for (const [from, to, change] of COPIES) {
   await Bun.write(`${site}/${to}`, change ? change(new TextDecoder().decode(bytes)) : bytes)
   manifest[to] = `${from} sha256:${createHash("sha256").update(bytes).digest("hex").slice(0, 16)}`
 }
-await Bun.write(`${site}/lib/engine/SOURCE.json`, `${JSON.stringify({ from: cells, copied: new Date().toISOString(), files: manifest }, null, 2)}\n`)
+await Bun.write(`${site}/lib/engine/SOURCE.json`, `${JSON.stringify({ copied: new Date().toISOString(), files: manifest }, null, 2)}\n`)
 for (const [to, from] of Object.entries(manifest)) console.log(`${to} ← ${from}`)

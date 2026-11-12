@@ -5,11 +5,10 @@ out/
 next-env.d.ts
 *.tsbuildinfo
 
-# Paid @ag items (components.json's registry, Adrian's licence): their source never enters
-# a repository that may become public. `pnpm ui` installs them from a ui checkout before a
-# build; app/globals.css names them to Tailwind with @source, since Tailwind skips what git
-# ignores.
-# shimmer is a studio item: Adrian's own projects only, never published.
+# Paid @ag items (components.json's registry, under its own licence): their source never
+# enters a public repository. `pnpm ui` installs them from a ui checkout before a build;
+# app/globals.css names them to Tailwind with @source, since Tailwind skips what git
+# ignores. shimmer is a studio item, never published.
 components/ui/shimmer.tsx
 components/ui/macos.tsx
 components/ui/table.tsx

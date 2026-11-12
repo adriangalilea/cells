@@ -1,5 +1,4 @@
 {
-  "from": "/Users/adrian/Developer/cells",
   "copied": "2026-11-08T18:38:49.495Z",
   "files": {
     "lib/engine/cells.ts": "rust/cells-wasm/js/cells.ts sha256:3c16abd8cd6e0bdb",

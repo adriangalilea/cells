@@ -3,8 +3,8 @@
 // installer keeps every file whole (ui's patch: stock shadcn drops a file's opening
 // comments, the licence line of a paid item among them). With no items named, every item
 // the site uses (scripts/ui-items), so each is ui main's as it stands; the paid and studio
-// ones git ignores here (Adrian holds the paid ones' licence; studio items are his own
-// projects' alone; neither's source enters this repository). Run it before every build;
+// ones git ignores here (the paid ones are under their own licence, studio items are
+// never published; neither's source enters this repository). Run it before every build;
 // `pnpm check` fails while an installed item differs from the checkout's
 // (scripts/ui-fresh.ts).
 //

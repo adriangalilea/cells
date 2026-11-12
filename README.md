@@ -148,7 +148,6 @@ Each column starts on a multiple of four characters, two spaces at least after i
 | [ENGINE.md](ENGINE.md) | the engine every app reads and writes through: v0, one Mac, and what comes later |
 | [EDITORS.md](EDITORS.md) | the language server, `cells lsp`, and Helix, Neovim and VS Code set up for it |
 | [web/README.md](web/README.md) | the site, cellular.computer: how it is built from this repo's engine and ui's items, and its docs drawn from these documents |
-| [web/TODO.md](web/TODO.md) | what the site still owes |
 | [ACCOUNTING.md](ACCOUNTING.md) | books kept in Cells, drafted with the primitives the spec proposes |
 
 ## The syntax
