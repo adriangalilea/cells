@@ -289,9 +289,14 @@ fn main() -> ExitCode {
             }
         }
         // DuckDB is `cells-sql`'s alone, so this binary (which every editor's language server
-        // is) stays small: the query is handed to it, found beside this binary or on the PATH
+        // is) stays small: the query is handed to it, found beside this binary (the real one: on
+        // the PATH `cells` is a link into Cells.app, whose Helpers hold both) or on the PATH
         Some("sql") => {
-            let here = std::env::current_exe().ok().and_then(|e| e.parent().map(|d| d.join("cells-sql"))).filter(|p| p.is_file());
+            let here = std::env::current_exe()
+                .and_then(|e| e.canonicalize())
+                .ok()
+                .and_then(|e| e.parent().map(|d| d.join("cells-sql")))
+                .filter(|p| p.is_file());
             let sql = here.unwrap_or_else(|| PathBuf::from("cells-sql"));
             match std::process::Command::new(&sql).args(&args[1..]).status() {
                 Ok(status) => ExitCode::from(status.code().map_or(2, |c| c as u8)),
