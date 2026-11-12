@@ -286,7 +286,7 @@ Rust because it runs as fast as C and reaches every other surface: a C ABI, wasm
 
 ### Next, in order
 
-1. **Cells.app writing through the engine.** It is a client already: its folders served by the engine, their changes and history read from it (swift-utils' `Cells.Daemon`). The engine takes intents (`Cells.Daemon.apply`); next, the app's edits sent as intents instead of its saves, the `id` column never shown, a refusal shown where the edit was made; then intents across several files, and replay after a crash.
+1. **Cells.app reading through the engine.** Its folders are served by the engine, their changes and history read from it, and its edits written as intents (swift-utils' `Cells.Daemon`); next, its documents read from the engine's parse rather than their own; then intents across several files, and replay after a crash.
 2. **Cells.app's window**, designed and used until it is right: its folder, its prelude a first-class panel written with completions, heads saying what each column is. Then the site's Cells window and hero follow it.
 3. **SQL/PGQ in `cells sql`**, references walked as edges, once DuckDB's `duckpgq` can be built into the binary ([rust/README.md](rust/README.md#cells-sql)).
 4. **The npm package** `@adriangalilea/cells`: the wasm build and its wrapper, published.
