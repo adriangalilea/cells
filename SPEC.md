@@ -330,7 +330,7 @@ invoice 42,80.00,1,79.99
 - **A computed cell**, `84.20=`, is the column's formula's on its row: its value is what the formula gives there, and the file stores it. A blank field, or a lone `=`, is a computed cell whose value is not stored yet (a file written by hand): it reads the same, and the next write stores it. A computed cell is never missing, whatever the column's `?`.
 - **A written cell**, with no `=`, is the row's override: read by the column's type as any cell is, shown as an override and never a problem for being one, never touched by a write. The invoice says the VAT was 13.37 where the formula gives 13.36, and the invoice is what happened.
 - **A formula may read any column**, after its own or before it, and other formulas' columns: they are computed in the order their reads need. It reads its own column only on other rows ([Rows by where they are](#rows-by-where-they-are)); one that reads its own cell, directly or through others, is an error naming its column.
-- Considered: the prelude, where the column was never where it is read and was always `num?`.
+- Considered: the formula in the prelude alone, where the column is never where it is read and is always `num?`.
 
 ### A formula in a cell
 
@@ -440,11 +440,11 @@ A writer changing a type writes the shorthand, then its formula when it has one 
 - **A file formatted is a function of its content**: formatting twice is formatting once, and `cells fmt --check` holds in CI.
 - **Alignment is a writer's setting, on by default.** `cells fmt --align off`, and the language server's `align` setting, write each field with no padding; reading never depends on which.
 
-The cost, said plainly: a value made wider than its column's stop re-pads that column on every line of its table, so a one-value edit can show as a whole-column diff. Each part of the format keeps that rare or invisible. The stops let a value grow by up to four characters before anything moves; the cap keeps one long value from moving the rest; `cells merge` merges by value, so padding never conflicts ([Merging](#merging)); and `cells diff`, git's textconv for `*.cells`, compares two versions with their padding taken out, so a diff shows the values that changed and nothing else ([EDITORS.md](EDITORS.md)). A host that runs no textconv (a code host's web view) has its own "ignore whitespace". A person who would rather have the smallest diff than the aligned file turns alignment off.
+The cost: a value made wider than its column's stop re-pads that column on every line of its table, so a one-value edit can show as a whole-column diff. The format keeps that rare or invisible. The stops let a value grow by up to four characters before anything moves; the cap keeps one long value from moving the rest; and `cells diff`, git's textconv for `*.cells`, compares two versions with their padding taken out, so a diff shows only the values that changed ([EDITORS.md](EDITORS.md)). A host that runs no textconv (a code host's web view) has its own "ignore whitespace". A merge compares lines with their padding ([Merging](#merging)), so a column re-padded on one branch can conflict with an edit to the same lines on the other. A person who prefers the smallest diff to the aligned file turns alignment off.
 
 ### Merging
 
-Two versions of a file merge row by row (each row by its identity, [Open](#open)), and a computed cell is never a conflict: what is right of its `=` merges as text, what is left of it is computed again from the merged rows, and only written cells, the header and the prelude can conflict. `cells merge` is that merge, as git's merge driver (`*.cells merge=cells` in `.gitattributes`, the driver `cells merge %O %A %B`). Two branches that each add a movement to a running balance merge into one file with every balance right, where a text merge conflicts on every row below the first insertion.
+Two versions of a file merge by what was written, and a computed cell is never a conflict: what is right of its `=` merges as text, what is left of it is computed again from the merged rows, and only written cells, the header and the prelude can conflict. `cells merge` is that merge, as git's merge driver (`*.cells merge=cells` in `.gitattributes`, the driver `cells merge %O %A %B`): each version's stored values dropped, the three texts merged line by line by git's own merge, and the merged file's computed cells stored again; a conflict is left in the file with git's markers. Two branches that each add a movement to a running balance merge into one file with every balance right, where a text merge conflicts on every row below the first insertion. Merging row by row, each row by its identity, is [Open](#open).
 
 The shorthand, as a writer writes it:
 
@@ -474,7 +474,7 @@ In v0 a script is a program with the whole access of its runner, its imports res
 
 ### What it is for
 
-The use it is designed against is **plain text accounting done properly**: books kept as plain files (a `money.cells` per folder), readable, diffable and the person's own, with what ledgers in plain text never could do: say that an amount is euros, that an account must exist, that VAT is derived from the amount, that an invoice appears once, and answer any question across every file. Every decision below is judged by whether it makes those books better.
+The use Cells is designed against is **plain text accounting**: books kept as plain files (a `money.cells` per folder), readable, diffable and their owner's, that say what plain text ledgers cannot: that an amount is euros, that an account must exist, that VAT is derived from the amount, that an invoice appears once; and that answer any question across every file. Every decision below is judged by whether it makes those books better.
 
 ### Decided in direction, not yet written
 
@@ -488,7 +488,7 @@ The use it is designed against is **plain text accounting done properly**: books
   └── studio/money.cells
   ```
 - **Fixes a reference offers**: `did you mean "rent"?`, `add it to accounts.cells`, so a new account never means opening the other file by hand; and for a plain text column, a value seen once beside a near spelling seen often a hint, never a problem.
-- **Every row has an identity.** A file's key (`!`) is its rows' identity. A file with none gets an `id` column the first time the engine writes it, eight characters from a base-32 alphabet, unique within the file, assigned only by the engine and never edited through it. Edits address a row by its identity, never by its position, so a line inserted by hand elsewhere never makes an edit land on the wrong row, and two versions of a file merge row by row. A row without one (added by a tool that bypasses the engine) is found by its text until the engine next writes the file, which gives it one; a copied row's repeated id is replaced on the later copy. Apps built on the engine never show the column.
+- **Every row has an identity.** A file's key (`!`) is its rows' identity. A file with none gets an `id` column the first time an edit through the engine writes it, eight characters from a base-32 alphabet, unique within the file, assigned only by the engine and never edited through it. Edits address a row by its identity, never by its position, so a line inserted by hand elsewhere never makes an edit land on the wrong row, and two versions of a file merge row by row. A row without one (added by a tool that bypasses the engine) is found by its text until an edit through the engine next writes the file, which gives it one; a copied row's repeated id is replaced on the later copy. Apps built on the engine never show the column. The engine does this for its intents, one file at a time ([ENGINE.md](ENGINE.md)); merging row by row is not built.
 - **One fact, one row, one file.** A movement is one row holding both its sides (`account_from`, `account_to`), so recording it is one write. A change that must touch several files (an account renamed in every file that references it) is an intent the engine journals before applying file by file, and replays after a crash; every intent is safe to apply twice.
 - **What books need**, the accounting primitives (ACCOUNTING.md drafts the books with them):
   - **An amount whose currency is another cell**, `amount:money in commodity`, or reached through a reference, `money in account.commodity`; and commodities beyond ISO 4217 (a share, a fund, points) declared in a file.
@@ -497,30 +497,46 @@ The use it is designed against is **plain text accounting done properly**: books
   - **References to a file's own rows** (`pending:TABLE.id`, by the name formulas read the file's own table by, [The language](#the-language)), for a payment that settles a hold, a row that corrects another, rows that are one transaction.
   - **`check`**: a rule over many rows or files, a query in the prelude returning the rows that break it, checked before every write and by `cells check` (a balance that must hold on a date, an account open on a movement's date). The prelude is where it lives, beside the data it guards; it is SQL, the language formulas are a part of, whole, in DuckDB.
 - **Go's checksum log** for pinned imports, proving everyone got the same bytes and not only you, once files are published widely.
-- **The query language: standards, never one of ours.** **SQL**, which every reader knows and which already runs over files; a folder of `.cells` is typed tables, so `amount` is a number and `date` a date. `cells sql` runs it, DuckDB's SQL whole over a folder's typed columns, each row with the `file` it is read from; how it maps the types and what it costs is in [rust/README.md](rust/README.md#cells-sql).
-  ```console
-  $ cells sql ~/books "
-    SELECT vendor, SUM(amount) FROM money
-    WHERE account_to LIKE 'expenses:home:%' AND YEAR(date) = 2026
-    GROUP BY vendor"
-  ```
-  `money` is every `money.cells` under the folder, one table, its words in capitals as a formula's are. **SQL/PGQ** (SQL:2023, property graph queries) walks the references: GQL's `MATCH` inside SQL, so one query walks the graph and then sums and groups. DuckDB has it as the extension `duckpgq`, not yet built into `cells sql` (rust/README.md). GQL alone (ISO/IEC 39075, 2024, Cypher's successor) has the graph's shape, a movement to its account, an account to its parent, a vendor to everything it touched, but is awkward for sums and grouping, which are most of accounting: so the two standards, composed, nothing invented.
-  ```console
-  $ cells sql ~/books "
-    FROM GRAPH_TABLE(books
-      MATCH (m:money)-[:account_to]->(a:accounts)
-      WHERE a.account LIKE 'expenses:%'
-      COLUMNS (a.account, m.amount))
-    SELECT account, SUM(amount) GROUP BY account"
-  ```
-- **Tooling, so the format is pleasant everywhere.** Like rainbow CSV, but with the types. The tree-sitter and TextMate grammars, the language server, Cells.app and ui's table are built ([EDITORS.md](EDITORS.md)); an editor that starts a server only from an extension (VS Code) has none yet.
-- **Visualisation for free, because it is typed.** A chart needs to know what each column is: a date is a time axis, money is a measure in its currency, a choice is a category, a reference a link to follow. An untyped CSV makes every chart guess or be configured; a Cells file says it, so a table can be charted as it is (spending by month, by account, by vendor), and the graph of files drawn as a graph. Every place that shows a Cells file shows its charts: ui's components, the Apple platforms' (Swift Charts over the typed columns), and the Mac app. Its colours are the values' looks ([How a value looks](#how-a-value-looks)); what a chart needs beyond the types and the looks (which columns, which kind of chart) is declared in the prelude, never scripted, so a file sent as a chart is seen without running anything: a spreadsheet's charts are declarations too, and its macros apart.
+- **Queries in standards, never a language of Cells' own**: SQL, and SQL/PGQ to walk references ([The query language](#the-query-language)).
+- **Tooling in every editor**, each column coloured as Rainbow CSV colours one, by its type. The tree-sitter and TextMate grammars, the language server, Cells.app and ui's table are built ([EDITORS.md](EDITORS.md)); an editor that starts a server only from an extension (VS Code) has none yet.
+- **Charts from the types.** A chart needs to know what each column is: a date is a time axis, money a measure in its currency, a choice a category, a reference a link to follow. An untyped table makes every chart guess or be configured; a Cells file says it, so a table can be charted as it is (spending by month, by account, by vendor), and the graph of files drawn as a graph. Every place that shows a Cells file is to show its charts: the Apple platforms draw them (Swift Charts over the typed columns, in Cells.app); ui's components do not yet. Their colours are the values' looks ([How a value looks](#how-a-value-looks)); what a chart needs beyond the types and the looks (which columns, which kind of chart) is declared in the prelude, never scripted, so a file sent as a chart is seen without running anything: a spreadsheet's charts are declarations too, and its macros apart.
+
+### The query language
+
+No query language is part of the format yet. What exists is a tool, `cells sql <file|folder>... <query>`, which runs a query in DuckDB's SQL over the engine's typed columns; DuckDB is in a binary of its own, `cells-sql`, which `cells sql` runs.
+
+- **Tables.** Every `.cells` file under the paths is a table named by its file's stem, and so is every file they import from the disk and every table a prelude writes, by its name. Tables of one name are one table: every `money.cells` under a folder is `money`, its columns joined by name, null in a file without them. Every table has one more column, `file`, the path its row is read from.
+- **Values.** Each column has its type's SQL type: money `DECIMAL(38, s)` at its scale, a `num` `DECIMAL` too, a date `DATE`, a choice an `ENUM` of its words in their order, a reference its key's type ([rust/README.md](rust/README.md#cells-sql) has the whole mapping and what it costs). A computed cell is the value its formula gives; a broken cell is null. One column holding two kinds of value in two files (two currencies, two choices of other words) stops the query, both files named.
+- **The query** is DuckDB's SQL, whole, and the answer is written as `cells show` writes a table. No DuckDB extension is installed or loaded, so a query fetches nothing. Over files with problems the answer is still written, stderr says how many, and it exits 1; a query that cannot run exits 2.
+
+```console
+$ cells sql ~/books "
+  SELECT vendor, SUM(amount) FROM money
+  WHERE account_to LIKE 'expenses:home:%' AND YEAR(date) = 2026
+  GROUP BY vendor"
+```
+
+**Decided in direction: standards, never a language of Cells' own.** SQL, which every reader knows and which already runs over files: a folder of `.cells` files is typed tables, so `amount` is a number and `date` a date. **SQL/PGQ** (SQL:2023, property graph queries) to walk the references: GQL's `MATCH` inside SQL, so one query walks the graph and then sums and groups. GQL alone (ISO/IEC 39075, 2024, Cypher's successor) has the graph's shape (a movement to its account, an account to its parent, a vendor to everything it touched), but is weak at sums and grouping, which are most of accounting: so the two standards composed, nothing invented. `cells sql` does not run SQL/PGQ: DuckDB has it only as the community extension `duckpgq`, which is not built in ([rust/README.md](rust/README.md#cells-sql)). A query of the shape intended, which does not run:
+
+```console
+$ cells sql ~/books "
+  FROM GRAPH_TABLE(books
+    MATCH (m:money)-[:account_to]->(a:accounts)
+    WHERE a.account LIKE 'expenses:%'
+    COLUMNS (a.account, m.amount))
+  SELECT account, SUM(amount) GROUP BY account"
+```
+
+**Undecided**:
+
+- whether a query language becomes part of the format, so every reader answers a query the same way, or stays the tools'. `cells sql` is DuckDB's dialect, not the standard's, and differs from a formula where the two meet: DuckDB's `/` and `AVG` on decimals give a `DOUBLE`, where a formula's `/` is exact to 34 digits.
+- how a folder is a property graph: its name, which tables are vertex tables and which edge tables, and how a reference column becomes an edge ([rust/README.md](rust/README.md#cells-sql) sketches one).
 
 ### Undecided
 
-- **The command line beyond `check`, `fix`, `fmt`, `diff`, `merge`, `pin`, `run`, `show`, `sql`, `serve` and `lsp`**: what else a folder-as-database needs (a visualisation of the graph, a rename followed through every file from the shell).
+- **The command line beyond `check`, `fix`, `fmt`, `diff`, `merge`, `pin`, `run`, `allow`, `history`, `show`, `sql`, `serve` and `lsp`**: what else a folder-as-database needs (a visualisation of the graph, a rename followed through every file from the shell).
 - **The block's name.** "Prelude" reads well in prose, but to a programmer a prelude is the standard definitions a language loads into every file unasked (Haskell's `Prelude`, Rust's `std::prelude`), where this block is one file's own, explicit declarations. The candidates: frontmatter (the shape everyone knows and searches for; Astro puts code in its own, and calls it "component frontmatter" beside its "component script"; the one risk, a tool reading a `---` at a file's top as YAML, is met only in Markdown), preamble (LaTeX's exact role, imports and definitions before the body, but it needs explaining), or keeping prelude. A rename reaches the spec, the engine's messages, both grammars' names, the language server and ui, so it is made once and whole, with no alias kept, when it is decided.
-- **Words about a column and a title for the table.** A header cell has no room for a description without bloating it; a column's declaration in the prelude ([Columns](#columns)) is the natural place, its syntax for them open.
+- **Words about a column and a title for the table.** A header cell has no room for a description; a column's declaration in the prelude ([Columns](#columns)) is the likely place, its syntax open.
 - **Strictness.** A broken cell and a broken grammar load and are reported ([Reading](#reading)); whether a reader may also be asked to refuse a file is not decided.
 - **Narrowing a reference** to some of the rows it names (`from` an account of kind `assets` or `income`): in the header cell (`from:accounts.account(kind=assets|income)`), or as a `check`, which keeps the header readable where the rule spans two files.
 - **Provenance: what was known on a date, and who may write what.** Two problems. A run replaces a corrected row, so the rate a report used before the correction lives only in git. And anyone can edit a block the engine owns, or a file a process owns: locks on a Mac are advisory, so the engine can only detect an edit, never prevent one. The candidates, none decided:
