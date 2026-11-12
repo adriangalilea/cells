@@ -432,6 +432,14 @@ impl<W: World> Daemon<W> {
             return Ok(FromEngine::Applied { file: file.to_path_buf(), intent: id.to_owned(), version, assigned });
         }
         let k = key(file);
+        // a whole text kept as the version it is, so the client's next text, made against it,
+        // can be compared with it whether or not the file ever held it (another writer's
+        // change laid in, its rows given ids)
+        for op in &ops {
+            if let Op::Text { text, .. } = op {
+                self.keep(file, text);
+            }
+        }
         let ops_core: Vec<cells::intent::Op> = ops.iter().map(Into::into).collect();
         // the version it was made against, kept whole: what a whole text is compared with
         let named = against.len() == 64 && against.bytes().all(|b| b.is_ascii_hexdigit());

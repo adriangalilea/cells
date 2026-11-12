@@ -665,6 +665,7 @@ fn a_whole_text_is_written_logged_by_its_version_and_laid_over_a_moved_file() {
     let edit = log.iter().find(|l| l.contains("\"kind\":\"edit\"")).expect("the edit logged");
     assert!(edit.contains(&format!("\"op\":\"text\",\"version\":\"{}\"", hash(&mine))), "by its version: {edit}");
     assert!(!edit.contains("\"text\":"), "never its text: {edit}");
+    assert_eq!(d.world().get(&format!("/w/.cells/versions/{}", hash(&mine))), mine, "its text kept, though the file never held it");
     // someone saves the income row; the app, not having heard, sends its next text made
     // against the version it holds: its row laid over theirs
     d.world().put(Q4, &q4.replace(",income,4200.00,0.00=", ",income,4300.00,0.00="));
