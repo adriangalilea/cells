@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # What Cells.app carries, in rust/target/apple/engine: the engine for CellsEngine.app, one
 # static library for macOS (arm64 and x86_64, one universal slice) with its header and module
-# map; and the `cells` command for Contents/Helpers, for this Mac's architecture (the app
-# signs it). macOS only: on iOS an app holds the engine in its own process.
+# map; and for Contents/Helpers, for this Mac's architecture (the app signs them), the
+# `cells` command and `cells-sql`, which holds DuckDB and runs `cells sql`. macOS only: on iOS an app holds the engine in its own process.
 #
 #   rust/cells-daemon/build-apple.sh
 set -euo pipefail
@@ -23,6 +23,8 @@ mkdir -p "$out/include"
 cp "$here/include/cells_engine.h" "$here/include/module.modulemap" "$out/include/"
 lipo -create "$root/target/aarch64-apple-darwin/apple/libcells_daemon.a" "$root/target/x86_64-apple-darwin/apple/libcells_daemon.a" -output "$out/libcells_daemon.a"
 echo "libcells_daemon.a: $(( $(stat -f %z "$out/libcells_daemon.a") / 1024 )) KB, in $out"
-cargo build -q --profile apple -p cells-cli
-strip -S -x -o "$out/cells" "$root/target/apple/cells" 2> /dev/null
-echo "cells: $(( $(stat -f %z "$out/cells") / 1024 )) KB, in $out"
+cargo build -q --profile apple -p cells-cli -p cells-sql
+for bin in cells cells-sql; do
+  strip -S -x -o "$out/$bin" "$root/target/apple/$bin" 2> /dev/null
+  echo "$bin: $(( $(stat -f %z "$out/$bin") / 1024 )) KB, in $out"
+done
