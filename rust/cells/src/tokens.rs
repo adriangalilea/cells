@@ -626,7 +626,9 @@ fn look(source: &str, s: usize, e: usize, named: &[NamedType], out: &mut Out) {
         out.push(s + 4, e, Kind::Error, NONE);
         return;
     };
-    let kind = match &source[s + target.start..s + target.end] {
+    let first = out.tokens.len();
+    let spelled = &source[s + target.start..s + target.end];
+    let kind = match spelled {
         "row" => Kind::Keyword,
         t if named.iter().any(|n| n.name == t) => Kind::Type,
         _ => Kind::Name,
@@ -642,6 +644,11 @@ fn look(source: &str, s: usize, e: usize, named: &[NamedType], out: &mut Out) {
             out.push(comma, comma + 1, Kind::Punct, NONE);
         }
     }
+    // Resolved once the header is read, as a declared column is: a look for a column takes
+    // its column, and its conditions' names read the header's columns. A row's or a named
+    // type's look names no column (no column's name is empty).
+    let column = if kind == Kind::Name { unquoted(spelled) } else { String::new() };
+    out.declared.push((column, first..out.tokens.len()));
 }
 
 /// A look rule's words `start..end`: its keywords, tints, number, pattern and condition.
@@ -1057,6 +1064,29 @@ mod tests {
         assert_eq!(at("cost", formula).reads, 1);
         assert_eq!(at("qty", formula).reads, 2);
         assert_eq!(at("total", src.find("---\nitem").unwrap()).column, 3, "the header's bare name");
+        assert!(t.iter().all(|x| x.kind != Kind::Error), "{t:?}");
+    }
+
+    #[test]
+    fn a_looks_names_are_its_header_cells_columns() {
+        let src = "---\ntype Money = EUR\nlook cost: grouped, red when cost > qty\nlook row: green when paid\nlook Money: negative red\n---\nitem:text!,cost:Money,qty:int,paid:yes/no\nfuel,1,2,yes\n";
+        let t = tokens(src);
+        let at = |spelled: &str, from: usize| {
+            let start = src[from..].find(spelled).unwrap() + from;
+            *t.iter().find(|x| x.start as usize == start).unwrap_or_else(|| panic!("no token at {spelled}"))
+        };
+        // A column's look takes its column, its target's name and its rules' words alike.
+        let look = src.find("look cost").unwrap();
+        assert_eq!((at("cost", look).kind, at("cost", look).column), (Kind::Name, 1));
+        assert_eq!(at("grouped", look).column, 1);
+        // Its condition's names read the header's columns, as a formula's do.
+        let when = src.find("when cost").unwrap();
+        assert_eq!((at("cost", when).kind, at("cost", when).reads), (Kind::Reference, 1));
+        assert_eq!(at("qty", when).reads, 2);
+        // A row's look, and a named type's, name no column; their conditions still read.
+        assert_eq!(at("paid", src.find("when paid").unwrap()).reads, 3);
+        assert_eq!(at("green", src.find("look row").unwrap()).column, NONE);
+        assert_eq!(at("Money", src.find("look Money").unwrap()).column, NONE);
         assert!(t.iter().all(|x| x.kind != Kind::Error), "{t:?}");
     }
 
