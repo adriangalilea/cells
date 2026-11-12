@@ -227,6 +227,13 @@ pub(crate) fn caught<R>(f: impl FnOnce() -> R) -> (R, Vec<String>) {
             self.0.lock().unwrap().push(line(depth, &fields.message, &fields.rest));
         }
     }
+    // A thread capturing nothing dispatches to a registry that keeps nothing, never to
+    // tracing's no-op subscriber: that one answers "never" for a callsite, cached for every
+    // thread, which silences the callsite in a capture running beside it.
+    static QUIET: std::sync::Once = std::sync::Once::new();
+    QUIET.call_once(|| {
+        let _ = tracing::subscriber::set_global_default(tracing_subscriber::registry());
+    });
     let lines = Arc::new(Mutex::new(Vec::new()));
     let subscriber = tracing_subscriber::registry().with(Catch(Arc::clone(&lines)));
     let out = tracing::subscriber::with_default(subscriber, f);
