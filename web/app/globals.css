@@ -65,6 +65,11 @@
   --muted-foreground: oklch(0.5 0.012 255);
   --accent: oklch(0.955 0.004 250);
   --accent-foreground: var(--foreground);
+  /* The ground a ui item lays under what it frames (a code block, a lightbox's panel): a
+     step off the page, opaque, so the shimmer never shows through it. */
+  --sidebar: oklch(0.97 0.004 250);
+  --sidebar-foreground: var(--foreground);
+  --sidebar-border: var(--border);
   --destructive: oklch(0.6 0.19 40);
   --border: oklch(0.2 0.01 255 / 9%);
   --input: oklch(0.2 0.01 255 / 12%);
@@ -92,6 +97,9 @@
   --muted-foreground: oklch(0.68 0.012 250);
   --accent: oklch(0.21 0.012 255);
   --accent-foreground: var(--foreground);
+  --sidebar: oklch(0.15 0.008 255);
+  --sidebar-foreground: var(--foreground);
+  --sidebar-border: var(--border);
   --destructive: oklch(0.72 0.15 55);
   --border: oklch(1 0 0 / 8%);
   --input: oklch(1 0 0 / 12%);
