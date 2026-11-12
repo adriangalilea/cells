@@ -46,13 +46,14 @@ const useHero = () => hero(useEngine())
 /** The site's cold edge light: the accent of every terminal and editor on the page. */
 export const ACCENT = "#7fdcf0"
 /** The windows on the Mac's stage (960 by 600, ui macos): 36 from the top (under the menu
- *  bar), 12 from the foot and the sides, 12 between them. The money window, the one that
- *  flies, the full height on the left; accounts on the right. */
+ *  bar), 12 from the foot and the sides, 12 between them, the screen split in two halves of
+ *  the full height. The money window, the one that flies, on the left; accounts on the
+ *  right. */
 const INSET = 12
 const TOP = 36
-const WINDOW_W = 560
+const WINDOW_W = (960 - 3 * INSET) / 2
 const WINDOW_H = 600 - TOP - INSET
-const SIDE = { left: INSET + WINDOW_W + INSET, width: 960 - (INSET + WINDOW_W + INSET) - INSET, height: 300 }
+const SIDE = { left: INSET + WINDOW_W + INSET, width: WINDOW_W, height: WINDOW_H }
 
 /** Every window's file and the hand at the hero's instant. */
 function useFrame(ms: number) {
