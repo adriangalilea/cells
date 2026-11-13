@@ -1,7 +1,8 @@
 {
+  "types": { "Kind": "income#green|cost|transfer#blue|refund" },
   "columns": [
     { "name": "date", "type": "date" },
-    { "name": "kind", "type": "income#green|cost|transfer#blue|refund?" },
+    { "name": "kind", "type": "Kind?" },
     { "name": "amount", "type": "EUR" }
   ],
   "rows": [
@@ -13,6 +14,7 @@
     { "date": { "date": "2026-02-03" }, "kind": { "choice": "cost" }, "amount": { "money": "60.00", "currency": "EUR" } }
   ],
   "problems": [],
+  "tints": { "kind": { "income": "green", "transfer": "blue" } },
   "charts": [
     {
       "kind": "bars",

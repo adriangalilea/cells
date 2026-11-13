@@ -1,11 +1,13 @@
 ---
+type Kind = income#green|cost|transfer#blue|refund
+
 ```chart bars
 x:     DATE_TRUNC('month', date)
 y:     SUM(amount)
 color: kind
 ```
 ---
-date:date,kind:income#green|cost|transfer#blue|refund?,amount:EUR
+date:date,kind:Kind?,amount:EUR
 2026-01-02,refund,5.00
 2026-01-03,cost,40.00
 2026-01-04,income,900.00
