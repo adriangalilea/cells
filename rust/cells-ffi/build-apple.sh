@@ -9,6 +9,10 @@
 # builds only on nightly (tier 3). No visionOS slice: nothing that links it claims visionOS.
 #
 #   rust/cells-ffi/build-apple.sh
+#
+# `--mac` builds this Mac's slice alone, incrementally, into rust/target/apple/mac/
+# CellsCore.xcframework: what an app built against this checkout links while it is
+# developed (apps set CELLS_CORE to it), seconds after an edit, no release in the loop.
 set -euo pipefail
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 root="$here/.."
@@ -16,9 +20,37 @@ cd "$root"
 export DEVELOPER_DIR="${DEVELOPER_DIR:-/Applications/Xcode.app/Contents/Developer}"
 # The deployment targets the apps that link it build for.
 export MACOSX_DEPLOYMENT_TARGET=26.0 IPHONEOS_DEPLOYMENT_TARGET=26.0 TVOS_DEPLOYMENT_TARGET=26.0
+
+# A target this toolchain cannot build stops the build, saying why: rustup's own words.
+add() {
+  local said
+  if ! said=$(rustup target add "$1" 2>&1); then
+    echo "build-apple.sh: rustup cannot add $1:" >&2
+    echo "$said" >&2
+    echo "(a newer stable may have it: rustup update stable)" >&2
+    exit 1
+  fi
+}
+
+if [ "${1:-}" = "--mac" ]; then
+  t=aarch64-apple-darwin
+  add "$t"
+  cargo build -q --profile apple -p cells-ffi --lib --target "$t"
+  out="$root/target/apple/mac"
+  mkdir -p "$out/headers"
+  cbindgen -q --config "$here/cbindgen.toml" --crate cells-ffi --output "$out/headers/cells.h" "$here"
+  cp "$here/module.modulemap" "$out/headers/module.modulemap"
+  strip -S -x -o "$out/libcells_ffi.a" "$root/target/$t/apple/libcells_ffi.a" 2> /dev/null
+  rm -rf "$out/CellsCore.xcframework"
+  xcodebuild -create-xcframework -library "$out/libcells_ffi.a" -headers "$out/headers" \
+    -output "$out/CellsCore.xcframework" > /dev/null
+  echo "CellsCore.xcframework (this Mac): $out/CellsCore.xcframework"
+  exit 0
+fi
+
 targets=(aarch64-apple-darwin x86_64-apple-darwin aarch64-apple-ios aarch64-apple-ios-sim aarch64-apple-tvos aarch64-apple-tvos-sim)
 for t in "${targets[@]}"; do
-  rustup target add "$t" > /dev/null 2>&1
+  add "$t"
   cargo build -q --profile apple -p cells-ffi --lib --target "$t"
 done
 
