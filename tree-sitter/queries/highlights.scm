@@ -271,11 +271,12 @@
     ")"
   ] @punctuation.bracket)
 
+; The `=` that says "computed", one colour wherever it stands: a header cell's
+; before its column's formula, and a computed cell's, left of it what the file
+; stores, right of it how it is computed (SPEC, A cell).
 (header_cell
-  "=" @operator)
+  "=" @punctuation.special)
 
-; A computed cell's `=`: left of it what the file stores, right of it how it
-; is computed (SPEC, A cell).
 (computed_cell
   "=" @punctuation.special)
 
