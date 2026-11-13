@@ -203,25 +203,25 @@ impl<W: World> Daemon<W> {
     /// watched too. A folder inside one served already is that one. A folder holding ones
     /// served already takes them in: their files stay held, each logging where its history
     /// began (the folder nearest it), so a book opened from a quarter's file first and from
-    /// its index next is one book. The home folder or the disk's root whole is refused.
+    /// its index next is one book. The home folder and the disk's root are served shallow,
+    /// their own files alone and never what is under them, so a file kept there is followed
+    /// without the engine crawling the whole disk.
     pub fn serve(&mut self, root: &Path) -> Result<PathBuf, String> {
-        if let Some(holder) = self.served.iter().map(|l| l.root.as_path()).find(|r| root.starts_with(r)) {
-            return Ok(holder.to_path_buf());
+        if let Some(holder) = self.served.iter().find(|l| l.root == root || (l.whole && root.starts_with(&l.root))) {
+            return Ok(holder.root.clone());
         }
-        if root == self.world.home() || root.parent().is_none() {
-            return Err(format!("{} is too wide to serve whole: serve the folder your files are in", root.display()));
-        }
-        let span = tracing::info_span!(target: ENGINE, "serve", path = %root.display());
+        let whole = root != self.world.home() && root.parent().is_some();
+        let span = tracing::info_span!(target: ENGINE, "serve", path = %root.display(), whole);
         let _serving = span.enter();
         self.world.lock(root)?;
-        self.watch(root, true)?;
-        let (log, broken) = Log::open(root, &self.world);
+        self.watch(root, whole)?;
+        let (log, broken) = Log::open(root, whole, &self.world);
         if let Some(why) = broken {
             warned!(why, "log broken: kept and continued, what it says past there cannot be trusted");
         }
         self.served.push(log);
         let held = self.folder.paths().count();
-        let found = self.world.list(root);
+        let found = self.world.list(root, whole);
         for path in &found {
             // a file of a folder served already, taken in, is held as it was
             if self.folder.text(&key(path)).is_some() {
@@ -343,7 +343,12 @@ impl<W: World> Daemon<W> {
             ToEngine::History { folder, file, limit } => {
                 let chains = match &file {
                     Some(f) => history::chains(self.served.iter(), |p| p == f, limit),
-                    None => history::chains(self.served.iter(), |p| p.starts_with(&folder), limit),
+                    // the files the folder holds, as it is served (`Log::holds`); a folder
+                    // inside one served, every file under it
+                    None => match self.served.iter().find(|l| l.root == folder) {
+                        Some(log) => history::chains(self.served.iter(), |p| log.holds(p), limit),
+                        None => history::chains(self.served.iter(), |p| p.starts_with(&folder), limit),
+                    },
                 };
                 FromEngine::History { chains }
             }
@@ -950,9 +955,10 @@ impl<W: World> Daemon<W> {
         self.served.iter().find(|l| l.root == root)
     }
 
-    /// The folder served nearest `path`: the one its history is logged in.
-    fn root_of(&self, path: &Path) -> Option<&Path> {
-        self.served.iter().map(|l| l.root.as_path()).filter(|r| path.starts_with(r)).max_by_key(|r| r.components().count())
+    /// The folder served nearest `path`, of those holding it (`Log::holds`): the one its
+    /// history is logged in.
+    pub(crate) fn root_of(&self, path: &Path) -> Option<&Path> {
+        self.served.iter().filter(|l| l.holds(path)).map(|l| l.root.as_path()).max_by_key(|r| r.components().count())
     }
 
     /// A path as the trace says it: from its folder served, else whole.

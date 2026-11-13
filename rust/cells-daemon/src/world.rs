@@ -31,9 +31,9 @@ pub enum Replaced {
 
 pub trait World {
     fn read(&self, path: &Path) -> Found;
-    /// Every file a table is read from (`.cells`, `.csv`, `.tsv`) under `root`, hidden
-    /// folders left out (`.git`, the engine's own `.cells`), sorted.
-    fn list(&self, root: &Path) -> Vec<PathBuf>;
+    /// Every file a table is read from (`.cells`, `.csv`, `.tsv`) under `root` when `whole`,
+    /// else in it alone, hidden folders left out (`.git`, the engine's own `.cells`), sorted.
+    fn list(&self, root: &Path, whole: bool) -> Vec<PathBuf>;
     /// `text` written over `path` whole or not at all, and only over the version whose
     /// SHA-256 is `against`.
     fn replace(&self, path: &Path, against: &str, text: &str) -> Replaced;
@@ -157,8 +157,8 @@ impl World for Disk {
         }
     }
 
-    fn list(&self, root: &Path) -> Vec<PathBuf> {
-        fn walk(dir: &Path, out: &mut Vec<PathBuf>) {
+    fn list(&self, root: &Path, whole: bool) -> Vec<PathBuf> {
+        fn walk(dir: &Path, whole: bool, out: &mut Vec<PathBuf>) {
             let Ok(entries) = fs::read_dir(dir) else { return };
             for e in entries.flatten() {
                 let p = e.path();
@@ -167,14 +167,16 @@ impl World for Disk {
                     continue;
                 }
                 if p.is_dir() {
-                    walk(&p, out);
+                    if whole {
+                        walk(&p, whole, out);
+                    }
                 } else if table_file(&p) {
                     out.push(p);
                 }
             }
         }
         let mut out = Vec::new();
-        walk(root, &mut out);
+        walk(root, whole, &mut out);
         out.sort();
         out
     }

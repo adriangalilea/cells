@@ -51,8 +51,9 @@ impl World for Sim {
         self.files.borrow().get(path).map_or(Found::Missing, |t| Found::Text(t.clone()))
     }
 
-    fn list(&self, root: &Path) -> Vec<PathBuf> {
-        self.files.borrow().keys().filter(|p| p.starts_with(root) && table_file(p)).cloned().collect()
+    fn list(&self, root: &Path, whole: bool) -> Vec<PathBuf> {
+        let within = |p: &Path| if whole { p.starts_with(root) } else { p.parent() == Some(root) };
+        self.files.borrow().keys().filter(|p| within(p) && table_file(p)).cloned().collect()
     }
 
     fn replace(&self, path: &Path, against: &str, text: &str) -> Replaced {
@@ -248,11 +249,25 @@ fn a_file_added_then_removed_is_logged_and_read_by_its_readers() {
 }
 
 #[test]
-fn a_folder_inside_one_served_is_that_one_and_a_wide_one_is_refused() {
+fn a_folder_inside_one_served_is_that_one() {
     let mut d = daemon();
     assert_eq!(d.serve(Path::new("/w/q4")).unwrap(), PathBuf::from("/w"));
-    assert!(d.serve(Path::new("/")).unwrap_err().contains("too wide"));
-    assert!(d.serve(Path::new("/home/someone")).unwrap_err().contains("too wide"));
+}
+
+/// The home folder is served shallow: its own file is read and watched, a file in a folder
+/// under it is not, nor is that folder taken to be served, and the watch is not recursive.
+#[test]
+fn the_home_folder_is_served_shallow() {
+    let sim = Sim::default();
+    sim.put("/home/someone/prices.cells", "price:num\n1\n");
+    sim.put("/home/someone/books/money.cells", MONEY);
+    let mut d = Daemon::new(sim, channel().0);
+    assert_eq!(d.serve(Path::new("/home/someone")).unwrap(), PathBuf::from("/home/someone"));
+    assert!(d.world().watched.contains(&(PathBuf::from("/home/someone"), false)));
+    assert!(d.root_of(Path::new("/home/someone/prices.cells")).is_some());
+    assert!(d.root_of(Path::new("/home/someone/books/money.cells")).is_none());
+    assert_eq!(d.serve(Path::new("/home/someone/books")).unwrap(), PathBuf::from("/home/someone/books"));
+    assert_eq!(d.root_of(Path::new("/home/someone/books/money.cells")), Some(Path::new("/home/someone/books")));
 }
 
 #[test]

@@ -290,6 +290,9 @@ impl From<&Edited> for Edit {
 pub struct Log {
     /// The folder logged, its paths written from here.
     pub root: PathBuf,
+    /// Served whole, every file under it; else shallow, its own files alone (the home
+    /// folder and the disk's root, never crawled).
+    pub whole: bool,
     path: PathBuf,
     lines: Vec<Line>,
     /// The SHA-256 of the last line as written: what the next line continues from.
@@ -300,7 +303,7 @@ impl Log {
     /// The log of the folder at `root`, read whole, and why it cannot be trusted past a
     /// line when a link is broken or a line is no entry: it is continued either way, and
     /// what follows a break is said, never hidden.
-    pub fn open(root: &Path, world: &impl World) -> (Log, Option<String>) {
+    pub fn open(root: &Path, whole: bool, world: &impl World) -> (Log, Option<String>) {
         let path = root.join(".cells").join("log.jsonl");
         let text = match world.read(&path) {
             Found::Text(t) => t,
@@ -326,7 +329,12 @@ impl Log {
             }
             prev = hash(raw);
         }
-        (Log { root: root.to_path_buf(), path, lines, prev }, broken)
+        (Log { root: root.to_path_buf(), whole, path, lines, prev }, broken)
+    }
+
+    /// The folder holds `path`: under it when served whole, in it when shallow.
+    pub fn holds(&self, path: &Path) -> bool {
+        if self.whole { path.starts_with(&self.root) } else { path.parent() == Some(self.root.as_path()) }
     }
 
     pub fn lines(&self) -> &[Line] {
