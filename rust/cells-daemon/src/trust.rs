@@ -1,7 +1,7 @@
 //! Who may talk to the engine. The kernel says which process connected: its user
-//! (`getpeereid`), and on a Mac its audit token, which names the exact process (a pid could
-//! be reused before the check runs). That process's code signature is then held to the
-//! engine's own:
+//! (`getpeereid` on a Mac, `SO_PEERCRED` on Linux), and on a Mac its audit token, which
+//! names the exact process (a pid could be reused before the check runs). That process's
+//! code signature is then held to the engine's own:
 //!
 //! - A signed engine (Cells.app's `CellsEngine.app`, or the `cells` command inside the app
 //!   serving) admits a client signed by its own team as the app or its command: `<app id>`
@@ -53,6 +53,7 @@ impl Trust {
 }
 
 /// The peer's pid when it runs as this user: the kernel's word.
+#[cfg(target_os = "macos")]
 fn same_user(stream: &UnixStream) -> Result<i32, String> {
     use std::os::fd::AsRawFd;
     let (mut uid, mut gid) = (0, 0);
@@ -71,6 +72,26 @@ fn same_user(stream: &UnixStream) -> Result<i32, String> {
         libc::getsockopt(stream.as_raw_fd(), 0 /* SOL_LOCAL */, libc::LOCAL_PEERPID, (&mut pid as *mut libc::pid_t).cast(), &mut len)
     };
     Ok(if got == 0 { pid } else { -1 })
+}
+
+/// The peer's pid when it runs as this user: the kernel's word, all three ids in one read.
+#[cfg(target_os = "linux")]
+fn same_user(stream: &UnixStream) -> Result<i32, String> {
+    use std::os::fd::AsRawFd;
+    let mut cred = libc::ucred { pid: 0, uid: 0, gid: 0 };
+    let mut len = std::mem::size_of_val(&cred) as libc::socklen_t;
+    // SAFETY: SO_PEERCRED writes one ucred into the buffer it is handed, ours.
+    let got = unsafe {
+        libc::getsockopt(stream.as_raw_fd(), libc::SOL_SOCKET, libc::SO_PEERCRED, (&mut cred as *mut libc::ucred).cast(), &mut len)
+    };
+    if got != 0 {
+        return Err(format!("its user could not be read: {}", std::io::Error::last_os_error()));
+    }
+    // SAFETY: getuid has no failure and touches nothing.
+    if cred.uid != unsafe { libc::getuid() } {
+        return Err(format!("another user (uid {})", cred.uid));
+    }
+    Ok(cred.pid)
 }
 
 #[cfg(target_os = "macos")]
