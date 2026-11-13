@@ -2,13 +2,13 @@
 
 > **Not yet final.** This spec is a draft: what follows is what the conformance suite ([`tests/`](tests)) holds every reader to, and [Open](#open) holds what is decided in direction but not written, and what is undecided. Any of it may still change.
 
-Data and its logic, in one plain-text file. A Cells file, `.cells`, is a table whose header cells carry their column's type, `name:type`, and its formula when it computes, `name:type=formula`; its rows hold every value, the computed ones too, each beside how it is computed; it may open with a prelude, fenced by `---`, that names types, imports other files and holds tables of its own, written inline or filled by a script. One file, never a sidecar: the types and the logic travel with the data, and the data is all there to read in any editor. MIME type `text/vnd.cells`.
+Data and its logic, in one plain-text file. A Cells file, `.cells`, is a table whose header cells carry their column's type, `name: type`, and its formula when it computes, `name: type = formula`; its rows hold every value, the computed ones too, each beside how it is computed; it may open with a prelude, fenced by `---`, that names types, imports other files and holds tables of its own, written inline or filled by a script. One file, never a sidecar: the types and the logic travel with the data, and the data is all there to read in any editor. MIME type `text/vnd.cells`.
 
 ```cells
 ---
 type Category = travel|stay|food|gear
 ---
-item:text!,category:Category,cost:EUR>=0,qty:int>=1,total:EUR=cost * qty,paid:yes/no,on:date
+item: text!,category: Category,cost: EUR>=0,qty: int>=1,total: EUR = cost * qty,paid: yes/no,on: date
 fuel,travel,84.20,1,84.20=,yes,2026-08-14
 groceries,food,32.25=96.75 / 3,2,64.50=,no,2026-08-15
 ```
@@ -31,15 +31,17 @@ groceries,food,32.25=96.75 / 3,2,64.50=,no,2026-08-15
 ## A header cell
 
 ```text
-cost:EUR>=0        total:EUR=cost * qty
- ①  ②  ③            ①   ②  ③  ④  ⑤
+cost: EUR>=0        total: EUR = cost * qty
+ ①  ②   ③            ①   ②  ③  ④      ⑤
 ```
 
-1. **The name** is everything before the first `:`, the field's padding aside (` item` and `item` are one name; quoted, `" item:text"` is the name ` item`). A name may hold any character but `:`, and is at least one character. No two columns share a name.
+1. **The name** is everything before the first `:`, the field's padding aside (` item` and `item` are one name; quoted, `" item: text"` is the name ` item`). A name may hold any character but `:`, and is at least one character. No two columns share a name.
 2. **`:`** says a type follows. A cell with no `:` is a plain column, its type inferred from its values (below). So every CSV is a Cells file with no types written.
-3. **The type** is everything after it up to its formula, and never empty. It never holds a `,` or a `"`; a name that holds one quotes the whole cell (`"price, net:EUR"`).
+3. **The type** is everything after it up to its formula, and never empty. It never holds a `,` or a `"`; a name that holds one quotes the whole cell (`"price, net: EUR"`).
 4. **`=`** says a formula follows: the first `=` outside single quotes that closes no `>=` or `<=`.
 5. **The formula** is everything after it, spaces and tabs at its ends cut, and never empty ([Formulas](#formulas)). A formula that holds a `,` or a `"` (`ROUND(cost, 2)`) quotes the whole cell, as any field that holds one is quoted.
+
+A writer writes a typed header cell `name: type`, and a computed one `name: type = formula`: a space after the `:`, a space on each side of the `=` that opens the formula, the form a column's declaration has ([Columns](#columns)), so a column is written one way wherever it is said. Inside the type the shorthand stays compact (`EUR>=0!`, `travel|stay|food`), and the formula keeps its own spacing. To a reader the spaces are nothing: `cost:EUR>=0` is `cost: EUR>=0`. Considered: the compact `name:type=formula`, which glues the type to the formula so `num?=price` reads as one word.
 
 ## A cell
 
@@ -86,27 +88,27 @@ A cell is read as written, its padding aside: never folded in case, never coerce
 - **A currency** is any alphabetic code of ISO 4217's current list, in capitals: `EUR`, never `eur`; a withdrawn code (`HRK`) is none. Fund codes (`CLF`, `BOV`), the metals (`XAU`, `XAG`, `XPD`, `XPT`) and `XDR` count, since people hold gold and accounts hold units; `XTS` (for testing) and `XXX` (no currency) do not.
 - **An amount's scale** is the digits after the point a column holds: its currency's minor unit, ISO 4217's (`EUR` 2, `JPY` 0, `KWD` 3), unless the type gives its own in parentheses, `EUR(6)`, a whole number from 0 to 18. A written amount is a `num` with at most that many digits after the point: `96.755` in an `EUR` column breaks its type, `0.001200` in an `EUR(6)` one is an amount, exact. A formula's result is rounded to its column's scale ([What a formula gives](#what-a-formula-gives)), once, never along the way: `SUM(fee)` over ten thousand `EUR(6)` fees of `0.001200` is exactly `12.00` in an `EUR` column. A unit with no minor unit (the metals, `XDR`) and no scale given keeps every digit. Considered: a rate or a unit price kept as a `num` beside the money, which loses that it is money; and the minor unit as a ceiling, which refuses what a meter or an API bills in fractions of a cent.
 
-A word that is none of these, no named type, no reference and not a choice is an error naming it: `cost:EURO` is `no type or currency "EURO"`, never silently text.
+A word that is none of these, no named type, no reference and not a choice is an error naming it: `cost: EURO` is `no type or currency "EURO"`, never silently text.
 
 ### Choices
 
-`category:travel|stay|food|gear` is one of the words, written bare. A choice holding a reserved character (below) or a space or a tab, inside it or at its ends, is quoted with single quotes, a quote inside one doubled:
+`category: travel|stay|food|gear` is one of the words, written bare. A choice holding a reserved character (below) or a space or a tab, inside it or at its ends, is quoted with single quotes, a quote inside one doubled:
 
 ```cells
-mood:'yay!'|meh|'so-so?'|'it''s fine'
+mood: 'yay!'|meh|'so-so?'|'it''s fine'
 ```
 
 A word beside `|` is always a choice's word, even one that spells a base or an explicit word (`text|image`, `key|lock`). A choice of one word is quoted (`'paperback'`), since a bare word alone is a type. A cell is one of the words exactly, case and spaces included. A choice's words differ from each other, and none is empty: `''` is refused, a blank cell being missing, never a word.
 
-**A word's tint** follows it after a `#`: `kind:income#green|cost#red|transfer#blue|pending`. A choice is the set of words people colour (a tag's colour, a status's), so the colour is written beside its word, once, in the type, and a header cell, a named type and an imported one carry it alike. A tint is one of ten names, `red` `orange` `yellow` `green` `teal` `blue` `purple` `pink` `brown` `gray`, which each reader draws in its own theme's colour, light and dark, at a contrast that reads; or six hexadecimal digits (`income#3fa34d`), a colour no name says, the same everywhere. No other word is a tint: `income#grene` breaks the column's type, naming the word. A cell holds the word alone (`income`), never its tint: a tint is how the word looks ([How a value looks](#how-a-value-looks)), never part of a value, a key or a reference. Considered: the tint in a `look` statement only, which keeps the type a contract and nothing else, but writes each word twice in two places that drift and leaves a file that is a header alone no way to tint; and CSS's hundred-odd colour names, which tie the format to a web list and draw badly in a dark theme.
+**A word's tint** follows it after a `#`: `kind: income#green|cost#red|transfer#blue|pending`. A choice is the set of words people colour (a tag's colour, a status's), so the colour is written beside its word, once, in the type, and a header cell, a named type and an imported one carry it alike. A tint is one of ten names, `red` `orange` `yellow` `green` `teal` `blue` `purple` `pink` `brown` `gray`, which each reader draws in its own theme's colour, light and dark, at a contrast that reads; or six hexadecimal digits (`income#3fa34d`), a colour no name says, the same everywhere. No other word is a tint: `income#grene` breaks the column's type, naming the word. A cell holds the word alone (`income`), never its tint: a tint is how the word looks ([How a value looks](#how-a-value-looks)), never part of a value, a key or a reference. Considered: the tint in a `look` statement only, which keeps the type a contract and nothing else, but writes each word twice in two places that drift and leaves a file that is a header alone no way to tint; and CSS's hundred-odd colour names, which tie the format to a web list and draw badly in a dark theme.
 
 ### A boolean in the file's own words
 
-`paid:yes/no` is a boolean written `yes` for true and `no` for false, true first. `bool` alone reads `true`/`false`, and `true/false` is `bool`. The two words differ, are quoted as a choice's are, and are read exactly, case included.
+`paid: yes/no` is a boolean written `yes` for true and `no` for false, true first. `bool` alone reads `true`/`false`, and `true/false` is `bool`. The two words differ, are quoted as a choice's are, and are read exactly, case included.
 
 ### References
 
-`to:accounts.account` is a key of another table: `accounts`, a table the prelude names ([The prelude](#the-prelude)), and `account`, its key column (`!`). Several tables join with `|`, as a choice's words do: `to:shared.account|clients.account`. A cell holds the key's text, read as the key column reads it (`7` and `007` are one key of an `int`). A word `name.column` is a reference only when the prelude names a table `name`; a table named twice in one type is refused, and so is a column that is no key of its table, naming the column. A reference column is a name made strict: what it holds must exist ([Reading](#reading)), and a plain `text` column is the same name left open, any value holding. Considered: one rule for everyone. beancount declares every account before it is used (no typo gets in, every new account a detour), hledger takes any name (a typo becomes an account, the totals still add up, and it grew `--strict`). Both are right for someone, so the type says which.
+`to: accounts.account` is a key of another table: `accounts`, a table the prelude names ([The prelude](#the-prelude)), and `account`, its key column (`!`). Several tables join with `|`, as a choice's words do: `to: shared.account|clients.account`. A cell holds the key's text, read as the key column reads it (`7` and `007` are one key of an `int`). A word `name.column` is a reference only when the prelude names a table `name`; a table named twice in one type is refused, and so is a column that is no key of its table, naming the column. A reference column is a name made strict: what it holds must exist ([Reading](#reading)), and a plain `text` column is the same name left open, any value holding. Considered: one rule for everyone. beancount declares every account before it is used (no typo gets in, every new account a detour), hledger takes any name (a typo becomes an account, the totals still add up, and it grew `--strict`). Both are right for someone, so the type says which.
 
 ### Constraints
 
@@ -115,7 +117,7 @@ A word beside `|` is always a choice's word, even one that spells a base or an e
 | `>=0` `>0` `<=100` `<100` | the value | its length |
 | `0..100` | at least 0 and at most 100 | a length between |
 
-`cost:EUR>=0`, `pct:0..100`, `name:text<=40`, `qty:int>=1<=12`. A type that is only bounds is a number: `score:0..10` is `num` from 0 to 10, `>=0` is `num` at least 0. A range after a base bounds it: `int 1..5`, `text 1..40`.
+`cost: EUR>=0`, `pct: 0..100`, `name: text<=40`, `qty: int>=1<=12`. A type that is only bounds is a number: `score: 0..10` is `num` from 0 to 10, `>=0` is `num` at least 0. A range after a base bounds it: `int 1..5`, `text 1..40`.
 
 - Bounds apply to `int`, `num`, `pct`, a currency, and `text`; every other type refuses them. A `pct` is bounded by its percentage: `pct<=100` refuses `150%`.
 - A bound is a `num` (`-1.5`, `3e8`). On text it is a whole number, at least 0.
@@ -124,7 +126,7 @@ A word beside `|` is always a choice's word, even one that spells a base or an e
 
 ### Formats
 
-A format in parentheses says how the file writes the value: `on:date(DD/MM/YYYY)`, `at:time(HH:mm)`. Its letters: `YYYY` `MM` `DD` `HH` `mm` `ss`, everything else literal (`time(HHhmm)` reads `14h30`). Each letter stands for exactly as many digits as it has letters: `MM` is `08`, never `8`. The value read is the same as the ISO form's, and the cell must be a real day or time as the ISO form must; writing keeps the format.
+A format in parentheses says how the file writes the value: `on: date(DD/MM/YYYY)`, `at: time(HH:mm)`. Its letters: `YYYY` `MM` `DD` `HH` `mm` `ss`, everything else literal (`time(HHhmm)` reads `14h30`). Each letter stands for exactly as many digits as it has letters: `MM` is `08`, never `8`. The value read is the same as the ISO form's, and the cell must be a real day or time as the ISO form must; writing keeps the format.
 
 - A format applies to `date` and `time` only, and every other type refuses one: a `datetime` is an instant, and an instant is written as ISO 8601 writes it, its offset included. A currency's parentheses are its scale, a number ([Bases](#bases)), never a format.
 - A date's format holds `YYYY`, `MM` and `DD` once each, and no time letter. A time's holds `HH` and `mm` once each, `ss` once or not at all (its value then has `00` seconds), and no date letter. No letter reads a fraction of a second: `ss` is exactly two digits, so `time(HH:mm:ss)` refuses `14:30:05.5`. `date(D/M/YYYY)` is refused: `D` and `M` are literal, so the day and month are never read.
@@ -137,7 +139,7 @@ A format in parentheses says how the file writes the value: `on:date(DD/MM/YYYY)
 | `!` | the key: present in every row and unique |
 | `?` | may be blank |
 
-Without `?`, a blank cell is reported as missing. `note:text?` is an optional note; `item:text!` is the key. The two together are refused: a key is present in every row.
+Without `?`, a blank cell is reported as missing. `note: text?` is an optional note; `item: text!` is the key. The two together are refused: a key is present in every row.
 
 ### Every shorthand has a word
 
@@ -170,7 +172,7 @@ import accounts from "../accounts.cells"       // the shared accounts
 type Kind = card|transfer
 
 fees = ```cells
-kind:Kind!,pct:pct
+kind: Kind!,pct: pct
 card,1.4
 transfer,0
 ```
@@ -187,7 +189,7 @@ The prelude is the work; the header and rows after it are what the file shows, a
 
 ### Named types
 
-**`type Name = <type>`** names a type for any header cell to use: `category:Category`. A name is ASCII letters, digits and `_`, starting with a capital letter (`type category = …` is refused), and never a currency code. A name is defined once; it may name another named type defined above it, never one below it or itself. A header cell may add to a named type what it does not already say: `cost:Cost?`, `cost:Money>=0`. **`export type Name = <type>`** names one another file may import.
+**`type Name = <type>`** names a type for any header cell to use: `category: Category`. A name is ASCII letters, digits and `_`, starting with a capital letter (`type category = …` is refused), and never a currency code. A name is defined once; it may name another named type defined above it, never one below it or itself. A header cell may add to a named type what it does not already say: `cost: Cost?`, `cost: Money>=0`. **`export type Name = <type>`** names one another file may import.
 
 ### Columns
 
@@ -205,7 +207,7 @@ fuel,           84.20,  1,      84.20=, 84.20=
 split dinner,   32.25,  1,      32.25=, 116.45=
 ````
 
-**`name: type`**, or **`name: type = formula`**, declares a column of the file's table in the prelude, in a header cell's own grammar, spaces around its `:` and `=` being nothing as anywhere in the prelude. The header then names it alone (`total`), and the column is the declaration's: its type and its formula. A declaration names a column the header has, and a column is declared once: a header cell with a `:` whose column is declared too, a column declared twice, and a declaration whose name no header cell has, are each an error naming the line. A header name with no `:` and no declaration is a plain column, as ever. Declarations are statements, read in order, so a named type is above the columns that use it; a name that holds a `:`, a `,` or a `"` is quoted, `"price, net": EUR`. A table written inline declares its columns in its own header. Considered: the type and formula only in the header cell, so a column says where it is read how it is computed. The rows still say which cells are computed (`84.20=`), and a header of names lines up with its rows, which one of `cost:EUR>=0` and formulas never does; both forms read, and a writer keeps the one a file uses. A declared column's type changed is its declaration written again, its type made plain its declaration gone; renamed or removed, its declaration goes with it; what does not read in its type or its formula is an error naming its line. A new column is a header cell.
+**`name: type`**, or **`name: type = formula`**, declares a column of the file's table in the prelude, in a header cell's own grammar, spaces around its `:` and `=` being nothing as anywhere in the prelude. The header then names it alone (`total`), and the column is the declaration's: its type and its formula. A declaration names a column the header has, and a column is declared once: a header cell with a `:` whose column is declared too, a column declared twice, and a declaration whose name no header cell has, are each an error naming the line. A header name with no `:` and no declaration is a plain column, as ever. Declarations are statements, read in order, so a named type is above the columns that use it; a name that holds a `:`, a `,` or a `"` is quoted, `"price, net": EUR`. A table written inline declares its columns in its own header. Considered: the type and formula only in the header cell, so a column says where it is read how it is computed. The rows still say which cells are computed (`84.20=`), and a header of names lines up with its rows, which one of `cost: EUR>=0` and formulas never does; both forms read, and a writer keeps the one a file uses. A declared column's type changed is its declaration written again, its type made plain its declaration gone; renamed or removed, its declaration goes with it; what does not read in its type or its formula is an error naming its line. A new column is a header cell.
 
 ### Imports
 
@@ -218,7 +220,7 @@ import last_year from "./money.cells" with { rev: "a1b2c3d" }
 ---
 ```
 
-- **The default import**, `import accounts from "…"`, names the other file's table: its key a type for a column (`to:accounts.account`), its columns read by a formula through a reference or by key.
+- **The default import**, `import accounts from "…"`, names the other file's table: its key a type for a column (`to: accounts.account`), its columns read by a formula through a reference or by key.
 - **A named import**, `import { Kind, fees } from "…"`, takes what the other file exports: a type (`export type Kind = …`) or a table (`export fees = …`). A name it does not export is an error naming the line, the names it does export said. What a file does not export is its own, so `accounts.account` only ever means a column.
 - **Where from** is a quoted path, read from the importing file's folder (`"../accounts.cells"`), or a URL. Nothing is copied in: a local import is read again at every read, so it is always current.
 - **A URL is pinned by its content**: `with { sha256: "…" }`, the hash of its bytes in lower-case hexadecimal, is its identity. A URL with no hash is an error naming the line (`cells pin` writes it). Bytes that do not match the hash are an error naming the line, the hash they have said; a change at the source is never followed. A reader fetches from wherever the bytes can be had (the URL, a cache of them by their hash).
@@ -244,12 +246,12 @@ export default async function ({ last }) {
 }
 ```
 ```cells
-date:date!,rate:num>0,run:int?
+date: date!,rate: num>0,run: int?
 2026-11-03,0.9287,9
 2026-11-04,0.9312,9
 ```
 ```cells runs
-run:int!,at:datetime,outcome:ok|failed,error:text?
+run: int!,at: datetime,outcome: ok|failed,error: text?
 9,2026-11-04T17:00:03Z,ok,
 12,2026-11-05T17:00:02Z,failed,HTTP 503
 ```
@@ -289,7 +291,7 @@ look score: scale red..green
 look on: as 'ddd D MMM YYYY'
 look row: gray when paid
 ---
-item:text!,kind:Kind,amount:Money,budget:Money,balance:Money,score:0..10,on:date,paid:yes/no
+item: text!,kind: Kind,amount: Money,budget: Money,balance: Money,score: 0..10,on: date,paid: yes/no
 rent,cost,-950.00,1000.00,50.00,7,2026-11-03,yes
 ```
 
@@ -352,7 +354,7 @@ title:  Rent, actual and planned
 layers: actual, plan
 ```
 ---
-date:date,amount:EUR,kind:Kind,account:text,budget:EUR?,balance:EUR=SUM(amount) OVER (ORDER BY date)
+date: date,amount: EUR,kind: Kind,account: text,budget: EUR?,balance: EUR = SUM(amount) OVER (ORDER BY date)
 ````
 
 **A chart is a fence, `` ```chart ``**, the kind after the language (`` ```chart bars ``), each line in it an entry: a key, a `:` and the rest of the line, read by that key's grammar. A value runs to the line's end, so a formula holds what commas it needs; spaces after the `:` are nothing. A key a chart's kind does not take, or one written twice, is an error naming its line. A file's charts are its own, in the order written: the first is chart 1. **A name**, `actual = ```chart bars`, is written only for a chart another one reads (`layers`), once in the file with the types and tables.
@@ -405,10 +407,10 @@ Considered: one line, `chart spending: amount by month, split by kind`, whose co
 
 ## Formulas
 
-A formula computes a cell's value from what the file can read. It is written in a column's header cell, `total:EUR=cost * qty`, where it computes every cell of the column but the ones written, or in one cell, after the cell's `=` (`32.25=96.75 / 3`), where it computes that cell alone. Either way the file stores the value it gave, left of the cell's `=` ([A cell](#a-cell)).
+A formula computes a cell's value from what the file can read. It is written in a column's header cell, `total: EUR = cost * qty`, where it computes every cell of the column but the ones written, or in one cell, after the cell's `=` (`32.25=96.75 / 3`), where it computes that cell alone. Either way the file stores the value it gave, left of the cell's `=` ([A cell](#a-cell)).
 
 ```cells
-item:text!,cost:EUR>=0,qty:int>=1,total:EUR=cost * qty
+item: text!,cost: EUR>=0,qty: int>=1,total: EUR = cost * qty
 fuel,84.20,1,84.20=
 split dinner,32.25=96.75 / 3,1,32.25=
 invoice 42,80.00,1,79.99
@@ -438,7 +440,7 @@ A formula reads its own row by its columns' names; another row by where it is fr
 | `SUM(total[FIRST:THIS])` | the column on the rows from the first to this one, an aggregate's argument |
 | `MAX(cost[-2:+2])` · `COUNT(item[THIS:LAST])` | any two ends: `FIRST`, `THIS`, `LAST`, or a row by where it is |
 
-- **Past the rows** there is no cell: a number reads 0 there, as an empty cell does in a spreadsheet's arithmetic, so `running:EUR=running[-1] + total` starts at the first row's total; any other kind reads null. A range clipped by the rows keeps the rows it has.
+- **Past the rows** there is no cell: a number reads 0 there, as an empty cell does in a spreadsheet's arithmetic, so `running: EUR = running[-1] + total` starts at the first row's total; any other kind reads null. A range clipped by the rows keeps the rows it has.
 - **Its own column**, on rows above or below its own: `running[-1]` is the running total on the line above. A range holding its own row (`running[FIRST:THIS]`) reads its own cell, and is an error naming the column, or a cell's problem of kind `formula`.
 - **The lines are the order.** Sorting the file changes what is above a row, as sorting a spreadsheet changes what a filled formula sums; an order that must survive a sort is a window's ([The language](#the-language)).
 - A range stands only as an aggregate's argument, `SUM`, `AVG`, `MIN`, `MAX`, `COUNT`; a bare `total[FIRST:THIS]` is an error.
@@ -474,7 +476,7 @@ SQL's scalar expressions, in exact decimal. **The language is written in capital
 `OR` binds loosest, then `AND`, `NOT`, a comparison, `||`, `+` and `-`, `*` and `/`, then a `-` before a term; each from the left, parentheses grouping. A formula is pure and total: it always finishes, with the same answer in every implementation, and reads no clock, no network and no file, so a formula from a stranger is as safe to open as a number (the formula injection spreadsheets are known for has nothing here to call).
 
 - **Names are looked for nearest first**: in the row (its columns, and the references followed from them with `.`), then in the file (`TABLE`, and every table the prelude names, imported or written inline), then nowhere, since another file is reachable only through an import. A column spelled as a prelude table is an error naming both, never one hiding the other; the column reads as written, and a formula naming it is refused.
-- **A window orders the rows by its keys**, never by where they are written: `balance:EUR=SUM(amount) OVER (ORDER BY date)` is a running balance however the file is sorted. Each key ascends, or descends with `DESC`, a null after every value. Rows the order does not tell apart have no value, each a problem of kind `formula` on its cell naming the row it ties with, and for `LAG` so does the row after them, since none of them is the one before it; another key breaks the tie (`ORDER BY date, id`). A window stands only in a column's formula, since a cell's own computes one row, and never inside an aggregate. The lines' order, a spreadsheet's, is `[-1]` and its ranges; a window is for an order a sort must not change.
+- **A window orders the rows by its keys**, never by where they are written: `balance: EUR = SUM(amount) OVER (ORDER BY date)` is a running balance however the file is sorted. Each key ascends, or descends with `DESC`, a null after every value. Rows the order does not tell apart have no value, each a problem of kind `formula` on its cell naming the row it ties with, and for `LAG` so does the row after them, since none of them is the one before it; another key breaks the tie (`ORDER BY date, id`). A window stands only in a column's formula, since a cell's own computes one row, and never inside an aggregate. The lines' order, a spreadsheet's, is `[-1]` and its ranges; a window is for an order a sort must not change.
 - **Numbers are exact**: `0.1 + 0.2` is `0.3`. `+ - *` are exact. A division by zero is null.
 - **A quotient keeps 15 significant digits**, `/` and `AVG` alike, rounded half to even where it is computed, its whole part always kept: `1 / 3` is `0.333333333333333`, `-7 / 3` `-2.33333333333333`, `1 / 7000` `0.000142857142857143`, `20000000000000000000 / 3` `6666666666666666667`, and a quotient that ends sooner is exact (`10 / 4` is `2.5`). A quotient's digits are not written places: it holds as many after the point as its digits need, and a sum or a product keeps the places its written operands have (a cell's, a literal's) and no zero at its end past them, so `1.10 * 3` is `3.30` and `cost / SUM(cost) * 100` is `20.710859672857`; a cell storing `20.71085967285700` holds the same value, never stale. 15 is the most digits a binary double holds for every decimal, so a computed value is the same in a spreadsheet, in JSON read by JavaScript and in any tool reading floats, and it is what a spreadsheet keeps and shows. Every other operation is exact, so a sum of quotients is the sum of the values the file stores: a running total over shares ends on `SUM` of them, never drifting from the column above it, and computing again from the stored inputs gives the stored digits, so a write never churns them. **In a column with a scale** (an amount, [Bases](#bases)) a quotient keeps 34 significant digits instead, since its result is rounded again to that scale and that rounding is the only one: `300000000000.04499 / 3` is `100000000000.01` in `EUR`, where a quotient cut to 15 digits first (`100000000000.015`) would round to `.02`. How many digits a value shows is its look's ([How a value looks](#how-a-value-looks), `decimals 2`), never its value's. Considered: 34 digits everywhere (decimal128's), which stores `0.1234567890123456789012345678901234` for a share nobody reads past its fourth digit and no spreadsheet can hold; rounding only what is shown, the file storing every digit, where what a person sees is not what the file holds and a value pasted from the screen is another number; digits derived from the operands' scales, as SQL Server (scale at least 6) and PostgreSQL (at least 16 significant digits, at least the operands' scale) do, which ties a share's precision to how its inputs happened to be written; a scale for `num` (`num(4)`), which a person must choose before they know the values and which a look's `decimals` already says for the eye; and a quotient as a binary double, DuckDB's, which is not exact; a product at the sum of its operands' scales whatever they are, which writes a share times 100 as `20.71085967285700`, zeros no one wrote; every result at the fewest places, which writes `1.10 * 3` as `3.3`, dropping a place a person wrote.
 - **Null goes through**: arithmetic, a comparison or a function given null gives null (but `COALESCE`, `NULLIF`, `IS NULL`, `AND`, `OR`). A blank or broken cell, a reference to no row, a table not reached are null.
@@ -502,7 +504,7 @@ A result the type breaks (a negative `net` in an `EUR>=0` column, `2.5` in an `i
   - a prelude statement that does not settle is left out, and the rest applies; what names it (a type, a header cell) breaks in turn, at its own place. An import refused (its hash, a cycle) names what it imports as one not reached does, unchecked;
   - a record that does not read (its quoting, a lone `\r`) ends the rows: those before it read, and it and every byte after it are kept as written. A prelude never closed holds the whole file, so nothing applies and there is no header.
 
-  Only bytes that are not UTF-8, and a file past 4 GiB, are refused whole. Nothing is less strict for it: every error is reported, and a checker (`cells check`) fails on any. Considered: errors that refuse the file. A person typing a header cell (`to:accounts.a`, the column name not finished) breaks it at every keystroke, and an editor, an app or a page showing the file would show nothing at all while they type, where the one cell is all that is wrong.
+  Only bytes that are not UTF-8, and a file past 4 GiB, are refused whole. Nothing is less strict for it: every error is reported, and a checker (`cells check`) fails on any. Considered: errors that refuse the file. A person typing a header cell (`to: accounts.a`, the column name not finished) breaks it at every keystroke, and an editor, an app or a page showing the file would show nothing at all while they type, where the one cell is all that is wrong.
 - **Inference.** A column with no type is read from its values: every non-blank value an `int` is `int`, a `num` `num` (so integers beside one decimal are `num`), every one `true` or `false` `bool`, every one `yes` or `no` a boolean in those words (`yes/no`, a column of `yes` alone too), a `date` `date`, a `datetime` `datetime`, otherwise `text`. Nothing else is inferred: a time, a percentage, a URL, an address, an amount or an `id` is `text`, and so is a column mixing kinds (`true` beside `no`, a date beside an instant). A column with no value at all is `text`. An inferred column is always optional and its type is what its values are, so it is never reported but for a control character (below). An ambiguous value infers the plainer kind: `0042` is an integer, but `0042` beside `A12` is text. A cell with its own formula takes no part in what its column infers.
 - **A blank cell** is missing: a problem unless the type is `?` or the column has a formula, its value null either way. A quoted empty field (`""`) is blank too.
 - **A cell that breaks its type loads and is reported, never coerced.** The cell's text is kept as written, its value null, and a problem names the row, the column and why: `row 3, cost: "8x.50" is not a number`, its rows counted from 1 as a table numbers them (and as `#n` does), in every message. A bound broken is the type broken. The file always opens, so the tool that can fix it can show it.
@@ -521,7 +523,7 @@ A writer round-trips: a file read and written with nothing changed is the same b
 - **A stale cell is left as read** by a write that did not cause it ([Reading](#reading)): what a person wrote is never overwritten unasked. A cell a change reached is not one: its stored value is what the formula gave before the change, which nobody chose. It is resolved one of two ways, each one write: store the formula's value (a client's fix, and `cells fix`, for every stale cell of a file at once), or keep the stored value as the row's override, the `=` and its formula dropped.
 - **A write never stores into a written cell**: an override stays as it was written, whatever the formula would give.
 
-A writer changing a type writes the shorthand, then its formula when it has one (`total:EUR>=0=cost * qty * 2`), and rewrites no written cell: a cell the new type breaks is reported, not changed, the computed cells it reaches are stored again, and a change after which a formula no longer reads (one a column it reads no longer holds the kind it needs) is refused, naming the column changed. A writer never writes a control character into a cell it changes or adds: text holding one is refused, naming the row, and the file is left as it was. A cell read with one is written back as read, as every unchanged byte is. A file written as a plain one (a `.csv`) writes each cell's value alone, its `=` and its formula dropped, so the numbers a person saw are in the file.
+A writer changing a type writes the column's header cell in its standard form ([A header cell](#a-header-cell)), the type in shorthand, then its formula when it has one (`total: EUR>=0 = cost * qty * 2`), and rewrites no written cell: a cell the new type breaks is reported, not changed, the computed cells it reaches are stored again, and a change after which a formula no longer reads (one a column it reads no longer holds the kind it needs) is refused, naming the column changed. A writer never writes a control character into a cell it changes or adds: text holding one is refused, naming the row, and the file is left as it was. A cell read with one is written back as read, as every unchanged byte is. A file written as a plain one (a `.csv`) writes each cell's value alone, its `=` and its formula dropped, so the numbers a person saw are in the file.
 
 ### Formatting
 
@@ -529,6 +531,7 @@ A writer changing a type writes the shorthand, then its formula when it has one 
 
 - **A column starts where it starts on every line.** Each field but a line's last is its value, its comma, and spaces up to the next column's start. A column is as wide as its widest value plus its comma and one space, rounded up to a stop of four characters, so a value that grows within its stop moves nothing.
 - **A value wider than the cap, 32 characters, widens no column.** The value after it on its line starts one space after its comma, each later one at its own column's start as soon as the line has room, and the rest of the table is laid out as if it were not there, so one long note never moves the table.
+- **A typed header cell** is written `name: type = formula`, as a declaration is written ([A header cell](#a-header-cell)); a plain name is written as read, and a quoted cell keeps its quotes (`"r: EUR = ROUND(cost, 1)"`).
 - **The prelude** is written as read, but its column declarations ([Columns](#columns)): `name: type = formula`, every type starting at one column and every formula's `=` at one, a comment after one kept a space after it.
 - **A file formatted is a function of its content**: formatting twice is formatting once, and `cells fmt --check` holds in CI.
 - **Alignment is a writer's setting, on by default.** `cells fmt --align off`, and the language server's `align` setting, write each field with no padding; reading never depends on which.
@@ -546,7 +549,7 @@ The shorthand, as a writer writes it:
 - a bound's number in plain decimal: `-` if negative, no exponent, no zero that changes nothing (`1e3` is `1000`, `0.50` is `0.5`, `-0` is `0`);
 - a word bare unless it must be quoted: it holds a space, a tab or a reserved character, or it is a choice's only word.
 
-So `cost:EUR min 0 key` is written `cost:EUR>=0!`, and `mood:one of 'so so' meh optional` is written `mood:'so so'|meh?`.
+So `cost:EUR min 0 key` is written `cost: EUR>=0!`, and `mood:one of 'so so' meh optional` is written `mood: 'so so'|meh?`.
 
 ## Running
 
@@ -557,7 +560,7 @@ So `cost:EUR min 0 key` is written `cost:EUR>=0!`, and `mood:one of 'so so' meh 
 - **A script runs only as its person allowed it.** A file is data and formulas, which reach no disk and no network; a script is a program, and a file from anyone (sent, cloned, copied in) may carry one. So a runner runs a script only at a version its person allowed, after being shown its code whole: its file, its name and the SHA-256 of its language and code, one character changed another version, asked again. A script its person writes through a Cells writer (an app, an editor's language server) is allowed as it is written. Approvals are the person's and the machine's, never the file's or the folder's, so a file that travels carries none. Unallowed, the file still opens and computes with the rows its last run stored.
 
 - **The contract is the process.** The script's module exports a function by default; the runner calls it with the context, `{ rows, last, now }`: the table's rows as the file writes them, by column name (the engine's `run` aside), the last of them or null, and the time of the run, an instant. It returns a list of rows, objects by column name: text as it is, a number, a boolean (written in the column's words), or null (blank). Under the function, the context is JSON on stdin, each row returned a JSON line on stdout, and what the script prints on stderr, kept as the run's words.
-- **What a run writes.** A table with a key gains the keys it did not have and has the rows whose keys it returned replaced; a table without one is replaced whole. Each row names, in the engine's column `run:int?` (added to the header the first time), the run that last wrote it; a row written by hand names none. The runs block gains the run, `ok`, and keeps the runs some row names, the last one and the last failure.
+- **What a run writes.** A table with a key gains the keys it did not have and has the rows whose keys it returned replaced; a table without one is replaced whole. Each row names, in the engine's column `run: int?` (added to the header the first time), the run that last wrote it; a row written by hand names none. The runs block gains the run, `ok`, and keeps the runs some row names, the last one and the last failure.
 - **A run that fails writes nothing but its failure.** A script that exits with an error, returns a column its table does not have, or returns a row its types break leaves the stored rows as they were; the runs block gains the run, `failed`, and why. A program's broken output never lands, where a person's broken cell opens to be fixed.
 - **The time a run happened is the runs table's**; the time the data is about is the data's own column.
 
@@ -574,8 +577,8 @@ The use Cells is designed against is **plain text accounting**: books kept as pl
 - **The filesystem as a graph database.** A folder of `.cells` files is a graph of typed tables, its edges the references: a reference that breaks is a problem naming the file and row, and the language server (`cells lsp`) follows a rename through every file that references the key. What is left: tools that notice before a break lands (a warning on a key renamed in the other file, a writer refusing to save a dangling reference without saying so).
   ```text
   ~/books/
-  ├── accounts.cells              account:text!,kind:assets|liabilities|expenses|income
-  ├── vendors.cells               vendor:text!,name:text,vat_id:text?
+  ├── accounts.cells              account: text!,kind: assets|liabilities|expenses|income
+  ├── vendors.cells               vendor: text!,name: text,vat_id: text?
   ├── home/money.cells            account_from/account_to → accounts, vendor → vendors
   ├── travel/money.cells
   └── studio/money.cells
@@ -584,10 +587,10 @@ The use Cells is designed against is **plain text accounting**: books kept as pl
 - **Every row has an identity.** A file's key (`!`) is its rows' identity. A file with none gets an `id` column the first time an edit through the engine writes it, eight characters from a base-32 alphabet, unique within the file, assigned only by the engine and never edited through it. Edits address a row by its identity, never by its position, so a line inserted by hand elsewhere never makes an edit land on the wrong row, and two versions of a file merge row by row. A row without one (added by a tool that bypasses the engine) is found by its text until an edit through the engine next writes the file, which gives it one; a copied row's repeated id is replaced on the later copy. Apps built on the engine never show the column. The engine does this for its intents, one file at a time ([ENGINE.md](ENGINE.md)); merging row by row is not built.
 - **One fact, one row, one file.** A movement is one row holding both its sides (`account_from`, `account_to`), so recording it is one write. A change that must touch several files (an account renamed in every file that references it) is an intent the engine journals before applying file by file, and replays after a crash; every intent is safe to apply twice.
 - **What books need**, the accounting primitives (ACCOUNTING.md drafts the books with them):
-  - **An amount whose currency is another cell**, `amount:money in commodity`, or reached through a reference, `money in account.commodity`; and commodities beyond ISO 4217 (a share, a fund, points) declared in a file.
+  - **An amount whose currency is another cell**, `amount: money in commodity`, or reached through a reference, `money in account.commodity`; and commodities beyond ISO 4217 (a share, a fund, points) declared in a file.
   - **`unique`** on a column that is not the key, among its non-blank cells, and over several columns together.
   - **`final`**: a column written once, never changed by an edit. A movement whose money columns are final is corrected by a new row, never edited, as TigerBeetle never edits a transfer.
-  - **References to a file's own rows** (`pending:TABLE.id`, by the name formulas read the file's own table by, [The language](#the-language)), for a payment that settles a hold, a row that corrects another, rows that are one transaction.
+  - **References to a file's own rows** (`pending: TABLE.id`, by the name formulas read the file's own table by, [The language](#the-language)), for a payment that settles a hold, a row that corrects another, rows that are one transaction.
   - **`check`**: a rule over many rows or files, a query in the prelude returning the rows that break it, checked before every write and by `cells check` (a balance that must hold on a date, an account open on a movement's date). The prelude is where it lives, beside the data it guards; it is SQL, the language formulas are a part of, whole, in DuckDB.
 - **Go's checksum log** for pinned imports, proving everyone got the same bytes and not only you, once files are published widely.
 - **Queries in standards, never a language of Cells' own**: SQL, and SQL/PGQ to walk references ([The query language](#the-query-language)).
@@ -631,13 +634,13 @@ $ cells sql ~/books "
 - **The block's name.** "Prelude" reads well in prose, but to a programmer a prelude is the standard definitions a language loads into every file unasked (Haskell's `Prelude`, Rust's `std::prelude`), where this block is one file's own, explicit declarations. The candidates: frontmatter (the shape everyone knows and searches for; Astro puts code in its own, and calls it "component frontmatter" beside its "component script"; the one risk, a tool reading a `---` at a file's top as YAML, is met only in Markdown), preamble (LaTeX's exact role, imports and definitions before the body, but it needs explaining), or keeping prelude. A rename reaches the spec, the engine's messages, both grammars' names, the language server and ui, so it is made once and whole, with no alias kept, when it is decided.
 - **Words about a column and a title for the table.** A header cell has no room for a description; a column's declaration in the prelude ([Columns](#columns)) is the likely place, its syntax open.
 - **Strictness.** A broken cell and a broken grammar load and are reported ([Reading](#reading)); whether a reader may also be asked to refuse a file is not decided.
-- **Narrowing a reference** to some of the rows it names (`from` an account of kind `assets` or `income`): in the header cell (`from:accounts.account(kind=assets|income)`), or as a `check`, which keeps the header readable where the rule spans two files.
+- **Narrowing a reference** to some of the rows it names (`from` an account of kind `assets` or `income`): in the header cell (`from: accounts.account(kind=assets|income)`), or as a `check`, which keeps the header readable where the rule spans two files.
 - **Provenance: what was known on a date, and who may write what.** Two problems. A run replaces a corrected row, so the rate a report used before the correction lives only in git. And anyone can edit a block the engine owns, or a file a process owns: locks on a Mac are advisory, so the engine can only detect an edit, never prevent one. The candidates, none decided:
   - **Owners.** A block or a file names who writes it; an edit by anyone else is refused through the engine and found by its hash otherwise. Solves who may write what; does not keep what was known.
   - **Append-only with a hash chain.** `run …, append`: rows never replaced, each with two engine columns, `recorded` and `chain` (the SHA-256 of the previous row's `chain` and the row's bytes, the core's own hash, as the engine's log chains its lines), so "as known on" is the latest row of each key recorded by then, and an edit or a removal breaks every later link. Solves what was known and makes tampering evident; does not stop a whole chain written again from scratch, which stays valid unless each link is signed by a device's key, as ENGINE.md's Later plans for the log.
-  - **Transitions as a type.** `phase:pending->post|void`: the values a cell may move to from the one it holds, checked on every write, replacing ACCOUNTING.md's `unique` on `pending` if adopted. Solves an illegal change of state; does not keep history or say who wrote it.
+  - **Transitions as a type.** `phase: pending->post|void`: the values a cell may move to from the one it holds, checked on every write, replacing ACCOUNTING.md's `unique` on `pending` if adopted. Solves an illegal change of state; does not keep history or say who wrote it.
 - **A folder sent as one file.** `cells pack` writing one file whose prelude carries a frozen copy of each file it imports, every reference resolved, for someone who should open one thing.
-- **Several values in one cell** (`tags:text[]`, split on `;`): useful (tags on a movement), and where a table starts to stretch; undecided.
+- **Several values in one cell** (`tags: text[]`, split on `;`): useful (tags on a movement), and where a table starts to stretch; undecided.
 
 ### Brainstorm, not planned
 

@@ -17,10 +17,10 @@ Nothing says `cost` is money, so the ferry's `5O.00`, typed with a letter O, pas
 
 ### Types
 
-Each header cell says what its column holds: `name:type`.
+Each header cell says what its column holds: `name: type`.
 
 ```cells problem
-item:text,cost:EUR,qty:int,paid:yes/no,on:date
+item: text,cost: EUR,qty: int,paid: yes/no,on: date
 fuel,84.20,1,yes,2026-08-14
 split dinner,32.25,1,no,2026-08-15
 ferry,5O.00,1,no,2026-08-17
@@ -33,7 +33,7 @@ The file still reads, every other cell a typed value, and the ferry's is a probl
 A type can say more: `!` makes a column the key, and bounds say what a value may be.
 
 ```cells
-item:text!,cost:EUR>=0,qty:int>=1,paid:yes/no,on:date
+item: text!,cost: EUR>=0,qty: int>=1,paid: yes/no,on: date
 fuel,84.20,1,yes,2026-08-14
 split dinner,32.25,1,no,2026-08-15
 ferry,50.00,2,no,2026-08-17
@@ -46,7 +46,7 @@ Two rows named `fuel`, a cost below zero or a quantity of none would each be a p
 A CSV holds a total only as a number, and nothing knows whether it is still `cost * qty` after a cost is edited. In a Cells file the formula is in the header, and each row stores the value it gave before its `=`.
 
 ```cells
-item:text!,cost:EUR>=0,qty:int>=1,total:EUR=cost * qty,paid:yes/no,on:date
+item: text!,cost: EUR>=0,qty: int>=1,total: EUR = cost * qty,paid: yes/no,on: date
 fuel,84.20,1,84.20=,yes,2026-08-14
 split dinner,32.25,1,32.25=,no,2026-08-15
 ferry,50.00,2,100.00=,no,2026-08-17
@@ -59,7 +59,7 @@ Every value is in the file, so it reads in any editor without running anything, 
 Edit a cost in a plain editor and leave its total as it was:
 
 ```cells problem
-item:text!,cost:EUR>=0,qty:int>=1,total:EUR=cost * qty,paid:yes/no,on:date
+item: text!,cost: EUR>=0,qty: int>=1,total: EUR = cost * qty,paid: yes/no,on: date
 fuel,90.00,1,84.20=,yes,2026-08-14
 ```
 
@@ -70,7 +70,7 @@ The stored total is stale, and the reader says so with both numbers: `row 1, tot
 The dinner was split three ways. A CSV keeps `32.25` and loses why; a Cells file keeps both. A formula can read the row above, for a running total:
 
 ```cells
-item:text!,cost:EUR>=0,qty:int>=1,total:EUR=cost * qty,running:EUR=running[-1] + total
+item: text!,cost: EUR>=0,qty: int>=1,total: EUR = cost * qty,running: EUR = running[-1] + total
 fuel,84.20,1,84.20=,84.20=
 split dinner,32.25=96.75 / 3,1,32.25=,116.45=
 ferry,50.00,2,100.00=,216.45=
@@ -85,7 +85,7 @@ A type used in many places gets a name, and a column can be a key of another fil
 import accounts from "./accounts.cells"
 type Money = EUR>=0
 ---
-item:text!,cost:Money,qty:int>=1,total:Money=cost * qty,from:accounts.account
+item: text!,cost: Money,qty: int>=1,total: Money = cost * qty,from: accounts.account
 fuel,84.20,1,84.20=,card
 split dinner,32.25=96.75 / 3,1,32.25=,card
 ```
@@ -106,12 +106,12 @@ export default async function ({ last }) {
 }
 ```
 ```cells
-date:date!,rate:num>0,run:int?
+date: date!,rate: num>0,run: int?
 2026-11-03,0.9287,9
 2026-11-04,0.9312,9
 ```
 ---
-date:date,usd:USD>0,from:accounts.account,to:accounts.account,eur:EUR=usd * eurusd[date].rate,note:text?
+date: date,usd: USD>0,from: accounts.account,to: accounts.account,eur: EUR = usd * eurusd[date].rate,note: text?
 2026-11-03,180.00,card,hotel,167.17=,two nights
 2026-11-04,42.50,card,food,39.58=,
 2026-11-04,37.80=12.60 * 3,card,food,35.20=,three coffees
@@ -130,10 +130,10 @@ type Money = EUR>=0
 total:   Money = cost * qty
 running: Money = running[-1] + total
 ---
-item:text!,     cost:Money,         qty:int>=1, total,      running,    from:accounts.account
-fuel,           84.20,              1,          84.20=,     84.20=,     card
-split dinner,   32.25=96.75 / 3,    1,          32.25=,     116.45=,    card
-ferry,          50.00,              2,          100.00=,    216.45=,    cash
+item: text!,    cost: Money,        qty: int>=1,    total,      running,    from: accounts.account
+fuel,           84.20,              1,              84.20=,     84.20=,     card
+split dinner,   32.25=96.75 / 3,    1,              32.25=,     116.45=,    card
+ferry,          50.00,              2,              100.00=,    216.45=,    cash
 ```
 
 Each column starts on a multiple of four characters, at least two spaces after its widest value, so a small edit fits the padding already there, and a write takes up the difference so the line stays aligned. A value wider than 32 characters is left out of the reckoning. `cells diff` gives git a view with the padding taken out, so realigning a file is no change to review ([EDITORS.md](EDITORS.md)).
@@ -153,26 +153,26 @@ Each column starts on a multiple of four characters, at least two spaces after i
 
 ## The syntax
 
-A header cell is `name:type`, or `name:type=formula`. A cell with no `:` is a plain column, its type read from its values.
+A header cell is `name: type`, or `name: type = formula`. A cell with no `:` is a plain column, its type read from its values.
 
 | Header cell | The column |
 |---|---|
-| `item:text!` | text, the key: in every row, unique |
-| `category:Category` | one of the words the prelude named |
-| `cost:EUR>=0` | euros, at least 0 (any ISO 4217 code), at cents |
-| `fee:EUR(6)` | euros at six digits after the point, for what is billed in fractions of a cent |
-| `qty:int>=1` | a whole number, at least 1 |
-| `paid:yes/no` | a boolean the file writes `yes` and `no` |
-| `on:date` | an ISO date; `on:date(DD/MM/YYYY)` reads the file's own form |
-| `note:text?` | `?`: may be blank |
-| `mood:'yay!'\|meh` | a choice; single quotes hold a reserved character |
-| `kind:income#green\|cost#red` | a choice whose words show in their tints: ten names, or six hex digits (`income#3fa34d`) |
-| `score:0..10` | a number from 0 to 10 |
-| `to:accounts.account` | a key of the table the prelude names `accounts`: it must exist |
-| `total:EUR=cost * qty` | euros its formula computes on every row, each row storing what it gave (`84.20=`); a value written with no `=` is that row's override |
-| `running:EUR=running[-1] + total` | the running total: the one on the line above, plus this row's |
+| `item: text!` | text, the key: in every row, unique |
+| `category: Category` | one of the words the prelude named |
+| `cost: EUR>=0` | euros, at least 0 (any ISO 4217 code), at cents |
+| `fee: EUR(6)` | euros at six digits after the point, for what is billed in fractions of a cent |
+| `qty: int>=1` | a whole number, at least 1 |
+| `paid: yes/no` | a boolean the file writes `yes` and `no` |
+| `on: date` | an ISO date; `on: date(DD/MM/YYYY)` reads the file's own form |
+| `note: text?` | `?`: may be blank |
+| `mood: 'yay!'\|meh` | a choice; single quotes hold a reserved character |
+| `kind: income#green\|cost#red` | a choice whose words show in their tints: ten names, or six hex digits (`income#3fa34d`) |
+| `score: 0..10` | a number from 0 to 10 |
+| `to: accounts.account` | a key of the table the prelude names `accounts`: it must exist |
+| `total: EUR = cost * qty` | euros its formula computes on every row, each row storing what it gave (`84.20=`); a value written with no `=` is that row's override |
+| `running: EUR = running[-1] + total` | the running total: the one on the line above, plus this row's |
 
-The bases are `text` `int` `num` `pct` `bool` `date` `time` `datetime` `url` `email` and every currency. Every shorthand has a word, so a header reads either way: `cost:EUR>=0` is `cost:EUR min 0`, `paid:yes/no` is `paid:bool yes no`, `item:text!` is `item:text key`.
+The bases are `text` `int` `num` `pct` `bool` `date` `time` `datetime` `url` `email` and every currency. Every shorthand has a word, so a header reads either way: `cost: EUR>=0` is `cost: EUR min 0`, `paid: yes/no` is `paid: bool yes no`, `item: text!` is `item: text key`.
 
 A cell is a value (`84.20`), a value its column's formula computed (`84.20=`), or a value and its own formula (`32.25=96.75 / 3`): left of the `=` what the file stores, right of it how it is computed, so every value is in the file, readable in any editor. Formulas are SQL's expressions in exact decimal, the language in capitals (`CASE`, `COALESCE`, `ROUND`, `||`, `SUM(cost)`) and every lower-case word a name: a column of the row, `to.kind` through a reference, `fees['card'].pct` a row by its key, `running[-1]` the line above, `SUM(total[FIRST:THIS])` the rows down to this one. A spreadsheet's `=SUM($E$2:E2)` is accepted as typed and stored in names, so no line inserted by hand ever moves what a formula reads.
 
@@ -180,7 +180,7 @@ The prelude, between two `---` lines, names types (`type Kind = …`), imports o
 
 ## Reading and writing
 
-- **A broken cell opens and says why**, never coerced: `row 3, cost: "8x.50" is not a number`. Its text is kept, its value null, so the tool that can fix it can show it. A duplicate key reports both rows, a reference to no row says so (`"bar" is no key of accounts`), and so does a formula that does not compute. A broken grammar takes out only what it breaks, and the file opens with its table: a header cell typed halfway (`to:accounts.a`) is a column of text, named as broken, every other column typed. A control character (a NUL, an ESC, a C1 from a bank's export) breaks its cell in any column, named by its code point, `U+0000`, since it shows nothing, and no writer writes one.
+- **A broken cell opens and says why**, never coerced: `row 3, cost: "8x.50" is not a number`. Its text is kept, its value null, so the tool that can fix it can show it. A duplicate key reports both rows, a reference to no row says so (`"bar" is no key of accounts`), and so does a formula that does not compute. A broken grammar takes out only what it breaks, and the file opens with its table: a header cell typed halfway (`to: accounts.a`) is a column of text, named as broken, every other column typed. A control character (a NUL, an ESC, a C1 from a bank's export) breaks its cell in any column, named by its code point, `U+0000`, since it shows nothing, and no writer writes one.
 - **Written back byte for byte** but for what changed: the line endings, the quoting, the header's spelling and the prelude as they were read. A write stores every computed value its change reaches, in one pass; a value typed over its `=` or left behind by a plain editor is a problem saying both numbers (`the formula gives 90.00, the file stores 84.20`), never overwritten unasked, and `cells fix` or a client's fix resolves it.
 - **Merged by git without conflicts on what is computed**: `cells merge`, git's merge driver, merges what was written and computes the rest again.
 - **Records quote as RFC 4180** (a field holding `,`, `"` or a line break is quoted, `""` inside), because it is the right rule for cells.
@@ -214,7 +214,7 @@ accounts.cells
 ---
 export type Kind = assets|liabilities|expenses|income
 ---
-account:text!,kind:Kind
+account: text!,kind: Kind
 assets:bank:main,assets
 expenses:home:rent,expenses
 expenses:home:power,expenses
@@ -223,7 +223,7 @@ home/money.cells
 ---
 import accounts from "../accounts.cells"
 ---
-id:id!,date:date,amount:EUR>0,account_from:accounts.account,account_to:accounts.account,description:text,tax_rate:pct,vat:EUR=amount * tax_rate / (100 + tax_rate)
+id: id!,date: date,amount: EUR>0,account_from: accounts.account,account_to: accounts.account,description: text,tax_rate: pct,vat: EUR = amount * tax_rate / (100 + tax_rate)
 k7m2q9xa,2026-07-01,950.00,assets:bank:main,expenses:home:rent,rent july,0,0.00=
 p3w8c2nd,2026-07-12,64.30,assets:bank:main,expenses:home:power,power july,21,11.16=
 q4x9t1mz,2026-07-30,950.00,assets:bank:main,expenses:home:rnet,rent august,0,0.00=

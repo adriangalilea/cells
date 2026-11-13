@@ -28,7 +28,7 @@ books/
 ---
 type Kind = currency|stock|fund|crypto|points
 ---
-commodity:text!,kind:Kind,scale:int>=0,name:text
+commodity: text!,kind: Kind,scale: int>=0,name: text
 EUR,currency,2,euro
 USD,currency,2,us dollar
 KITE,stock,0,Kite Works shares
@@ -42,7 +42,7 @@ import commodities from "./commodities.cells"
 type Kind = assets|liabilities|equity|income|expenses
 type Booking = strict|fifo|lifo|hifo|average
 ---
-account:text!,kind:Kind,commodity:commodities.commodity,opened:date,closed:date?,never_negative:yes/no,booking:Booking?
+account: text!,kind: Kind,commodity: commodities.commodity,opened: date,closed: date?,never_negative: yes/no,booking: Booking?
 assets:bank:main,assets,EUR,2026-01-01,,yes,
 assets:cash:usd,assets,USD,2026-01-01,,yes,
 assets:broker:kite,assets,KITE,2026-03-01,,yes,fifo
@@ -67,7 +67,7 @@ import vendors from "../vendors.cells"
 type Phase = single|pending|post|void
 type Code = purchase|refund|transfer|salary|tax|pension|exchange|sale|correction|opening
 ---
-id:id!,date:date,phase:Phase final,amount:money in commodity final,commodity:commodities.commodity final,account_from:accounts.account final,account_to:accounts.account final,amount_to:money in commodity_to optional final,commodity_to:commodities.commodity? final,pending:money.id optional unique final,group:money.id?,lot:money.id?,code:Code,vendor:vendors.vendor?,description:text,tax_rate:pct?,vat:money in commodity optional=amount*tax_rate/(100+tax_rate),cleared:yes/no
+id: id!,date: date,phase: Phase final,amount: money in commodity final,commodity: commodities.commodity final,account_from: accounts.account final,account_to: accounts.account final,amount_to: money in commodity_to optional final,commodity_to: commodities.commodity? final,pending: money.id optional unique final,group: money.id?,lot: money.id?,code: Code,vendor: vendors.vendor?,description: text,tax_rate: pct?,vat: money in commodity optional = amount*tax_rate/(100+tax_rate),cleared: yes/no
 a1b2c3d4,2026-07-01,single,950.00,EUR,assets:bank:main,expenses:home:rent,,,,,,purchase,,rent july,0,0.00=,yes
 e5f6g7h8,2026-07-14,pending,60.00,EUR,assets:bank:main,expenses:fuel,,,,,,purchase,fuel-stop,card hold at the pump,21,10.41=,no
 j9k0m1n2,2026-07-16,post,48.40,EUR,assets:bank:main,expenses:fuel,,,e5f6g7h8,,,purchase,fuel-stop,fuel,21,8.40=,yes
@@ -101,7 +101,7 @@ check balance_holds:
                       WHERE p.date <= b.date AND p.phase IN ('single', 'post')
                         AND (p.account = b.account OR (b.children AND p.account LIKE b.account || ':%')))
 ---
-id:id!,date:date,account:accounts.account,balance:money in account.commodity,children:yes/no,source:text?
+id: id!,date: date,account: accounts.account,balance: money in account.commodity,children: yes/no,source: text?
 w2x3y4z5,2026-07-31,assets:bank:main,5188.20,no,statement july
 ```
 
@@ -123,5 +123,5 @@ The account's posted balance at the end of `date` (a statement's closing balance
 
 ## Recurring and prices
 
-- `schedules.cells`, `id:id!,every:monthly|quarterly|yearly,day:1..31,from:date,until:date?,amount:money in commodity,commodity:commodities.commodity,account_from:accounts.account,account_to:accounts.account,description:text`: each due occurrence is shown as a computed row (never stored: a forecast, not a movement) for forecasts and budgets. When the real movement happens, a real row is written naming the schedule.
-- `prices.cells`, `id:id!,date:date,commodity:commodities.commodity,price:num>0,in:commodities.commodity,source:text?`: one price per date, commodity and currency (a `unique` over the three). Valuation (then, at a period's end, now) is a query over it, never data.
+- `schedules.cells`, `id: id!,every: monthly|quarterly|yearly,day: 1..31,from: date,until: date?,amount: money in commodity,commodity: commodities.commodity,account_from: accounts.account,account_to: accounts.account,description: text`: each due occurrence is shown as a computed row (never stored: a forecast, not a movement) for forecasts and budgets. When the real movement happens, a real row is written naming the schedule.
+- `prices.cells`, `id: id!,date: date,commodity: commodities.commodity,price: num>0,in: commodities.commodity,source: text?`: one price per date, commodity and currency (a `unique` over the three). Valuation (then, at a period's end, now) is a query over it, never data.
