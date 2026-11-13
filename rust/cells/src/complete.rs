@@ -336,14 +336,13 @@ where
             let here = at - s.start as usize;
             let from = word[..here].rfind(|c: char| !(ident(c) || c == '.')).map_or(0, |i| i + 1);
             let to = here + word[here..].find(|c: char| !(ident(c) || c == '.')).unwrap_or(word.len() - here);
-            let named = from == 0 || word[..from].ends_with([' ', '\t', '|', '<', '(']);
+            let named = names_begin(&word[..from]);
             let (from, to) = (s.start + from as u32, s.start + to as u32);
             if tinting(&text[..from as usize]) {
                 tints(from, to)
             } else if named {
                 types(doc, from, to)
             } else {
-                // after a mark (`text?`, `id!`), a bound or a quote no name begins
                 Vec::new()
             }
         }
@@ -356,6 +355,13 @@ where
 /// Whether what is typed next is a choice's tint: after its `#`, or its `tint`.
 fn tinting(before: &str) -> bool {
     before.ends_with('#') || before.trim_end_matches([' ', '\t']).strip_suffix("tint").is_some_and(|b| b.ends_with([' ', '\t']))
+}
+
+/// Whether a type's name may begin after `typed`, the type written before the word at
+/// the place: at its start, or after a space, `|`, `<` or `(`. After a mark (`text?`,
+/// `id!`), a bound or a quote none does.
+fn names_begin(typed: &str) -> bool {
+    typed.trim_start().is_empty() || typed.ends_with([' ', '\t', '|', '<', '('])
 }
 
 /// The ten tints, each said: a choice's after its `#`, a look rule's.
@@ -588,8 +594,10 @@ fn prelude<D: Deref<Target = Doc>, H: Fn(&[&str]) -> Option<D>>(reach: &Reach<'_
                 let skipped = src.len() - src.trim_start().len();
                 let f = Formula { src: &src[skipped..], base: base + (eq + skipped) as u32 };
                 formula(reach, &f, at)
-            } else {
+            } else if names_begin(&line[line.find(':').expect("the colon is on the line") + 1..start]) {
                 types(doc, from, to)
+            } else {
+                Vec::new()
             }
         }
     }
@@ -687,6 +695,13 @@ mod tests {
         let text = "---\nnote: text?\n---\nnote\nx\n";
         let at = text.find("text?").unwrap() + 5;
         assert_eq!(labels(text, at), Vec::<String>::new());
+        // the same in a declaration no column has yet (a host's type being typed)
+        let text = "---\nx__completing: text?\n---\nnote\nx\n";
+        let at = text.find("text?").unwrap() + 5;
+        assert_eq!(labels(text, at), Vec::<String>::new());
+        let text = "---\nx__completing: te\n---\nnote\nx\n";
+        let at = text.find(": te").unwrap() + 4;
+        assert!(labels(text, at).iter().any(|l| l == "text"));
         let text = "---\nwho: people.id|t\n---\nwho\nx\n";
         let at = text.find("|t").unwrap() + 2;
         assert!(labels(text, at).iter().any(|l| l == "text"));
