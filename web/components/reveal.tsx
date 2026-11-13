@@ -18,11 +18,11 @@ const ext = PRODUCT.extension
 
 const PEOPLE: TableFile = {
   path: `people${ext}`,
-  text: "name:text!,email:email\nana,ana@example.com\nben,ben@example.com\ncarla,carla@example.com\ndan,dan@example.com\n",
+  text: "name: text!,email: email\nana,ana@example.com\nben,ben@example.com\ncarla,carla@example.com\ndan,dan@example.com\n",
 }
 const TRIP: TableFile = {
   path: `lisbon${ext}`,
-  text: `---\nimport people from "./${PEOPLE.path}"\n---\nitem,paid:people.name?,cost:EUR>=0\nflights,ana,412.00\napartment,ben,540.00\n`,
+  text: `---\nimport people from "./${PEOPLE.path}"\n---\nitem,paid: people.name?,cost: EUR>=0\nflights,ana,412.00\napartment,ben,540.00\n`,
 }
 /** The dinner typed, paid by a name no friend has. */
 const LINKED: TableStep[] = [
@@ -36,7 +36,7 @@ const LINKED: TableStep[] = [
   { kind: "type", text: "carla" },
 ]
 
-const RATES = (rows: string[]) => ({ path: `rates${ext}`, text: `on:date!,eur:num\n${rows.join("\n")}\n` })
+const RATES = (rows: string[]) => ({ path: `rates${ext}`, text: `on: date!,eur: num\n${rows.join("\n")}\n` })
 const DAYS = ["2026-11-03,0.0061", "2026-11-04,0.0062", "2026-11-05,0.0060", "2026-11-06,0.0063"]
 /** Each evening's run writes the day's rate into the table, no hand on it. */
 const CURRENT: TableStep[] = DAYS.slice(1).map((_, i) => ({

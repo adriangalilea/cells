@@ -162,7 +162,7 @@ function chain(engine: Engine, name: string, text: string, scripts: Script[]): S
 /** Who is on the trip, the file a cost's `paid` names a row of. */
 const PEOPLE: StoryFile = {
   name: `people${ext}`,
-  text: `name:text!,email:email
+  text: `name: text!,email: email
 ana,ana@example.com
 ben,ben@example.com
 carla,carla@example.com
@@ -226,7 +226,7 @@ taxi,dan,18.40
       lead: "Say what a column holds",
       rest: "`cost` is euros, never below zero. The typo is flagged where it is written; fixed, the column is money.",
       edits: [
-        { after: "item,paid,cost", insert: ":EUR>=0" },
+        { after: "item,paid,cost", insert: ": EUR>=0" },
         { after: "ben,54", remove: 1, insert: "0" },
       ],
       light: { column: "cost", row: 1 },
@@ -242,7 +242,7 @@ taxi,dan,18.40
       doc: "/docs/spec/formulas#a-columns-formula",
       lead: "Columns compute",
       rest: "Who owes what: a quarter of each cost, on every row. Each value is stored in the file beside its `=`, so it reads without running anything.",
-      edits: [{ after: "cost:EUR>=0", insert: ",share:EUR=cost / 4" }],
+      edits: [{ after: "cost: EUR>=0", insert: ",share: EUR = cost / 4" }],
       light: { column: "share" },
       expect: { problems: [], values: { share: [103, 135, 24.19, 4.6] } },
     },
@@ -262,7 +262,7 @@ taxi,dan,18.40
       doc: "/docs/spec/formulas#rows-by-where-they-are",
       lead: "Formulas see other rows",
       rest: "How much so far: each row adds its cost to the row above's, `[-1]`.",
-      edits: [{ after: "share:EUR=cost / 4", insert: ",spent:EUR=spent[-1] + cost" }],
+      edits: [{ after: "share: EUR = cost / 4", insert: ",spent: EUR = spent[-1] + cost" }],
       light: { column: "spent" },
       expect: { problems: [], values: { spent: [412, 952, 1048.75, 1067.15] } },
     },
@@ -275,7 +275,7 @@ taxi,dan,18.40
       imports: [PEOPLE],
       edits: [
         { after: "", insert: `---\nimport people from "./${PEOPLE.name}"\n---\n` },
-        { after: "item,paid", insert: ":people.name" },
+        { after: "item,paid", insert: ": people.name" },
         { after: "dinner,", remove: 5, insert: "karla" },
       ],
       light: { column: "paid", row: 2 },

@@ -12,11 +12,11 @@ export const TRIP_FOLDER = "trips"
 export const TRIP_FILES = [
   {
     name: `people${ext}`,
-    text: "name:text!,email:email\nana,ana@example.com\nben,ben@example.com\ncarla,carla@example.com\ndan,dan@example.com\n",
+    text: "name: text!,email: email\nana,ana@example.com\nben,ben@example.com\ncarla,carla@example.com\ndan,dan@example.com\n",
   },
   {
     name: `lisbon${ext}`,
-    text: `---\nimport people from "./people${ext}"\n---\nitem,paid:people.name,cost:EUR>=0,share:EUR=cost / 4\nflights,ana,412.00,103.00=\ndinner,karla,96.75,24.19=\n`,
+    text: `---\nimport people from "./people${ext}"\n---\nitem,paid: people.name,cost: EUR>=0,share: EUR = cost / 4\nflights,ana,412.00,103.00=\ndinner,karla,96.75,24.19=\n`,
   },
 ]
 /** The check's one problem, as the engine says it. */
@@ -34,11 +34,11 @@ rates = run every day at 18:00 in Asia/Tokyo
 export default async () => (await fetch("https://api.example.com/jpy-eur")).json()
 \`\`\`
 \`\`\`cells
-on:date!,eur:num
+on: date!,eur: num
 2026-11-03,0.0061
 \`\`\`
 ---
-item,paid:people.name,cost:JPY,on:date,eur:EUR=cost * rates[on].eur,share:EUR=eur / 4
+item,paid: people.name,cost: JPY,on: date,eur: EUR = cost * rates[on].eur,share: EUR = eur / 4
 ramen,ana,4800,2026-11-03,29.28=,7.32=
 `,
 }
@@ -57,11 +57,11 @@ rates = run every day at 18:00 in Europe/Lisbon
 export default async () => (await fetch("https://api.example.com/jpy-eur")).json()
 \`\`\`
 \`\`\`cells
-on:date!,eur:num
+on: date!,eur: num
 2026-11-03,0.0061
 \`\`\`
 ---
-item,cost:JPY,on:date,eur:EUR=cost * rates[on].eur
+item,cost: JPY,on: date,eur: EUR = cost * rates[on].eur
 ramen,1200,2026-11-03,7.32=
 `,
   },

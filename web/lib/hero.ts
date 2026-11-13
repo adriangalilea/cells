@@ -16,7 +16,7 @@ import { type Engine, writeCell } from "@/lib/view"
 const accounts = `accounts${PRODUCT.extension}`
 const money = `money${PRODUCT.extension}`
 
-const ACCOUNTS = `account:text!
+const ACCOUNTS = `account: text!
 bank
 rent
 food
@@ -24,7 +24,7 @@ food
 const MONEY = `---
 import accounts from "./${accounts}"
 ---
-date,amount:EUR>0,to:accounts.account?,vat:EUR=amount * 21 / 121
+date,amount: EUR>0,to: accounts.account?,vat: EUR = amount * 21 / 121
 2026-11-01,950.00,rent,164.88=
 2026-11-03,42.50,food,7.38=
 `

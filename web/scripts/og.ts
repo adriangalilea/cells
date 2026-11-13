@@ -1,4 +1,4 @@
-// THE LINK PREVIEW: cellular.computer's card, `app/card.png` (lib/card), which
+// THE LINK PREVIEW: cellular.computer's card, `public/og.png` (lib/card), which
 // app/opengraph-image.ts serves as the og:image of every page, with its alt. Drawn
 // from the site's own parts through ui's: a `.cells` file in Helix as the hero shows it
 // (ui's terminal-editor still, its accent, the engine as its language server), across
@@ -37,7 +37,7 @@ const engine = await loadEngine()
 
 const name = CARD_CELL
 /** As typed: a type, a formula, and a typo in a cost. The engine writes the rest. */
-const TYPED = `item,cost:EUR>=0,qty,total:EUR=cost * qty
+const TYPED = `item,cost: EUR>=0,qty,total: EUR = cost * qty
 fuel,84.20,1
 groceries,96.7x,2
 coffee,2.10,3
@@ -50,7 +50,7 @@ assert.deepEqual(read.broken, [], "the file's grammar reads whole")
 assert.deepEqual(read.values.total, [84.2, null, 6.3], "the totals, and none for the broken row")
 assert.equal(
   text,
-  `item,cost:EUR>=0,qty,total:EUR=cost * qty
+  `item,cost: EUR>=0,qty,total: EUR = cost * qty
 fuel,84.20,1,84.20=
 groceries,96.7x,2,=
 coffee,2.10,3,6.30=

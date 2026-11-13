@@ -119,7 +119,7 @@ const PLATFORMS: { name: string; now: boolean }[] = [
 const TRIES = [
   {
     word: "Typed",
-    code: "cost:EUR>=0",
+    code: "cost: EUR>=0",
     says: "holds euros, never below zero.",
     act: (
       <>
@@ -129,7 +129,7 @@ const TRIES = [
   },
   {
     word: "Reactive",
-    code: "share:EUR=cost / 4",
+    code: "share: EUR = cost / 4",
     says: "is computed for every row and written beside its =.",
     act: (
       <>
@@ -139,7 +139,7 @@ const TRIES = [
   },
   {
     word: "Composable",
-    code: "paid:people.name",
+    code: "paid: people.name",
     says: `names a friend in people${PRODUCT.extension}, checked across the two files.`,
     act: <>Say the taxi was paid by someone who was not on the trip.</>,
   },
