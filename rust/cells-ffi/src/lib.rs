@@ -703,16 +703,21 @@ pub unsafe extern "C" fn cells_row_tint(d: *mut CellsDoc, row: usize) -> CellsTi
     CellsTint::of(unsafe { doc(d) }.doc.row_tint(row))
 }
 
-/// The tint a choice's word has in `column`'s type: what a picker or a chip of the word
-/// shows where no cell holds it.
+/// The tint of a choice type's word `word` (`income#green`), a column's or a named type's,
+/// the named types it is spelled by included; none when the word has none.
 ///
 /// # Safety
-/// `d` is a live doc; `column < cells_stored(d)`; `word` points at `len` bytes of UTF-8.
+/// `d` is a live doc; `index` is below `cells_columns` or `cells_named_count`; the type is
+/// a choice and `word` below its `words`.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn cells_word_tint(d: *mut CellsDoc, column: usize, word: *const c_char, len: usize) -> CellsTint {
+pub unsafe extern "C" fn cells_type_tint(d: *mut CellsDoc, of: CellsOf, index: usize, word: usize) -> CellsTint {
     // SAFETY: the caller's promise.
-    let (d, word) = unsafe { (doc(d), text_of(word, len)) };
-    CellsTint::of(d.doc.columns()[column].ty.tint(word))
+    let d = unsafe { doc(d) };
+    let (_, t, _) = type_of(d, of, index);
+    match &t.base {
+        cells::Base::Choice(w) => CellsTint::of(t.tint(&w[word])),
+        other => panic!("a {} has no tinted words", other.tag()),
+    }
 }
 
 /// The cell at `row`, `column` as drawn under its column's look (`Doc::drawn`), in the
@@ -1979,12 +1984,19 @@ mod tests {
             assert_eq!(cells_tint(d, 0, 0).from, CellsTint { kind: 2, value: 0x3fa34d });
             assert_eq!(cells_tint(d, 0, 1).from, CellsTint { kind: 1, value: 0 });
             assert_eq!(cells_row_tint(d, 1), CellsTint { kind: 1, value: 9 });
-            assert_eq!(cells_word_tint(d, 0, "income".as_ptr() as *const c_char, 6), CellsTint { kind: 1, value: 3 });
+            assert_eq!(cells_type_tint(d, CellsOf::CellsOfColumn, 0, 0), CellsTint { kind: 1, value: 3 });
             assert_eq!(text(cells_drawn(d, 0, 1, ptr::null(), 0)), "-1,234.50");
             assert_eq!(text(cells_looks_of(d, 1)), "grouped\nnegative red");
             assert_eq!(cells_look_count(d), 2);
             assert_eq!((text(cells_look_target(d, 0)), text(cells_look_rules(d, 0))), ("amount".into(), "grouped\nnegative red".into()));
             assert_eq!((text(cells_look_target(d, 1)), text(cells_look_rules(d, 1))), ("".into(), "gray when amount > 0".into()));
+            cells_free(d);
+            // a named type's words keep their tints, in the type and in a column of it
+            let src = "---\ntype Kind = income#green|cost\n---\nkind:Kind\nincome\n";
+            let d = cells_read(src.as_ptr(), src.len(), 1, &mut f);
+            assert_eq!(cells_type_tint(d, CellsOf::CellsOfNamed, 0, 0), CellsTint { kind: 1, value: 3 });
+            assert_eq!(cells_type_tint(d, CellsOf::CellsOfNamed, 0, 1), CellsTint::NONE);
+            assert_eq!(cells_type_tint(d, CellsOf::CellsOfColumn, 0, 0), CellsTint { kind: 1, value: 3 });
             cells_free(d);
         }
     }

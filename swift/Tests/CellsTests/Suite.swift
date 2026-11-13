@@ -100,9 +100,13 @@ private func looked(_ doc: Cells.Document, _ want: [String: Any]) -> [String] {
     var fails: [String] = []
     let looks = doc.looks(in: .english)
     if let theirs = want["tints"] as? [String: [String: String]] {
+        // the type's own tints, a named type's through its definition; the looks the same
         var ours: [String: [String: String]] = [:]
-        for (c, words) in looks.words {
-            ours[doc.columns[c].name] = words.mapValues(\.spelled)
+        for c in doc.columns.indices where !doc.type(of: c).tints.isEmpty {
+            ours[doc.columns[c].name] = doc.type(of: c).tints.mapValues(\.spelled)
+            if looks.words[c] != doc.type(of: c).tints {
+                fails.append("column \(doc.columns[c].name): looks' tints \(looks.words[c] ?? [:])")
+            }
         }
         if ours != theirs { fails.append("tints \(ours), the suite says \(theirs)") }
     }

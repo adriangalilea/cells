@@ -290,7 +290,16 @@ final class Engine: @unchecked Sendable {
                 minExclusive: t.has_min && !t.min_inclusive,
                 maxExclusive: t.has_max && !t.max_inclusive)
             : nil
-        return Cells.ColumnType(base: base, bounds: bounds, optional: t.optional, key: t.key)
+        var tints: [String: Cells.Tint] = [:]
+        if t.base == CellsBaseChoice {
+            for k in 0..<t.words {
+                if let tint = Cells.Tint(cells_type_tint(d, of, i, k)) {
+                    tints[part(d, of, i, CellsPartWord, word: k)] = tint
+                }
+            }
+        }
+        return Cells.ColumnType(
+            base: base, bounds: bounds, optional: t.optional, key: t.key, tints: tints)
     }
 }
 

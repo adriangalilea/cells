@@ -35,6 +35,18 @@ let budget = """
             == .success(.date(DateComponents(year: 2026, month: 8, day: 14))))
 }
 
+@Test func aChoicesTintsTravelWithItsType() throws {
+    let tinted = try Cells.parseType("income#green|cost|refund#3fa34d")
+    #expect(tinted.tints == ["income": .named(.green), "refund": .hex(0x3fa34d)])
+    #expect(Cells.shorthand(tinted) == "income#green|cost|refund#3fa34d")
+    let doc = Cells.Document(
+        reading: "---\ntype Kind = income#green|cost\n---\nkind:Kind?\nincome\n")
+    #expect(doc.names["Kind"]?.tints == ["income": .named(.green)])
+    #expect(doc.type(of: 0).tints == ["income": .named(.green)])
+    #expect(doc.tint(of: "income", in: 0) == .named(.green))
+    #expect(Cells.shorthand(doc.type(of: 0)) == "Kind?")
+}
+
 @Test func shorthandAndExplicitMeanTheSame() throws {
     let pairs: [(String, String)] = [
         ("text!", "text key"),

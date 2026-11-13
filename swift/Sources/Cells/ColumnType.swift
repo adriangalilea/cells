@@ -68,12 +68,19 @@ extension Cells {
         public var optional = false
         /// The column identifies the row: present and unique.
         public var key = false
+        /// A choice's words that have a tint (`income#green`), each its tint; a named
+        /// type's come from its definition.
+        public var tints: [String: Tint]
 
-        public init(base: Base, bounds: Bounds? = nil, optional: Bool = false, key: Bool = false) {
+        public init(
+            base: Base, bounds: Bounds? = nil, optional: Bool = false, key: Bool = false,
+            tints: [String: Tint] = [:]
+        ) {
             self.base = base
             self.bounds = bounds
             self.optional = optional
             self.key = key
+            self.tints = tints
         }
     }
 
@@ -130,7 +137,7 @@ extension Cells {
     {
         var names = given
         if case .named(let name, let resolved) = type.base, names[name] == nil {
-            names[name] = ColumnType(base: resolved)
+            names[name] = ColumnType(base: resolved, tints: type.tints)
         }
         let doc = Document(reading: prelude(names) + "x:" + spelling(type, names: names) + "\n")
         precondition(doc.broken.isEmpty, "Cells: \(type) has no spelling: \(doc.broken)")
@@ -141,7 +148,7 @@ extension Cells {
     /// quoted, every part said once, a named type's own parts left to its definition.
     /// Never shown; the engine writes the shorthand from it.
     static func spelling(_ type: ColumnType, names: [String: ColumnType]) -> String {
-        var text = spelling(base: type.base)
+        var text = spelling(base: type.base, tints: type.tints)
         var under: ColumnType?
         if case .named(let name, _) = type.base { under = names[name] }
         if let b = type.bounds {
@@ -158,8 +165,17 @@ extension Cells {
         return text
     }
 
-    static func spelling(base: Base) -> String {
+    /// A base spelled as `spelling` spells it: a choice's words with their `tints` (the
+    /// explicit `tint green`, `tint 3fa34d`), a named type's left to its definition.
+    static func spelling(base: Base, tints: [String: Tint]) -> String {
         func word(_ w: String) -> String { "'" + w.replacingOccurrences(of: "'", with: "''") + "'" }
+        func tinted(_ w: String) -> String {
+            switch tints[w] {
+            case nil: word(w)
+            case .named(let n): "\(word(w)) tint \(n)"
+            case .hex(let rgb): "\(word(w)) tint " + String(format: "%06x", rgb)
+            }
+        }
         switch base {
         case .text: return "text"
         case .int: return "int"
@@ -173,7 +189,11 @@ extension Cells {
         case .email: return "email"
         case .id: return "id"
         case .money(let c): return c
-        case .choice(let words): return "one of " + words.map(word).joined(separator: " ")
+        case .choice(let words):
+            precondition(
+                tints.keys.allSatisfy(words.contains),
+                "Cells: tints \(tints) name words the choice \(words) does not hold")
+            return "one of " + words.map(tinted).joined(separator: " ")
         case .ref(let targets): return targets.joined(separator: "|")
         case .named(let name, _): return name
         }
@@ -183,7 +203,7 @@ extension Cells {
     public static func decode(_ raw: String, _ type: ColumnType) -> Result<Value, Mismatch> {
         var names: [String: ColumnType] = [:]
         if case .named(let name, let resolved) = type.base {
-            names[name] = ColumnType(base: resolved)
+            names[name] = ColumnType(base: resolved, tints: type.tints)
         }
         var doc = Document(reading: prelude(names) + "x:" + spelling(type, names: names) + "\n")
         precondition(doc.broken.isEmpty, "Cells: \(type) does not read: \(doc.broken)")

@@ -172,9 +172,7 @@ extension Cells.Document {
     /// The tint `word` has in `column`'s choice: what a chip or a picker of the word shows
     /// where no cell holds it.
     public func tint(of word: String, in column: Int) -> Cells.Tint? {
-        engine.with { d in
-            lending([word]) { s in Cells.Tint(cells_word_tint(d, column, s[0].ptr, s[0].len)) }
-        } ?? nil
+        self.type(of: column).tints[word]
     }
 }
 
@@ -194,21 +192,8 @@ extension Engine {
                     drawn[c] = (0..<rows).map { r in string(cells_drawn(d, r, c, at, place.count)) }
                     tinted[c] = (0..<rows).map { r in Cells.Tinted(cells_tint(d, r, c)) }
                 }
-                if let choices = choice((said.columns[c].type ?? said.inferred[c])?.base) {
-                    var tints: [String: Cells.Tint] = [:]
-                    for w in choices {
-                        var w = w
-                        let tint = w.withUTF8 { b in
-                            Cells.Tint(
-                                cells_word_tint(
-                                    d, c,
-                                    UnsafeRawPointer(b.baseAddress)?.assumingMemoryBound(
-                                        to: CChar.self),
-                                    b.count))
-                        }
-                        if let tint { tints[w] = tint }
-                    }
-                    if !tints.isEmpty { words[c] = tints }
+                if let tints = (said.columns[c].type ?? said.inferred[c])?.tints, !tints.isEmpty {
+                    words[c] = tints
                 }
             }
         }
@@ -218,14 +203,5 @@ extension Engine {
         }
         let rowTints = rowsTinted ? (0..<rows).map { Cells.Tint(cells_row_tint(d, $0)) } : []
         return Cells.Looks(drawn: drawn, tinted: tinted, words: words, rows: rowTints)
-    }
-
-    /// A choice's words, through the named types it is spelled by; nil for any other base.
-    private static func choice(_ base: Cells.Base?) -> [String]? {
-        switch base {
-        case .choice(let words): words
-        case .named(_, let inner): choice(inner)
-        default: nil
-        }
     }
 }
