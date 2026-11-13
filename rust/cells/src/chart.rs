@@ -218,17 +218,19 @@ impl Summary {
 
 /// Each tint's colour on a light page and a dark one, the ten in `TINTS`' order: what an
 /// SVG draws a named tint in (a reader with a theme of its own draws its own).
+/// Apple's system colours, light and dark: a tint looks as its name says on a platform
+/// that names it.
 const SHADES: [(u32, u32); 10] = [
-    (0xe34948, 0xe66767),
-    (0xeb6834, 0xd95926),
-    (0xeda100, 0xc98500),
-    (0x1baf7a, 0x199e70),
-    (0x14a3b8, 0x2bb3c7),
-    (0x2a78d6, 0x3987e5),
-    (0x6250d6, 0x9085e9),
-    (0xe87ba4, 0xd55181),
-    (0x9a6b3f, 0xb5845a),
-    (0x8a8a8a, 0x9a9a9a),
+    (0xff3b30, 0xff453a),
+    (0xff9500, 0xff9f0a),
+    (0xffcc00, 0xffd60a),
+    (0x34c759, 0x30d158),
+    (0x30b0c7, 0x40c8e0),
+    (0x007aff, 0x0a84ff),
+    (0xaf52de, 0xbf5af2),
+    (0xff2d55, 0xff375f),
+    (0xa2845e, 0xac8e68),
+    (0x8e8e93, 0x98989d),
 ];
 
 /// The columns' colours in turn, as a reader colours a column with no tint of its own.
@@ -449,6 +451,13 @@ impl Summary {
             None => n,
         }
     }
+}
+
+/// A scale a person reads over `lo..hi` in about `steps` steps: its ends whole steps, its
+/// step 1, 2 or 5 times a power of ten. What every reader draws a chart's scale by.
+pub fn scale(lo: f64, hi: f64, steps: u32) -> (f64, f64, f64) {
+    let step = nice((hi - lo) / steps.max(1) as f64);
+    (whole(lo / step, false) * step, whole(hi / step, true) * step, step)
 }
 
 /// The step of a scale near `rough`: 1, 2 or 5 times a power of ten.
