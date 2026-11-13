@@ -19,13 +19,27 @@ pub const SCALED_QUOTIENT_DIGITS: u32 = 34;
 const BASE: u64 = 1_000_000_000;
 
 /// `±magnitude / 10^scale`.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug)]
 pub struct Exact {
     pub negative: bool,
     /// Base 10^9, least significant first, no zero limb on top; empty is zero.
     pub magnitude: Vec<u32>,
     pub scale: u32,
+    /// The digits after the point that were written (a cell's, a literal's), at most
+    /// `scale`: a sum keeps the most of its operands', a product their sum (`1.10 * 3` is
+    /// `3.30`). A quotient writes none, so past these a value holds no zero at its end.
+    pub written: u32,
 }
+
+/// Equal as held: the same digits at the same scale (`1.0` is not `1.00`), whatever of
+/// them was written.
+impl PartialEq for Exact {
+    fn eq(&self, b: &Exact) -> bool {
+        self.negative == b.negative && self.scale == b.scale && self.magnitude == b.magnitude
+    }
+}
+
+impl Eq for Exact {}
 
 fn trim(m: &mut Vec<u32>) {
     while m.last() == Some(&0) {
@@ -240,15 +254,17 @@ fn digits(m: &[u32]) -> u32 {
 
 impl Exact {
     pub fn zero() -> Exact {
-        Exact { negative: false, magnitude: Vec::new(), scale: 0 }
+        Exact { negative: false, magnitude: Vec::new(), scale: 0, written: 0 }
     }
 
+    /// A value as written: every digit after its point is.
     pub fn from_decimal(d: Decimal) -> Exact {
-        Exact { negative: d.mantissa < 0, magnitude: from_u128(d.mantissa.unsigned_abs()), scale: d.scale as u32 }
+        let scale = d.scale as u32;
+        Exact { negative: d.mantissa < 0, magnitude: from_u128(d.mantissa.unsigned_abs()), scale, written: scale }
     }
 
     pub fn from_int(v: i64) -> Exact {
-        Exact { negative: v < 0, magnitude: from_u128(v.unsigned_abs() as u128), scale: 0 }
+        Exact { negative: v < 0, magnitude: from_u128(v.unsigned_abs() as u128), scale: 0, written: 0 }
     }
 
     /// Digits written: `2`, `0.5`.
@@ -264,7 +280,8 @@ impl Exact {
                     m = add_mag(&mul_small(&m, 10), &from_u128((c - b'0') as u128));
                 }
                 trim(&mut m);
-                Exact { negative: false, magnitude: m, scale: frac.len() as u32 }
+                let scale = frac.len() as u32;
+                Exact { negative: false, magnitude: m, scale, written: scale }
             }
         }
     }
@@ -277,24 +294,39 @@ impl Exact {
         mul_pow10(&self.magnitude, scale - self.scale)
     }
 
-    fn signed(negative: bool, magnitude: Vec<u32>, scale: u32) -> Exact {
-        Exact { negative: negative && !magnitude.is_empty(), magnitude, scale }
+    /// The value with no zero at its end past the digits `written`.
+    fn signed(negative: bool, magnitude: Vec<u32>, scale: u32, written: u32) -> Exact {
+        assert!(written <= scale, "{written} digits written past a scale of {scale}");
+        let mut out = Exact { negative: negative && !magnitude.is_empty(), magnitude, scale, written };
+        while out.scale > out.written && !out.magnitude.is_empty() {
+            let (q, r) = div_small(&out.magnitude, 10);
+            if r != 0 {
+                break;
+            }
+            out.magnitude = q;
+            out.scale -= 1;
+        }
+        if out.magnitude.is_empty() {
+            out.scale = written;
+        }
+        out
     }
 
     pub fn add(&self, b: &Exact) -> Exact {
         let s = self.scale.max(b.scale);
+        let w = self.written.max(b.written);
         let (x, y) = (self.at_scale(s), b.at_scale(s));
         if self.negative == b.negative {
-            return Exact::signed(self.negative, add_mag(&x, &y), s);
+            return Exact::signed(self.negative, add_mag(&x, &y), s, w);
         }
         match cmp_mag(&x, &y) {
-            Ordering::Less => Exact::signed(b.negative, sub_mag(&y, &x), s),
-            _ => Exact::signed(self.negative, sub_mag(&x, &y), s),
+            Ordering::Less => Exact::signed(b.negative, sub_mag(&y, &x), s, w),
+            _ => Exact::signed(self.negative, sub_mag(&x, &y), s, w),
         }
     }
 
     pub fn neg(&self) -> Exact {
-        Exact::signed(!self.negative, self.magnitude.clone(), self.scale)
+        Exact::signed(!self.negative, self.magnitude.clone(), self.scale, self.written)
     }
 
     pub fn sub(&self, b: &Exact) -> Exact {
@@ -302,7 +334,7 @@ impl Exact {
     }
 
     pub fn mul(&self, b: &Exact) -> Exact {
-        Exact::signed(self.negative != b.negative, mul_mag(&self.magnitude, &b.magnitude), self.scale + b.scale)
+        Exact::signed(self.negative != b.negative, mul_mag(&self.magnitude, &b.magnitude), self.scale + b.scale, self.written + b.written)
     }
 
     /// `self / b` to `QUOTIENT_DIGITS`, as `quotient` gives it.
@@ -357,12 +389,11 @@ impl Exact {
         if round_up {
             m = add_mag(&m, &from_u128(1));
         }
-        let mut out = Exact::signed(self.negative != b.negative, m, scale - drop);
-        out.normalize();
-        Some(out)
+        // its digits are not written places: it holds the scale they need, `1 / 4` `0.25`
+        Some(Exact::signed(self.negative != b.negative, m, scale - drop, 0))
     }
 
-    /// No zero after the point that changes nothing.
+    /// No zero after the point that changes nothing, written or not.
     pub fn normalize(&mut self) {
         while self.scale > 0 && !self.magnitude.is_empty() {
             let (q, r) = div_small(&self.magnitude, 10);
@@ -375,6 +406,7 @@ impl Exact {
         if self.magnitude.is_empty() {
             self.scale = 0;
         }
+        self.written = self.written.min(self.scale);
     }
 
     /// The order of two values, whatever their scales (`1.0` and `1.00` are in no order,
@@ -410,7 +442,7 @@ impl Exact {
         }
         let up = last > 5 || (last == 5 && (sticky || r.first().is_some_and(|l| l % 2 == 1)));
         let m = if up { add_mag(&r, &from_u128(1)) } else { r };
-        Exact::signed(self.negative, m, scale)
+        Exact::signed(self.negative, m, scale, self.written.min(scale))
     }
 
     /// At exactly `scale` digits after the point: rounded half to even to fewer, zeros
@@ -419,7 +451,7 @@ impl Exact {
         if scale < self.scale {
             return self.round(scale);
         }
-        Exact::signed(self.negative, self.at_scale(scale), scale)
+        Exact::signed(self.negative, self.at_scale(scale), scale, scale)
     }
 
     /// Rounded toward negative infinity to a whole number.
@@ -435,11 +467,11 @@ impl Exact {
             r = div_small(&r, 10).0;
         }
         trim(&mut r);
-        Exact::signed(self.negative, r, 0)
+        Exact::signed(self.negative, r, 0, 0)
     }
 
     pub fn abs(&self) -> Exact {
-        Exact::signed(false, self.magnitude.clone(), self.scale)
+        Exact::signed(false, self.magnitude.clone(), self.scale, self.written)
     }
 
     /// Digits before the point.
@@ -538,6 +570,16 @@ mod tests {
         let vat = e("64.30").mul(&e("21")).quotient(&e("100").add(&e("21")), SCALED_QUOTIENT_DIGITS).unwrap();
         assert_eq!(vat.to_string(), "11.15950413223140495867768595041322");
         assert_eq!(e("1.10").mul(&e("3")).to_string(), "3.30");
+        // A quotient's digits are not written places: a product or a sum of it keeps the
+        // written ones alone.
+        assert_eq!(plain("1", "4"), "0.25");
+        let share = e("84.20").div(&e("406.55")).unwrap();
+        assert_eq!(share.to_string(), "0.20710859672857");
+        assert_eq!(share.mul(&e("100")).to_string(), "20.710859672857");
+        assert_eq!(share.mul(&e("100.0")).to_string(), "20.710859672857");
+        assert_eq!(e("1").div(&e("4")).unwrap().add(&e("3").div(&e("4")).unwrap()).to_string(), "1");
+        assert_eq!(e("1").div(&e("4")).unwrap().mul(&e("2.00")).to_string(), "0.50");
+        assert_eq!(e("2.5").sub(&e("2.5")).to_string(), "0.0");
         assert!(e("1").div(&e("0")).is_none());
         // Past u128: the big path.
         let big = e("123456789012345678901234567890123456789").mul(&e("987654321098765432109876543210"));

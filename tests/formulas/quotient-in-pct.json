@@ -5,9 +5,9 @@
     { "name": "share", "type": "pct", "formula": "cost / SUM(cost) * 100" }
   ],
   "rows": [
-    { "item": { "text": "fuel" }, "cost": { "money": "84.20", "currency": "EUR" }, "share": { "pct": "20.71085967285700", "from": "formula" } },
+    { "item": { "text": "fuel" }, "cost": { "money": "84.20", "currency": "EUR" }, "share": { "pct": "20.710859672857", "from": "formula" } },
     { "item": { "text": "maps" }, "cost": { "money": "12.35", "currency": "EUR" }, "share": { "pct": "3.03775673348912", "from": "formula" } },
-    { "item": { "text": "tent" }, "cost": { "money": "310.00", "currency": "EUR" }, "share": { "pct": "76.25138359365390", "from": "formula" } }
+    { "item": { "text": "tent" }, "cost": { "money": "310.00", "currency": "EUR" }, "share": { "pct": "76.2513835936539", "from": "formula" } }
   ],
   "problems": []
 }

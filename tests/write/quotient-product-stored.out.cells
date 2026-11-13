@@ -1,0 +1,4 @@
+item:text,cost:EUR,share:pct=cost / SUM(cost) * 100,price:num,qty:int,line:num=price * qty
+diesel,84.20,20.710859672857=,1.10,3,3.30=
+maps,12.35,3.03775673348912=,1.05,3,3.15=
+tent,310.00,76.2513835936539=,0.75,4,3.00=

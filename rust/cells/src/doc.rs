@@ -3795,7 +3795,7 @@ fn between(d: Decimal, lo: Decimal, hi: Decimal) -> u16 {
         return 1000;
     }
     // 0 < from / span < 1, so the thousandths are below 1000 and fit.
-    let half = Exact { negative: false, magnitude: alloc::vec![5], scale: 1 };
+    let half = Exact::parse("0.5");
     let at = from.mul(&Exact::from_int(1000)).div(&span).unwrap().add(&half).floor();
     at.to_i128(0).unwrap() as u16
 }
