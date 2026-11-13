@@ -22,6 +22,11 @@
 //!                                     allowed once its person says yes, in a terminal
 //!   cells show <file>                  its table as tab-separated text, computed cells
 //!                                     their values as the file stores them (`0.00`)
+//!   cells chart <file> [n …] [--watch] [--svg] [--glyphs fine|blocks|ascii] [--colors true|256|16]
+//!                                     its charts listed, or charts n drawn in the terminal
+//!                                     (`--watch`: held, drawn again as the file changes;
+//!                                     `--svg`: as SVG); chart 0 the one a file with none
+//!                                     is drawn from
 //!   cells sql <file|folder>... <query> the query, DuckDB's SQL, over every file and the
 //!                                     files they import, each a table by its stem; its
 //!                                     answer as `show` writes a table
@@ -44,6 +49,7 @@
 //! refuses).
 
 mod allow;
+mod chart;
 mod history;
 mod lsp;
 mod merge;
@@ -57,7 +63,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 
 use cells_disk::{Disk, files};
 
-const USAGE: &str = "cells check <file|folder>...\ncells fmt [--check] [--align on|off] <file|folder>...\ncells diff <file>\ncells fix <file|folder>...\ncells merge <base> <ours> <theirs>\ncells pin <file>...\ncells run <file> [script]\ncells allow <file> [script]\ncells show <file>\ncells sql <file|folder>... <query>\ncells lsp\ncells serve [--verbose] <folder>...\ncells history <file|folder> [<row> <column>]";
+const USAGE: &str = "cells check <file|folder>...\ncells fmt [--check] [--align on|off] <file|folder>...\ncells diff <file>\ncells fix <file|folder>...\ncells merge <base> <ours> <theirs>\ncells pin <file>...\ncells run <file> [script]\ncells allow <file> [script]\ncells show <file>\ncells chart <file> [n …] [--watch] [--svg] [--glyphs fine|blocks|ascii] [--colors true|256|16]\ncells sql <file|folder>... <query>\ncells lsp\ncells serve [--verbose] <folder>...\ncells history <file|folder> [<row> <column>]";
 
 /// What one file says: its lines of output, or the reason it could not be read.
 enum Said {
@@ -272,6 +278,13 @@ fn main() -> ExitCode {
             }
             ExitCode::SUCCESS
         }
+        Some("chart") if args.len() >= 2 => match chart::run(&args[1..]) {
+            Ok(()) => ExitCode::SUCCESS,
+            Err(why) => {
+                eprintln!("cells: {why}");
+                ExitCode::from(2)
+            }
+        },
         Some("show") if args.len() == 2 => {
             let path = Path::new(&args[1]);
             let shown = fs::read(path)

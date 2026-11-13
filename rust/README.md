@@ -56,6 +56,18 @@ let (schema, array) = cells::arrow::export(&doc);
 
 A formula column costs its evaluation: 1M rows with `total:EUR=cost * qty` read in 236 ms on one thread and 170 ms on eighteen (the file without it in 74 and 12), the formula evaluated on one thread, its results written as text and read again by the column's decoder.
 
+## `cells chart`
+
+```console
+$ cells chart <file> [n …] [--watch] [--svg] [--glyphs fine|blocks|ascii] [--colors true|256|16]
+```
+
+A file's charts ([SPEC.md, Charts](../SPEC.md#charts)), what each draws the engine's (`Doc::summary`), drawn here. No number lists them, `1  Spending by month  bars`, a file with none its one drawn from its columns as `0`; numbers draw those charts, one under another, at the terminal's width. `--watch` holds them on the alternate screen, all of them sharing it, drawn again when the file changes and when the terminal is resized; `q` or Esc leaves. `--svg` writes each as the engine's SVG instead, for a page or a README.
+
+What the terminal holds is guessed and can be said: `TERM=linux` (the kernel's console: sixteen colours and a console font, no braille) draws in half blocks and eighths; `TERM=dumb` in ASCII; any other terminal in braille's dots, in true colour when `COLORTERM` says so, else 256 colours or sixteen. A tint is drawn in its dark theme's colour, quantized to the terminal's. Bars are eighth blocks along the value, two stacked series meeting in one cell drawn as its ink and its ground; lines, steps, areas and points are braille, or half blocks, or dots. On a Linux console of its own, kmscon (Fedora 45's console) draws braille and true colour where the kernel's console draws neither.
+
+The drawing is ratatui's cells (`ratatui` 0.30 with its crossterm backend), in `cells` itself: no pixels, since a terminal's graphics (kitty's, sixel) would need an SVG rasterizer of a few megabytes in the binary every editor's language server is.
+
 ## `cells sql`
 
 ```console
