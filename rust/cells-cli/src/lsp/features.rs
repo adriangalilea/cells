@@ -715,8 +715,9 @@ mod tests {
         assert_eq!(d[0].message, "to: accounts has no column \"a\" (its key is account)");
         assert_eq!(d[0].range, Lines::new(&text).range(span(at(&text, "accounts.a,", 0) as u32, 10)));
         assert!(hover(&folder, &file, at(&text, "950", 0)).is_some());
+        // what is wrong is the diagnostic's alone: the hover says what the column reads as
         let to = said(hover(&folder, &file, at(&text, "to:", 0)).unwrap());
-        assert_eq!(to, "`to:text?`\n\nto: accounts has no column \"a\" (its key is account)");
+        assert_eq!(to, "`to:text?`");
     }
 
     #[test]

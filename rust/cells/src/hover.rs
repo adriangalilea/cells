@@ -21,7 +21,7 @@ use core::ops::Deref;
 use crate::complete::{Followed, Reach, Spot, follow, ident, shown, spot, summary};
 use crate::expr;
 use crate::look::{self, Rule, Tint};
-use crate::{At, Base, Column, Doc, Origin};
+use crate::{Base, Column, Doc, Origin};
 
 /// A part of what is said, as each client writes it.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -129,9 +129,11 @@ fn word(text: &str, at: usize) -> (&str, usize) {
 }
 
 /// What is said of byte `at` of `text`, the text `doc` was read from: a header cell's
-/// column, a cell's value (its problem, the row its reference names), a formula's name or
-/// function, a named type or a table in the prelude. The tables it names are the host's:
-/// `held` reaches them by name, as `complete` does.
+/// column, a cell's value (the row its reference names), a formula's name or function, a
+/// named type or a table in the prelude. What is wrong there is never said here: it is a
+/// problem, which every host shows as its own (an editor's diagnostic, the app's tip and
+/// the prelude's list), so a hover repeating it says it twice. The tables it names are the
+/// host's: `held` reaches them by name, as `complete` does.
 pub fn hover<D, H>(doc: &Doc, text: &str, at: usize, held: H) -> Option<Hover>
 where
     D: Deref<Target = Doc>,
@@ -150,10 +152,6 @@ where
                 out.push(plain("looks "));
                 out.push(Piece::Code(looks.iter().map(|l| l.spelled.as_str()).collect::<Vec<_>>().join(", ")));
             }
-            for e in doc.broken().iter().filter(|e| e.at == At::Column(c as u32 + 1)) {
-                out.push(Piece::Break);
-                out.push(plain(e.why.clone()));
-            }
             said(out, s.start, s.len)
         }
         Spot::Cell(r, c, s) => {
@@ -164,10 +162,6 @@ where
                 out.push(plain("computed: "));
             }
             out.push(Piece::Strong(shown(col, r)));
-            if let Some(p) = doc.problems().iter().find(|p| p.row as usize == r && p.column as usize == c) {
-                out.push(Piece::Break);
-                out.push(plain(doc.why(p)));
-            }
             if let Base::Ref(targets) = &col.ty.base {
                 let key = doc.text(r, c);
                 for t in targets {
