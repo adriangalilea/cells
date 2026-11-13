@@ -87,7 +87,8 @@ extension Cells.Document {
                 continue
             }
             let type = suggestedType(of: c)
-            header.append("\(column.name):\(Cells.shorthand(type, names: names))")
+            header.append(
+                Cells.headerCell(name: column.name, spelled: Cells.shorthand(type, names: names)))
             guard type.base == .num, layout.delimiter != "," else { continue }
             for r in 0..<rows {
                 let raw = text(row: r, column: c)

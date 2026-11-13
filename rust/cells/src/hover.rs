@@ -75,11 +75,12 @@ fn plain(s: impl Into<String>) -> Piece {
 
 /// A column in words: its header cell, what computes it, what it holds, what it names.
 pub fn about(c: &Column) -> Vec<Piece> {
-    let mut out = vec![Piece::Code(format!("{}:{}", c.name, c.ty.shorthand()))];
-    if let Some(f) = &c.formula {
-        out.push(plain(" "));
-        out.push(Piece::Code(format!("={f}")));
-    }
+    // the column as a writer writes its header cell, one way wherever it is said
+    let spelled = match &c.formula {
+        Some(f) => format!("{}={f}", c.ty.shorthand()),
+        None => c.ty.shorthand(),
+    };
+    let mut out = vec![Piece::Code(crate::prelude::header_cell(&c.name, &spelled))];
     let mut said: Vec<Vec<Piece>> = Vec::new();
     if c.ty.inferred {
         said.push(vec![plain("its type inferred from its values")]);
@@ -288,11 +289,11 @@ mod tests {
 
     #[test]
     fn a_column_in_a_formula() {
-        let text = "item:text!,cost:EUR>=0,qty:int,total:EUR=cost * qty\nfuel,84.20,1,84.20=\n";
+        let text = "item: text!,cost: EUR>=0,qty: int,total: EUR = cost * qty\nfuel,84.20,1,84.20=\n";
         let at = text.find("cost *").unwrap() + 1;
         let h = hovered(text, at).unwrap();
-        assert_eq!(h.text(), "cost:EUR>=0");
-        assert_eq!(h.markdown(), "`cost:EUR>=0`");
+        assert_eq!(h.text(), "cost: EUR>=0");
+        assert_eq!(h.markdown(), "`cost: EUR>=0`");
         assert_eq!((h.from as usize, h.to as usize), (at - 1, at + 3));
     }
 

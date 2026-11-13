@@ -8,7 +8,7 @@ use std::hint::black_box;
 use std::io::Write;
 use std::time::Instant;
 
-const HEADER: &str = "item:text!,category:travel|stay|food|gear,cost:EUR>=0,qty:int>=1,paid:yes/no,on:date,note:text?";
+const HEADER: &str = "item: text!,category: travel|stay|food|gear,cost: EUR>=0,qty: int>=1,paid: yes/no,on: date,note: text?";
 
 /// xorshift64*, seeded, so every machine writes the same file.
 struct Rng(u64);

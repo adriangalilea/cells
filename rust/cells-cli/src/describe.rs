@@ -47,9 +47,10 @@ pub const DOCS: &[(&str, &str)] = &[
 
 /// The file the format's brief shows, `FORMAT`'s example: a test reads it with the engine
 /// and holds that it has no problem, so the brief never shows a file that does not read.
-pub const EXAMPLE: &str = "item:text!, cost:EUR>=0, qty:int>=1, paid:yes/no, on:date,   kind:travel|stay|food, total:EUR=cost * qty
-fuel,       84.20,       1,          yes,         2026-08-14, travel,                84.20=
-cabin,      310.00,      1,          no,          2026-08-15, stay,                  310.00=
+pub const EXAMPLE: &str =
+    "item: text!,    cost: EUR>=0,   qty: int>=1,    paid: yes/no,   on: date,   kind: travel|stay|food, total: EUR = cost * qty
+fuel,           84.20,          1,              yes,            2026-08-14, travel,                 84.20=
+cabin,          310.00,         1,              no,             2026-08-15, stay,                   310.00=
 ";
 
 /// The format in brief, enough to read and write a file right, after the example: `cells
@@ -57,9 +58,9 @@ cabin,      310.00,      1,          no,          2026-08-15, stay,             
 /// each one whole.
 pub const FORMAT: &str = r#"A Cells file is one table, a CSV whose header cells carry each column's type and, for a computed column, its formula; its rows hold every value, the computed ones too. One file, never a sidecar.
 
-A header cell is `name:type`, or `name:type=formula`. A cell with no `:` is a plain column, its type read from its values, so every CSV is a Cells file with no types written. Spaces at a field's ends are padding, never part of it (`cells fmt` aligns the columns with them).
+A header cell is `name: type`, or `name: type = formula`, the form a column declared in the prelude has. A cell with no `:` is a plain column, its type read from its values, so every CSV is a Cells file with no types written. Spaces at a field's ends are padding, never part of it (`cells fmt` aligns the columns with them).
 
-Types: `text`, `int`, `num`, `pct`, `bool`, `date` (`2026-08-14`), `time` (`14:30`), `datetime` (`2026-08-14T14:30:00Z`), `url`, `email`, a currency by its ISO code (`EUR`, `USD`: an amount), `id`. A choice is its words joined by `|` (`travel|stay|food`, a word's colour after `#`: `income#green`); a boolean in the file's own words is `yes/no`; a reference to another table's key is `table.column` (`to:accounts.account`). After the type: bounds (`>=0`, `<100`, `0..10`; on text its length), a date's or time's format (`date(DD/MM/YYYY)`), then `!` for the key (present and unique) or `?` for may be blank. Without `?` a blank cell is reported missing.
+Types: `text`, `int`, `num`, `pct`, `bool`, `date` (`2026-08-14`), `time` (`14:30`), `datetime` (`2026-08-14T14:30:00Z`), `url`, `email`, a currency by its ISO code (`EUR`, `USD`: an amount), `id`. A choice is its words joined by `|` (`travel|stay|food`, a word's colour after `#`: `income#green`); a boolean in the file's own words is `yes/no`; a reference to another table's key is `table.column` (`to: accounts.account`). After the type: bounds (`>=0`, `<100`, `0..10`; on text its length), a date's or time's format (`date(DD/MM/YYYY)`), then `!` for the key (present and unique) or `?` for may be blank. Without `?` a blank cell is reported missing.
 
 A cell is one of four forms: `84.20` written; `84.20=` computed by its column's formula, the value it gave stored left of the `=`; `32.25=96.75 / 3` computed by its own formula, right of the `=`; `=96.75 / 3` its own formula not computed yet. A text holding `=` is written `'=`. A field holding a `,` or a `"` is quoted as CSV quotes it, so a formula with a comma (`ROUND(cost, 2)`) quotes its whole header cell.
 

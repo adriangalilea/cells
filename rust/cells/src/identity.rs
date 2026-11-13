@@ -128,7 +128,7 @@ impl Doc {
 
     /// Every row given an identity. A file with a key has one already; a file with an `id`
     /// column gets an id in every row without one and in every later copy of a repeated
-    /// one; a file with neither gets an `id:id!` column first. `bits` supplies 40 random
+    /// one; a file with neither gets an `id: id!` column first. `bits` supplies 40 random
     /// bits per id asked for (a seeded source gives the same ids every run); an id drawn
     /// twice is drawn again.
     pub fn assign_ids(self, mut bits: impl FnMut() -> u64) -> Result<Doc, Error> {
@@ -171,7 +171,8 @@ impl Doc {
                 let mut seen = BTreeSet::new();
                 let mut out = String::with_capacity(src.len() + rows * 9 + 8);
                 out.push_str(&src[..body]);
-                out.push_str("id:id!,");
+                out.push_str(&crate::prelude::header_cell("id", "id!"));
+                out.push(',');
                 out.push_str(&src[body..at[0] as usize]);
                 for r in 0..rows {
                     out.push_str(&fresh(&mut seen, &mut bits));
@@ -216,7 +217,7 @@ mod tests {
         assert!(doc.columns()[0].ty.key);
         assert_eq!(doc.problems(), &[]);
         let text = doc.write();
-        assert!(text.starts_with("id:id!,title:text\r\n"), "{text:?}");
+        assert!(text.starts_with("id: id!,title:text\r\n"), "{text:?}");
         assert_eq!(text.lines().count(), 3);
         let id = doc.text(1, 0).into_owned();
         assert_eq!(doc.find(&RowAt::Key(id)), Some(1));

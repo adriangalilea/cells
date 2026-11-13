@@ -630,8 +630,8 @@ mod tests {
     use super::super::folder::{Folder, canonical, spelling};
     use super::*;
 
-    const ACCOUNTS: &str = "account:text!,kind:assets|expenses\nbank,assets\nrent,expenses\npower,expenses\n";
-    const MONEY: &str = "---\nimport accounts from \"../accounts.cells\"\n---\nid:text!,amount:EUR,to:accounts.account,note:text?,double:EUR=amount * 2\na1,950.00,rent,,1900.00=\na2,64.30,pwer,,128.60=\na3,8x,bank,expenses=accounts['rent'].kind,=\n";
+    const ACCOUNTS: &str = "account: text!,kind: assets|expenses\nbank,assets\nrent,expenses\npower,expenses\n";
+    const MONEY: &str = "---\nimport accounts from \"../accounts.cells\"\n---\nid: text!,amount: EUR,to: accounts.account,note: text?,double: EUR = amount * 2\na1,950.00,rent,,1900.00=\na2,64.30,pwer,,128.60=\na3,8x,bank,expenses=accounts['rent'].kind,=\n";
 
     /// A folder of two files, `books/accounts.cells` and `books/home/money.cells`.
     fn books(name: &str) -> (Folder, PathBuf, PathBuf) {
@@ -668,22 +668,22 @@ mod tests {
         let rent = said(hover(&folder, &file, at(MONEY, "rent", 0)).unwrap());
         assert!(rent.contains("accounts: account rent · kind expenses"), "{rent}");
         let double = said(hover(&folder, &file, at(MONEY, "double", 0)).unwrap());
-        assert!(double.starts_with("`double:EUR` `=amount * 2`"), "{double}");
+        assert!(double.starts_with("`double: EUR = amount * 2`"), "{double}");
         let kind = said(hover(&folder, &file, at(MONEY, ".kind", 0) + 2).unwrap());
-        assert_eq!(kind, "`kind:assets|expenses`");
+        assert_eq!(kind, "`kind: assets|expenses`");
     }
 
     #[test]
     fn a_declared_column_answers_from_its_declaration() {
         let (folder, _, money) = books("declared");
-        let text = "---\nqty: int>=1\ntotal: EUR = cost * qty\n---\nitem:text!,cost:EUR,qty,total\nfuel,2.00,3,6.00=\n";
+        let text = "---\nqty: int>=1\ntotal: EUR = cost * qty\n---\nitem: text!,cost: EUR,qty,total\nfuel,2.00,3,6.00=\n";
         let folder = Folder { open: Arc::new(BTreeMap::from([(money.clone(), text.to_owned())])), ..folder };
         let file = folder.read(&money).unwrap();
         assert!(diagnostics(&file, &Allowed::default()).is_empty(), "{:?}", diagnostics(&file, &Allowed::default()));
         let lines = Lines::new(text);
         // Hover on the declaration and on the header's bare name says the column.
         let declared = said(hover(&folder, &file, at(text, "total:", 0)).unwrap());
-        assert!(declared.starts_with("`total:EUR` `=cost * qty`"), "{declared}");
+        assert!(declared.starts_with("`total: EUR = cost * qty`"), "{declared}");
         let bare = said(hover(&folder, &file, at(text, "total\n", 0)).unwrap());
         assert_eq!(declared, bare);
         // Go to definition: the header's name to its declaration, and back.
@@ -708,7 +708,7 @@ mod tests {
     #[test]
     fn a_broken_header_cell_is_marked_and_the_rest_answers() {
         let (folder, _, money) = books("broken");
-        let text = MONEY.replace("to:accounts.account", "to:accounts.a");
+        let text = MONEY.replace("to: accounts.account", "to: accounts.a");
         let folder = Folder { open: Arc::new(BTreeMap::from([(money.clone(), text.clone())])), ..folder };
         let file = folder.read(&money).unwrap();
         let d = diagnostics(&file, &Allowed::default());
@@ -717,7 +717,7 @@ mod tests {
         assert!(hover(&folder, &file, at(&text, "950", 0)).is_some());
         // what is wrong is the diagnostic's alone: the hover says what the column reads as
         let to = said(hover(&folder, &file, at(&text, "to:", 0)).unwrap());
-        assert_eq!(to, "`to:text?`");
+        assert_eq!(to, "`to: text?`");
     }
 
     #[test]
@@ -751,7 +751,7 @@ mod tests {
         assert_eq!(rent.uri, folder.uri(&accounts));
         assert_eq!(rent.range, Lines::new(ACCOUNTS).range(span(at(ACCOUNTS, "rent", 0) as u32, 4)));
         let typed = definition(&folder, &file, at(MONEY, "accounts.account", 0) + 10).unwrap();
-        assert_eq!(typed.range, Lines::new(ACCOUNTS).range(span(0, "account:text!".len() as u32)));
+        assert_eq!(typed.range, Lines::new(ACCOUNTS).range(span(0, "account: text!".len() as u32)));
         let amount = definition(&folder, &file, at(MONEY, "amount * 2", 0)).unwrap();
         assert_eq!((amount.uri, amount.range.start.line), (folder.uri(&money), 3));
         let import = definition(&folder, &file, at(MONEY, "import", 0)).unwrap();

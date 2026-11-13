@@ -56,12 +56,14 @@ extension Cells {
       self.spelled = spelled
     }
 
-    /// The header cell: `name`, `name:type` or `name:type=formula`, as written (a new
-    /// column's type in shorthand).
+    /// The header cell as a writer writes it: `name`, `name: type` or
+    /// `name: type = formula` (a new column's type in shorthand), the engine's spelling
+    /// (`Cells.headerCell`).
     public var header: String {
-      if let spelled { return "\(name):\(spelled)" }
+      if let spelled { return Cells.headerCell(name: name, spelled: spelled) }
       guard let type else { return name }
-      return "\(name):\(Cells.shorthand(type))" + (formula.map { "=\($0)" } ?? "")
+      return Cells.headerCell(
+        name: name, spelled: Cells.shorthand(type) + (formula.map { "=\($0)" } ?? ""))
     }
   }
 

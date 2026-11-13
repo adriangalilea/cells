@@ -170,7 +170,10 @@ fn runs_text(runs: Option<&Doc>, rows: &[(Vec<String>, String)], run: u64, at: I
         .filter(|(i, r)| *i == n - 1 || Some(*i) == last_failure || rows.iter().any(|(_, used)| *used == r[0]))
         .map(|(_, r)| r.iter().map(|c| crate::quote(c).into_owned()).collect::<Vec<_>>().join(","))
         .collect();
-    format!("run:int!,at:datetime,outcome:ok|failed,error:text?{nl}{}{nl}", kept.join(nl))
+    let header = [("run", "int!"), ("at", "datetime"), ("outcome", "ok|failed"), ("error", "text?")]
+        .map(|(name, ty)| crate::prelude::header_cell(name, ty))
+        .join(",");
+    format!("{header}{nl}{}{nl}", kept.join(nl))
 }
 
 /// The number the next run of `name` in `text` takes: one past the last its runs block

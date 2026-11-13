@@ -1,13 +1,13 @@
-// A column's type, read from its header cell, `name:type`, by the engine: the one parser
+// A column's type, read from its header cell, `name: type`, by the engine: the one parser
 // of the header language. Every mark has a word and the symbol is its shorthand, so a
 // person writes whichever reads better and both mean the same:
 //
-//   item:text!                 item:text key          the key: present and unique
-//   note:text?                 note:text optional     may be blank
-//   category:travel|stay       category:one of travel stay
-//   paid:yes/no                paid:bool yes no       true and false, as the file writes them
-//   cost:EUR>=0                cost:EUR min 0         money in a currency, at least 0
-//   pct:0..100                 pct:num between 0 and 100
+//   item: text!                item: text key         the key: present and unique
+//   note: text?                note: text optional    may be blank
+//   category: travel|stay      category: one of travel stay
+//   paid: yes/no               paid: bool yes no      true and false, as the file writes them
+//   cost: EUR>=0               cost: EUR min 0        money in a currency, at least 0
+//   pct: 0..100                pct: num between 0 and 100
 
 import CellsCore
 import Foundation
@@ -142,6 +142,17 @@ extension Cells {
         let doc = Document(reading: prelude(names) + "x:" + spelling(type, names: names) + "\n")
         precondition(doc.broken.isEmpty, "Cells: \(type) has no spelling: \(doc.broken)")
         return doc.engine.with { Engine.part($0, CellsOfColumn, 0, CellsPartShorthand) }!
+    }
+
+    /// A typed header cell as a writer writes it, from its name and what follows its `:`
+    /// (`EUR=cost * qty`): `total: EUR = cost * qty`, the engine's one spelling of a column
+    /// (`cells_header_cell`), the form a declaration has. Unquoted: the table quotes it.
+    public static func headerCell(name: String, spelled: String) -> String {
+        Document(reading: "").engine.with { d in
+            lending([name, spelled]) { s in
+                string(cells_header_cell(d, s[0].ptr, s[0].len, s[1].ptr, s[1].len))
+            }
+        }!
     }
 
     /// A type spelled so the engine reads it back as itself under `names`: every word

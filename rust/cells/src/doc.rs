@@ -2165,7 +2165,7 @@ impl Doc {
                         (Dialect::Cells, spelled) => {
                             assert!(!name.contains(':'), "a column's name holds no \":\" ({name})");
                             match spelled {
-                                Some(t) => format!("{name}:{t}"),
+                                Some(t) => prelude::header_cell(name, t),
                                 None => name.to_owned(),
                             }
                         }
@@ -2604,8 +2604,8 @@ impl Doc {
                 })?;
                 let ty = h.ty.as_ref().unwrap().shorthand();
                 match h.formula {
-                    Some(f) => format!("{name}:{ty}={f}"),
-                    None => format!("{name}:{ty}"),
+                    Some(f) => prelude::header_cell(&name, &format!("{ty}={f}")),
+                    None => prelude::header_cell(&name, &ty),
                 }
             }
         };

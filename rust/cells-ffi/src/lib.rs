@@ -422,6 +422,30 @@ pub unsafe extern "C" fn cells_formatted(d: *mut CellsDoc, align: bool) -> Cells
     CellsStr::of(&d.out)
 }
 
+/// A typed header cell as a writer writes it (`cells::prelude::header_cell`): `name` and
+/// what follows its `:` (`EUR=cost * qty`) as `total: EUR = cost * qty`, the form a
+/// declaration has. Unquoted: the table's writer quotes the field. Held in `d`'s buffer,
+/// like every text it hands out.
+///
+/// # Safety
+/// `d` is a live doc; `name` and `spelled` point at `name_len` and `spelled_len` bytes of
+/// UTF-8.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn cells_header_cell(
+    d: *mut CellsDoc,
+    name: *const c_char,
+    name_len: usize,
+    spelled: *const c_char,
+    spelled_len: usize,
+) -> CellsStr {
+    // SAFETY: the caller's promise.
+    let d = unsafe { doc(d) };
+    // SAFETY: the caller's promise.
+    let (name, spelled) = unsafe { (text_of(name, name_len), text_of(spelled, spelled_len)) };
+    d.out = cells::prelude::header_cell(name, spelled);
+    CellsStr::of(&d.out)
+}
+
 /// Lets a doc go. The arrays exported from it live on until released.
 ///
 /// # Safety
@@ -2191,7 +2215,7 @@ mod tests {
             cells_free(r);
             cells_free(d);
 
-            let src = b"cost:EUR,qty:int,total:EUR=cost * qty\n2.50,4,\n";
+            let src = b"cost: EUR,qty: int,total: EUR = cost * qty\n2.50,4,\n";
             let d = cells_read(src.as_ptr(), src.len(), 1, &mut f);
             assert_eq!(cells_origin(d, 0, 2), CellsOrigin::CellsOriginFormula);
             assert!(cells_type(d, CellsOf::CellsOfColumn, 2).formula);
@@ -2199,7 +2223,7 @@ mod tests {
             let spelled = "EUR=cost * 2";
             assert!(cells_set_type(d, 2, spelled.as_ptr() as *const c_char, spelled.len(), &mut f));
             // A write stores the computed values it reaches beside their `=`.
-            assert_eq!(text(cells_write(d)), "cost:EUR,qty:int,total:EUR=cost * 2\n2.50,4,5.00=\n");
+            assert_eq!(text(cells_write(d)), "cost: EUR,qty: int,total: EUR = cost * 2\n2.50,4,5.00=\n");
             let bad = "EUR=cost *";
             assert!(!cells_set_type(d, 2, bad.as_ptr() as *const c_char, bad.len(), &mut f));
             assert_eq!((f.at, f.number), (CellsAt::CellsAtColumn, 3));

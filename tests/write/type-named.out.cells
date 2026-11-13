@@ -1,5 +1,5 @@
 ---
 type Category = travel|stay|food
 ---
-item:text!,category:Category?
+item:text!,category: Category?
 fuel,travel

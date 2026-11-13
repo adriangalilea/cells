@@ -6,6 +6,7 @@
 //! its own: the file's, and each written inline in its prelude. A record across a line
 //! break is left as written, and its table is measured without it.
 
+use alloc::borrow::ToOwned;
 use alloc::format;
 use alloc::string::String;
 use alloc::vec::Vec;
@@ -119,8 +120,9 @@ fn width(value: &str, fold: Option<u32>) -> u32 {
 
 /// Where each column of a table starts, in characters from its line's start: the one
 /// before's start, plus that column's widest value no wider than the cap, its comma and
-/// one space, rounded up to a stop.
-fn column_starts(source: &str, records: &[Record], fold: Option<u32>) -> Vec<u32> {
+/// one space, rounded up to a stop. `header`, the header's cells as they are to be written
+/// when that is not as read (`formatted` spaces them), measured in its place.
+fn column_starts(source: &str, records: &[Record], fold: Option<u32>, header: Option<&[String]>) -> Vec<u32> {
     let columns = records.iter().filter(|r| r.one_line).map(|r| r.fields.len()).max().unwrap_or(0);
     let mut starts = Vec::with_capacity(columns);
     let mut at = 0;
@@ -128,9 +130,12 @@ fn column_starts(source: &str, records: &[Record], fold: Option<u32>) -> Vec<u32
         starts.push(at);
         let widest = records
             .iter()
-            .filter(|r| r.one_line)
-            .filter_map(|r| r.fields.get(k))
-            .map(|&(s, e)| width(&source[s..e], fold))
+            .enumerate()
+            .filter(|(_, r)| r.one_line)
+            .filter_map(|(n, r)| match header {
+                Some(h) if n == 0 => h.get(k).map(|v| width(v, fold)),
+                _ => r.fields.get(k).map(|&(s, e)| width(&source[s..e], fold)),
+            })
             .filter(|&w| w <= CAP)
             .max()
             .unwrap_or(0);
@@ -228,13 +233,28 @@ fn declarations(source: &str, align: bool) -> Vec<(usize, usize, String)> {
         .collect()
 }
 
-/// One table's records as formatting writes them.
+/// A header cell as formatting writes it: a typed one spaced as a column is written
+/// everywhere (`prelude::header_cell`: `total: EUR = cost * qty`), its quotes kept when it
+/// needs them; a name alone as read. What it means never changes: the spaces stand
+/// between its name, type and formula, which read the same with or without them.
+fn header_cell(value: &str) -> String {
+    let quoted = value.len() >= 2 && value.starts_with('"') && value.ends_with('"');
+    let inner = if quoted { value[1..value.len() - 1].replace("\"\"", "\"") } else { value.to_owned() };
+    let Some(colon) = inner.find(':') else { return value.to_owned() };
+    let spelled = crate::prelude::header_cell(&inner[..colon], &inner[colon + 1..]);
+    if quoted { format!("\"{}\"", spelled.replace('"', "\"\"")) } else { spelled }
+}
+
+/// One table's records as formatting writes them, its header's cells spaced
+/// (`header_cell`).
 fn table(source: &str, from: usize, to: usize, align: bool) -> String {
     let mut out = String::with_capacity(to - from + (to - from) / 4);
     {
         let records = records(source, from, to);
-        let starts = column_starts(source, &records, None);
-        for r in &records {
+        let header: Option<Vec<String>> =
+            records.first().filter(|r| r.one_line).map(|r| r.fields.iter().map(|&(s, e)| header_cell(&source[s..e])).collect());
+        let starts = column_starts(source, &records, None, header.as_deref());
+        for (n, r) in records.iter().enumerate() {
             if !r.one_line {
                 out.push_str(&source[r.at..r.next]);
                 continue;
@@ -242,7 +262,10 @@ fn table(source: &str, from: usize, to: usize, align: bool) -> String {
             let mut col = 0;
             let last = r.fields.len() - 1;
             for (k, &(s, e)) in r.fields.iter().enumerate() {
-                let value = &source[s..e];
+                let value = match &header {
+                    Some(h) if n == 0 => h[k].as_str(),
+                    _ => &source[s..e],
+                };
                 if k > 0 {
                     out.push(',');
                     col += 1;
@@ -270,7 +293,7 @@ pub fn layout(source: &str, fold: Option<u32>) -> (Vec<Pad>, Vec<Cut>) {
     let (mut pads, mut cuts) = (Vec::new(), Vec::new());
     for (from, to) in tables(source) {
         let records = records(source, from, to);
-        let starts = column_starts(source, &records, fold);
+        let starts = column_starts(source, &records, fold, None);
         for (n, r) in records.iter().enumerate() {
             if !r.one_line {
                 continue;
@@ -335,16 +358,26 @@ mod tests {
         out
     }
 
-    const BUDGET: &str = "item:text!,cost:EUR,total:EUR=cost * 2\nfuel,84.20,168.40=\nsplit dinner,3.10,6.20=\n";
+    const BUDGET: &str = "item: text!,cost: EUR,total: EUR = cost * 2\nfuel,84.20,168.40=\nsplit dinner,3.10,6.20=\n";
 
     #[test]
     fn columns_start_together_in_stops() {
-        // item: 12 + 2 = 14, to 16; cost: `cost:EUR` 8 + 2 = 10, to 12.
+        // item: 12 + 2 = 14, to 16; cost: `cost: EUR` 9 + 2 = 11, to 12.
         assert_eq!(
             formatted(BUDGET, true),
-            "item:text!,     cost:EUR,   total:EUR=cost * 2\nfuel,           84.20,      168.40=\nsplit dinner,   3.10,       6.20=\n"
+            "item: text!,    cost: EUR,  total: EUR = cost * 2\nfuel,           84.20,      168.40=\nsplit dinner,   3.10,       6.20=\n"
         );
         assert_eq!(formatted(BUDGET, false), BUDGET);
+    }
+
+    /// A header cell spelled tight is written spaced, as a declaration is; what it means,
+    /// its quotes and a plain name are kept.
+    #[test]
+    fn a_header_cell_is_spaced_as_a_declaration_is() {
+        let tight = "item:text!,cost:EUR,total:EUR=cost * 2\nfuel,84.20,168.40=\nsplit dinner,3.10,6.20=\n";
+        assert_eq!(formatted(tight, false), BUDGET);
+        let quoted = "\"r:EUR=ROUND(cost, 1)\",note,cost:EUR\n1.0=,x,1.00\n";
+        assert_eq!(formatted(quoted, false), "\"r: EUR = ROUND(cost, 1)\",note,cost: EUR\n1.0=,x,1.00\n");
     }
 
     #[test]
@@ -375,10 +408,10 @@ mod tests {
 
     #[test]
     fn each_table_on_its_own_and_the_rest_as_read() {
-        let src = "\u{feff}---\nfees = ```cells\nkind:text!,pct:pct\ncard,1.4\n```\ntype K = a|b\n---\na,b\r\nlonger,1\r\n\"x\ny\",2\n";
+        let src = "\u{feff}---\nfees = ```cells\nkind: text!,pct: pct\ncard,1.4\n```\ntype K = a|b\n---\na,b\r\nlonger,1\r\n\"x\ny\",2\n";
         assert_eq!(
             formatted(src, true),
-            "\u{feff}---\nfees = ```cells\nkind:text!, pct:pct\ncard,       1.4\n```\ntype K = a|b\n---\na,      b\r\nlonger, 1\r\n\"x\ny\",2\n"
+            "\u{feff}---\nfees = ```cells\nkind: text!,    pct: pct\ncard,           1.4\n```\ntype K = a|b\n---\na,      b\r\nlonger, 1\r\n\"x\ny\",2\n"
         );
     }
 

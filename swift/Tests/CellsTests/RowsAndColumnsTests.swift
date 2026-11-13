@@ -65,7 +65,7 @@ import Testing
     #expect(typed.problems.isEmpty, "\(typed.problems)")
     #expect(
         typed.text.hasPrefix(
-            "item:text,category:food|stay|travel,cost:num,paid:yes/no?\nfuel,travel,84.20,yes\n"))
+            "item: text,category: food|stay|travel,cost: num,paid: yes/no?\nfuel,travel,84.20,yes\n"))
     // the original is untouched
     #expect(doc.text == csv)
 }
@@ -87,13 +87,13 @@ import Testing
 
 @Test func aFormulaSetRewritesOnlyItsHeaderCell() throws {
     let text =
-        "---\ntype Price = EUR>=0\n---\nseed,cost:Price,qty:int,total:Price=cost * qty\nbasil,2.50,4,\n"
+        "---\ntype Price = EUR>=0\n---\nseed,cost: Price,qty: int,total: Price = cost * qty\nbasil,2.50,4,\n"
     var doc = Cells.Document(reading: text)
     try doc.setFormula("cost * qty + 1", column: 3)
     // The write stores what the new formula gives beside the cell's `=`.
     #expect(
         doc.text
-            == text.replacingOccurrences(of: "=cost * qty\n", with: "=cost * qty + 1\n")
+            == text.replacingOccurrences(of: "= cost * qty\n", with: "= cost * qty + 1\n")
             .replacingOccurrences(of: "basil,2.50,4,\n", with: "basil,2.50,4,11.00=\n"))
     #expect(doc.value(row: 0, column: 3) == .success(.money(11, currency: "EUR")))
     for bad in ["cost * qtty", "seed * 2", "cost *"] {
@@ -110,13 +110,13 @@ import Testing
     try doc.setType(Cells.ColumnType(base: .money(currency: "EUR")), column: 3)
     #expect(doc.columns[3].formula == "cost * qty + 1")
     try doc.setFormula(nil, column: 3)
-    #expect(doc.columns[3].header == "total:EUR")
-    var plain = Cells.Document(reading: "seed,cost:EUR\nbasil,2.50\n")
+    #expect(doc.columns[3].header == "total: EUR")
+    var plain = Cells.Document(reading: "seed,cost: EUR\nbasil,2.50\n")
     try plain.insertColumn(
         Cells.Column(
             name: "double", type: .init(base: .money(currency: "EUR")), formula: "cost * 2"),
         at: 2)
-    #expect(plain.text == "seed,cost:EUR,double:EUR=cost * 2\nbasil,2.50,5.00=\n")
+    #expect(plain.text == "seed,cost: EUR,double: EUR = cost * 2\nbasil,2.50,5.00=\n")
 }
 
 @Test func aCellHoldsItsOwnFormula() throws {

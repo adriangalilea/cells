@@ -6,11 +6,11 @@ import Testing
 // What is said of a place, the engine's, its offsets UTF-16.
 
 @Test func aFormulasColumnSaid() throws {
-    let text = "item:text!,cost:EUR>=0,qty:int,total:EUR=cost * qty\nfuel,84.20,1,84.20=\n"
+    let text = "item: text!,cost: EUR>=0,qty: int,total: EUR = cost * qty\nfuel,84.20,1,84.20=\n"
     let doc = Cells.Document(reading: text)
     let at = (text as NSString).range(of: "cost *").location + 1
     let h = try #require(doc.hover(in: text, at: at))
-    #expect(h.text == "cost:EUR>=0")
+    #expect(h.text == "cost: EUR>=0")
     #expect(h.range == at - 1..<at + 3)
 }
 

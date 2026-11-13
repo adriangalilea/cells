@@ -619,7 +619,7 @@ fn an_intent_is_journalled_its_rows_given_ids_and_what_it_reached_follows_it() {
     let q4 = d.world().get(Q4);
     assert_eq!(version, hash(&q4));
     assert_eq!(assigned.len(), 2, "a file with no key gets an id in every row at the engine's first write: {q4}");
-    assert!(q4.contains("id:id!,kind:Kind,amount:EUR,cost\n"), "{q4}");
+    assert!(q4.contains("id: id!,kind:Kind,amount:EUR,cost\n"), "{q4}");
     assert!(q4.contains(&format!("{},cost,200.00,200.00=\n", assigned[1])), "the cell set, its computed cell stored: {q4}");
     assert_eq!(d.world().get(QUARTERS), INDEX.replace("180.00=SUM", "200.00=SUM"), "what it reached follows");
     let log = d.world().log();

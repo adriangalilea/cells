@@ -1,13 +1,13 @@
 ---
 export type Kind = assets|liabilities|expenses|income
 ---
-account:text!,kind:Kind
-assets:bank:main,assets
-assets:cash,assets
-liabilities:card,liabilities
-expenses:home:rent,expenses
-expenses:home:power,expenses
-expenses:travel:ferry,expenses
-expenses:travel:food,expenses
-expenses:studio:paper,expenses
-income:studio:prints,income
+account: text!,         kind: Kind
+assets:bank:main,       assets
+assets:cash,            assets
+liabilities:card,       liabilities
+expenses:home:rent,     expenses
+expenses:home:power,    expenses
+expenses:travel:ferry,  expenses
+expenses:travel:food,   expenses
+expenses:studio:paper,  expenses
+income:studio:prints,   income

@@ -1,2 +1,2 @@
-route:text!,km:0.5..1000
+route:text!,km: 0.5..1000
 coast road,420

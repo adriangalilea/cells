@@ -321,10 +321,24 @@ pub fn import_line(default: Option<&str>, names: &[String], from: &str, with: &[
 /// A column's declaration as a writer writes it, from what follows its `:` as a header cell
 /// spells it (`EUR=cost * qty`): `total: EUR = cost * qty`.
 pub fn column_line(name: &str, spelled: &str) -> String {
-    let named = declared_name(name);
+    format!("{}{}", declared_name(name), typed(spelled))
+}
+
+/// A typed header cell as a writer writes it, from its name and what follows its `:`
+/// (`EUR=cost * qty`): `total: EUR = cost * qty`, the form a declaration has, so a column
+/// is written one way wherever it is said. The field's quoting is the table's to add.
+pub fn header_cell(name: &str, spelled: &str) -> String {
+    format!("{name}{}", typed(spelled))
+}
+
+/// What follows a column's name, spaced as a writer spaces it: `: EUR`, `: EUR = cost * qty`.
+/// The type keeps its shorthand whole and the formula its own spacing; the spaces stand
+/// between the three parts, which read the same with or without them (SPEC.md, A header
+/// cell).
+fn typed(spelled: &str) -> String {
     match crate::types::split_formula(spelled) {
-        (ty, Some(f)) => format!("{named}: {} = {}", ty.trim_matches(BLANK), f.trim_matches(BLANK)),
-        (ty, None) => format!("{named}: {}", ty.trim_matches(BLANK)),
+        (ty, Some(f)) => format!(": {} = {}", ty.trim_matches(BLANK), f.trim_matches(BLANK)),
+        (ty, None) => format!(": {}", ty.trim_matches(BLANK)),
     }
 }
 

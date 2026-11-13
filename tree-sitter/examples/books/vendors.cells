@@ -1,5 +1,5 @@
-vendor:text!,name:text,vat_id:text?,site:url?
-northgrid,Northgrid Power,XX-41002233,https://northgrid.example
-fiberlane,Fiberlane Internet,XX-55890011,https://fiberlane.example
-corner-market,The Corner Market,,
-harbour-lettings,Harbour Lettings,XX-10293847,
+vendor: text!,      name: text,         vat_id: text?,  site: url?
+northgrid,          Northgrid Power,    XX-41002233,    https://northgrid.example
+fiberlane,          Fiberlane Internet, XX-55890011,    https://fiberlane.example
+corner-market,      The Corner Market,  ,
+harbour-lettings,   Harbour Lettings,   XX-10293847,

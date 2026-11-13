@@ -89,16 +89,17 @@ let budget = """
   #expect(Cells.Document(reading: budget).text == budget)
 }
 
-/// The standard layout as `cells fmt` writes it: aligned, or with no padding, and
-/// formatting twice is formatting once.
+/// The standard layout as `cells fmt` writes it: aligned, or with no padding, each typed
+/// header cell `name: type = formula` however it was spaced, and formatting twice is
+/// formatting once.
 @Test func formattedIsTheStandardLayout() {
   let doc = Cells.Document(reading: "price:num,total:num?=price * 2\n36.8,73.6=\n1234.5,2469=\n")
-  let aligned = "price:num,  total:num?=price * 2\n36.8,       73.6=\n1234.5,     2469=\n"
+  let aligned = "price: num, total: num? = price * 2\n36.8,       73.6=\n1234.5,     2469=\n"
   #expect(doc.formatted() == aligned)
   #expect(Cells.Document(reading: aligned).formatted() == aligned)
   #expect(
     Cells.Document(reading: aligned).formatted(aligned: false)
-      == "price:num,total:num?=price * 2\n36.8,73.6=\n1234.5,2469=\n")
+      == "price: num,total: num? = price * 2\n36.8,73.6=\n1234.5,2469=\n")
 }
 
 @Test func anEditRewritesOnlyItsRecord() throws {
@@ -194,7 +195,7 @@ let budget = """
 @Test func aTypeChangedIsWrittenInShorthandAndChecked() throws {
   var doc = Cells.Document(reading: "n,s\n1,a\nx,b\n")
   try doc.setType(Cells.parseType("int min 0"), column: 0)
-  #expect(doc.text == "n:int>=0,s\n1,a\nx,b\n")
+  #expect(doc.text == "n: int>=0,s\n1,a\nx,b\n")
   #expect(doc.problems.map(\.at) == [.cell(row: 1, column: 0)])
   try doc.setType(nil, column: 0)
   #expect(doc.text == "n,s\n1,a\nx,b\n")
@@ -220,7 +221,7 @@ let budget = """
       Cells.Column(name: "price, net", type: .init(base: .money(currency: "EUR"))),
     ],
     records: [Cells.Record(cells: ["fuel", "84.20"])])
-  #expect(doc.text == "item:text!,\"price, net:EUR\"\nfuel,84.20\n")
+  #expect(doc.text == "item: text!,\"price, net: EUR\"\nfuel,84.20\n")
 }
 
 @Test func columnsReadInPlace() {
