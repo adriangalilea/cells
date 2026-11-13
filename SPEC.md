@@ -177,11 +177,12 @@ transfer,0
 ---
 ````
 
-The prelude is the work; the header and rows after it are what the file shows, and an app shows the prelude folded. One statement a line, a fence's content apart; a blank line is nothing, and spaces and tabs at a line's ends and between a statement's parts are nothing (a tab counts as a space everywhere in the prelude, outside quotes). A line that is no statement is an error naming it. Statements are read in order: each sees the types and tables named above it, never one below. A name is a type's or a table's, once in the file: one named twice, whatever the two are, is an error naming the second. An error inside a statement (a type that does not read, an import that does not follow, a table's cell grammar) names the statement's line, or the line inside the table's fence it is on.
+The prelude is the work; the header and rows after it are what the file shows, and an app shows the prelude folded. One statement a line, a fence's content apart; a blank line is nothing, and spaces and tabs at a line's ends and between a statement's parts are nothing (a tab counts as a space everywhere in the prelude, outside quotes). A line that is no statement is an error naming it. Statements are read in order: each sees the types and tables named above it, never one below. A name is a type's, a table's or a chart's, once in the file: one named twice, whatever the two are, is an error naming the second. An error inside a statement (a type that does not read, an import that does not follow, a table's cell grammar) names the statement's line, or the line inside the table's fence it is on.
 
 - **`//`** starts a comment to the line's end, outside single and double quotes and outside fences (`type Path = 'a//b'|c`, `"https://example.com/r.cells"`).
-- **A fence** opens with three backticks or more and its language, `` ```cells ``, and closes at the first line that is as many backticks and nothing else, spaces and tabs aside. What it holds is its language's, so a `//` or a `---` inside one is no comment and no end of the prelude's. A fence never closed is an error naming the line it opens on.
+- **A fence** opens with three backticks or more and its language, `` ```cells ``, then optionally one word of lower-case letters, its label (`` ```cells runs ``, `` ```chart bars ``), and closes at the first line that is as many backticks and nothing else, spaces and tabs aside. What it holds is its language's, so a `//` or a `---` inside one is no comment and no end of the prelude's. A fence never closed is an error naming the line it opens on.
 - **A column** is declared with a `:`, `total: Money = cost * qty` ([Columns](#columns)); `total = cost * qty`, with no type, is no statement and an error naming its line.
+- **A chart** is a fence of its own, `` ```chart ``, or named, `actual = ```chart` ([Charts](#charts)).
 - **A statement by its first word**: `type`, `import`, `export` and `look` ([How a value looks](#how-a-value-looks)), each followed by a space, open the statement they name, so a declared column whose name opens with one and a space is quoted (`"look ahead": text`).
 
 ### Named types
@@ -292,7 +293,7 @@ item:text!,kind:Kind,amount:Money,budget:Money,balance:Money,score:0..10,on:date
 rent,cost,-950.00,1000.00,50.00,7,2026-11-03,yes
 ```
 
-**`look <name>: <rule>, <rule>`** says how a column's values look, what a spreadsheet's number formats and conditional formats give. It names a column, a named type above it, or `row`, the whole row (a column named `row` is `look "row": …`). **A look is how a value shows wherever it shows**: a table's cell and a chart's mark alike, so `income#green` is the word's chip and its series' colour, `negative red` the cell and the bar. Composing a chart (its axes, its grouping, its kind) is a statement for later, which reads the same looks: one vocabulary for how values show, never a table's and a chart's.
+**`look <name>: <rule>, <rule>`** says how a column's values look, what a spreadsheet's number formats and conditional formats give. It names a column, a named type above it, or `row`, the whole row (a column named `row` is `look "row": …`). **A look is how a value shows wherever it shows**: a table's cell and a chart's mark alike, so `income#green` is the word's chip and its series' colour, `negative red` the cell and the bar. A chart ([Charts](#charts)) reads the same looks: one vocabulary for how values show, never a table's and a chart's.
 
 | Rule | A value shows |
 |---|---|
@@ -313,6 +314,91 @@ rent,cost,-950.00,1000.00,50.00,7,2026-11-03,yes
 - **No value changes.** A look changes what a reader draws: `cells show`, `cells sql`, every export and every formula read values, never looks, and a reader that ignores looks reads every value as it would.
 
 Considered: `show` (the command `cells show`, which writes values), `style` (CSS's word, which promises far more), `format` (how the file writes a value already, [Formats](#formats)); a language of conditions of its own, refused since formulas are the language of a row; the first rule that applies, as a spreadsheet's "stop if true", where the later holding lets the general go first and the specific after it; the file naming its separators, which only a file meant for one country wants.
+
+### Charts
+
+````cells
+---
+type Kind = income#green|cost#red|transfer#blue
+
+```chart bars
+title: Spending by month
+x:     DATE_TRUNC('month', date)
+y:     SUM(amount)
+color: kind
+stack: stacked
+```
+
+```chart
+title: Cash
+x:     date
+y:     LAST_VALUE(balance)
+```
+
+actual = ```chart bars
+x:     DATE_TRUNC('month', date)
+y:     SUM(amount)
+where: account = 'rent'
+```
+
+plan = ```chart line
+x: DATE_TRUNC('month', date)
+y: SUM(budget)
+where: account = 'rent'
+```
+
+```chart
+title:  Rent, actual and planned
+layers: actual, plan
+```
+---
+date:date,amount:EUR,kind:Kind,account:text,budget:EUR?,balance:EUR=SUM(amount) OVER (ORDER BY date)
+````
+
+**A chart is a fence, `` ```chart ``**, the kind after the language (`` ```chart bars ``), each line in it an entry: a key, a `:` and the rest of the line, read by that key's grammar. A value runs to the line's end, so a formula holds what commas it needs; spaces after the `:` are nothing. A key a chart's kind does not take, or one written twice, is an error naming its line. A file's charts are its own, in the order written: the first is chart 1. **A name**, `actual = ```chart bars`, is written only for a chart another one reads (`layers`), once in the file with the types and tables.
+
+**The entries.** A formula is read over the chart's table's rows, as a column's formula is, in the same language ([Formulas](#formulas)). The axis groups the rows by its value; the measure is an aggregate over each group's rows.
+
+| Key | Value | Is |
+|---|---|---|
+| `x` | a formula per row | what runs along the axis: the rows of one value make one place |
+| `y` | an aggregate (`SUM(amount)`, `LAST_VALUE(balance)`, `COUNT(*)`) | each place's value |
+| `color` | a formula per row | the series: one per value, in its colours ([What a chart is drawn in](#what-a-chart-is-drawn-in)) |
+| `stack` | `stacked` · `grouped` · `percent` | how the series share a place: on each other, side by side, as shares of it |
+| `where` | a condition | the rows charted: those it holds for |
+| `top` | a whole number | how many places (or series) are drawn, the largest; the rest one place, `other` |
+| `title` | text, as written | what the chart is called where it is shown |
+| `from` | a table's name | the table charted, inline, a script's or imported; the file's own when none |
+| `layers` | names of charts, `,` between | the charts drawn on one plot, sharing its axes, in the order named |
+
+**The kinds**, each taking the entries it draws:
+
+| Kind | Takes | Draws |
+|---|---|---|
+| `bars` | `x` `y` `color` `stack` `where` `top` | a bar a place; across when `x` is text or a choice, up when it is a date or a number |
+| `line` · `area` · `steps` | `x` `y` `color` `where` | a line through the places, the area under it, or a step at each |
+| `points` | `x` `y` `color` `where` | a point a row: `y` a formula per row, never an aggregate |
+| `heat` | `x` `y` `value` `where` | a cell a pair of `x` and `y`, `value` (an aggregate) its depth of one tint |
+| `figure` | `value` `compare` `where` | one number, `value`, and its change from the place before along `compare` (a formula per row), with that run drawn under it |
+
+Every kind also takes `title` and `from`; a chart of `layers` takes those three alone.
+
+**No kind written**, the chart is drawn as its entries and the types say, never the data: `value` alone is a `figure`; `x`, `y` and `value` a `heat`; a `y` that aggregates nothing `points`; a `y` of `LAST_VALUE` or `FIRST_VALUE` `steps`; any other `y` over a date `bars`, over text or a choice `bars` across. **No chart in the file**, a reader draws one from the columns by the same rule: the first date (else choice) as `x`, the first currency (else number) column summed as `y`, `color` a choice of six words or fewer; nothing to draw when the file has no date, choice or number. A chart a person keeps is written as a fence; until then it is the reader's view, never the file's.
+
+#### What a chart is drawn in
+
+Colours are the looks', never a chart's ([How a value looks](#how-a-value-looks)):
+
+- **A series of a word with a tint** is drawn in it: `income#green` is green wherever it is drawn.
+- **A series of a word with none** takes the next tint no word of its kind wears, in the order `blue` `orange` `teal` `purple` `pink` `yellow` `brown` `green` `red` `gray`, the words taken in a lasting order: a choice's as its type lists them, any other value's as the file first holds it. A series keeps its colour whatever the axis, the filter or the other series; none takes its colour from its size.
+- **One series** is drawn in its measured column's colour; `other` and a blank value gray.
+- **A look's condition** (`negative red`, `red when …`) tints the marks it holds for, unless the chart has series, whose words' colours hold.
+
+#### What travels in the file
+
+What the next reader would be wrong without is the file's; where this reader looks is the reader's: a kept chart, a look, a column's type travel; the view open (table, chart, both), the charts shown, a sort, a filter, a selection, a hover, a zoom, a column's width and a pane's place do not. A reader that changes a kept chart's entries writes them, one edit each.
+
+Considered: one line, `chart spending: amount by month, split by kind`, whose commas part both the chart's words and a formula's arguments and whose words meet the names a file gives; YAML or TOML in the fence, which coerce a value's kind (`no` a boolean) or quote every formula; SQL in a chart, which says again what the types say (`DATE_TRUNC` to bucket a date the column already calls a date) in a second language beside the entries; the kind as an entry, `mark: heat`, where a heatmap is a kind of chart and a mark only what it is drawn with; every chart named, where a name earns its place only when something reads it.
 
 ## Formulas
 
@@ -377,6 +463,9 @@ SQL's scalar expressions, in exact decimal. **The language is written in capital
 | `COALESCE(a, b, …)` · `NULLIF(a, b)` | the first that is not null · null when the two are equal |
 | `LOWER` `UPPER` `TRIM` `LENGTH` | text |
 | `SUM(cost)` `AVG` `MIN` `MAX` `COUNT` | over every row of the column (`SUM(fees.pct)`: of the table named) or a range of its rows, nulls left out |
+| `COUNT(*)` | the rows, nulls and all |
+| `FIRST_VALUE(balance)` · `LAST_VALUE(balance)` | the first or last value that is not null, over the rows in the lines' order: an aggregate, as `SUM` |
+| `DATE_TRUNC('month', date)` | a date to the first day of its `day`, `week` (from Monday), `month`, `quarter` or `year` |
 | `SUM(amount) OVER (ORDER BY date)` · `LAG(balance) OVER (ORDER BY date DESC, id)` | a window, in a column's formula only: an aggregate of the rows up to the row, in that order, or `LAG`, the value on the row before it |
 
 `OR` binds loosest, then `AND`, `NOT`, a comparison, `||`, `+` and `-`, `*` and `/`, then a `-` before a term; each from the left, parentheses grouping. A formula is pure and total: it always finishes, with the same answer in every implementation, and reads no clock, no network and no file, so a formula from a stranger is as safe to open as a number (the formula injection spreadsheets are known for has nothing here to call).
@@ -499,7 +588,7 @@ The use Cells is designed against is **plain text accounting**: books kept as pl
 - **Go's checksum log** for pinned imports, proving everyone got the same bytes and not only you, once files are published widely.
 - **Queries in standards, never a language of Cells' own**: SQL, and SQL/PGQ to walk references ([The query language](#the-query-language)).
 - **Tooling in every editor**, each column coloured as Rainbow CSV colours one, by its type. The tree-sitter and TextMate grammars, the language server, Cells.app and ui's table are built ([EDITORS.md](EDITORS.md)); an editor that starts a server only from an extension (VS Code) has none yet.
-- **Charts from the types.** A chart needs to know what each column is: a date is a time axis, money a measure in its currency, a choice a category, a reference a link to follow. An untyped table makes every chart guess or be configured; a Cells file says it, so a table can be charted as it is (spending by month, by account, by vendor), and the graph of files drawn as a graph. Every place that shows a Cells file is to show its charts: the Apple platforms draw them (Swift Charts over the typed columns, in Cells.app); ui's components do not yet. Their colours are the values' looks ([How a value looks](#how-a-value-looks)); what a chart needs beyond the types and the looks (which columns, which kind of chart) is declared in the prelude, never scripted, so a file sent as a chart is seen without running anything: a spreadsheet's charts are declarations too, and its macros apart.
+- **Charts everywhere a file is shown** ([Charts](#charts)): Cells.app draws them (Swift Charts), `cells chart` in a terminal, as SVG for a page; ui's components do not yet. The graph of files drawn as a graph, and a row's own sparkline read from the files that reference it (each account's months, from the movements naming it), are undecided.
 
 ### The query language
 
