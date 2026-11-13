@@ -86,27 +86,35 @@ A conflict in what was written is left in the file with git's markers, and the m
 
 ## Neovim
 
-Neovim 0.11 configures a server natively:
-
-```lua
-vim.filetype.add({ extension = { cells = "cells" } })
-
-vim.lsp.config("cells", {
-  cmd = { "cells", "lsp" },
-  filetypes = { "cells" },
-  root_markers = { ".git" },
-})
-vim.lsp.enable("cells")
+```sh
+cells editors install neovim
 ```
 
-For highlighting, register the grammar with nvim-treesitter and copy `tree-sitter/queries/` (the queries outside `helix/`) to `queries/cells/` on the runtime path:
+writes a package on Neovim's own packpath, `~/.local/share/nvim/site/pack/cells/start/cells` (`$XDG_DATA_HOME`), that Neovim 0.11 or later loads at start with no line of config: `plugin/cells.lua` (the `cells` filetype, the server enabled, tree-sitter highlighting started), `lsp/cells.lua` (the server, `cells lsp`), `queries/cells` (the queries outside `tree-sitter/queries/helix`) and `parser/cells.so`, which it builds with `cc` from the grammar this `cells` carries. Then it opens a `.cells` file in `nvim --headless` and checks the filetype, the parser, its highlights and the server's config. Your config is never touched: a `vim.lsp.config("cells", { ... })` of yours is laid over `lsp/cells.lua`. Run it again after updating Cells; the package is written whole each time.
 
-```lua
-require("nvim-treesitter.parsers").get_parser_configs().cells = {
-  install_info = { url = "/path/to/cells/tree-sitter", files = { "src/parser.c", "src/scanner.c" } },
-  filetype = "cells",
+The package turns on what Helix's `auto-format` and inlay hints do: a `.cells` buffer is formatted by the server on `:w`, which stores the computed values, and draws the server's inlay hints, its columns aligned. A name the server reads as a column wears that column's colour (`@lsp.typemod.column.column1.cells` to `column6`, linked to the queries' six), so `=cost * qty` shows what it reads. `:checkhealth vim.lsp vim.treesitter` in a `.cells` file shows the server and the parser.
+
+## Zed
+
+Zed takes a language only from an extension, and starts a language server only from an extension's code: `settings.json` can change how a server Zed knows is run, never add one. The extension is `editors/zed`: the grammar, fetched by Zed from this repository at the commit `extension.toml` names, the queries (highlights, brackets, outline, injections), and a launcher of a dozen lines that runs the `cells` on PATH as `cells lsp`.
+
+```sh
+cells editors install zed
+```
+
+writes the extension this `cells` carries to `~/.local/share/cells/zed` and says the one step Zed keeps for its own window: Extensions › Install Dev Extension › that folder (or the `zed: install dev extension` action). Zed builds it there, the launcher with Rust from rustup and the grammar with the wasi-sdk it downloads. Run again after updating Cells, it rewrites the folder and says to press Rebuild on Cells in Zed's extensions. A checkout installs `editors/zed` the same way.
+
+Zed asks a server for colours and inlay hints only where a setting says so; in `settings.json`:
+
+```json
+"languages": {
+  "Cells": { "semantic_tokens": "combined", "inlay_hints": { "enabled": true } }
 }
 ```
+
+`combined` lays the server's colours over the grammar's: a name that reads a column wears its column's (`semantic_token_rules.json` maps `column1` to `column6` onto six theme colours), and the inlay hints draw the columns aligned. Formatting on save is on by default, and stores the computed values.
+
+`tree-sitter/scripts/queries.ts` writes the extension's highlights from the canonical queries, in Zed's theme names, and sets `rev` to the last commit that changed the parser, so a change to the grammar reaches Zed once that commit is pushed. Zed's registry (a pull request to zed-industries/extensions adding this repository as a submodule, `path = "editors/zed"`) would install it with one click and no Rust; it needs a licence file inside `editors/zed`, which this repository does not have yet.
 
 ## VS Code
 

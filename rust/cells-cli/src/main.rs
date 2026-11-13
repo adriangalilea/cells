@@ -40,10 +40,12 @@
 //!                                     what changed, by whom, when, and what each change
 //!                                     reached, newest first; or a cell's every value, each
 //!                                     beside the change that wrote it (ENGINE.md, History)
-//!   cells editors install helix        the editor set up for `.cells`: the grammar and queries
+//!   cells editors install helix|neovim|zed
+//!                                     the editor set up for `.cells`: the grammar and queries
 //!                                     this binary carries written where it reads them, the
 //!                                     language and its server added to its config, the
-//!                                     parser built (EDITORS.md)
+//!                                     parser built; Zed's extension written as the folder
+//!                                     Zed installs (EDITORS.md)
 //!
 //! A folder means every `.cells` file under it, hidden folders (`.git`, the engine's `.cells`)
 //! left out. Exit 0 when nothing is found (or every run succeeds), 1 when something is (or
@@ -68,7 +70,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 
 use cells_disk::{Disk, files};
 
-const USAGE: &str = "cells check <file|folder>...\ncells fmt [--check] [--align on|off] <file|folder>...\ncells diff <file>\ncells fix <file|folder>...\ncells merge <base> <ours> <theirs>\ncells pin <file>...\ncells run <file> [script]\ncells allow <file> [script]\ncells show <file>\ncells chart <file> [n …] [--watch] [--svg] [--glyphs fine|blocks|ascii] [--colors true|256|16]\ncells sql <file|folder>... <query>\ncells lsp\ncells serve [--verbose] <folder>...\ncells history <file|folder> [<row> <column>]\ncells editors install helix";
+const USAGE: &str = "cells check <file|folder>...\ncells fmt [--check] [--align on|off] <file|folder>...\ncells diff <file>\ncells fix <file|folder>...\ncells merge <base> <ours> <theirs>\ncells pin <file>...\ncells run <file> [script]\ncells allow <file> [script]\ncells show <file>\ncells chart <file> [n …] [--watch] [--svg] [--glyphs fine|blocks|ascii] [--colors true|256|16]\ncells sql <file|folder>... <query>\ncells lsp\ncells serve [--verbose] <folder>...\ncells history <file|folder> [<row> <column>]\ncells editors install helix|neovim|zed";
 
 /// What one file says: its lines of output, or the reason it could not be read.
 enum Said {
