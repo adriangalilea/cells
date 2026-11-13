@@ -15,6 +15,7 @@ use ratatui::buffer::Buffer;
 use ratatui::layout::Rect;
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::symbols::Marker;
+use ratatui::text::Span;
 use ratatui::widgets::Widget;
 use ratatui::widgets::canvas::{Canvas, Line as Segment, Points};
 
@@ -159,7 +160,8 @@ pub fn run(args: &[String]) -> Result<(), String> {
     for s in &drawn {
         let area = Rect::new(0, 0, width, height);
         let mut buf = Buffer::empty(area);
-        draw(s, area, &mut buf, asked.tier);
+        let held = draw(s, area, &mut buf, asked.tier, Foot { said: vec![Span::raw(format!(" {} ", counted(s)))], keys: None });
+        buf.resize(Rect::new(0, 0, width, held));
         print(&buf, asked.tier, &mut out).map_err(|e| e.to_string())?;
     }
     Ok(())
@@ -190,29 +192,27 @@ fn watch(asked: &Asked, summaries: &dyn Fn(&Path) -> Result<(Vec<(String, Kind)>
     let result = loop {
         let frame = terminal.draw(|f| {
             let area = f.area();
-            let foot = Rect::new(area.x, area.bottom().saturating_sub(1), area.width, 1);
-            let room = Rect::new(area.x, area.y, area.width, area.height.saturating_sub(1));
             let n = drawn.len().max(1) as u16;
-            let h = room.height / n;
-            for (i, s) in drawn.iter().enumerate() {
-                draw(s, Rect::new(room.x, room.y + h * i as u16, room.width, h), f.buffer_mut(), asked.tier);
-            }
-            let rows = drawn.first().map_or(0, |s| s.rows);
-            let skipped: usize = drawn.iter().map(|s| s.skipped).sum();
+            let h = area.height / n;
             let ago = read.elapsed().as_secs();
-            let mut said = format!("  {name} · read {} · {rows} rows", if ago < 2 { "now".to_owned() } else { format!("{ago}s ago") });
-            if skipped > 0 {
-                said += &format!(" · {skipped} left out (no place or no value)");
+            for (i, s) in drawn.iter().enumerate() {
+                // the last card's foot says what is read and the keys
+                let foot = if i + 1 == drawn.len() {
+                    let mut said = vec![Span::raw(format!(
+                        " {name} · read {} · {}",
+                        if ago < 2 { "now".to_owned() } else { format!("{ago}s ago") },
+                        counted(s)
+                    ))];
+                    if let Some(why) = &refused {
+                        said.push(Span::styled(format!(" · {why}"), Style::default().fg(Color::Red)));
+                    }
+                    said.push(Span::raw(" "));
+                    Foot { said, keys: Some(" q · esc · ctrl+c leave ") }
+                } else {
+                    Foot { said: vec![Span::raw(format!(" {} ", counted(s)))], keys: None }
+                };
+                draw(s, Rect::new(area.x, area.y + h * i as u16, area.width, h), f.buffer_mut(), asked.tier, foot);
             }
-            let buf = f.buffer_mut();
-            buf.set_string(foot.x, foot.y, &said, Style::default().fg(Color::DarkGray));
-            if let Some(why) = &refused {
-                let x = foot.x + said.chars().count() as u16 + 3;
-                buf.set_string(x, foot.y, why, Style::default().fg(Color::Red));
-            }
-            let keys = "q · esc · ctrl+c  leave  ";
-            let at = foot.right().saturating_sub(keys.chars().count() as u16);
-            buf.set_string(at, foot.y, keys, Style::default().fg(Color::DarkGray));
         });
         if let Err(e) = frame {
             break Err(e.to_string());
@@ -249,19 +249,55 @@ fn watch(asked: &Asked, summaries: &dyn Fn(&Path) -> Result<(Vec<(String, Kind)>
     result
 }
 
-/// A summary drawn into `area`: its title, its legend, its scale and its marks.
-pub fn draw(s: &Summary, area: Rect, buf: &mut Buffer, tier: Tier) {
-    // a cell of room round it, as a page's margin
-    let area = Rect::new(area.x + 2, area.y + 1, area.width.saturating_sub(4), area.height.saturating_sub(2));
-    if area.height < 6 || area.width < 20 {
-        return;
+/// What a card's bottom edge says: what was read, at its leading end, and the keys at its
+/// trailing end when the card answers them.
+pub struct Foot {
+    said: Vec<Span<'static>>,
+    keys: Option<&'static str>,
+}
+
+/// The rows a chart read, and those it left out.
+fn counted(s: &Summary) -> String {
+    let mut said = format!("{} rows", s.rows);
+    if s.skipped > 0 {
+        said += &format!(", {} left out (no place or no value)", s.skipped);
     }
-    buf.set_string(area.x, area.y, &s.title, Style::default().add_modifier(Modifier::BOLD));
+    said
+}
+
+/// A summary drawn into `area` as a card: its title in the card's top edge, its foot in
+/// the bottom one, its legend inside, then its scale and marks, every mark on the scale's
+/// one grid of rows.
+/// The card is as tall as what it holds, at most `area`; its height is returned.
+pub fn draw(s: &Summary, area: Rect, buf: &mut Buffer, tier: Tier, foot: Foot) -> u16 {
+    use ratatui::text::Line as Words;
+    use ratatui::widgets::{Block, BorderType};
+    let quiet = Style::default().fg(Color::DarkGray);
+    let mut card = Block::bordered()
+        .border_type(if tier.glyphs == Glyphs::Ascii { BorderType::Plain } else { BorderType::Rounded })
+        .border_style(Style::default().fg(edge_color(tier)))
+        .title(Words::from(format!(" {} ", s.title)).style(Style::default().fg(Color::White).add_modifier(Modifier::BOLD)))
+        .title_bottom(Words::from(foot.said).style(quiet));
+    if let Some(keys) = foot.keys {
+        card = card.title_bottom(Words::from(keys).style(quiet).right_aligned());
+    }
+    let inner = card.inner(area);
+    // a cell of room inside the card's edge, on every side
+    let room = Rect::new(inner.x + 2, inner.y + 1, inner.width.saturating_sub(4), inner.height.saturating_sub(2));
+    let end = if room.height < 6 || room.width < 20 { room.y } else { marks(s, room, buf, tier) };
+    let held = Rect::new(area.x, area.y, area.width, (end + 2 - area.y).min(area.height));
+    card.render(held, buf);
+    held.height
+}
+
+/// The legend, scale and marks of `s` in `area`; the row past the last one drawn is
+/// returned.
+fn marks(s: &Summary, area: Rect, buf: &mut Buffer, tier: Tier) -> u16 {
     let parts: Vec<&Summary> = if s.layers.is_empty() { vec![s] } else { s.layers.iter().collect() };
     // the legend, once there is more than one series
     let series: Vec<(String, Shade)> =
         parts.iter().flat_map(|p| p.series.iter().map(|(n, sh)| (if n.is_empty() { p.title.clone() } else { n.clone() }, *sh))).collect();
-    let mut y0 = area.y + 1;
+    let mut y0 = area.y;
     if series.len() > 1 {
         let mut x = area.x;
         for (name, shade) in &series {
@@ -273,14 +309,12 @@ pub fn draw(s: &Summary, area: Rect, buf: &mut Buffer, tier: Tier) {
                 break;
             }
         }
-        y0 += 1;
+        // and a line of room between the legend and the chart
+        y0 += 2;
     }
-    // a line of room between what names the chart and the chart
-    y0 += 1;
     let body = Rect::new(area.x, y0, area.width, area.bottom().saturating_sub(y0));
     if s.kind == Kind::Figure && s.layers.is_empty() {
-        figure(s, body, buf, tier);
-        return;
+        return figure(s, body, buf, tier);
     }
     let num = |v: &Option<String>| v.as_deref().and_then(|t| t.parse::<f64>().ok());
     // the scale: from zero (or below it) to the most, stacked where bars stack
@@ -303,51 +337,115 @@ pub fn draw(s: &Summary, area: Rect, buf: &mut Buffer, tier: Tier) {
     if hi <= lo {
         hi = lo + 1.0;
     }
-    // the scale as every reader draws it: whole steps of 1, 2 or 5 times a power of ten,
-    // about one a few rows
-    let rows = body.height.saturating_sub(2).max(2);
-    let (lo, hi, step) = cells::chart::scale(lo, hi, (rows / 3).clamp(2, 6) as u32);
-    let steps = ((hi - lo) / step + 0.5) as i64;
+    // the scale as every reader draws it: whole steps of 1, 2 or 5 times a power of ten;
+    // the plot as many rows as gives every step the same whole number of rows, so each
+    // step's rule stands on a row and each mark meets it there
+    let room = body.height.saturating_sub(2).max(3);
+    let (lo, hi, step) = cells::chart::scale(lo, hi, (room / 3).clamp(2, 6) as u32);
+    let steps = (((hi - lo) / step + 0.5) as u16).max(1);
+    let per = ((room - 1) / steps).max(1);
     let labels: Vec<String> = (0..=steps).map(|i| s.figure(lo + step * i as f64)).collect();
     let left = labels.iter().map(|l| l.chars().count()).max().unwrap_or(1) as u16 + 2;
-    let plot = Rect::new(body.x + left, body.y, body.width.saturating_sub(left), body.height.saturating_sub(2));
-    if plot.width < 4 || plot.height < 2 {
-        return;
+    let plot = Rect::new(body.x + left, body.y, body.width.saturating_sub(left), steps * per + 1);
+    if plot.width < 4 {
+        return body.y;
     }
+    let scale = Scale { lo, hi, rows: plot.height };
     let quiet = Style::default().fg(Color::DarkGray);
     let rule = if tier.glyphs == Glyphs::Ascii { "-" } else { "─" };
-    let grid = Style::default().fg(match tier.colors {
-        Colors::True => Color::Rgb(58, 58, 64),
-        Colors::Indexed => Color::Indexed(237),
-        Colors::Sixteen => Color::DarkGray,
-    });
-    for (i, label) in labels.iter().enumerate() {
-        let v = lo + step * i as f64;
-        let row = plot.bottom() - 1 - (((v - lo) / (hi - lo)) * (plot.height - 1) as f64).round() as u16;
-        // right-aligned against the plot, a faint rule across it the marks draw over
+    let ruled: Vec<u16> = (0..=steps).map(|i| plot.bottom() - 1 - i * per).collect();
+    for (label, &row) in labels.iter().zip(&ruled) {
+        // right-aligned against the plot, a faint rule across it
         buf.set_string(plot.x - 2 - label.chars().count() as u16, row, label, quiet);
-        buf.set_string(plot.x, row, rule.repeat(plot.width as usize), grid);
+        buf.set_string(plot.x, row, rule.repeat(plot.width as usize), Style::default().fg(grid_color(tier)));
+    }
+    for part in &parts {
+        match part.kind {
+            Kind::Bars => bars(part, plot, buf, tier, &scale, stacked(part)),
+            Kind::Heat => heat(part, plot, buf, tier),
+            _ => lines(part, plot, buf, tier, &scale),
+        }
+    }
+    // the rules seen through the bars, a shade of each bar's own colour
+    if tier.glyphs != Glyphs::Ascii {
+        for &row in &ruled {
+            for x in plot.x..plot.right() {
+                if let Some(cell) = buf.cell_mut((x, row))
+                    && cell.symbol() == "█"
+                {
+                    let bar = cell.fg;
+                    cell.set_symbol("─").set_fg(shaded(bar, tier)).set_bg(bar);
+                }
+            }
+        }
     }
     // each place named under its mark's middle, as many as fit with a space between
-    let places = parts[0].places.len().max(1);
-    let band = plot.width as f64 / places as f64;
     let names: Vec<String> = place_names(&parts[0].places, parts[0].axis);
     let mut free = plot.x;
     for (i, name) in names.iter().enumerate() {
         let w = name.chars().count() as u16;
-        let middle = plot.x as f64 + band * (i as f64 + 0.5);
-        let at = (middle - w as f64 / 2.0).round().max(plot.x as f64) as u16;
+        let (x0, bw) = slot(plot, names.len(), i);
+        let at = (x0 + bw / 2).saturating_sub(w / 2).max(plot.x);
         if at >= free && at + w <= plot.right() {
             buf.set_string(at, plot.bottom() + 1, name, quiet);
             free = at + w + 2;
         }
     }
-    for part in &parts {
-        match part.kind {
-            Kind::Bars => bars(part, plot, buf, tier, (lo, hi), stacked(part)),
-            Kind::Heat => heat(part, plot, buf, tier),
-            _ => lines(part, plot, buf, tier, (lo, hi)),
-        }
+    plot.bottom() + 2
+}
+
+/// Where a value stands on a plot of `rows` rows, in eighths of a row from its foot: `lo`
+/// on the foot row's middle, `hi` on the top row's, so a step's rule (drawn through a
+/// row's middle) is where its value is, for a bar's top and a line's point alike.
+struct Scale {
+    lo: f64,
+    hi: f64,
+    rows: u16,
+}
+
+impl Scale {
+    fn eighths(&self, v: f64) -> i64 {
+        (4.0 + (v - self.lo) / (self.hi - self.lo) * (self.rows as f64 - 1.0) * 8.0).round() as i64
+    }
+
+    /// The bounds a canvas spans so its rows' middles are `lo` and `hi`.
+    fn bounds(&self) -> [f64; 2] {
+        let half = (self.hi - self.lo) / ((self.rows as f64 - 1.0) * 2.0);
+        [self.lo - half, self.hi + half]
+    }
+}
+
+/// Place `p` of `n` along a plot: its mark's first column and width, the same for its bar
+/// and its name.
+fn slot(plot: Rect, n: usize, p: usize) -> (u16, u16) {
+    let band = plot.width as f64 / n.max(1) as f64;
+    let width = (band * 0.7).max(1.0) as u16;
+    (plot.x + (band * p as f64 + (band - width as f64) / 2.0) as u16, width)
+}
+
+/// The rules' colour: faint against the terminal's ground.
+fn grid_color(tier: Tier) -> Color {
+    match tier.colors {
+        Colors::True => Color::Rgb(58, 58, 64),
+        Colors::Indexed => Color::Indexed(237),
+        Colors::Sixteen => Color::DarkGray,
+    }
+}
+
+/// The card's edge: a step past the rules, so the card holds them.
+fn edge_color(tier: Tier) -> Color {
+    match tier.colors {
+        Colors::True => Color::Rgb(84, 84, 92),
+        Colors::Indexed => Color::Indexed(240),
+        Colors::Sixteen => Color::DarkGray,
+    }
+}
+
+/// A bar's colour a step darker, a rule seen through it.
+fn shaded(bar: Color, tier: Tier) -> Color {
+    match (bar, tier.colors) {
+        (Color::Rgb(r, g, b), _) => Color::Rgb((r as u16 * 7 / 10) as u8, (g as u16 * 7 / 10) as u8, (b as u16 * 7 / 10) as u8),
+        _ => Color::Black,
     }
 }
 
@@ -382,13 +480,11 @@ fn place_names(places: &[String], axis: &str) -> Vec<String> {
 
 /// Bars in eighths along the value: where two stacked series meet in one cell, the lower
 /// is the glyph's ink and the upper its ground, so a stack has no gap.
-fn bars(s: &Summary, plot: Rect, buf: &mut Buffer, tier: Tier, (lo, hi): (f64, f64), stacked: bool) {
+fn bars(s: &Summary, plot: Rect, buf: &mut Buffer, tier: Tier, scale: &Scale, stacked: bool) {
     let eighths = ["", "▁", "▂", "▃", "▄", "▅", "▆", "▇", "█"];
-    let rows = plot.height as f64;
-    let units = |v: f64| ((v - lo) / (hi - lo) * rows * 8.0).round() as i64;
+    let units = |v: f64| scale.eighths(v);
     let zero = units(0.0);
     let places = s.places.len().max(1);
-    let band = plot.width as f64 / places as f64;
     let series = s.series.len().max(1);
     for (p, row) in s.values.iter().enumerate() {
         // each series' span along the value, in eighths from the plot's foot
@@ -404,8 +500,7 @@ fn bars(s: &Summary, plot: Rect, buf: &mut Buffer, tier: Tier, (lo, hi): (f64, f
                 spans.push((zero.min(units(v)), zero.max(units(v)), k));
             }
         }
-        let width = ((band * 0.7).max(1.0)) as u16;
-        let x0 = plot.x + (band * p as f64 + (band - width as f64) / 2.0) as u16;
+        let (x0, width) = slot(plot, places, p);
         let columns: Vec<(u16, u16, Vec<(i64, i64, usize)>)> = if stacked || series == 1 {
             vec![(x0, width, spans)]
         } else {
@@ -433,9 +528,10 @@ fn bars(s: &Summary, plot: Rect, buf: &mut Buffer, tier: Tier, (lo, hi): (f64, f
                 } else if lower.0 == 0 {
                     (eighths[lower.1 as usize], lower.2, (upper.2 != lower.2).then_some(upper.2))
                 } else {
-                    // a span that starts above the cell's foot (a bar below zero's top): its
-                    // upper part, drawn as the ground over a lower eighth left empty
-                    (eighths[lower.0 as usize], usize::MAX, Some(lower.2))
+                    // a span that starts above the cell's foot, as every bar does on zero's
+                    // row (zero stands on the row's middle, where its rule is): the cell's
+                    // upper part, in the nearest top block there is
+                    (if lower.0 <= 2 { "█" } else if lower.0 <= 5 { "▀" } else { "▔" }, lower.2, None)
                 };
                 for dx in 0..w {
                     if let Some(cell) = buf.cell_mut((x + dx, plot.y + r)) {
@@ -454,7 +550,7 @@ fn bars(s: &Summary, plot: Rect, buf: &mut Buffer, tier: Tier, (lo, hi): (f64, f
 }
 
 /// Lines, areas, steps and points on a canvas of the tier's finest marks.
-fn lines(s: &Summary, plot: Rect, buf: &mut Buffer, tier: Tier, (lo, hi): (f64, f64)) {
+fn lines(s: &Summary, plot: Rect, buf: &mut Buffer, tier: Tier, scale: &Scale) {
     let marker = match tier.glyphs {
         Glyphs::Fine => Marker::Braille,
         Glyphs::Blocks => Marker::HalfBlock,
@@ -464,7 +560,7 @@ fn lines(s: &Summary, plot: Rect, buf: &mut Buffer, tier: Tier, (lo, hi): (f64, 
     Canvas::default()
         .marker(marker)
         .x_bounds([-0.5, n - 0.5])
-        .y_bounds([lo, hi])
+        .y_bounds(scale.bounds())
         .paint(|ctx| {
             for (k, (_, shade)) in s.series.iter().enumerate() {
                 let c = color(*shade, tier);
@@ -490,7 +586,7 @@ fn lines(s: &Summary, plot: Rect, buf: &mut Buffer, tier: Tier, (lo, hi): (f64, 
                                 for i in 0..=steps {
                                     let t = i as f64 / steps as f64;
                                     let (x, y) = (x1 + (x2 - x1) * t, y1 + (y2 - y1) * t);
-                                    ctx.draw(&Segment { x1: x, y1: 0.0f64.max(lo), x2: x, y2: y, color: c });
+                                    ctx.draw(&Segment { x1: x, y1: 0.0f64.max(scale.lo), x2: x, y2: y, color: c });
                                 }
                             }
                         }
@@ -530,9 +626,9 @@ fn heat(s: &Summary, plot: Rect, buf: &mut Buffer, tier: Tier) {
 }
 
 /// One number, its change from the place before, and its run as a sparkline.
-fn figure(s: &Summary, area: Rect, buf: &mut Buffer, tier: Tier) {
+fn figure(s: &Summary, area: Rect, buf: &mut Buffer, tier: Tier) -> u16 {
     let run: Vec<f64> = s.values.iter().filter_map(|r| r.first().cloned().flatten().and_then(|t| t.parse::<f64>().ok())).collect();
-    let Some(&now) = run.last() else { return };
+    let Some(&now) = run.last() else { return area.y };
     buf.set_string(area.x, area.y, s.figure(now), Style::default().add_modifier(Modifier::BOLD));
     if run.len() > 1 {
         let change = run[run.len() - 1] - run[run.len() - 2];
@@ -549,7 +645,9 @@ fn figure(s: &Summary, area: Rect, buf: &mut Buffer, tier: Tier) {
             let level = if hi > lo { ((v - lo) / (hi - lo) * 7.0).round() as usize } else { 7 };
             buf.set_string(area.x + i as u16, area.y + 2, bars[level], Style::default().fg(tint));
         }
+        return area.y + 3;
     }
+    area.y + 1
 }
 
 /// A shade as the terminal draws it: true colour, the 256's nearest, or the sixteen's.
