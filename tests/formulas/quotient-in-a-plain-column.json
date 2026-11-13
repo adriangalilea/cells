@@ -1,0 +1,13 @@
+{
+  "columns": [
+    { "name": "item", "type": "text" },
+    { "name": "cost", "type": "EUR" },
+    { "name": "ratio", "type": "num?", "inferred": true }
+  ],
+  "rows": [
+    { "item": { "text": "fuel" }, "cost": { "money": "84.20", "currency": "EUR" }, "ratio": { "num": "0.5" } },
+    { "item": { "text": "maps" }, "cost": { "money": "12.35", "currency": "EUR" }, "ratio": { "num": "0.142857142857143", "from": "cell" } },
+    { "item": { "text": "tent" }, "cost": { "money": "310.00", "currency": "EUR" }, "ratio": { "num": "103.333333333333", "from": "cell" } }
+  ],
+  "problems": []
+}

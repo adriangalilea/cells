@@ -1408,8 +1408,17 @@ fn ordered(keys: &[Vec<V>], descending: &[bool]) -> (Vec<usize>, Vec<(usize, usi
     (rows, ties)
 }
 
-/// `ir` on row `row` of `table`.
+/// `ir` on row `row` of `table`, where nothing rounds its result again: each quotient to
+/// `exact::QUOTIENT_DIGITS`.
 pub fn eval(ir: &Ir, table: Table, row: usize, src: &mut dyn Source) -> V {
+    eval_kept(ir, table, row, src, crate::exact::QUOTIENT_DIGITS)
+}
+
+/// `ir` on row `row` of `table`, each quotient (`/`, `AVG`) to `kept` significant digits:
+/// what its column's type keeps (`exact::SCALED_QUOTIENT_DIGITS` for an amount, which its
+/// column rounds again).
+pub fn eval_kept(ir: &Ir, table: Table, row: usize, src: &mut dyn Source, kept: u32) -> V {
+    let eval = |ir: &Ir, table: Table, row: usize, src: &mut dyn Source| eval_kept(ir, table, row, src, kept);
     match ir {
         Ir::Const(v) => v.clone(),
         Ir::Col(k) => src.cell(table, row, *k),
@@ -1461,7 +1470,7 @@ pub fn eval(ir: &Ir, table: Table, row: usize, src: &mut dyn Source) -> V {
                         Agg::Count => V::Num(Exact::from_int(count)),
                         _ if count == 0 => V::Null,
                         Agg::Sum => V::Num(sum),
-                        _ => sum.div(&Exact::from_int(count)).map_or(V::Null, V::Num),
+                        _ => sum.quotient(&Exact::from_int(count), kept).map_or(V::Null, V::Num),
                     }
                 }
                 Agg::Min | Agg::Max => {
@@ -1537,7 +1546,7 @@ pub fn eval(ir: &Ir, table: Table, row: usize, src: &mut dyn Source) -> V {
                 Agg::Count => V::Num(Exact::from_int(count)),
                 Agg::Sum => acc.unwrap_or(V::Null),
                 Agg::Avg => match acc {
-                    Some(V::Num(s)) => s.div(&Exact::from_int(count)).map_or(V::Null, V::Num),
+                    Some(V::Num(s)) => s.quotient(&Exact::from_int(count), kept).map_or(V::Null, V::Num),
                     _ => V::Null,
                 },
                 Agg::Min | Agg::Max | Agg::First | Agg::Last => acc.unwrap_or(V::Null),
@@ -1602,7 +1611,7 @@ pub fn eval(ir: &Ir, table: Table, row: usize, src: &mut dyn Source) -> V {
                         match agg {
                             Agg::Count => V::Num(Exact::from_int(count)),
                             Agg::Avg => match &acc {
-                                Some(V::Num(s)) => s.div(&Exact::from_int(count)).map_or(V::Null, V::Num),
+                                Some(V::Num(s)) => s.quotient(&Exact::from_int(count), kept).map_or(V::Null, V::Num),
                                 _ => V::Null,
                             },
                             _ => acc.clone().unwrap_or(V::Null),
@@ -1645,7 +1654,7 @@ pub fn eval(ir: &Ir, table: Table, row: usize, src: &mut dyn Source) -> V {
             }
             let x = eval(a, table, row, src);
             let y = eval(b, table, row, src);
-            binary(*op, x, y)
+            binary(*op, x, y, kept)
         }
         Ir::Case(arms, otherwise) => {
             for (w, t) in arms {
@@ -1687,7 +1696,8 @@ pub(crate) fn order(a: &V, b: &V) -> Option<Ordering> {
     })
 }
 
-fn binary(op: Bin, x: V, y: V) -> V {
+/// `x op y`, a quotient to `kept` significant digits.
+fn binary(op: Bin, x: V, y: V, kept: u32) -> V {
     if op == Bin::Concat {
         return match (joined(&x), joined(&y)) {
             (Some(a), Some(b)) => V::Text(a + &b),
@@ -1704,7 +1714,7 @@ fn binary(op: Bin, x: V, y: V) -> V {
                 Bin::Add => V::Num(a.add(&b)),
                 Bin::Sub => V::Num(a.sub(&b)),
                 Bin::Mul => V::Num(a.mul(&b)),
-                _ => a.div(&b).map_or(V::Null, V::Num),
+                _ => a.quotient(&b, kept).map_or(V::Null, V::Num),
             }
         }
         _ => {

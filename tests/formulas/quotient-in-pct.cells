@@ -1,0 +1,4 @@
+item:text,cost:EUR,share:pct=cost / SUM(cost) * 100
+fuel,84.20,
+maps,12.35,
+tent,310.00,

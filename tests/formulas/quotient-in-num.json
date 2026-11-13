@@ -1,0 +1,14 @@
+{
+  "columns": [
+    { "name": "item", "type": "text" },
+    { "name": "cost", "type": "EUR" },
+    { "name": "share", "type": "num", "formula": "cost / SUM(cost)" },
+    { "name": "mean", "type": "num", "formula": "AVG(cost)" }
+  ],
+  "rows": [
+    { "item": { "text": "fuel" }, "cost": { "money": "84.20", "currency": "EUR" }, "share": { "num": "0.20710859672857", "from": "formula" }, "mean": { "num": "135.516666666667", "from": "formula" } },
+    { "item": { "text": "maps" }, "cost": { "money": "12.35", "currency": "EUR" }, "share": { "num": "0.0303775673348912", "from": "formula" }, "mean": { "num": "135.516666666667", "from": "formula" } },
+    { "item": { "text": "tent" }, "cost": { "money": "310.00", "currency": "EUR" }, "share": { "num": "0.762513835936539", "from": "formula" }, "mean": { "num": "135.516666666667", "from": "formula" } }
+  ],
+  "problems": []
+}

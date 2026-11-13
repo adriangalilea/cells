@@ -1,0 +1,4 @@
+amount:num,third:EUR=amount / 3,vat:EUR=amount * 21 / 121,gold:XAU=amount / 3
+300000000000.04499,,,
+64.30,,,
+2,,,

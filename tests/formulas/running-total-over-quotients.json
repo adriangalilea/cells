@@ -1,0 +1,15 @@
+{
+  "columns": [
+    { "name": "item", "type": "text" },
+    { "name": "cost", "type": "EUR" },
+    { "name": "share", "type": "num", "formula": "cost / SUM(cost)" },
+    { "name": "running", "type": "num", "formula": "running[-1] + share" },
+    { "name": "total", "type": "num", "formula": "SUM(share)" }
+  ],
+  "rows": [
+    { "item": { "text": "fuel" }, "cost": { "money": "84.20", "currency": "EUR" }, "share": { "num": "0.20710859672857", "from": "formula" }, "running": { "num": "0.20710859672857", "from": "formula" }, "total": { "num": "1.0000000000000002", "from": "formula" } },
+    { "item": { "text": "maps" }, "cost": { "money": "12.35", "currency": "EUR" }, "share": { "num": "0.0303775673348912", "from": "formula" }, "running": { "num": "0.2374861640634612", "from": "formula" }, "total": { "num": "1.0000000000000002", "from": "formula" } },
+    { "item": { "text": "tent" }, "cost": { "money": "310.00", "currency": "EUR" }, "share": { "num": "0.762513835936539", "from": "formula" }, "running": { "num": "1.0000000000000002", "from": "formula" }, "total": { "num": "1.0000000000000002", "from": "formula" } }
+  ],
+  "problems": []
+}

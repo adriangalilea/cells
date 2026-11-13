@@ -1,0 +1,4 @@
+item:text,cost:EUR,ratio
+fuel,84.20,0.5
+maps,12.35,=1 / 7
+tent,310.00,=cost / 3

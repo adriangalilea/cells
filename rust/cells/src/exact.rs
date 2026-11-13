@@ -1,14 +1,20 @@
-//! Exact decimal arithmetic for computed columns (SPEC.md, the prelude): `+ - *` exact,
-//! `/` rounded to 34 significant digits, half to even. Values that fit 38 digits stay in
-//! `i128`; past that the magnitude is a base-10^9 big integer.
+//! Exact decimal arithmetic for computed columns (SPEC.md, The language): `+ - *` exact,
+//! `/` rounded half to even to significant digits, its whole part kept. Values that fit
+//! 38 digits stay in `i128`; past that the magnitude is a base-10^9 big integer.
 
 use alloc::vec::Vec;
 use core::cmp::Ordering;
 
 use crate::value::{self, Decimal};
 
-/// Significant digits a quotient keeps.
-pub const QUOTIENT_DIGITS: u32 = 34;
+/// Significant digits a quotient keeps where nothing rounds it again: the most a binary
+/// double holds for every decimal (C's `DBL_DIG`), so a value survives a spreadsheet,
+/// JSON read by JavaScript, any float, and comes back the same.
+pub const QUOTIENT_DIGITS: u32 = 15;
+
+/// Significant digits a quotient keeps where its column rounds the result to a scale (an
+/// amount), so that rounding is the only one: decimal128's.
+pub const SCALED_QUOTIENT_DIGITS: u32 = 34;
 
 const BASE: u64 = 1_000_000_000;
 
@@ -299,8 +305,15 @@ impl Exact {
         Exact::signed(self.negative != b.negative, mul_mag(&self.magnitude, &b.magnitude), self.scale + b.scale)
     }
 
-    /// `self / b` to 34 significant digits, half to even; nothing for a zero divisor.
+    /// `self / b` to `QUOTIENT_DIGITS`, as `quotient` gives it.
     pub fn div(&self, b: &Exact) -> Option<Exact> {
+        self.quotient(b, QUOTIENT_DIGITS)
+    }
+
+    /// `self / b` to `kept` significant digits, half to even, never fewer than its whole
+    /// part has; nothing for a zero divisor.
+    pub fn quotient(&self, b: &Exact, kept: u32) -> Option<Exact> {
+        assert!(kept > 0, "a quotient keeps at least one digit");
         if b.is_zero() {
             return None;
         }
@@ -308,8 +321,10 @@ impl Exact {
             return Some(Exact::zero());
         }
         let (da, db) = (digits(&self.magnitude), digits(&b.magnitude));
-        // A * 10^k / B then has at least 35 digits, one past what is kept.
-        let k = (QUOTIENT_DIGITS + 1 + db).saturating_sub(da);
+        // A * 10^k / B then has at least one digit past what is kept, and every digit of
+        // its whole part with one after it (its scale, `self.scale + k - b.scale`, is at
+        // least 1), so at least one digit is dropped and the rounding sees it.
+        let k = (kept + 1 + db).saturating_sub(da).max((b.scale + 1).saturating_sub(self.scale));
         let (q, sticky) = match (to_u128(&self.magnitude), to_u128(&b.magnitude)) {
             (Some(a), Some(bb)) if k <= 38 && a.checked_mul(value::pow10(k) as u128).is_some() => {
                 let a = a * value::pow10(k) as u128;
@@ -317,43 +332,32 @@ impl Exact {
             }
             _ => div_mag(&mul_pow10(&self.magnitude, k), &b.magnitude),
         };
-        let dq = digits(&q);
-        let drop = dq.saturating_sub(QUOTIENT_DIGITS);
-        let (mut kept, rest) = (q.clone(), q);
-        let mut half_cmp = Ordering::Less;
-        if drop > 0 {
-            let mut d = drop;
-            let mut rem_digits: Vec<u32> = Vec::new();
-            let mut place: Vec<u32> = from_u128(1);
-            let mut r = rest;
-            // Peel `drop` digits off the bottom, keeping them as a number.
-            while d > 0 {
-                let step = d.min(9);
-                let (q2, r2) = div_small(&r, 10u32.pow(step));
-                rem_digits = add_mag(&rem_digits, &mul_mag(&from_u128(r2 as u128), &place));
-                place = mul_pow10(&place, step);
-                r = q2;
-                d -= step;
-            }
-            kept = r;
-            let half = mul_small(&place, 5);
-            let half = div_small(&half, 10).0;
-            half_cmp = cmp_mag(&rem_digits, &half);
+        let scale = self.scale + k - b.scale;
+        let drop = digits(&q).saturating_sub(kept).min(scale);
+        assert!(drop > 0, "a quotient computes a digit past what it keeps");
+        let mut d = drop;
+        let mut rem_digits: Vec<u32> = Vec::new();
+        let mut place: Vec<u32> = from_u128(1);
+        let mut m = q;
+        // Peel `drop` digits off the bottom, keeping them as a number.
+        while d > 0 {
+            let step = d.min(9);
+            let (q2, r2) = div_small(&m, 10u32.pow(step));
+            rem_digits = add_mag(&rem_digits, &mul_mag(&from_u128(r2 as u128), &place));
+            place = mul_pow10(&place, step);
+            m = q2;
+            d -= step;
         }
-        let round_up = match half_cmp {
+        let half = div_small(&mul_small(&place, 5), 10).0;
+        let round_up = match cmp_mag(&rem_digits, &half) {
             Ordering::Greater => true,
-            Ordering::Equal => sticky || kept.first().is_some_and(|l| l % 2 == 1),
+            Ordering::Equal => sticky || m.first().is_some_and(|l| l % 2 == 1),
             Ordering::Less => false,
         };
         if round_up {
-            kept = add_mag(&kept, &from_u128(1));
+            m = add_mag(&m, &from_u128(1));
         }
-        let mut scale = self.scale as i64 - b.scale as i64 + k as i64 - drop as i64;
-        if scale < 0 {
-            kept = mul_pow10(&kept, (-scale) as u32);
-            scale = 0;
-        }
-        let mut out = Exact::signed(self.negative != b.negative, kept, scale as u32);
+        let mut out = Exact::signed(self.negative != b.negative, m, scale - drop);
         out.normalize();
         Some(out)
     }
@@ -514,20 +518,32 @@ mod tests {
     #[test]
     fn arithmetic() {
         assert_eq!(e("0.1").add(&e("0.2")).to_string(), "0.3");
-        assert_eq!(e("1").div(&e("3")).unwrap().to_string(), "0.3333333333333333333333333333333333");
-        assert_eq!(e("2").div(&e("3")).unwrap().to_string(), "0.6666666666666666666666666666666667");
-        assert_eq!(e("-7").div(&e("3")).unwrap().to_string(), "-2.333333333333333333333333333333333");
-        assert_eq!(e("10").div(&e("4")).unwrap().to_string(), "2.5");
-        assert_eq!(e("12345678901234567890123456789012345").div(&e("2")).unwrap().to_string(), "6172839450617283945061728394506172");
-        assert_eq!(e("12345678901234567890123456789012347").div(&e("2")).unwrap().to_string(), "6172839450617283945061728394506174");
-        let vat = e("64.30").mul(&e("21")).div(&e("100").add(&e("21"))).unwrap();
+        let scaled = |a: &str, b: &str| e(a).quotient(&e(b), SCALED_QUOTIENT_DIGITS).unwrap().to_string();
+        let plain = |a: &str, b: &str| e(a).div(&e(b)).unwrap().to_string();
+        assert_eq!(scaled("1", "3"), "0.3333333333333333333333333333333333");
+        assert_eq!(scaled("2", "3"), "0.6666666666666666666666666666666667");
+        assert_eq!(scaled("-7", "3"), "-2.333333333333333333333333333333333");
+        assert_eq!(plain("1", "3"), "0.333333333333333");
+        assert_eq!(plain("2", "3"), "0.666666666666667");
+        assert_eq!(plain("-7", "3"), "-2.33333333333333");
+        assert_eq!(plain("0.001", "7"), "0.000142857142857143");
+        assert_eq!(plain("10", "4"), "2.5");
+        assert_eq!(plain("1", "1024"), "0.0009765625");
+        // The whole part is kept, and rounded by what follows it.
+        assert_eq!(plain("12345678901234567890123456789012345", "2"), "6172839450617283945061728394506172");
+        assert_eq!(plain("12345678901234567890123456789012347", "2"), "6172839450617283945061728394506174");
+        assert_eq!(plain("20000000000000000000", "3"), "6666666666666666667");
+        assert_eq!(plain("1", "0.001"), "1000");
+        assert_eq!(plain("1", "0.003"), "333.333333333333");
+        let vat = e("64.30").mul(&e("21")).quotient(&e("100").add(&e("21")), SCALED_QUOTIENT_DIGITS).unwrap();
         assert_eq!(vat.to_string(), "11.15950413223140495867768595041322");
         assert_eq!(e("1.10").mul(&e("3")).to_string(), "3.30");
         assert!(e("1").div(&e("0")).is_none());
         // Past u128: the big path.
         let big = e("123456789012345678901234567890123456789").mul(&e("987654321098765432109876543210"));
         let q = big.div(&e("987654321098765432109876543210")).unwrap();
-        assert_eq!(q.to_string(), "123456789012345678901234567890123500000");
+        assert_eq!(q.to_string(), "123456789012345678901234567890123456789");
+        assert_eq!(plain("1", "987654321098765432109876543210.7"), "0.00000000000000000000000000000101249999988609");
         assert_eq!(e("1").div(&e("7")).unwrap().to_i128(3), Some(143));
         assert_eq!(e("2.5").to_i128(0), Some(2));
         assert_eq!(e("3.5").to_i128(0), Some(4));

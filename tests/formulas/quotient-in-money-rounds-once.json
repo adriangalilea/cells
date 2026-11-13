@@ -1,0 +1,14 @@
+{
+  "columns": [
+    { "name": "amount", "type": "num" },
+    { "name": "third", "type": "EUR", "formula": "amount / 3" },
+    { "name": "vat", "type": "EUR", "formula": "amount * 21 / 121" },
+    { "name": "gold", "type": "XAU", "formula": "amount / 3" }
+  ],
+  "rows": [
+    { "amount": { "num": "300000000000.04499" }, "third": { "money": "100000000000.01", "currency": "EUR", "from": "formula" }, "vat": { "money": "52066115702.49", "currency": "EUR", "from": "formula" }, "gold": { "money": "100000000000.015", "currency": "XAU", "from": "formula" } },
+    { "amount": { "num": "64.30" }, "third": { "money": "21.43", "currency": "EUR", "from": "formula" }, "vat": { "money": "11.16", "currency": "EUR", "from": "formula" }, "gold": { "money": "21.4333333333333", "currency": "XAU", "from": "formula" } },
+    { "amount": { "num": "2" }, "third": { "money": "0.67", "currency": "EUR", "from": "formula" }, "vat": { "money": "0.35", "currency": "EUR", "from": "formula" }, "gold": { "money": "0.666666666666667", "currency": "XAU", "from": "formula" } }
+  ],
+  "problems": []
+}

@@ -1,0 +1,4 @@
+item:text,cost:EUR,share:num=cost / SUM(cost),running:num=running[-1] + share,total:num=SUM(share)
+fuel,84.20,,,
+maps,12.35,,,
+tent,310.00,,,

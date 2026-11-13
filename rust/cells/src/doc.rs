@@ -3815,6 +3815,13 @@ fn value_v(c: &Column, row: usize) -> V {
     }
 }
 
+/// Significant digits a quotient keeps in a column's formulas (SPEC.md, The language): an
+/// amount's result is rounded again to its scale, so its quotients keep enough that this
+/// is the one rounding; any other column stores its quotients as they come.
+fn quotient_digits(c: &Column) -> u32 {
+    if c.ty.scale().is_some() { crate::exact::SCALED_QUOTIENT_DIGITS } else { crate::exact::QUOTIENT_DIGITS }
+}
+
 /// What a column's formulas gave, as the text its cells are read from: an amount at its
 /// currency's minor unit, half to even, any other number at the most digits after the
 /// point any of them has (fewer when 38 digits would not hold the largest), a boolean in
@@ -4042,6 +4049,7 @@ impl expr::Source for Eval<'_> {
         }
         let c = &self.columns[column];
         let origin = c.origin(row);
+        let kept = quotient_digits(c);
         // A column with no memo holds its computed values decoded already (a look's
         // condition, evaluated after the computation).
         if origin == Origin::Written || self.memo[column].is_empty() {
@@ -4062,7 +4070,7 @@ impl expr::Source for Eval<'_> {
             _ => cells.get(&(row as u32, column as u32)).and_then(|r| r.as_ref().ok()),
         };
         let v = match ir {
-            Some(ir) => expr::eval(ir, None, row, self),
+            Some(ir) => expr::eval_kept(ir, None, row, self, kept),
             None => V::Null,
         };
         self.memo[column][row] = Slot::Done(v.clone());
