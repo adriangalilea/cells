@@ -1,0 +1,8 @@
+[
+  { "token_type": "column", "token_modifiers": ["column1"], "style": ["variable"] },
+  { "token_type": "column", "token_modifiers": ["column2"], "style": ["variable.parameter"] },
+  { "token_type": "column", "token_modifiers": ["column3"], "style": ["tag"] },
+  { "token_type": "column", "token_modifiers": ["column4"], "style": ["function"] },
+  { "token_type": "column", "token_modifiers": ["column5"], "style": ["property"] },
+  { "token_type": "column", "token_modifiers": ["column6"], "style": ["label"] }
+]

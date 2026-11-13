@@ -1,0 +1,5 @@
+# What Zed builds into a dev extension's folder.
+/target
+/grammars
+/extension.wasm
+/Cargo.lock

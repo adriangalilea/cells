@@ -1,0 +1,18 @@
+id = "cells"
+name = "Cells"
+description = "Cells, programmable data: highlighting and the cells language server"
+version = "0.1.0"
+schema_version = 1
+authors = ["Adrian Galilea"]
+repository = "https://github.com/adriangalilea/cells"
+
+# The grammar this extension's queries are written for: `rev` is the last commit that
+# changed the parser, written by tree-sitter/scripts/queries.ts; Zed fetches it from GitHub.
+[grammars.cells]
+repository = "https://github.com/adriangalilea/cells"
+rev = "c2ba218f62680d97193f1a25cff251b9733cc95f"
+path = "tree-sitter"
+
+[language_servers.cells]
+name = "cells"
+languages = ["Cells"]
