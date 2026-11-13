@@ -49,6 +49,9 @@ interface Exports {
   cells_complete(h: number, ptr: number, len: number, cap: number, at: number): number
   cells_hover(h: number, ptr: number, len: number, cap: number, at: number): number
   cells_looks(h: number, ptr: number, len: number, cap: number): number
+  cells_charts(h: number): number
+  cells_chart_summary(h: number, index: number): number
+  cells_inferred_summary(h: number): number
 }
 
 function decodeBase64(s: string): Uint8Array<ArrayBuffer> {
@@ -168,6 +171,49 @@ export interface Locale {
 export interface Looks {
   rows: (Tint | null)[]
   columns: Record<number, { drawn: string[]; tint: (Tinted | null)[] }>
+}
+
+/** A chart the file declares, as written (SPEC.md, Charts): its place among the file's
+ *  charts is its place in `Doc.charts`. */
+export interface Chart {
+  /** The prelude line its fence opens on, 1-based inside the fences. */
+  line: number | null
+  /** Its name, written only when another chart reads it. */
+  name: string | null
+  /** Its `title`, else what its entries say. */
+  title: string
+  kind: ChartKind
+  /** Whether its fence names its kind, or it is read from its entries. */
+  written: boolean
+  entries: { key: string; value: string; line: number }[]
+}
+
+export type ChartKind = "bars" | "line" | "area" | "steps" | "points" | "heat" | "figure"
+
+/** What a series is drawn in: a tint's name, six hex digits, a column's own colour (by
+ *  its number, the reader's palette in turn), or the quiet gray of `other` and the blank. */
+export type Shade = { tint: string } | { hex: string } | { column: number } | { quiet: true }
+
+/** What a chart draws, read from the rows as they are now: its places along its axis, its
+ *  series and each one's shade, each place's value of each series as an exact decimal. */
+export interface ChartSummary {
+  kind: ChartKind
+  title: string
+  stack: "stacked" | "grouped" | "percent"
+  axis: "date" | "number" | "text"
+  /** Each place, as its value is written (a date ISO, a number plain). */
+  places: string[]
+  /** Each series: its value of `color` (empty for a chart's one series) and its shade. */
+  series: { name: string; shade: Shade }[]
+  /** `values[place][series]`; null where a series has no row at a place. */
+  values: (string | null)[][]
+  /** The measure's currency, when it is money. */
+  unit: string | null
+  /** Rows `where` held for that had no place or no value, of the rows read. */
+  skipped: number
+  rows: number
+  /** A chart of layers: each one's own, drawn on one plot. */
+  layers: ChartSummary[]
 }
 
 const TWO32 = 2 ** 32
@@ -615,6 +661,24 @@ export class Doc {
     if (lines.some((w) => w.includes("\n"))) throw new CellsError("a locale", "holds a line break in a word")
     const [p, len, cap] = put(lines.join("\n"))
     return JSON.parse(returned(x.cells_looks(this.handle, p, len, cap))) as Looks
+  }
+
+  /** The charts the file declares, in the order written: chart 1 the first. */
+  charts(): Chart[] {
+    return JSON.parse(returned(x.cells_charts(this.handle))) as Chart[]
+  }
+
+  /** What the file's chart at `index` (in `charts()`) draws, read from its rows now. */
+  summary(index: number): ChartSummary {
+    if (!Number.isInteger(index) || index < 0 || index >= this.charts().length) throw new CellsError(`chart ${index}`, "is no chart of the file")
+    return JSON.parse(returned(x.cells_chart_summary(this.handle, index))) as ChartSummary
+  }
+
+  /** What the chart a reader draws for a file with none draws; null when there is nothing
+   *  to measure (no date, choice or number). */
+  inferredSummary(): ChartSummary | null {
+    const json = returned(x.cells_inferred_summary(this.handle))
+    return json === "" ? null : (JSON.parse(json) as ChartSummary)
   }
 
   /** Lets the module free the file now rather than when this is collected. */

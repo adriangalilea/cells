@@ -583,6 +583,47 @@ pub unsafe extern "C" fn cells_looks(h: *mut Handle, ptr: *mut u8, len: usize, c
     give(&h.out)
 }
 
+/// The file's charts, in the order written (SPEC.md, Charts), as a JSON array of
+/// `Chart::json`: what each is as written.
+///
+/// # Safety
+/// `h` is a live handle from `cells_read`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn cells_charts(h: *mut Handle) -> *const u8 {
+    // SAFETY: the caller's promise.
+    let h = unsafe { handle(h) };
+    let charts: Vec<String> = h.doc.charts().iter().map(|c| c.json()).collect();
+    h.out = format!("[{}]", charts.join(",")).into_bytes();
+    give(&h.out)
+}
+
+/// What the file's chart at `index` draws, read from its rows now, as JSON
+/// (`chart::Summary::json`).
+///
+/// # Safety
+/// `h` is a live handle from `cells_read`; `index` is one of its charts.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn cells_chart_summary(h: *mut Handle, index: usize) -> *const u8 {
+    // SAFETY: the caller's promise.
+    let h = unsafe { handle(h) };
+    let chart = &h.doc.charts()[index];
+    h.out = h.doc.summary(chart).json().into_bytes();
+    give(&h.out)
+}
+
+/// What the chart a reader draws for a file with none draws (`Doc::inferred_chart`), as
+/// `chart::Summary::json`; empty when there is nothing to measure.
+///
+/// # Safety
+/// `h` is a live handle from `cells_read`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn cells_inferred_summary(h: *mut Handle) -> *const u8 {
+    // SAFETY: the caller's promise.
+    let h = unsafe { handle(h) };
+    h.out = h.doc.inferred_chart().map_or(String::new(), |c| h.doc.summary(&c).json()).into_bytes();
+    give(&h.out)
+}
+
 /// The file's text: what was read, but for what was changed.
 ///
 /// # Safety
