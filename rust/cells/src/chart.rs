@@ -216,6 +216,270 @@ impl Summary {
     }
 }
 
+/// Each tint's colour on a light page and a dark one, the ten in `TINTS`' order: what an
+/// SVG draws a named tint in (a reader with a theme of its own draws its own).
+const SHADES: [(u32, u32); 10] = [
+    (0xe34948, 0xe66767),
+    (0xeb6834, 0xd95926),
+    (0xeda100, 0xc98500),
+    (0x1baf7a, 0x199e70),
+    (0x14a3b8, 0x2bb3c7),
+    (0x2a78d6, 0x3987e5),
+    (0x6250d6, 0x9085e9),
+    (0xe87ba4, 0xd55181),
+    (0x9a6b3f, 0xb5845a),
+    (0x8a8a8a, 0x9a9a9a),
+];
+
+/// The columns' colours in turn, as a reader colours a column with no tint of its own.
+const COLUMNS: [u32; 6] = [0x14a3b8, 0x6250d6, 0xeb6834, 0x1baf7a, 0xe87ba4, 0xeda100];
+
+impl Shade {
+    /// As `#rrggbb` on a light page (`dark`: on a dark one).
+    pub fn hex(self, dark: bool) -> String {
+        let rgb = match self {
+            Shade::Tint(Tint::Named(n)) => {
+                let (l, d) = SHADES[n as usize];
+                if dark { d } else { l }
+            }
+            Shade::Tint(Tint::Hex(rgb)) => rgb,
+            Shade::Column(k) => COLUMNS[k % COLUMNS.len()],
+            Shade::Quiet => 0x9a9a9a,
+        };
+        format!("#{rgb:06x}")
+    }
+}
+
+impl Summary {
+    /// The chart as an SVG of `width` by `height`, for a page or a README: its title, a
+    /// scale of four steps, its marks in its series' shades (the light page's), each
+    /// place named under its mark. A chart of layers draws each layer on one plot.
+    pub fn svg(&self, width: u32, height: u32) -> String {
+        let (w, h) = (width as f64, height as f64);
+        let parts: Vec<&Summary> = if self.layers.is_empty() { alloc::vec![self] } else { self.layers.iter().collect() };
+        // every series by its name in its shade, once there is more than one
+        let legend: Vec<(&str, String)> = parts
+            .iter()
+            .flat_map(|p| p.series.iter().map(|(n, s)| (if n.is_empty() { p.title.as_str() } else { n.as_str() }, s.hex(false))))
+            .collect();
+        let legend = if legend.len() > 1 { legend } else { Vec::new() };
+        // the title's and a figure's inset; a plot's left is as wide as its scale's labels
+        let (inset, right, bottom) = (16.0, 16.0, 32.0);
+        let top = if legend.is_empty() { 40.0 } else { 56.0 };
+        let left = inset;
+        let ph = h - top - bottom;
+        let num = |v: &Option<String>| v.as_deref().and_then(|s| s.parse::<f64>().ok());
+        let mut out = format!(
+            "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 {width} {height}\" width=\"{width}\" height=\"{height}\" font-family=\"-apple-system, system-ui, sans-serif\" font-size=\"11\">\n<text x=\"{left}\" y=\"18\" font-size=\"13\" font-weight=\"600\">{}</text>\n",
+            escape(&self.title)
+        );
+        let mut at = inset;
+        for (name, hex) in &legend {
+            out += &format!(
+                "<circle cx=\"{:.1}\" cy=\"34\" r=\"4\" fill=\"{hex}\"/><text x=\"{:.1}\" y=\"38\" fill=\"#444\">{}</text>\n",
+                at + 4.0,
+                at + 12.0,
+                escape(name)
+            );
+            at += 24.0 + 6.5 * name.chars().count() as f64;
+        }
+        if self.kind == Kind::Figure && self.layers.is_empty() {
+            let run: Vec<f64> = self.values.iter().filter_map(|r| num(&r[0])).collect();
+            let now = run.last().copied().unwrap_or(0.0);
+            out += &format!("<text x=\"{left}\" y=\"{}\" font-size=\"40\" font-weight=\"600\">{}</text>\n", top + 44.0, self.figure(now));
+            if run.len() > 1 {
+                let change = run[run.len() - 1] - run[run.len() - 2];
+                let tint = if change >= 0.0 { "#1baf7a" } else { "#e34948" };
+                out += &format!(
+                    "<text x=\"{left}\" y=\"{}\" fill=\"{tint}\">{}{}</text>\n",
+                    top + 66.0,
+                    if change >= 0.0 { "+" } else { "" },
+                    self.figure(change)
+                );
+            }
+            return out + "</svg>\n";
+        }
+        // the scale: from zero (or the least, below zero) to the most, stacked where bars stack
+        let stacked = |p: &Summary| p.kind == Kind::Bars && p.stack == Stack::Stacked;
+        let mut lo: f64 = 0.0;
+        let mut hi: f64 = 0.0;
+        for p in &parts {
+            for row in &p.values {
+                let vals: Vec<f64> = row.iter().filter_map(num).collect();
+                if stacked(p) {
+                    hi = hi.max(vals.iter().filter(|v| **v > 0.0).sum());
+                    lo = lo.min(vals.iter().filter(|v| **v < 0.0).sum());
+                } else {
+                    vals.iter().for_each(|v| {
+                        hi = hi.max(*v);
+                        lo = lo.min(*v);
+                    });
+                }
+            }
+        }
+        if hi <= lo {
+            hi = lo + 1.0;
+        }
+        // a scale a person reads: steps of 1, 2 or 5 times a power of ten, its ends whole steps
+        let step = nice((hi - lo) / 4.0);
+        let (lo, hi) = (whole(lo / step, false) * step, whole(hi / step, true) * step);
+        let steps = ((hi - lo) / step + 0.5) as i64;
+        // the labels' room: their widest, at a sans serif's average width of 11 points
+        let widest = (0..=steps).map(|i| self.figure(lo + step * i as f64).chars().count()).max().unwrap_or(1);
+        let left = inset + 6.5 * widest as f64 + 6.0;
+        let pw = w - left - right;
+        let y = |v: f64| top + ph * (hi - v) / (hi - lo);
+        for i in 0..=steps {
+            let v = lo + step * i as f64;
+            out += &format!(
+                "<line x1=\"{left}\" x2=\"{}\" y1=\"{y0:.1}\" y2=\"{y0:.1}\" stroke=\"#000\" stroke-opacity=\"0.08\"/>\n<text x=\"{}\" y=\"{:.1}\" text-anchor=\"end\" fill=\"#666\">{}</text>\n",
+                left + pw,
+                left - 6.0,
+                y(v) + 4.0,
+                self.figure(v),
+                y0 = y(v)
+            );
+        }
+        let places = parts.iter().map(|p| p.places.len()).max().unwrap_or(0).max(1);
+        let band = pw / places as f64;
+        let x = |p: usize| left + band * (p as f64 + 0.5);
+        for (i, name) in parts[0].places.iter().enumerate() {
+            if places <= 12 || i % places.div_ceil(12) == 0 {
+                out +=
+                    &format!("<text x=\"{:.1}\" y=\"{}\" text-anchor=\"middle\" fill=\"#666\">{}</text>\n", x(i), h - 12.0, escape(name));
+            }
+        }
+        for part in &parts {
+            let shades: Vec<String> = part.series.iter().map(|(_, s)| s.hex(false)).collect();
+            match part.kind {
+                Kind::Bars => {
+                    let n = part.series.len().max(1) as f64;
+                    for (p, row) in part.values.iter().enumerate() {
+                        let mut up = 0.0;
+                        let mut down = 0.0;
+                        for (s, v) in row.iter().enumerate() {
+                            let Some(v) = num(v) else { continue };
+                            let (from, to, bx, bw) = if stacked(part) {
+                                let base = if v >= 0.0 { up } else { down };
+                                if v >= 0.0 {
+                                    up += v
+                                } else {
+                                    down += v
+                                }
+                                (base, base + v, x(p) - band * 0.35, band * 0.7)
+                            } else {
+                                let bw = band * 0.7 / n;
+                                (0.0, v, x(p) - band * 0.35 + bw * s as f64, bw)
+                            };
+                            out += &format!(
+                                "<rect x=\"{bx:.1}\" y=\"{:.1}\" width=\"{bw:.1}\" height=\"{:.1}\" fill=\"{}\" rx=\"2\"/>\n",
+                                y(from.max(to)),
+                                (y(from) - y(to)).abs(),
+                                shades[s]
+                            );
+                        }
+                    }
+                }
+                Kind::Heat => {
+                    let cells = part.series.len().max(1) as f64;
+                    let ch = ph / cells;
+                    let all: Vec<f64> = part.values.iter().flatten().filter_map(num).collect();
+                    let (vl, vh) = all.iter().fold((f64::MAX, f64::MIN), |(a, b), v| (a.min(*v), b.max(*v)));
+                    for (p, row) in part.values.iter().enumerate() {
+                        for (s, v) in row.iter().enumerate() {
+                            let Some(v) = num(v) else { continue };
+                            let depth = if vh > vl { 0.15 + 0.85 * (v - vl) / (vh - vl) } else { 1.0 };
+                            out += &format!(
+                                "<rect x=\"{:.1}\" y=\"{:.1}\" width=\"{band:.1}\" height=\"{ch:.1}\" fill=\"{}\" fill-opacity=\"{depth:.2}\"/>\n",
+                                left + band * p as f64,
+                                top + ch * s as f64,
+                                shades.first().map_or("#2a78d6", |s| s.as_str())
+                            );
+                        }
+                    }
+                }
+                _ => {
+                    for (s, shade) in shades.iter().enumerate() {
+                        let pts: Vec<(f64, f64)> =
+                            part.values.iter().enumerate().filter_map(|(p, row)| num(&row[s]).map(|v| (x(p), y(v)))).collect();
+                        if part.kind == Kind::Points {
+                            for (px, py) in &pts {
+                                out += &format!("<circle cx=\"{px:.1}\" cy=\"{py:.1}\" r=\"3\" fill=\"{shade}\"/>\n");
+                            }
+                            continue;
+                        }
+                        let mut d = String::new();
+                        for (i, (px, py)) in pts.iter().enumerate() {
+                            if i == 0 {
+                                d += &format!("M{px:.1},{py:.1}");
+                            } else if part.kind == Kind::Steps {
+                                d += &format!(" H{px:.1} V{py:.1}");
+                            } else {
+                                d += &format!(" L{px:.1},{py:.1}");
+                            }
+                        }
+                        if part.kind == Kind::Area
+                            && let (Some(first), Some(last)) = (pts.first(), pts.last())
+                        {
+                            out += &format!(
+                                "<path d=\"{d} L{:.1},{:.1} L{:.1},{:.1} Z\" fill=\"{shade}\" fill-opacity=\"0.25\"/>\n",
+                                last.0,
+                                y(0.0),
+                                first.0,
+                                y(0.0)
+                            );
+                        }
+                        out +=
+                            &format!("<path d=\"{d}\" fill=\"none\" stroke=\"{shade}\" stroke-width=\"2\" stroke-linejoin=\"round\"/>\n");
+                    }
+                }
+            }
+        }
+        out + "</svg>\n"
+    }
+
+    /// A value as the chart says it: an amount with its currency's code, a number plain.
+    pub fn figure(&self, v: f64) -> String {
+        // a zero is a zero: an empty sum of floats is -0.0
+        let v = if v == 0.0 { 0.0 } else { v };
+        // whole when it is its own truncation (no `fract` without std)
+        let n = if v == (v as i64) as f64 { format!("{v:.0}") } else { format!("{v:.2}") };
+        match &self.unit {
+            Some(u) => format!("{n} {u}"),
+            None => n,
+        }
+    }
+}
+
+/// The step of a scale near `rough`: 1, 2 or 5 times a power of ten.
+fn nice(rough: f64) -> f64 {
+    let mut power = 1.0;
+    while power * 10.0 <= rough {
+        power *= 10.0;
+    }
+    while power > rough && power > 1e-9 {
+        power /= 10.0;
+    }
+    [1.0, 2.0, 5.0, 10.0].into_iter().map(|m| m * power).find(|s| *s >= rough).unwrap_or(10.0 * power)
+}
+
+/// `x` to a whole number: up (`ceil`) or down (`floor`), without std's.
+fn whole(x: f64, up: bool) -> f64 {
+    let t = x as i64 as f64;
+    if t == x {
+        t
+    } else if up == (x > 0.0) {
+        t + if up { 1.0 } else { -1.0 }
+    } else {
+        t
+    }
+}
+
+/// Text as XML holds it.
+fn escape(s: &str) -> String {
+    s.replace('&', "&amp;").replace('<', "&lt;").replace('>', "&gt;").replace('"', "&quot;")
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
