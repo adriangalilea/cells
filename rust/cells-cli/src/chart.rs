@@ -531,7 +531,17 @@ fn bars(s: &Summary, plot: Rect, buf: &mut Buffer, tier: Tier, scale: &Scale, st
                     // a span that starts above the cell's foot, as every bar does on zero's
                     // row (zero stands on the row's middle, where its rule is): the cell's
                     // upper part, in the nearest top block there is
-                    (if lower.0 <= 2 { "█" } else if lower.0 <= 5 { "▀" } else { "▔" }, lower.2, None)
+                    (
+                        if lower.0 <= 2 {
+                            "█"
+                        } else if lower.0 <= 5 {
+                            "▀"
+                        } else {
+                            "▔"
+                        },
+                        lower.2,
+                        None,
+                    )
                 };
                 for dx in 0..w {
                     if let Some(cell) = buf.cell_mut((x + dx, plot.y + r)) {
