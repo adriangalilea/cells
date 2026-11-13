@@ -2969,7 +2969,7 @@ impl Doc {
             let y = chart_measure(&scope, entry("y"), &mut slots, &mut said);
             let value = chart_measure(&scope, entry("value"), &mut slots, &mut said);
             let color = chart_formula(&scope, entry("color"), &mut slots, &mut said).map(|(ir, _, c)| (ir, c));
-            let compare = chart_formula(&scope, entry("compare"), &mut slots, &mut said).map(|(ir, _, _)| ir);
+            let compare = chart_formula(&scope, entry("compare"), &mut slots, &mut said).map(|(ir, k, _)| (ir, k));
             let filter = match chart_formula(&scope, entry("where"), &mut slots, &mut said) {
                 Some((ir, K::Bool | K::Null, _)) => Some(ir),
                 Some((_, k, _)) => {
@@ -3055,8 +3055,10 @@ impl Doc {
             };
             let (x_ir, x_kind, x_column) = match x {
                 Some((ir, k, c)) => (Some(ir), k, c),
-                None => (None, K::Num, None),
+                // a figure's run is along `compare`
+                None => (None, compare.as_ref().map_or(K::Num, |(_, k)| *k), None),
             };
+            let compare = compare.map(|(ir, _)| ir);
             charts.push(Chart {
                 line: Some(*line),
                 name: name.clone(),
