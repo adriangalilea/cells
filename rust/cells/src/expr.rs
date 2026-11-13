@@ -1676,7 +1676,7 @@ fn joined(v: &V) -> Option<String> {
     v.canonical()
 }
 
-fn order(a: &V, b: &V) -> Option<Ordering> {
+pub(crate) fn order(a: &V, b: &V) -> Option<Ordering> {
     Some(match (a, b) {
         (V::Num(x), V::Num(y)) => x.order(y),
         (V::Text(x), V::Text(y)) => x.cmp(y),

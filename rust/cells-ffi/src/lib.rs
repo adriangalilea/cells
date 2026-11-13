@@ -1316,6 +1316,9 @@ pub enum CellsStatementKind {
     /// values look: its name `CellsStatementName` (`row` for the row), its rules
     /// `CellsStatementSpelled`, joined by `, `.
     CellsStatementLook = 5,
+    /// ```` ```chart bars ````, a chart: its fence's lines the statement's rows
+    /// (`rows_line`, `rows_end`); what it is, `cells_charts`.
+    CellsStatementChart = 6,
 }
 
 /// A prelude statement: what it is and its lines; its words through `cells_statement_part`.
@@ -1398,6 +1401,7 @@ pub unsafe extern "C" fn cells_statement(d: *mut CellsDoc, i: usize) -> CellsSta
         S::Run { exported, code, stored, .. } => (CellsStatementKind::CellsStatementRun, *exported, 0, at(Some(code)), at(stored.as_ref())),
         S::Column { .. } => (CellsStatementKind::CellsStatementColumn, false, 0, at(None), at(None)),
         S::Look { .. } => (CellsStatementKind::CellsStatementLook, false, 0, at(None), at(None)),
+        S::Chart { body, .. } => (CellsStatementKind::CellsStatementChart, false, 0, at(None), at(Some(body))),
     };
     CellsStatement {
         kind,
@@ -1462,6 +1466,47 @@ pub unsafe extern "C" fn cells_offers(d: *mut CellsDoc, column: usize) -> CellsS
     // SAFETY: the caller's promise.
     let d = unsafe { doc(d) };
     d.out = d.doc.offers(column).into_iter().map(|o| o + "\u{1f}").collect();
+    CellsStr::of(&d.out)
+}
+
+/// The file's charts, in the order written (SPEC.md, Charts), as a JSON array, each as
+/// `Chart::json` writes it: what a reader lists and writes back.
+///
+/// # Safety
+/// `d` is a live document.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn cells_charts(d: *mut CellsDoc) -> CellsStr {
+    // SAFETY: the caller's promise.
+    let d = unsafe { doc(d) };
+    let charts: Vec<String> = d.doc.charts().iter().map(|c| c.json()).collect();
+    d.out = format!("[{}]", charts.join(","));
+    CellsStr::of(&d.out)
+}
+
+/// What the file's chart at `index` draws, read from its rows now, as JSON
+/// (`chart::Summary::json`).
+///
+/// # Safety
+/// `d` is a live document; `index` is one of its charts.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn cells_chart_summary(d: *mut CellsDoc, index: usize) -> CellsStr {
+    // SAFETY: the caller's promise.
+    let d = unsafe { doc(d) };
+    let chart = &d.doc.charts()[index];
+    d.out = d.doc.summary(chart).json();
+    CellsStr::of(&d.out)
+}
+
+/// What the chart a reader draws for a file with none draws (`Doc::inferred_chart`), as
+/// JSON; empty when there is nothing to measure.
+///
+/// # Safety
+/// `d` is a live document.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn cells_inferred_summary(d: *mut CellsDoc) -> CellsStr {
+    // SAFETY: the caller's promise.
+    let d = unsafe { doc(d) };
+    d.out = d.doc.inferred_chart().map_or(String::new(), |c| d.doc.summary(&c).json());
     CellsStr::of(&d.out)
 }
 
@@ -1731,6 +1776,7 @@ pub unsafe extern "C" fn cells_prelude_line(
             p::look_line(&target, &cells::look::split(said))
         }
         CellsStatementKind::CellsStatementTable => panic!("a table is more than one line"),
+        CellsStatementKind::CellsStatementChart => panic!("a chart is more than one line"),
     };
     CellsStr::of(&d.out)
 }

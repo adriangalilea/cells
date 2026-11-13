@@ -22,6 +22,7 @@ extern crate alloc;
 extern crate std;
 
 pub mod arrow;
+pub mod chart;
 pub mod column;
 pub mod complete;
 mod doc;

@@ -78,6 +78,10 @@ pub enum Statement {
     /// `look amount: grouped, negative red`: how the values of a column, a named type or
     /// the row look (SPEC.md, How a value looks), each rule as written.
     Look { line: u32, target: crate::look::Target, rules: Vec<String> },
+    /// ```` ```chart bars ````, or `actual = ```chart`: a chart, its kind the fence's label
+    /// (none when it is to be read from its entries), its entries the fence's lines
+    /// (SPEC.md, Charts). Named only when another chart reads it.
+    Chart { line: u32, name: Option<String>, body: Fenced },
 }
 
 impl Statement {
@@ -88,7 +92,8 @@ impl Statement {
             | Statement::Table { line, .. }
             | Statement::Run { line, .. }
             | Statement::Column { line, .. }
-            | Statement::Look { line, .. } => *line,
+            | Statement::Look { line, .. }
+            | Statement::Chart { line, .. } => *line,
         }
     }
 }
@@ -395,6 +400,14 @@ fn statement(source: &str, lines: &[(usize, &str)], k: &mut usize) -> Result<Opt
             Err((b.line, b.why))
         }
     };
+    // a chart of its own: its fence alone, unnamed
+    if let Some((ticks, lang, label)) = opening(said) {
+        let body = fenced(n as usize, ticks, lang, label, k)?;
+        if lang != "chart" {
+            return fail(format!("a fence alone is a chart, ```chart; ```{lang} is named: name = ```{lang}"));
+        }
+        return Ok(Some(Statement::Chart { line: n, name: None, body }));
+    }
     let (exported, said) = match said.strip_prefix("export").filter(|r| r.starts_with(BLANK)) {
         Some(r) => (true, r.trim_start_matches(BLANK)),
         None => (false, said),
@@ -438,6 +451,12 @@ fn statement(source: &str, lines: &[(usize, &str)], k: &mut usize) -> Result<Opt
     if let Some((ticks, lang, label)) = opening(value) {
         // The fence is read first, so a table that does not read is left out whole.
         let body = fenced(n as usize, ticks, lang, label, k)?;
+        if lang == "chart" {
+            if exported {
+                return fail("a chart is the file's own: export names a type or a table".to_owned());
+            }
+            return Ok(Some(Statement::Chart { line: n, name: Some(name.to_owned()), body }));
+        }
         if lang != "cells" || !label.is_empty() {
             return fail(format!("a table written inline is a ```cells fence, not ```{lang}"));
         }

@@ -384,6 +384,9 @@ pub struct Doc {
     looks: Vec<(Target, Vec<Look>)>,
     /// The aggregate slots the looks' conditions use.
     look_slots: usize,
+    /// The file's charts, in the order written, each resolved against its columns (SPEC.md,
+    /// Charts); one that does not read is broken at its line and left out.
+    charts: Vec<Chart>,
 }
 
 /// A rule as it holds of a column or the row: a condition resolved and, after each
@@ -394,6 +397,128 @@ struct Painted {
     condition: Option<Ir>,
     hits: Vec<bool>,
     range: Option<(Decimal, Decimal)>,
+}
+
+/// A chart as the doc resolved it against its columns (SPEC.md, Charts): its entries as
+/// written, its kind as written or read, and its formulas resolved. What it draws is
+/// `Doc::summary`.
+#[derive(Clone, Debug)]
+pub struct Chart {
+    /// Its prelude line; none for the chart read from the columns of a file with none.
+    pub line: Option<u32>,
+    pub name: Option<String>,
+    /// The kind its fence names; none when read from its entries.
+    pub written: Option<crate::chart::Kind>,
+    pub kind: crate::chart::Kind,
+    pub entries: Vec<crate::chart::Entry>,
+    /// Its `title`, else what its entries say (`SUM(amount) by DATE_TRUNC('month', date)`).
+    pub title: String,
+    /// What runs along the axis, a formula per row; none: each row by its line.
+    x: Option<Ir>,
+    x_kind: K,
+    /// The column `x` is, when it is one: a choice's words order its places.
+    x_column: Option<usize>,
+    /// What each place measures: an aggregate over its rows, or a value per row (points,
+    /// and heat's second axis).
+    y: Option<Measure>,
+    /// heat's depth, figure's number.
+    value: Option<Measure>,
+    color: Option<(Ir, Option<usize>)>,
+    compare: Option<Ir>,
+    filter: Option<Ir>,
+    top: Option<usize>,
+    stack: crate::chart::Stack,
+    /// The charts it draws on one plot, by their places in the file.
+    layers: Vec<usize>,
+    slots: usize,
+}
+
+impl Chart {
+    /// What a reader lists of it, as JSON: its place in the file, name, title, kind (and
+    /// whether written), and its entries as written with their lines, for a host to show
+    /// and to write back.
+    pub fn json(&self) -> String {
+        use crate::json::quote;
+        let entries = self
+            .entries
+            .iter()
+            .map(|e| format!("{{\"key\":{},\"value\":{},\"line\":{}}}", quote(&e.key), quote(&e.value), e.line))
+            .collect::<Vec<_>>();
+        format!(
+            "{{\"line\":{},\"name\":{},\"title\":{},\"kind\":{},\"written\":{},\"entries\":[{}]}}",
+            self.line.map_or("null".to_owned(), |l| l.to_string()),
+            self.name.as_ref().map_or("null".to_owned(), |n| quote(n)),
+            quote(&self.title),
+            quote(self.kind.word()),
+            self.written.is_some(),
+            entries.join(","),
+        )
+    }
+}
+
+/// A chart's measure: an aggregate of a formula over a place's rows, or a formula per row.
+#[derive(Clone, Debug)]
+enum Measure {
+    Agg(expr::Agg, Ir, Option<usize>),
+    Row(Ir, Option<usize>),
+}
+
+impl Measure {
+    /// The column it reads, when it reads one alone: its currency, its colour.
+    fn column(&self) -> Option<usize> {
+        match self {
+            Measure::Agg(_, _, c) | Measure::Row(_, c) => *c,
+        }
+    }
+}
+
+/// An aggregate's running state over a place's rows.
+#[derive(Clone, Debug, Default)]
+struct Gather {
+    sum: Option<Exact>,
+    count: i64,
+    least: Option<V>,
+    most: Option<V>,
+    first: Option<V>,
+    last: Option<V>,
+}
+
+impl Gather {
+    fn add(&mut self, v: V) {
+        if v == V::Null {
+            return;
+        }
+        self.count += 1;
+        if let V::Num(n) = &v {
+            self.sum = Some(self.sum.as_ref().map_or(n.clone(), |s| s.add(n)));
+        }
+        if self.least.as_ref().is_none_or(|l| expr::order(&v, l) == Some(core::cmp::Ordering::Less)) {
+            self.least = Some(v.clone());
+        }
+        if self.most.as_ref().is_none_or(|m| expr::order(&v, m) == Some(core::cmp::Ordering::Greater)) {
+            self.most = Some(v.clone());
+        }
+        if self.first.is_none() {
+            self.first = Some(v.clone());
+        }
+        self.last = Some(v);
+    }
+
+    fn give(&self, agg: expr::Agg) -> V {
+        use expr::Agg;
+        match agg {
+            Agg::Count => V::Num(Exact::from_int(self.count)),
+            Agg::Sum => self.sum.clone().map_or(V::Null, V::Num),
+            Agg::Avg => match &self.sum {
+                Some(s) if self.count > 0 => s.div(&Exact::from_int(self.count)).map_or(V::Null, V::Num),
+                _ => V::Null,
+            },
+            Agg::Min => self.least.clone().unwrap_or(V::Null),
+            Agg::Max => self.most.clone().unwrap_or(V::Null),
+            Agg::First => self.first.clone().unwrap_or(V::Null),
+            Agg::Last => self.last.clone().unwrap_or(V::Null),
+        }
+    }
 }
 
 /// Reads a `.cells` file. A broken cell is a problem, and a broken grammar takes out only
@@ -481,6 +606,7 @@ fn read_in(bytes: Vec<u8>, dialect: Dialect, threads: usize, imports: &mut dyn I
         row_painted: Vec::new(),
         looks: Vec::new(),
         look_slots: 0,
+        charts: Vec::new(),
     };
     let header = match (body == src.len(), scan::record(src, body, how)) {
         (true, _) => None,
@@ -781,6 +907,8 @@ fn settle_prelude(
                 }
             }
             Statement::Look { .. } => {}
+            // A chart reads the columns: settled once the header is read (`settle_charts`).
+            Statement::Chart { .. } => {}
             Statement::Type { name, spelled, .. } => {
                 if !name.as_bytes().first().is_some_and(|c| c.is_ascii_uppercase()) {
                     fail(format!("a type's name starts with a capital letter, not \"{name}\""));
@@ -2631,6 +2759,7 @@ impl Doc {
     /// is compiled.
     fn settle_broken(&mut self, mut broken: Vec<Error>) {
         self.resolve_looks(&mut broken);
+        self.resolve_charts(&mut broken);
         broken.sort_by_key(|e| e.at.order());
         self.broken = broken;
     }
@@ -2772,6 +2901,437 @@ impl Doc {
         }
         for (p, h) in self.row_painted.iter_mut().zip(row) {
             p.hits = h;
+        }
+    }
+
+    /// The charts settled (SPEC.md, Charts): each fence's entries read, its kind as its label
+    /// names it or as its entries say, each formula resolved against the columns, each
+    /// name once in the file and each layer a chart named above it. What does not read is
+    /// broken at its line; a chart missing what its kind draws is left out.
+    fn resolve_charts(&mut self, broken: &mut Vec<Error>) {
+        use crate::chart::{self, Kind, Stack};
+        let scope = DocScope { columns: &self.columns, tables: &self.tables };
+        let taken = |n: &str| self.named.iter().any(|t| t.name == n) || self.tables.iter().any(|t| t.name == n);
+        let mut charts: Vec<Chart> = Vec::new();
+        // what does not read, by prelude line
+        let mut said: Vec<(u32, String)> = Vec::new();
+        for s in &self.statements {
+            let Statement::Chart { line, name, body } = s else { continue };
+            if let Some(n) = name
+                && (taken(n) || charts.iter().any(|c| c.name.as_deref() == Some(n.as_str())))
+            {
+                said.push((*line, format!("the name {n} is taken")));
+                continue;
+            }
+            let written = match body.label.as_str() {
+                "" => None,
+                label => match Kind::of(label) {
+                    Some(k) => Some(k),
+                    None => {
+                        let kinds: Vec<&str> = Kind::ALL.iter().map(|k| k.word()).collect();
+                        said.push((*line, format!("no chart \"{label}\": {}", kinds.join(", "))));
+                        continue;
+                    }
+                },
+            };
+            let (entries, bad) = chart::entries(&self.source[body.start..body.end], body.line + 1);
+            said.extend(bad);
+            let entry = |key: &str| entries.iter().find(|e| e.key == key);
+            let mut slots = 0;
+            let x = chart_formula(&scope, entry("x"), &mut slots, &mut said);
+            let y = chart_measure(&scope, entry("y"), &mut slots, &mut said);
+            let value = chart_measure(&scope, entry("value"), &mut slots, &mut said);
+            let color = chart_formula(&scope, entry("color"), &mut slots, &mut said).map(|(ir, _, c)| (ir, c));
+            let compare = chart_formula(&scope, entry("compare"), &mut slots, &mut said).map(|(ir, _, _)| ir);
+            let filter = match chart_formula(&scope, entry("where"), &mut slots, &mut said) {
+                Some((ir, K::Bool | K::Null, _)) => Some(ir),
+                Some((_, k, _)) => {
+                    let at = entry("where").expect("where read").line;
+                    said.push((at, format!("where: a condition is a boolean, and this gives {}", k.word())));
+                    None
+                }
+                None => None,
+            };
+            let mut fail = |at: u32, why: String| said.push((at, why));
+            let top = match entry("top") {
+                Some(e) => match e.value.parse::<usize>() {
+                    Ok(n) if n > 0 => Some(n),
+                    _ => {
+                        fail(e.line, format!("top: a whole number past 0, not \"{}\"", e.value));
+                        None
+                    }
+                },
+                None => None,
+            };
+            let stack = match entry("stack") {
+                Some(e) => Stack::of(&e.value).unwrap_or_else(|| {
+                    fail(e.line, format!("stack: stacked, grouped or percent, not \"{}\"", e.value));
+                    Stack::Stacked
+                }),
+                None => Stack::Stacked,
+            };
+            let mut layers = Vec::new();
+            if let Some(e) = entry("layers") {
+                for n in e.value.split(',').map(|n| n.trim_matches([' ', '\t'])) {
+                    match charts.iter().position(|c| c.name.as_deref() == Some(n)) {
+                        Some(i) => layers.push(i),
+                        None => fail(e.line, format!("layers: no chart named {n} above")),
+                    }
+                }
+            }
+            if let Some(e) = entry("from") {
+                fail(e.line, format!("from: a chart of another table is not read yet: chart {} here", e.value));
+            }
+            let has = |k: &str| entry(k).is_some();
+            // the kind as written, else as the entries say (SPEC.md, Charts): never the data
+            let kind = written.unwrap_or(if has("layers") {
+                Kind::Bars
+            } else if has("value") && has("x") && has("y") {
+                Kind::Heat
+            } else if has("value") {
+                Kind::Figure
+            } else {
+                match &y {
+                    Some(Measure::Row(..)) => Kind::Points,
+                    Some(Measure::Agg(expr::Agg::First | expr::Agg::Last, ..)) => Kind::Steps,
+                    _ => Kind::Bars,
+                }
+            });
+            if layers.is_empty() {
+                for e in &entries {
+                    if !matches!(e.key.as_str(), "title" | "from" | "layers") && !kind.takes().contains(&e.key.as_str()) {
+                        fail(e.line, format!("a {} chart takes no {}", kind.word(), e.key));
+                    }
+                }
+                let missing = match kind {
+                    Kind::Figure => value.is_none().then_some("value"),
+                    Kind::Heat => {
+                        [("x", x.is_none()), ("y", y.is_none()), ("value", value.is_none())].into_iter().find(|p| p.1).map(|p| p.0)
+                    }
+                    _ => [("x", x.is_none()), ("y", y.is_none())].into_iter().find(|p| p.1).map(|p| p.0),
+                };
+                if let Some(k) = missing {
+                    fail(*line, format!("a {} chart draws its {k}: write one", kind.word()));
+                    continue;
+                }
+            }
+            let title = match entry("title") {
+                Some(t) => t.value.clone(),
+                None => match (entry("y").or(entry("value")), entry("x")) {
+                    (Some(m), Some(x)) => format!("{} by {}", m.value, x.value),
+                    (Some(m), None) => m.value.clone(),
+                    _ => format!("chart {}", charts.len() + 1),
+                },
+            };
+            let (x_ir, x_kind, x_column) = match x {
+                Some((ir, k, c)) => (Some(ir), k, c),
+                None => (None, K::Num, None),
+            };
+            charts.push(Chart {
+                line: Some(*line),
+                name: name.clone(),
+                written,
+                kind,
+                entries,
+                title,
+                x: x_ir,
+                x_kind,
+                x_column,
+                y,
+                value,
+                color,
+                compare,
+                filter,
+                top,
+                stack,
+                layers,
+                slots,
+            });
+        }
+        broken.extend(said.into_iter().map(|(at, why)| error(At::PreludeLine(at), why)));
+        self.charts = charts;
+    }
+
+    /// The file's charts, in the order written: chart 1 the first.
+    pub fn charts(&self) -> &[Chart] {
+        &self.charts
+    }
+
+    /// The chart a reader draws for a file with none (SPEC.md, Charts): along its axis the
+    /// first date column, else choice, else text, else each row by its line; the first
+    /// currency column summed, else number, else the rows counted; split by a choice of six
+    /// words or fewer that is not the axis. None when there is nothing to measure.
+    pub fn inferred_chart(&self) -> Option<Chart> {
+        use crate::chart::{Kind, Stack};
+        let usable = |k: usize| !self.columns[k].ty.key || matches!(self.columns[k].ty.base, Base::Date | Base::DateTime);
+        let first = |want: &dyn Fn(&Base) -> bool| (0..self.columns.len()).find(|&k| usable(k) && want(&self.columns[k].ty.base));
+        let date = first(&|b| matches!(b, Base::Date));
+        let choice = first(&|b| matches!(b, Base::Choice(_)));
+        let money = first(&|b| matches!(b, Base::Money(_)));
+        let number = first(&|b| matches!(b, Base::Int | Base::Num | Base::Pct));
+        let text = (0..self.columns.len()).find(|&k| matches!(self.columns[k].ty.base, Base::Text));
+        let axis = date.or(choice).or(text);
+        let measured = money.or(number);
+        let y = match (measured, axis) {
+            (Some(m), _) => Measure::Agg(expr::Agg::Sum, Ir::Col(m), Some(m)),
+            (None, Some(_)) if date.is_some() || choice.is_some() => {
+                Measure::Agg(expr::Agg::Count, Ir::Const(V::Num(Exact::from_int(1))), None)
+            }
+            _ => return None,
+        };
+        let color = (0..self.columns.len())
+            .find(|&k| Some(k) != axis && matches!(&self.columns[k].ty.base, Base::Choice(words) if words.len() <= 6));
+        let name = |k: usize| self.columns[k].name.clone();
+        let title = match (measured, axis) {
+            (Some(m), Some(a)) => format!("{} by {}", name(m), name(a)),
+            (Some(m), None) => name(m),
+            (None, Some(a)) => format!("rows by {}", name(a)),
+            (None, None) => unreachable!("nothing to measure returned above"),
+        };
+        let x_kind = match axis.map(|a| &self.columns[a].ty.base) {
+            Some(Base::Date) => K::Date,
+            Some(_) => K::Text,
+            None => K::Num,
+        };
+        Some(Chart {
+            line: None,
+            name: None,
+            written: None,
+            kind: Kind::Bars,
+            entries: Vec::new(),
+            title,
+            x: axis.map(Ir::Col),
+            x_kind,
+            x_column: axis,
+            y: Some(y),
+            value: None,
+            color: color.map(|c| (Ir::Col(c), Some(c))),
+            compare: None,
+            filter: None,
+            top: None,
+            stack: Stack::Stacked,
+            layers: Vec::new(),
+            slots: 0,
+        })
+    }
+
+    /// What `chart` draws, read from the rows as they are now (SPEC.md, Charts): the rows
+    /// `where` holds for, grouped by `x` (and `color`), each group's measure; the places in
+    /// their order (dates and numbers ascending, a choice's words as its type lists them,
+    /// other text as the file first holds it), `top` keeping the largest and folding the
+    /// rest into `other`; the series in their lasting order, each its tint.
+    pub fn summary(&self, chart: &Chart) -> crate::chart::Summary {
+        use crate::chart::{Kind, Shade, Summary, shades};
+        let rows = self.rows();
+        // a chart of layers: each its own, drawn on one plot
+        if !chart.layers.is_empty() {
+            return Summary {
+                kind: self.charts[chart.layers[0]].kind,
+                title: chart.title.clone(),
+                stack: chart.stack,
+                axis: match self.charts[chart.layers[0]].x_kind {
+                    K::Date => "date",
+                    K::Num => "number",
+                    _ => "text",
+                },
+                places: Vec::new(),
+                series: Vec::new(),
+                values: Vec::new(),
+                unit: None,
+                skipped: 0,
+                rows,
+                layers: chart.layers.iter().map(|&i| self.summary(&self.charts[i])).collect(),
+            };
+        }
+        let cells = BTreeMap::new();
+        // Every computed cell is decoded already: the evaluation reads values, computing none.
+        let mut memo: Vec<Vec<Slot>> = self.columns.iter().map(|_| Vec::new()).collect();
+        let mut eval = Eval {
+            columns: &self.columns,
+            tables: &self.tables,
+            formulas: &self.formulas,
+            cells: &cells,
+            rows,
+            memo: &mut memo,
+            aggregates: alloc::vec![None; chart.slots],
+            indexes: (0..=self.tables.len()).map(|_| None).collect(),
+            cycles: Vec::new(),
+            windows: alloc::vec![None; chart.slots],
+            running: alloc::vec![Vec::new(); chart.slots],
+        };
+        let axis = match chart.x_kind {
+            K::Date => "date",
+            K::Num => "number",
+            _ => "text",
+        };
+        let unit = chart.y.as_ref().or(chart.value.as_ref()).and_then(Measure::column).and_then(|c| match &self.columns[c].ty.base {
+            Base::Money(cur) => Some(String::from_utf8_lossy(&cur.0).into_owned()),
+            _ => None,
+        });
+        let mut skipped = 0;
+        let held: Vec<usize> = (0..rows)
+            .filter(|&r| chart.filter.as_ref().is_none_or(|f| matches!(expr::eval(f, None, r, &mut eval), V::Bool(true))))
+            .collect();
+        // a value as a place or a series names it
+        let said = |v: &V| v.canonical().unwrap_or_default();
+        let mut places: Vec<(String, V)> = Vec::new();
+        let mut series: Vec<String> = Vec::new();
+        let mut gathered: BTreeMap<(usize, usize), Gather> = BTreeMap::new();
+        let (measure, second) = match chart.kind {
+            Kind::Heat => (chart.value.as_ref(), chart.y.as_ref()),
+            Kind::Figure => (chart.value.as_ref(), None),
+            _ => (chart.y.as_ref(), None),
+        };
+        for &r in &held {
+            let place = match (&chart.x, chart.kind) {
+                (_, Kind::Figure) => match &chart.compare {
+                    Some(c) => expr::eval(c, None, r, &mut eval),
+                    None => V::Text(String::new()),
+                },
+                (Some(x), _) => expr::eval(x, None, r, &mut eval),
+                (None, _) => V::Num(Exact::from_int(r as i64 + 1)),
+            };
+            if place == V::Null {
+                skipped += 1;
+                continue;
+            }
+            let name = match (second, &chart.color) {
+                (Some(Measure::Row(ir, _) | Measure::Agg(_, ir, _)), _) => said(&expr::eval(ir, None, r, &mut eval)),
+                (None, Some((c, _))) => match expr::eval(c, None, r, &mut eval) {
+                    V::Null => "none".to_owned(),
+                    v => said(&v),
+                },
+                (None, None) => String::new(),
+            };
+            let value = match measure {
+                Some(Measure::Agg(_, ir, _) | Measure::Row(ir, _)) => expr::eval(ir, None, r, &mut eval),
+                None => V::Null,
+            };
+            if value == V::Null && !matches!(measure, Some(Measure::Agg(expr::Agg::Count, ..))) {
+                skipped += 1;
+                continue;
+            }
+            let key = said(&place);
+            let p = match places.iter().position(|(k, _)| *k == key) {
+                Some(p) => p,
+                None => {
+                    places.push((key, place));
+                    places.len() - 1
+                }
+            };
+            let s = match series.iter().position(|n| *n == name) {
+                Some(s) => s,
+                None => {
+                    series.push(name);
+                    series.len() - 1
+                }
+            };
+            gathered.entry((p, s)).or_default().add(value);
+        }
+        // the places in their order: a time or a number ascending, a choice's words as its
+        // type lists them, other text as the file first holds it
+        let mut order: Vec<usize> = (0..places.len()).collect();
+        match chart.x_column.map(|c| &self.columns[c].ty.base) {
+            Some(Base::Choice(words)) => {
+                order.sort_by_key(|&p| words.iter().position(|w| *w == places[p].0).unwrap_or(usize::MAX));
+            }
+            _ if matches!(chart.x_kind, K::Date | K::Num) || chart.kind == Kind::Figure => {
+                order.sort_by(|&a, &b| expr::order(&places[a].1, &places[b].1).unwrap_or(core::cmp::Ordering::Equal));
+            }
+            _ => {}
+        }
+        let give = |p: usize, s: usize| -> Option<V> {
+            let g = gathered.get(&(p, s))?;
+            Some(match measure {
+                Some(Measure::Agg(a, ..)) => g.give(*a),
+                _ => g.last.clone().unwrap_or(V::Null),
+            })
+        };
+        let mut values: Vec<Vec<Option<V>>> = order.iter().map(|&p| (0..series.len()).map(|s| give(p, s)).collect()).collect();
+        let mut names: Vec<String> = order.iter().map(|&p| places[p].0.clone()).collect();
+        // `top`: the largest places kept, the rest one place, `other`, where a sum folds
+        if let Some(top) = chart.top
+            && names.len() > top
+        {
+            let total =
+                |row: &[Option<V>]| row.iter().flatten().fold(Exact::from_int(0), |s, v| if let V::Num(n) = v { s.add(n) } else { s });
+            let mut ranked: Vec<usize> = (0..names.len()).collect();
+            ranked.sort_by(|&a, &b| {
+                expr::order(&V::Num(total(&values[b])), &V::Num(total(&values[a]))).unwrap_or(core::cmp::Ordering::Equal)
+            });
+            let kept: Vec<usize> = ranked[..top - 1].to_vec();
+            let folds = matches!(measure, Some(Measure::Agg(expr::Agg::Sum | expr::Agg::Count, ..)));
+            let mut other: Vec<Option<V>> = alloc::vec![None; series.len()];
+            if folds {
+                for &p in &ranked[top - 1..] {
+                    for (s, v) in values[p].iter().enumerate() {
+                        if let Some(V::Num(n)) = v {
+                            other[s] = Some(match &other[s] {
+                                Some(V::Num(o)) => V::Num(o.add(n)),
+                                _ => V::Num(n.clone()),
+                            });
+                        }
+                    }
+                }
+            }
+            let keep: Vec<usize> = (0..names.len()).filter(|p| kept.contains(p)).collect();
+            values = keep.iter().map(|&p| values[p].clone()).collect();
+            names = keep.iter().map(|&p| names[p].clone()).collect();
+            if folds {
+                values.push(other);
+                names.push("other".to_owned());
+            }
+        }
+        // each series its tint: a choice's word's own, else the next free, in the words'
+        // lasting order; one series its measured column's colour
+        let shade_of: Vec<Shade> = match &chart.color {
+            _ if series.len() == 1 && series[0].is_empty() => {
+                alloc::vec![measure.and_then(Measure::column).or(chart.x_column).map_or(Shade::Quiet, Shade::Column)]
+            }
+            Some((_, Some(c))) => {
+                let ty = &self.columns[*c].ty;
+                let lasting: Vec<String> = match &ty.base {
+                    Base::Choice(words) => words.clone(),
+                    _ => series.clone(),
+                };
+                let tints = shades(&lasting, |w| ty.tint(w));
+                series
+                    .iter()
+                    .map(|n| match lasting.iter().position(|w| w == n) {
+                        Some(i) => tints[i],
+                        None => Shade::Quiet,
+                    })
+                    .collect()
+            }
+            _ => shades(&series, |_| None),
+        };
+        let mut series: Vec<(String, Shade)> = series.into_iter().zip(shade_of).collect();
+        // a choice's series in its type's order
+        if let Some((_, Some(c))) = &chart.color
+            && let Base::Choice(words) = &self.columns[*c].ty.base
+        {
+            let mut idx: Vec<usize> = (0..series.len()).collect();
+            idx.sort_by_key(|&s| words.iter().position(|w| *w == series[s].0).unwrap_or(usize::MAX));
+            series = idx.iter().map(|&s| series[s].clone()).collect();
+            values = values.into_iter().map(|row| idx.iter().map(|&s| row[s].clone()).collect()).collect();
+        }
+        for (n, s) in &mut series {
+            if n == "none" {
+                *s = Shade::Quiet;
+            }
+        }
+        Summary {
+            kind: chart.kind,
+            title: chart.title.clone(),
+            stack: chart.stack,
+            axis,
+            places: names,
+            series,
+            values: values.into_iter().map(|row| row.into_iter().map(|v| v.and_then(|v| v.canonical())).collect()).collect(),
+            unit,
+            skipped,
+            rows,
+            layers: Vec::new(),
         }
     }
 
@@ -3296,6 +3856,75 @@ fn render(c: &Column, results: &[(usize, V)]) -> Vec<(usize, String)> {
         .collect()
 }
 
+/// A chart's entry read as a formula over a row: what it resolves to, its kind, and the
+/// column it is when it is one; why not, at its line, into `said`.
+fn chart_formula(
+    scope: &DocScope,
+    entry: Option<&crate::chart::Entry>,
+    slots: &mut usize,
+    said: &mut Vec<(u32, String)>,
+) -> Option<(Ir, K, Option<usize>)> {
+    let e = entry?;
+    match expr::parse(&e.value).and_then(|x| expr::resolve(&x, scope, slots)) {
+        Ok((ir, k)) => {
+            let column = if let Ir::Col(c) = ir { Some(c) } else { None };
+            Some((ir, k, column))
+        }
+        Err(fault) => {
+            said.push((e.line, format!("{}: {}", e.key, fault.why)));
+            None
+        }
+    }
+}
+
+/// A chart's measure: an aggregate (`SUM(amount)`, `COUNT(*)`, `LAST_VALUE(balance)`) of a
+/// formula over a place's rows, or a formula per row; why not, at its line, into `said`.
+fn chart_measure(
+    scope: &DocScope,
+    entry: Option<&crate::chart::Entry>,
+    slots: &mut usize,
+    said: &mut Vec<(u32, String)>,
+) -> Option<Measure> {
+    let e = entry?;
+    let parsed = match expr::parse(&e.value) {
+        Ok(x) => x,
+        Err(fault) => {
+            said.push((e.line, format!("{}: {}", e.key, fault.why)));
+            return None;
+        }
+    };
+    let agg = match &parsed {
+        expr::Expr::Call(name, args, _) if args.len() == 1 => match name.as_str() {
+            "SUM" => Some(expr::Agg::Sum),
+            "AVG" => Some(expr::Agg::Avg),
+            "MIN" => Some(expr::Agg::Min),
+            "MAX" => Some(expr::Agg::Max),
+            "COUNT" => Some(expr::Agg::Count),
+            "FIRST_VALUE" => Some(expr::Agg::First),
+            "LAST_VALUE" => Some(expr::Agg::Last),
+            _ => None,
+        },
+        _ => None,
+    };
+    let arg = match (&agg, &parsed) {
+        (Some(_), expr::Expr::Call(_, args, _)) => &args[0],
+        _ => &parsed,
+    };
+    match expr::resolve(arg, scope, slots) {
+        Ok((ir, _)) => {
+            let column = if let Ir::Col(c) = ir { Some(c) } else { None };
+            Some(match agg {
+                Some(a) => Measure::Agg(a, ir, column),
+                None => Measure::Row(ir, column),
+            })
+        }
+        Err(fault) => {
+            said.push((e.line, format!("{}: {}", e.key, fault.why)));
+            None
+        }
+    }
+}
+
 /// Names as a formula in this file reads them: its columns, and its tables' columns.
 struct DocScope<'a> {
     columns: &'a [Column],
@@ -3663,6 +4292,85 @@ mod tests {
         assert_eq!(doc.offers(1), ["in", "out"]);
         assert_eq!(doc.offers(2), ["yes", "no"]);
         assert!(doc.offers(3).is_empty());
+    }
+
+    #[test]
+    fn charts() {
+        use crate::chart::{Kind, Shade};
+        let src = concat!(
+            "---\n",
+            "type Kind = income#green|cost|transfer\n",
+            "```chart bars\n",
+            "x:     DATE_TRUNC('month', date)\n",
+            "y:     SUM(amount)\n",
+            "color: kind\n",
+            "```\n",
+            "```chart\n",
+            "title: Cash\n",
+            "x:     DATE_TRUNC('month', date)\n",
+            "y:     LAST_VALUE(balance)\n",
+            "```\n",
+            "rent = ```chart\n",
+            "x:     DATE_TRUNC('month', date)\n",
+            "y:     SUM(amount)\n",
+            "where: account = 'rent'\n",
+            "```\n",
+            "```chart\n",
+            "layers: rent\n",
+            "```\n",
+            "```chart heat\n",
+            "x: date\n",
+            "nope: 1\n",
+            "```\n",
+            "---\n",
+            "date:date,amount:EUR,kind:Kind,account:text,balance:EUR\n",
+            "2026-01-03,2400.00,income,salary,2400.00\n",
+            "2026-01-05,850.00,cost,rent,1550.00\n",
+            "2026-02-02,850.00,cost,rent,700.00\n",
+            "2026-02-20,100.00,transfer,savings,600.00\n",
+        );
+        let doc = read(src).unwrap();
+        // the heat chart lacks y and value, and holds a key no chart has: broken, left out
+        assert_eq!(doc.charts().len(), 4);
+        assert!(doc.broken().iter().any(|e| e.to_string().contains("no \"nope\"")));
+        assert!(doc.broken().iter().any(|e| e.to_string().contains("draws its y")));
+
+        let spending = doc.summary(&doc.charts()[0]);
+        assert_eq!(spending.kind, Kind::Bars);
+        assert_eq!(spending.places, ["2026-01-01", "2026-02-01"]);
+        // the choice's words in its order, income its own green, the rest the free tints
+        let names: Vec<&str> = spending.series.iter().map(|(n, _)| n.as_str()).collect();
+        assert_eq!(names, ["income", "cost", "transfer"]);
+        assert_eq!(spending.series[0].1, Shade::Tint(Tint::Named(3)));
+        assert_eq!(spending.series[1].1, Shade::Tint(Tint::Named(5)));
+        // values exact, in their plainest decimal: how an amount is drawn is the reader's
+        assert_eq!(spending.values[0], [Some("2400".into()), Some("850".into()), None]);
+        assert_eq!(spending.unit.as_deref(), Some("EUR"));
+
+        // LAST_VALUE: the month's last balance, and no kind written reads as steps
+        let cash = doc.summary(&doc.charts()[1]);
+        assert_eq!(cash.kind, Kind::Steps);
+        assert_eq!(cash.title, "Cash");
+        assert_eq!(cash.values, [[Some("1550".to_owned())], [Some("600".to_owned())]]);
+
+        // where: rent alone
+        let rent = doc.summary(&doc.charts()[2]);
+        assert_eq!(rent.values, [[Some("850".to_owned())], [Some("850".to_owned())]]);
+        // one series: the measured column's colour
+        assert_eq!(rent.series, [(String::new(), Shade::Column(1))]);
+
+        // layers: each layer its own summary
+        let layered = doc.summary(&doc.charts()[3]);
+        assert_eq!(layered.layers.len(), 1);
+        assert_eq!(layered.layers[0].values, rent.values);
+
+        // a file with no chart: drawn from its columns
+        let plain = read("date:date,amount:EUR,kind:Kind\n").unwrap();
+        assert!(plain.charts().is_empty());
+        let inferred = read("date:date,amount:EUR\n2026-01-03,10.00\n2026-01-03,5.00\n").unwrap().inferred_chart().unwrap();
+        assert_eq!(inferred.title, "amount by date");
+        let none = read("note:text\nhello\n").unwrap();
+        assert!(none.inferred_chart().is_none());
     }
 
     #[test]
