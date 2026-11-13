@@ -1,67 +1,16 @@
-//! `cells`, the command line.
-//!
-//!   cells check <file|folder>...       every break and problem, `path column 3: to: why`,
-//!                                     `path row N, column: why`, its imports followed, its
-//!                                     own tables checked too
-//!   cells fmt [--check] [--align on|off] <file|folder>...
-//!                                     each file as the format's standard lays it out,
-//!                                     every table's columns aligned (`--align off`: no
-//!                                     padding); `--check` writes nothing, it says which
-//!                                     files it would change
-//!   cells diff <file>                  git's textconv: the file with its padding taken
-//!                                     out, so a diff shows the values that changed
-//!   cells fix <file|folder>...         every stale computed cell given its formula's value,
-//!                                     every one not stored yet stored, each file written
-//!   cells merge <base> <ours> <theirs> git's merge driver: what was written merged, what is
-//!                                     computed computed again (SPEC.md, Merging)
-//!   cells pin <file>...                every import from a URL pinned by its hash now
-//!   cells run <file> [script]          its scripts run once by the engine, their rows written
-//!                                     under them; a script runs only as its person allowed
-//!                                     it, and the engine runs it on its schedule anyway
-//!   cells allow <file> [script]        each script not allowed as written shown whole and
-//!                                     allowed once its person says yes, in a terminal
-//!   cells show <file>                  its table as tab-separated text, computed cells
-//!                                     their values as the file stores them (`0.00`)
-//!   cells chart <file> [n …] [--watch] [--svg] [--glyphs fine|blocks|ascii] [--colors true|256|16]
-//!                                     its charts listed, or charts n drawn in the terminal
-//!                                     (`--watch`: held, drawn again as the file changes;
-//!                                     `--svg`: as SVG); chart 0 the one a file with none
-//!                                     is drawn from
-//!   cells sql <file|folder>... <query> the query, DuckDB's SQL, over every file and the
-//!                                     files they import, each a table by its stem; its
-//!                                     answer as `show` writes a table
-//!   cells lsp                          the language server, on stdin and stdout
-//!   cells serve [--verbose] <folder>... the engine kept running over the folders: a change
-//!                                     written to a file stores every computed cell it
-//!                                     reaches, in that file and every file importing it,
-//!                                     each version logged in `.cells/log.jsonl`, each step
-//!                                     said on stderr (`--verbose`: every read, timed)
-//!   cells history <file|folder> [<row> <column>]
-//!                                     what changed, by whom, when, and what each change
-//!                                     reached, newest first; or a cell's every value, each
-//!                                     beside the change that wrote it (ENGINE.md, History)
-//!   cells editors install helix|neovim|zed
-//!                                     the editor set up for `.cells`: the grammar and queries
-//!                                     this binary carries written where it reads them, the
-//!                                     language and its server added to its config, the
-//!                                     parser built; Zed's extension written as the folder
-//!                                     Zed installs (EDITORS.md)
-//!
-//! A folder means every `.cells` file under it, hidden folders (`.git`, the engine's `.cells`)
-//! left out. Exit 0 when nothing is found (or every run succeeds), 1 when something is (or
-//! a run fails, or a query read files with problems: its answer is printed, and how many
-//! problems on stderr), 2 when the command cannot run (a path that does not exist, a file
-//! that cannot be read, a wrong argument, tables whose columns clash, a query DuckDB
-//! refuses).
+//! `cells`, the command line. Every command, what it does and the exit codes are said once,
+//! in `describe.rs`: the usage, `cells help` and the agent skill are read from there.
 
 mod allow;
 mod chart;
+mod describe;
 mod editors;
 mod history;
 mod lsp;
 mod merge;
 mod pin;
 mod run;
+mod skill;
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -69,8 +18,6 @@ use std::process::ExitCode;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 use cells_disk::{Disk, files};
-
-const USAGE: &str = "cells check <file|folder>...\ncells fmt [--check] [--align on|off] <file|folder>...\ncells diff <file>\ncells fix <file|folder>...\ncells merge <base> <ours> <theirs>\ncells pin <file>...\ncells run <file> [script]\ncells allow <file> [script]\ncells show <file>\ncells chart <file> [n …] [--watch] [--svg] [--glyphs fine|blocks|ascii] [--colors true|256|16]\ncells sql <file|folder>... <query>\ncells lsp\ncells serve [--verbose] <folder>...\ncells history <file|folder> [<row> <column>]\ncells editors install helix|neovim|zed";
 
 /// What one file says: its lines of output, or the reason it could not be read.
 enum Said {
@@ -215,6 +162,23 @@ fn run(paths: &[String], each: impl Fn(&Path, usize) -> Result<Said, String> + S
 fn main() -> ExitCode {
     let args: Vec<String> = std::env::args().skip(1).collect();
     match args.first().map(String::as_str) {
+        Some("help" | "--help" | "-h") if args.len() == 1 => {
+            println!("{}", describe::help());
+            ExitCode::SUCCESS
+        }
+        Some("skill") => match args.get(1).map(String::as_str) {
+            None => skill::status(),
+            Some("show") if args.len() == 2 => {
+                print!("{}", describe::skill());
+                ExitCode::SUCCESS
+            }
+            Some("install") if args.len() == 2 => skill::install(),
+            Some("remove") if args.len() == 2 => skill::remove(),
+            _ => {
+                eprintln!("{}", describe::usage());
+                ExitCode::from(2)
+            }
+        },
         Some("check") if args.len() > 1 => run(&args[1..], check),
         Some("lsp") if args.len() == 1 => {
             lsp::serve();
@@ -236,7 +200,7 @@ fn main() -> ExitCode {
             },
             Some((align, true, paths)) => run(paths, |p, t| fmt(p, t, align, true)),
             None => {
-                eprintln!("{USAGE}");
+                eprintln!("{}", describe::usage());
                 ExitCode::from(2)
             }
         },
@@ -383,7 +347,7 @@ fn main() -> ExitCode {
             }
         },
         _ => {
-            eprintln!("{USAGE}");
+            eprintln!("{}", describe::usage());
             ExitCode::from(2)
         }
     }
