@@ -1635,6 +1635,37 @@ impl Doc {
         fields.get(column).map_or(Cow::Borrowed(""), |raw| scan::unquoted(raw))
     }
 
+    /// The cells of this table the cell at `row` of `column` is computed from, as its
+    /// formula reads them on its row (`expr::reads_at`): each a column and the first and
+    /// last of the rows read. Its own formula's (`32.25=96.75 / 3`), else its column's;
+    /// none for a written cell, an override, or a formula that does not resolve.
+    pub fn reads(&self, row: usize, column: usize) -> Vec<(usize, usize, usize)> {
+        assert!(column < self.columns.len(), "column {column} is not stored");
+        let rows = self.rows();
+        assert!(row < rows, "row {row} of {rows} is not stored");
+        let mut out = Vec::new();
+        match self.columns[column].origin(row) {
+            Origin::Written => {}
+            Origin::Formula => {
+                if let Some(ir) = &self.formulas[column] {
+                    expr::reads_at(ir, None, Some(row), rows, &mut out);
+                }
+            }
+            Origin::Cell => {
+                let text = self.text(row, column);
+                let src = read::own_formula(&text).expect("a cell of its own formula splits at its =");
+                let scope = DocScope { columns: &self.columns, tables: &self.tables };
+                let mut aggregates = 0;
+                if let Ok((ir, _)) = expr::parse(src).and_then(|e| expr::resolve(&e, &scope, &mut aggregates)) {
+                    expr::reads_at(&ir, None, Some(row), rows, &mut out);
+                }
+            }
+        }
+        out.sort_unstable();
+        out.dedup();
+        out
+    }
+
     /// What a cell of `column` may hold, for a host offering it as the cell is typed: a
     /// choice's words, a boolean's two, a reference's keys (every row of the column it
     /// names, in the table's order, each once; none for a table not reached); empty for
@@ -3632,6 +3663,31 @@ mod tests {
         assert_eq!(doc.offers(1), ["in", "out"]);
         assert_eq!(doc.offers(2), ["yes", "no"]);
         assert!(doc.offers(3).is_empty());
+    }
+
+    #[test]
+    fn reads() {
+        // columns: 0 cost, 1 qty, 2 total, 3 running, 4 share, 5 upto, 6 note
+        let doc = read(concat!(
+            "cost:EUR,qty:int,total:EUR=cost * qty,running:EUR=running[-1] + total,",
+            "share:num=total / SUM(total),upto:EUR=SUM(cost[FIRST:THIS]),note:text\n",
+            "10,1,,,,,a\n",
+            "20,2,,,,,b\n",
+            "30,3,,,,,=96.75 / 3\n",
+        ))
+        .unwrap();
+        // this row's cells
+        assert_eq!(doc.reads(1, 2), [(0, 1, 1), (1, 1, 1)]);
+        // the line above, and on the first row nothing above it
+        assert_eq!(doc.reads(1, 3), [(2, 1, 1), (3, 0, 0)]);
+        assert_eq!(doc.reads(0, 3), [(2, 0, 0)]);
+        // an aggregate over the table reads its column whole
+        assert_eq!(doc.reads(2, 4), [(2, 0, 2), (2, 2, 2)]);
+        // a range, clipped by the rows
+        assert_eq!(doc.reads(1, 5), [(0, 0, 1)]);
+        // a written cell reads nothing, nor a cell's own formula of constants
+        assert!(doc.reads(0, 0).is_empty());
+        assert!(doc.reads(2, 6).is_empty());
     }
 
     #[test]

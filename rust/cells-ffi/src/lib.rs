@@ -1465,6 +1465,47 @@ pub unsafe extern "C" fn cells_offers(d: *mut CellsDoc, column: usize) -> CellsS
     CellsStr::of(&d.out)
 }
 
+/// Cells a formula reads: a column and the first and last of its rows read.
+#[repr(C)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub struct CellsRead {
+    pub column: usize,
+    pub first: usize,
+    pub last: usize,
+}
+
+/// A cell's reads, owned by the caller until `cells_reads_free`.
+#[repr(C)]
+pub struct CellsReads {
+    pub reads: *mut CellsRead,
+    pub count: usize,
+}
+
+/// The cells of the table the cell at `row` of `column` is computed from (`Doc::reads`):
+/// none for a written cell.
+///
+/// # Safety
+/// `d` is a live document; `row` and `column` are its.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn cells_reads(d: *mut CellsDoc, row: usize, column: usize) -> CellsReads {
+    // SAFETY: the caller's promise.
+    let d = unsafe { doc(d) };
+    let reads: Box<[CellsRead]> =
+        d.doc.reads(row, column).into_iter().map(|(column, first, last)| CellsRead { column, first, last }).collect();
+    let count = reads.len();
+    CellsReads { reads: Box::into_raw(reads) as *mut CellsRead, count }
+}
+
+/// Lets a cell's reads go.
+///
+/// # Safety
+/// `r` came from `cells_reads`, freed once.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn cells_reads_free(r: CellsReads) {
+    // SAFETY: the caller's promise; the reads are a boxed slice of `count`.
+    drop(unsafe { Box::from_raw(ptr::slice_from_raw_parts_mut(r.reads, r.count)) });
+}
+
 /// What a completion is, as an editor marks it.
 #[repr(C)]
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]

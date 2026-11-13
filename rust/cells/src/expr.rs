@@ -1725,6 +1725,65 @@ pub fn reads(ir: &Ir, table: Table, out: &mut Vec<usize>) {
     }
 }
 
+/// The cells of the own table an `Ir` reads computed on `at` of `rows` rows (`None`: on
+/// every row, inside an aggregate over the table), each a column and the first and last of
+/// the rows read, clipped by the rows. An aggregate over the own table reads its argument's
+/// columns whole; a window reads its columns whole (its order picks among their rows, which
+/// only evaluating says); a key followed reads the reference cell, its target's row
+/// another table's. What a formula's cell shows it is computed from.
+pub fn reads_at(ir: &Ir, table: Table, at: Option<usize>, rows: usize, out: &mut Vec<(usize, usize, usize)>) {
+    if rows == 0 {
+        return;
+    }
+    let last = rows - 1;
+    match ir {
+        Ir::Const(_) => {}
+        Ir::Col(k) => {
+            if table.is_none() {
+                out.push(at.map_or((*k, 0, last), |r| (*k, r, r)));
+            }
+        }
+        Ir::At(k, place, _) => match at {
+            Some(r) => {
+                let p = place.row(r, rows);
+                if (0..rows as i64).contains(&p) {
+                    out.push((*k, p as usize, p as usize));
+                }
+            }
+            None => out.push((*k, 0, last)),
+        },
+        Ir::Span(_, k, a, b, _) => match at {
+            Some(r) => {
+                let lo = a.row(r, rows).max(0);
+                let hi = b.row(r, rows).min(last as i64);
+                if lo <= hi {
+                    out.push((*k, lo as usize, hi as usize));
+                }
+            }
+            None => out.push((*k, 0, last)),
+        },
+        Ir::Follow(key, _) => reads_at(key, table, at, rows, out),
+        Ir::Agg(_, over, arg, _) => reads_at(arg, *over, None, rows, out),
+        Ir::Window(_, arg, order, _) => {
+            reads_at(arg, None, None, rows, out);
+            order.iter().for_each(|(k, _)| reads_at(k, None, None, rows, out));
+        }
+        Ir::Neg(a) | Ir::Not(a) | Ir::IsNull(a, _) => reads_at(a, table, at, rows, out),
+        Ir::Bin(_, a, b) => {
+            reads_at(a, table, at, rows, out);
+            reads_at(b, table, at, rows, out);
+        }
+        Ir::Case(arms, o) => {
+            for (w, t) in arms {
+                reads_at(w, table, at, rows, out);
+                reads_at(t, table, at, rows, out);
+            }
+            reads_at(o, table, at, rows, out);
+        }
+        Ir::Call(_, args) => args.iter().for_each(|a| reads_at(a, table, at, rows, out)),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
