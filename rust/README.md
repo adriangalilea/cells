@@ -59,12 +59,14 @@ A formula column costs its evaluation: 1M rows with `total: EUR = cost * qty` re
 ## `cells chart`
 
 ```console
-$ cells chart <file> [n …] [--watch] [--svg] [--glyphs fine|blocks|ascii] [--colors true|256|16]
+$ cells chart <file> [n …] [--watch] [--svg] [--glyphs fine|blocks|ascii] [--colors true|256|16] [--edges on|off]
 ```
 
 A file's charts ([SPEC.md, Charts](../SPEC.md#charts)), what each draws the engine's (`Doc::summary`), drawn here. No number lists them, `1  Spending by month  bars`, a file with none its one drawn from its columns as `0`; numbers draw those charts, one under another, at the terminal's width. `--watch` holds them on the alternate screen, all of them sharing it, drawn again when the file changes and when the terminal is resized; `q` or Esc leaves. `--svg` writes each as the engine's SVG instead, for a page or a README.
 
 What the terminal holds is guessed and can be said: `TERM=linux` (the kernel's console: sixteen colours and a console font, no braille) draws in half blocks and eighths; `TERM=dumb` in ASCII; any other terminal in braille's dots, in true colour when `COLORTERM` says so, else 256 colours or sixteen. A tint is drawn in its dark theme's colour, quantized to the terminal's. Bars are eighth blocks along the value, two stacked series meeting in one cell drawn as its ink and its ground; lines, steps, areas and points are braille, or half blocks, or dots. On a Linux console of its own, kmscon (Fedora 45's console) draws braille and true colour where the kernel's console draws neither.
+
+Lines on the cells' edges are asked, never guessed: on a terminal, `cells chart` sends the [cell border protocol](https://www.joshka.net/cell-borders/)'s capability query and then DA1 (`ESC [ c`), in raw mode, and reads the answers from `/dev/tty`; a border reply naming `pen` and `rect` before DA1's is a terminal that draws them, DA1's alone (or nothing within half a second) one that does not. `--edges on|off` says so instead of asking; piped output is never asked and stays plain. With edges, the card's frame is lines inside its outer cells (corners rounded where the terminal names `round`), the title and the foot rows of their own inside it; each gridline is the foot of the row its label stands on, the lowest the x axis, the places right under it; a rule through a bar is drawn over the bar in a shade of its colour. So the plot has the frame's two columns and the rows of room around it (80 by 21: bars by month's plot is 68 by 16 cells, 66 by 13 boxed). Printing, each cell's borders are the protocol's pen, set before the cell where it changes and again after each SGR 0 (which clears it), and cleared before every line ends so the next line and the shell's prompt never take it; `--watch` sets them as rectangles after each frame, since ratatui writes its cells with no pen. Without edges the bytes are those of the box drawing above, unchanged.
 
 The drawing is ratatui's cells (`ratatui` 0.30 with its crossterm backend), in `cells` itself: no pixels, since a terminal's graphics (kitty's, sixel) would need an SVG rasterizer of a few megabytes in the binary every editor's language server is.
 

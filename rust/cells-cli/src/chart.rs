@@ -3,9 +3,14 @@
 //! terminal holds: octants or braille, half blocks and eighths, or plain ASCII; true
 //! colour, 256 or 16. Once inline at the terminal's width, or held on the alternate screen
 //! and drawn again as the file changes (`--watch`); `--svg` writes the engine's SVG.
+//!
+//! A terminal that answers the cell border protocol (joshka.net/cell-borders, the spec in
+//! github.com/joshka/ghostty `specs/cell-border-protocol.md`) is given the card's frame, its
+//! gridlines and its axis as lines on the cells' edges, so they cost no row or column; every
+//! other terminal gets box drawing, byte for byte as before.
 
 use std::fs;
-use std::io::{self, IsTerminal, Write};
+use std::io::{self, IsTerminal, Read, Write};
 use std::path::{Path, PathBuf};
 use std::time::{Duration, SystemTime};
 
@@ -19,11 +24,20 @@ use ratatui::text::Span;
 use ratatui::widgets::Widget;
 use ratatui::widgets::canvas::{Canvas, Line as Segment, Points};
 
-/// What a terminal draws with: its glyphs and its colours.
+/// What a terminal draws with: its glyphs, its colours, and lines on its cells' edges when
+/// it answers for them.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Tier {
     pub glyphs: Glyphs,
     pub colors: Colors,
+    pub edges: Option<Edges>,
+}
+
+/// What a terminal said of the cell border protocol: it draws lines on cells' edges (its
+/// `pen` and `rect`), and whether it rounds their corners (`round`).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Edges {
+    pub round: bool,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -44,15 +58,17 @@ pub enum Colors {
 
 impl Tier {
     /// What the terminal says it holds: `TERM=linux` is the kernel's console (sixteen
-    /// colours, a console font of blocks and no braille), `COLORTERM` says true colour.
+    /// colours, a console font of blocks and no braille), `COLORTERM` says true colour. No
+    /// variable says cell borders (the protocol forbids guessing them), so none are guessed:
+    /// the terminal is asked (`Edges::asked`).
     pub fn guessed() -> Tier {
         let term = std::env::var("TERM").unwrap_or_default();
         let truecolor = matches!(std::env::var("COLORTERM").as_deref(), Ok("truecolor" | "24bit"));
         if term == "linux" {
-            return Tier { glyphs: Glyphs::Blocks, colors: Colors::Sixteen };
+            return Tier { glyphs: Glyphs::Blocks, colors: Colors::Sixteen, edges: None };
         }
         if term == "dumb" {
-            return Tier { glyphs: Glyphs::Ascii, colors: Colors::Sixteen };
+            return Tier { glyphs: Glyphs::Ascii, colors: Colors::Sixteen, edges: None };
         }
         Tier {
             glyphs: Glyphs::Fine,
@@ -63,8 +79,71 @@ impl Tier {
             } else {
                 Colors::Sixteen
             },
+            edges: None,
         }
     }
+}
+
+/// The capability query, then Primary Device Attributes: terminals answer in order, so a
+/// DA1 reply with no border reply before it is a terminal without the protocol.
+const QUERY: &[u8] = b"\x1bP1+bcell-border;q\x1b\\\x1b[c";
+
+impl Edges {
+    /// The terminal asked, in raw mode for as long as its answers take: the query and DA1
+    /// written to the terminal, its replies read from `/dev/tty` until DA1's ends them. A
+    /// terminal that answers neither within half a second is taken as one without; the
+    /// reader is left waiting for that late answer, so it never reaches the shell as typing.
+    fn asked() -> Option<Edges> {
+        use ratatui::crossterm::terminal;
+        let mut tty = fs::OpenOptions::new().read(true).open("/dev/tty").ok()?;
+        terminal::enable_raw_mode().ok()?;
+        let (said, heard) = std::sync::mpsc::channel();
+        std::thread::spawn(move || {
+            let mut replies = Vec::new();
+            let mut chunk = [0u8; 256];
+            while !da1_ends(&replies) {
+                match tty.read(&mut chunk) {
+                    Ok(0) | Err(_) => break,
+                    Ok(n) => replies.extend_from_slice(&chunk[..n]),
+                }
+            }
+            let _ = said.send(replies);
+        });
+        let mut out = io::stdout().lock();
+        let asked = out.write_all(QUERY).and_then(|_| out.flush());
+        let replies = asked.ok().and_then(|_| heard.recv_timeout(Duration::from_millis(500)).ok());
+        terminal::disable_raw_mode().ok()?;
+        Edges::answered(&replies?)
+    }
+
+    /// What the replies to `QUERY` say: a border reply before DA1's, `DCS 1 + b
+    /// cell-border;ok;VERSION;FEATURES ST`, naming `pen` and `rect`, is a terminal that
+    /// draws them; `round` among its features, one that rounds corners.
+    fn answered(replies: &[u8]) -> Option<Edges> {
+        let da1 = find(replies, b"\x1b[?")?;
+        let before = &replies[..da1];
+        let reply = b"\x1bP1+bcell-border;ok;";
+        let at = find(before, reply)? + reply.len();
+        let rest = &before[at..];
+        let end = find(rest, b"\x1b\\")?;
+        let fields = std::str::from_utf8(&rest[..end]).ok()?;
+        let (version, features) = fields.split_once(';')?;
+        version.parse::<u32>().ok().filter(|v| *v >= 1)?;
+        let has = |f: &str| features.split(',').any(|x| x == f);
+        (has("pen") && has("rect")).then_some(Edges { round: has("round") })
+    }
+}
+
+/// Whether `bytes` holds a whole DA1 reply, `CSI ? Ps ; … c`.
+fn da1_ends(bytes: &[u8]) -> bool {
+    find(bytes, b"\x1b[?").is_some_and(|at| {
+        let rest = &bytes[at + 3..];
+        rest.iter().position(|b| !(b.is_ascii_digit() || *b == b';')).is_some_and(|i| rest[i] == b'c')
+    })
+}
+
+fn find(hay: &[u8], needle: &[u8]) -> Option<usize> {
+    hay.windows(needle.len()).position(|w| w == needle)
 }
 
 /// What `cells chart` was asked.
@@ -74,17 +153,26 @@ struct Asked {
     watch: bool,
     svg: bool,
     tier: Tier,
+    /// `--edges on|off`, said; none, the terminal is asked.
+    edges: Option<bool>,
 }
 
 /// `cells chart <file> [n …] [--watch] [--svg] [--glyphs fine|blocks|ascii]
-/// [--colors true|256|16]`. No numbers lists the file's charts.
+/// [--colors true|256|16] [--edges on|off]`. No numbers lists the file's charts.
 pub fn run(args: &[String]) -> Result<(), String> {
-    let mut asked = Asked { path: PathBuf::new(), charts: Vec::new(), watch: false, svg: false, tier: Tier::guessed() };
+    let mut asked = Asked { path: PathBuf::new(), charts: Vec::new(), watch: false, svg: false, tier: Tier::guessed(), edges: None };
     let mut it = args.iter();
     while let Some(a) = it.next() {
         match a.as_str() {
             "--watch" => asked.watch = true,
             "--svg" => asked.svg = true,
+            "--edges" => {
+                asked.edges = match it.next().map(String::as_str) {
+                    Some("on") => Some(true),
+                    Some("off") => Some(false),
+                    other => return Err(format!("--edges on or off, not {other:?}")),
+                }
+            }
             "--glyphs" => {
                 asked.tier.glyphs = match it.next().map(String::as_str) {
                     Some("fine") => Glyphs::Fine,
@@ -149,6 +237,14 @@ pub fn run(args: &[String]) -> Result<(), String> {
         }
         return Ok(());
     }
+    // `--edges on` is a terminal said to draw them, rounding too: a terminal without
+    // `round` ignores the joint operations and draws the corners square
+    asked.tier.edges = match asked.edges {
+        Some(true) => Some(Edges { round: true }),
+        Some(false) => None,
+        None if io::stdout().is_terminal() => Edges::asked(),
+        None => None,
+    };
     if asked.watch {
         return watch(&asked, &summaries);
     }
@@ -160,9 +256,11 @@ pub fn run(args: &[String]) -> Result<(), String> {
     for s in &drawn {
         let area = Rect::new(0, 0, width, height);
         let mut buf = Buffer::empty(area);
-        let held = draw(s, area, &mut buf, asked.tier, Foot { said: vec![Span::raw(format!(" {} ", counted(s)))], keys: None });
-        buf.resize(Rect::new(0, 0, width, held));
-        print(&buf, asked.tier, &mut out).map_err(|e| e.to_string())?;
+        let mut borders = Borders::new(area);
+        let card =
+            draw(s, area, &mut buf, &mut borders, asked.tier, Foot { said: vec![Span::raw(format!(" {} ", counted(s)))], keys: None });
+        buf.resize(Rect::new(0, 0, width, card.height));
+        print(&buf, &borders, asked.tier, &mut out).map_err(|e| e.to_string())?;
     }
     Ok(())
 }
@@ -189,9 +287,14 @@ fn watch(asked: &Asked, summaries: &dyn Fn(&Path) -> Result<(Vec<(String, Kind)>
     let mut read = Instant::now();
     let name = asked.path.file_name().map_or_else(|| asked.path.display().to_string(), |n| n.to_string_lossy().into_owned());
     let mut terminal = ratatui::init();
+    // the borders of the frame drawn, and of the one before: ratatui writes its cells with
+    // no pen, so every cell it writes loses its borders and each frame's are set again
+    let mut borders = Borders::new(Rect::default());
+    let mut before: Option<Borders> = None;
     let result = loop {
         let frame = terminal.draw(|f| {
             let area = f.area();
+            borders = Borders::new(area);
             let n = drawn.len().max(1) as u16;
             let h = area.height / n;
             let ago = read.elapsed().as_secs();
@@ -211,11 +314,19 @@ fn watch(asked: &Asked, summaries: &dyn Fn(&Path) -> Result<(Vec<(String, Kind)>
                 } else {
                     Foot { said: vec![Span::raw(format!(" {} ", counted(s)))], keys: None }
                 };
-                draw(s, Rect::new(area.x, area.y + h * i as u16, area.width, h), f.buffer_mut(), asked.tier, foot);
+                draw(s, Rect::new(area.x, area.y + h * i as u16, area.width, h), f.buffer_mut(), &mut borders, asked.tier, foot);
             }
         });
         if let Err(e) = frame {
             break Err(e.to_string());
+        }
+        if asked.tier.edges.is_some() {
+            let set = rectangles(&borders, before.as_ref());
+            let backend = terminal.backend_mut();
+            if let Err(e) = backend.write_all(set.as_bytes()).and_then(|_| backend.flush()) {
+                break Err(e.to_string());
+            }
+            before = Some(borders.clone());
         }
         // a second's tick keeps the status line's age true
         match event::poll(Duration::from_millis(400)) {
@@ -265,14 +376,39 @@ fn counted(s: &Summary) -> String {
     said
 }
 
+/// A card drawn: how tall it is, and the plot inside it where it has one.
+pub struct Card {
+    pub height: u16,
+    #[cfg_attr(not(test), expect(dead_code, reason = "the tests read it: the room edges give the plot"))]
+    pub plot: Option<Rect>,
+}
+
 /// A summary drawn into `area` as a card: its title in the card's top edge, its foot in
 /// the bottom one, its legend inside, then its scale and marks, every mark on the scale's
-/// one grid of rows.
-/// The card is as tall as what it holds, at most `area`; its height is returned.
-pub fn draw(s: &Summary, area: Rect, buf: &mut Buffer, tier: Tier, foot: Foot) -> u16 {
+/// one grid of rows. With edges, the frame is lines on the card's outer cells' edges and
+/// the title and foot rows of their own inside it, so the plot has the frame's columns and
+/// the rows that stood between it and its frame.
+/// The card is as tall as what it holds, at most `area`.
+pub fn draw(s: &Summary, area: Rect, buf: &mut Buffer, borders: &mut Borders, tier: Tier, foot: Foot) -> Card {
     use ratatui::text::Line as Words;
     use ratatui::widgets::{Block, BorderType};
     let quiet = Style::default().fg(Color::DarkGray);
+    if let Some(edges) = tier.edges {
+        let title = Style::default().fg(Color::White).add_modifier(Modifier::BOLD);
+        buf.set_stringn(area.x + 2, area.y, &s.title, area.width.saturating_sub(4) as usize, title);
+        // the title's row, then the marks (the plot's top row, above its highest rule, is
+        // the room under the title), a row of room and the foot's row
+        let room = Rect::new(area.x + 2, area.y + 1, area.width.saturating_sub(4), area.height.saturating_sub(3));
+        let (end, plot) = if room.height < 6 || room.width < 20 { (room.y, None) } else { marks(s, room, buf, borders, tier) };
+        let held = Rect::new(area.x, area.y, area.width, (end + 2 - area.y).min(area.height));
+        let said = Rect::new(area.x + 1, held.bottom() - 1, area.width.saturating_sub(2), 1);
+        Words::from(foot.said).style(quiet).render(said, buf);
+        if let Some(keys) = foot.keys {
+            Words::from(keys).style(quiet).right_aligned().render(said, buf);
+        }
+        frame(held, borders, tier, edges);
+        return Card { height: held.height, plot };
+    }
     let mut card = Block::bordered()
         .border_type(if tier.glyphs == Glyphs::Ascii { BorderType::Plain } else { BorderType::Rounded })
         .border_style(Style::default().fg(edge_color(tier)))
@@ -284,15 +420,40 @@ pub fn draw(s: &Summary, area: Rect, buf: &mut Buffer, tier: Tier, foot: Foot) -
     let inner = card.inner(area);
     // a cell of room inside the card's edge, on every side
     let room = Rect::new(inner.x + 2, inner.y + 1, inner.width.saturating_sub(4), inner.height.saturating_sub(2));
-    let end = if room.height < 6 || room.width < 20 { room.y } else { marks(s, room, buf, tier) };
+    let (end, plot) = if room.height < 6 || room.width < 20 { (room.y, None) } else { marks(s, room, buf, borders, tier) };
     let held = Rect::new(area.x, area.y, area.width, (end + 2 - area.y).min(area.height));
     card.render(held, buf);
-    held.height
+    Card { height: held.height, plot }
+}
+
+/// The card's frame as lines inside its outer cells, on their outer edges; its corners
+/// rounded where the terminal rounds them. The card stands on the terminal's own ground,
+/// so a rounded corner cuts off nothing that needs an outside colour.
+fn frame(card: Rect, borders: &mut Borders, tier: Tier, edges: Edges) {
+    if card.width < 2 || card.height < 2 {
+        return;
+    }
+    let edge = Stroke { width: FRAME, color: edge_color(tier), above: false };
+    let (right, bottom) = (card.right() - 1, card.bottom() - 1);
+    for x in card.left()..card.right() {
+        borders.add(x, card.top(), Side::TOP, edge);
+        borders.add(x, bottom, Side::BOTTOM, edge);
+    }
+    for y in card.top()..card.bottom() {
+        borders.add(card.left(), y, Side::LEFT, edge);
+        borders.add(right, y, Side::RIGHT, edge);
+    }
+    if edges.round {
+        borders.round(card.left(), card.top(), Joint::TOP_LEFT);
+        borders.round(right, card.top(), Joint::TOP_RIGHT);
+        borders.round(right, bottom, Joint::BOTTOM_RIGHT);
+        borders.round(card.left(), bottom, Joint::BOTTOM_LEFT);
+    }
 }
 
 /// The legend, scale and marks of `s` in `area`; the row past the last one drawn is
-/// returned.
-fn marks(s: &Summary, area: Rect, buf: &mut Buffer, tier: Tier) -> u16 {
+/// returned, and the plot where there is one.
+fn marks(s: &Summary, area: Rect, buf: &mut Buffer, borders: &mut Borders, tier: Tier) -> (u16, Option<Rect>) {
     let parts: Vec<&Summary> = if s.layers.is_empty() { vec![s] } else { s.layers.iter().collect() };
     // the legend, once there is more than one series
     let series: Vec<(String, Shade)> =
@@ -314,8 +475,9 @@ fn marks(s: &Summary, area: Rect, buf: &mut Buffer, tier: Tier) -> u16 {
     }
     let body = Rect::new(area.x, y0, area.width, area.bottom().saturating_sub(y0));
     if s.kind == Kind::Figure && s.layers.is_empty() {
-        return figure(s, body, buf, tier);
+        return (figure(s, body, buf, tier), None);
     }
+    let edged = tier.edges.is_some();
     let num = |v: &Option<String>| v.as_deref().and_then(|t| t.parse::<f64>().ok());
     // the scale: from zero (or below it) to the most, stacked where bars stack
     let stacked = |p: &Summary| p.kind == Kind::Bars && p.stack == Stack::Stacked;
@@ -339,8 +501,9 @@ fn marks(s: &Summary, area: Rect, buf: &mut Buffer, tier: Tier) -> u16 {
     }
     // the scale as every reader draws it: whole steps of 1, 2 or 5 times a power of ten;
     // the plot as many rows as gives every step the same whole number of rows, so each
-    // step's rule stands on a row and each mark meets it there
-    let room = body.height.saturating_sub(2).max(3);
+    // step's rule stands on a row (with edges, on a row's foot) and each mark meets it
+    // there; under the plot the places, a row of room before them where no edge is the axis
+    let room = body.height.saturating_sub(if edged { 1 } else { 2 }).max(3);
     let (lo, hi, step) = cells::chart::scale(lo, hi, (room / 3).clamp(2, 6) as u32);
     let steps = (((hi - lo) / step + 0.5) as u16).max(1);
     let per = ((room - 1) / steps).max(1);
@@ -348,16 +511,19 @@ fn marks(s: &Summary, area: Rect, buf: &mut Buffer, tier: Tier) -> u16 {
     let left = labels.iter().map(|l| l.chars().count()).max().unwrap_or(1) as u16 + 2;
     let plot = Rect::new(body.x + left, body.y, body.width.saturating_sub(left), steps * per + 1);
     if plot.width < 4 {
-        return body.y;
+        return (body.y, None);
     }
-    let scale = Scale { lo, hi, rows: plot.height };
+    let scale = Scale { lo, hi, rows: plot.height, edged };
     let quiet = Style::default().fg(Color::DarkGray);
     let rule = if tier.glyphs == Glyphs::Ascii { "-" } else { "─" };
     let ruled: Vec<u16> = (0..=steps).map(|i| plot.bottom() - 1 - i * per).collect();
     for (label, &row) in labels.iter().zip(&ruled) {
-        // right-aligned against the plot, a faint rule across it
+        // right-aligned against the plot, a faint rule across it (with edges, the rule is
+        // the row's foot, drawn once the marks are)
         buf.set_string(plot.x - 2 - label.chars().count() as u16, row, label, quiet);
-        buf.set_string(plot.x, row, rule.repeat(plot.width as usize), Style::default().fg(grid_color(tier)));
+        if !edged {
+            buf.set_string(plot.x, row, rule.repeat(plot.width as usize), Style::default().fg(grid_color(tier)));
+        }
     }
     for part in &parts {
         match part.kind {
@@ -366,8 +532,27 @@ fn marks(s: &Summary, area: Rect, buf: &mut Buffer, tier: Tier) -> u16 {
             _ => lines(part, plot, buf, tier, &scale),
         }
     }
-    // the rules seen through the bars, a shade of each bar's own colour
-    if tier.glyphs != Glyphs::Ascii {
+    if edged {
+        // each rule on its row's foot: the lowest is the axis, the plot's own foot, drawn
+        // over the bars standing on it; a rule through a bar (a block whose ink reaches its
+        // cell's foot) is a shade of the bar's colour drawn over it, as the rules through
+        // bars are without edges
+        let footed = ["▁", "▂", "▃", "▄", "▅", "▆", "▇", "█"];
+        for (i, &row) in ruled.iter().enumerate() {
+            for x in plot.x..plot.right() {
+                let cell = &buf[(x, row)];
+                let stroke = if i == 0 {
+                    Stroke { width: AXIS, color: edge_color(tier), above: true }
+                } else if footed.contains(&cell.symbol()) {
+                    Stroke { width: RULE, color: shaded(cell.fg, tier), above: true }
+                } else {
+                    Stroke { width: RULE, color: grid_color(tier), above: false }
+                };
+                borders.add(x, row, Side::BOTTOM, stroke);
+            }
+        }
+    } else if tier.glyphs != Glyphs::Ascii {
+        // the rules seen through the bars, a shade of each bar's own colour
         for &row in &ruled {
             for x in plot.x..plot.right() {
                 if let Some(cell) = buf.cell_mut((x, row))
@@ -379,7 +564,9 @@ fn marks(s: &Summary, area: Rect, buf: &mut Buffer, tier: Tier) -> u16 {
             }
         }
     }
-    // each place named under its mark's middle, as many as fit with a space between
+    // each place named under its mark's middle, as many as fit with a space between; with
+    // edges right under the axis
+    let under = plot.bottom() + if edged { 0 } else { 1 };
     let names: Vec<String> = place_names(&parts[0].places, parts[0].axis);
     let mut free = plot.x;
     for (i, name) in names.iter().enumerate() {
@@ -387,29 +574,36 @@ fn marks(s: &Summary, area: Rect, buf: &mut Buffer, tier: Tier) -> u16 {
         let (x0, bw) = slot(plot, names.len(), i);
         let at = (x0 + bw / 2).saturating_sub(w / 2).max(plot.x);
         if at >= free && at + w <= plot.right() {
-            buf.set_string(at, plot.bottom() + 1, name, quiet);
+            buf.set_string(at, under, name, quiet);
             free = at + w + 2;
         }
     }
-    plot.bottom() + 2
+    (under + 1, Some(plot))
 }
 
 /// Where a value stands on a plot of `rows` rows, in eighths of a row from its foot: `lo`
 /// on the foot row's middle, `hi` on the top row's, so a step's rule (drawn through a
-/// row's middle) is where its value is, for a bar's top and a line's point alike.
+/// row's middle) is where its value is, for a bar's top and a line's point alike. With
+/// edges a rule is a row's foot, so `lo` is the foot row's foot and `hi` the top row's.
 struct Scale {
     lo: f64,
     hi: f64,
     rows: u16,
+    edged: bool,
 }
 
 impl Scale {
     fn eighths(&self, v: f64) -> i64 {
-        (4.0 + (v - self.lo) / (self.hi - self.lo) * (self.rows as f64 - 1.0) * 8.0).round() as i64
+        let foot = if self.edged { 0.0 } else { 4.0 };
+        (foot + (v - self.lo) / (self.hi - self.lo) * (self.rows as f64 - 1.0) * 8.0).round() as i64
     }
 
-    /// The bounds a canvas spans so its rows' middles are `lo` and `hi`.
+    /// The bounds a canvas spans so its rows' middles are `lo` and `hi`, or with edges, so
+    /// `lo` is its foot and `hi` the top row's foot.
     fn bounds(&self) -> [f64; 2] {
+        if self.edged {
+            return [self.lo, self.hi + (self.hi - self.lo) / (self.rows as f64 - 1.0)];
+        }
         let half = (self.hi - self.lo) / ((self.rows as f64 - 1.0) * 2.0);
         [self.lo - half, self.hi + half]
     }
@@ -696,9 +890,193 @@ fn color(shade: Shade, tier: Tier) -> Color {
     }
 }
 
+/// A named colour's place among the sixteen: 0 to 7, and the bright ones 8 to 15.
+fn sixteen(named: Color) -> u8 {
+    match named {
+        Color::Black => 0,
+        Color::Red => 1,
+        Color::Green => 2,
+        Color::Yellow => 3,
+        Color::Blue => 4,
+        Color::Magenta => 5,
+        Color::Cyan => 6,
+        Color::Gray => 7,
+        Color::DarkGray => 8,
+        Color::LightRed => 9,
+        Color::LightGreen => 10,
+        Color::LightYellow => 11,
+        Color::LightBlue => 12,
+        Color::LightMagenta => 13,
+        Color::LightCyan => 14,
+        _ => 15,
+    }
+}
+
+/// How thick a line is, in 256ths of a cell's width (the protocol's unit; the terminal
+/// draws at least a device pixel): the frame and the axis a hairline, a rule half of one,
+/// so it is the faintest line the terminal draws.
+const FRAME: u8 = 16;
+const AXIS: u8 = 16;
+const RULE: u8 = 8;
+
+/// One line's look: its thickness, its colour, and whether it is drawn over the cell's
+/// text or under it. Every line here lies inside its cell, flush with the edge, in the
+/// protocol's solid style.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Stroke {
+    width: u8,
+    color: Color,
+    above: bool,
+}
+
+impl Stroke {
+    /// `WIDTH;COLOR;PLACEMENT;LAYER`: the colour as `rrggbb`, a palette index `pN`, or the
+    /// terminal's foreground `fg` for a colour that is the terminal's own.
+    fn fields(&self) -> String {
+        let color = match self.color {
+            Color::Rgb(r, g, b) => format!("{r:02x}{g:02x}{b:02x}"),
+            Color::Indexed(i) => format!("p{i}"),
+            Color::Reset => "fg".to_owned(),
+            named => format!("p{}", sixteen(named)),
+        };
+        format!("{};{color};0;{}", self.width, u8::from(self.above))
+    }
+}
+
+/// The protocol's segments: a cell's four edges, each its two halves.
+struct Side;
+
+impl Side {
+    const TOP: u16 = 0b11;
+    const RIGHT: u16 = 0b1100;
+    const BOTTOM: u16 = 0b11_0000;
+    const LEFT: u16 = 0b1100_0000;
+}
+
+/// The protocol's joints: a cell's corners, the quadrant of each inside the cell.
+struct Joint;
+
+impl Joint {
+    const TOP_LEFT: u8 = 1;
+    const TOP_RIGHT: u8 = 2;
+    const BOTTOM_RIGHT: u8 = 4;
+    const BOTTOM_LEFT: u8 = 8;
+}
+
+/// A cell's borders: its segments, each group under one stroke, and its rounded joints.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct Border {
+    strokes: Vec<(u16, Stroke)>,
+    round: u8,
+}
+
+impl Border {
+    fn is_empty(&self) -> bool {
+        self.strokes.is_empty() && self.round == 0
+    }
+
+    /// The segments of `mask` given `stroke`, taken from any other stroke they had.
+    fn add(&mut self, mask: u16, stroke: Stroke) {
+        for s in &mut self.strokes {
+            s.0 &= !mask;
+        }
+        self.strokes.retain(|s| s.0 != 0);
+        match self.strokes.iter_mut().find(|s| s.1 == stroke) {
+            Some(s) => s.0 |= mask,
+            None => self.strokes.push((mask, stroke)),
+        }
+    }
+
+    /// The pen that draws these borders, as set on an empty pen: one `pen` a stroke, and
+    /// `pen-round` for the rounded joints.
+    fn pen(&self) -> String {
+        let mut said: String = self.strokes.iter().map(|(mask, s)| dcs(&format!("pen;{mask};{}", s.fields()))).collect();
+        if self.round != 0 {
+            said += &dcs(&format!("pen-round;{}", self.round));
+        }
+        said
+    }
+}
+
+/// One command of the cell border protocol: `DCS 1 + b cell-border;… ST`.
+fn dcs(body: &str) -> String {
+    format!("\x1bP1+bcell-border;{body}\x1b\\")
+}
+
+/// What ratatui's Buffer has no place for: the borders each cell of an area carries.
+#[derive(Clone, Debug)]
+pub struct Borders {
+    area: Rect,
+    cells: Vec<Border>,
+}
+
+impl Borders {
+    pub fn new(area: Rect) -> Borders {
+        Borders { area, cells: vec![Border::default(); area.area() as usize] }
+    }
+
+    fn index(&self, x: u16, y: u16) -> Option<usize> {
+        let a = self.area;
+        (x >= a.left() && x < a.right() && y >= a.top() && y < a.bottom())
+            .then(|| (y - a.y) as usize * a.width as usize + (x - a.x) as usize)
+    }
+
+    /// The borders of the cell at `x`, `y`; none outside the area.
+    fn at(&self, x: u16, y: u16) -> &Border {
+        static NONE: Border = Border { strokes: Vec::new(), round: 0 };
+        self.index(x, y).map_or(&NONE, |i| &self.cells[i])
+    }
+
+    fn add(&mut self, x: u16, y: u16, mask: u16, stroke: Stroke) {
+        if let Some(i) = self.index(x, y) {
+            self.cells[i].add(mask, stroke);
+        }
+    }
+
+    fn round(&mut self, x: u16, y: u16, joints: u8) {
+        if let Some(i) = self.index(x, y) {
+            self.cells[i].round |= joints;
+        }
+    }
+}
+
+/// The borders of a frame held on the screen, set on the cells ratatui wrote: from the top
+/// left, every run of cells along a row that carries the same borders set as one rectangle.
+/// When they differ from the frame `before`, the screen's borders are cleared first, so a
+/// cell that carries none any more is left with none.
+fn rectangles(borders: &Borders, before: Option<&Borders>) -> String {
+    let a = borders.area;
+    let mut said = String::new();
+    if before.is_none_or(|b| b.area != a || b.cells != borders.cells) {
+        said += &format!("\x1b[{};{}H", a.y + 1, a.x + 1);
+        said += &dcs(&format!("clear;4095;{};{}", a.height, a.width));
+        said += &dcs(&format!("square;255;{};{}", a.height, a.width));
+    }
+    for y in a.top()..a.bottom() {
+        let mut x = a.left();
+        while x < a.right() {
+            let b = borders.at(x, y);
+            let run = (x..a.right()).take_while(|&x2| borders.at(x2, y) == b).count() as u16;
+            if !b.is_empty() {
+                said += &format!("\x1b[{};{}H", y + 1, x + 1);
+                for (mask, s) in &b.strokes {
+                    said += &dcs(&format!("set;{mask};{};1;{run}", s.fields()));
+                }
+                if b.round != 0 {
+                    said += &dcs(&format!("round;{};1;{run}", b.round));
+                }
+            }
+            x += run;
+        }
+    }
+    said
+}
+
 /// A buffer printed inline: each row its cells with their colours, the colours reset at
-/// its end.
-fn print(buf: &Buffer, tier: Tier, out: &mut impl Write) -> io::Result<()> {
+/// its end. A cell with borders is printed with the pen that draws them; since SGR 0
+/// clears the pen, the pen is set again after each reset, and cleared before every line
+/// ends, so neither the next line scrolled in nor the shell's prompt takes it.
+fn print(buf: &Buffer, borders: &Borders, tier: Tier, out: &mut impl Write) -> io::Result<()> {
     let sgr = |c: Color, ground: bool| -> Option<String> {
         let base = if ground { 40 } else { 30 };
         match c {
@@ -706,43 +1084,229 @@ fn print(buf: &Buffer, tier: Tier, out: &mut impl Write) -> io::Result<()> {
             Color::Rgb(r, g, b) => Some(format!("{};2;{r};{g};{b}", base + 8)),
             Color::Indexed(i) => Some(format!("{};5;{i}", base + 8)),
             named => {
-                let (n, bright) = match named {
-                    Color::Black => (0, false),
-                    Color::Red => (1, false),
-                    Color::Green => (2, false),
-                    Color::Yellow => (3, false),
-                    Color::Blue => (4, false),
-                    Color::Magenta => (5, false),
-                    Color::Cyan => (6, false),
-                    Color::Gray => (7, false),
-                    Color::DarkGray => (0, true),
-                    Color::LightRed => (1, true),
-                    Color::LightGreen => (2, true),
-                    Color::LightYellow => (3, true),
-                    Color::LightBlue => (4, true),
-                    Color::LightMagenta => (5, true),
-                    Color::LightCyan => (6, true),
-                    _ => (7, true),
-                };
-                Some(format!("{}", if bright { base + 60 + n } else { base + n }))
+                let n = sixteen(named);
+                Some(format!("{}", if n >= 8 { base + 60 + (n - 8) } else { base + n }))
             }
         }
     };
     let colored = io::stdout().is_terminal() || tier.colors != Colors::Sixteen;
     let area = buf.area;
+    let empty = Border::default();
     for y in area.top()..area.bottom() {
         let mut line = String::new();
+        // what the terminal's pen holds
+        let mut pen = &empty;
         for x in area.left()..area.right() {
             let cell = &buf[(x, y)];
+            let wanted = borders.at(x, y);
+            if wanted != pen {
+                if !pen.is_empty() {
+                    line += "\x1b[0m";
+                }
+                line += &wanted.pen();
+                pen = wanted;
+            }
             let codes: Vec<String> = [sgr(cell.fg, false), sgr(cell.bg, true)].into_iter().flatten().collect();
             let bold = cell.modifier.contains(Modifier::BOLD);
             if colored && (!codes.is_empty() || bold) {
                 line += &format!("\x1b[{}{}m{}\x1b[0m", if bold { "1;" } else { "" }, codes.join(";"), cell.symbol());
+                pen = &empty;
             } else {
                 line += cell.symbol();
             }
         }
+        if !pen.is_empty() {
+            line += "\x1b[0m";
+        }
         writeln!(out, "{}", line.trim_end())?;
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const FINE: Tier = Tier { glyphs: Glyphs::Fine, colors: Colors::True, edges: None };
+    const EDGED: Tier = Tier { edges: Some(Edges { round: true }), ..FINE };
+
+    /// Chart `n` of a case in the suite's `tests/charts`.
+    fn summary(case: &str, n: usize) -> Summary {
+        let path = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../tests/charts").join(format!("{case}.cells"));
+        let bytes = fs::read(&path).expect("the case is in the suite");
+        let doc = cells::read_with(bytes, &mut Disk::new(&path), 1).expect("the case reads");
+        doc.summary(&doc.charts()[n - 1])
+    }
+
+    /// A chart drawn as `cells chart` draws it at 80 columns: the card, its cells, its
+    /// borders and the bytes printed.
+    fn drawn(s: &Summary, tier: Tier) -> (Card, Buffer, Borders, String) {
+        let area = Rect::new(0, 0, 80, 21);
+        let mut buf = Buffer::empty(area);
+        let mut borders = Borders::new(area);
+        let card = draw(s, area, &mut buf, &mut borders, tier, Foot { said: vec![Span::raw(" 4 rows ")], keys: None });
+        buf.resize(Rect::new(0, 0, 80, card.height));
+        let mut out = Vec::new();
+        print(&buf, &borders, tier, &mut out).expect("a Vec takes every byte");
+        (card, buf, borders, String::from_utf8(out).expect("the chart is UTF-8"))
+    }
+
+    /// Every command a line holds, `DCS 1 + b cell-border;…` up to its `ST`, and the bytes
+    /// after the last one.
+    fn commands(line: &str) -> (Vec<&str>, &str) {
+        let mut found = Vec::new();
+        let mut rest = line;
+        while let Some(at) = rest.find("\x1bP") {
+            let from = &rest[at + 2..];
+            let end = from.find("\x1b\\").unwrap_or_else(|| panic!("a DCS with no ST: {from:?}"));
+            found.push(&from[..end]);
+            rest = &from[end + 2..];
+        }
+        (found, rest)
+    }
+
+    /// A command as the spec writes it: `1+b`, the namespace, an operation it names, its
+    /// positional fields in range, no more than 256 bytes.
+    fn well_formed(dcs: &str) {
+        let body = dcs.strip_prefix("1+b").unwrap_or_else(|| panic!("not version 1, `+b`: {dcs:?}"));
+        assert!(body.len() <= 256, "a payload over 256 bytes is ignored: {body:?}");
+        let fields: Vec<&str> = body.split(';').collect();
+        assert_eq!(fields[0], "cell-border", "{body:?}");
+        let number = |f: &str, lo: u32, hi: u32| {
+            let n: u32 = f.parse().unwrap_or_else(|_| panic!("{f:?} is no decimal in {body:?}"));
+            assert!((lo..=hi).contains(&n), "{n} is outside {lo}..={hi} in {body:?}");
+        };
+        let stroke = |f: &[&str]| {
+            number(f[0], 1, 4095);
+            number(f[1], 1, 64);
+            let color = f[2];
+            let hex = color.len() == 6 && color.chars().all(|c| c.is_ascii_hexdigit());
+            let palette = color.strip_prefix('p').is_some_and(|n| n.parse::<u32>().is_ok_and(|n| n <= 255));
+            assert!(hex || palette || color == "fg", "{color:?} is no colour in {body:?}");
+            assert!(matches!(f[3], "0" | "1"), "placement {:?} in {body:?}", f[3]);
+            assert!(matches!(f[4], "0" | "1"), "layer {:?} in {body:?}", f[4]);
+        };
+        match fields[1] {
+            "pen" => {
+                assert_eq!(fields.len(), 7, "{body:?}");
+                stroke(&fields[2..]);
+            }
+            "pen-round" => {
+                assert_eq!(fields.len(), 3, "{body:?}");
+                number(fields[2], 1, 255);
+            }
+            "set" => {
+                assert_eq!(fields.len(), 9, "{body:?}");
+                stroke(&fields[2..7]);
+                number(fields[7], 1, 65535);
+                number(fields[8], 1, 65535);
+            }
+            "clear" => {
+                assert_eq!(fields.len(), 5, "{body:?}");
+                number(fields[2], 1, 4095);
+                number(fields[3], 1, 65535);
+                number(fields[4], 1, 65535);
+            }
+            "round" | "square" => {
+                assert_eq!(fields.len(), 5, "{body:?}");
+                number(fields[2], 1, 255);
+                number(fields[3], 1, 65535);
+                number(fields[4], 1, 65535);
+            }
+            op => panic!("{op:?} is no operation of the protocol: {body:?}"),
+        }
+    }
+
+    /// Without edges a chart carries no border and prints no DCS.
+    #[test]
+    fn no_edges_no_commands() {
+        for (case, n) in [("bars-by-month", 1), ("line-area-and-steps", 1), ("heat", 1), ("figure", 1)] {
+            let (_, _, borders, bytes) = drawn(&summary(case, n), FINE);
+            assert!(borders.cells.iter().all(Border::is_empty), "{case} carries borders without edges");
+            assert!(!bytes.contains("\x1bP"), "{case} prints a DCS without edges");
+        }
+    }
+
+    /// With edges every command is well-formed, and every line that sets the pen resets it
+    /// with SGR 0 before it ends, so the newline's scroll and the shell take no borders.
+    #[test]
+    fn the_pen_is_well_formed_and_cleared() {
+        for (case, n) in [("bars-by-month", 1), ("line-area-and-steps", 1), ("layers-by-name", 3), ("heat", 1), ("figure", 1)] {
+            let (_, _, _, bytes) = drawn(&summary(case, n), EDGED);
+            let mut pens = 0;
+            for line in bytes.lines() {
+                let (found, after) = commands(line);
+                for dcs in &found {
+                    well_formed(dcs);
+                    assert!(dcs.starts_with("1+bcell-border;pen"), "{case}: printing sets only the pen: {dcs:?}");
+                }
+                if !found.is_empty() {
+                    assert!(after.contains("\x1b[0m"), "{case}: a line ends with its pen held: {line:?}");
+                }
+                pens += found.len();
+            }
+            assert!(pens > 0, "{case} sets no pen with edges");
+        }
+    }
+
+    /// With edges the frame takes no cell: the plot has the frame's two columns and the
+    /// rows that stood between it and its frame, and nothing is drawn in box drawing.
+    #[test]
+    fn edges_give_the_plot_the_frames_room() {
+        for (case, n) in [("bars-by-month", 1), ("line-area-and-steps", 1)] {
+            let s = summary(case, n);
+            let (boxed, _, _, _) = drawn(&s, FINE);
+            let (edged, buf, borders, _) = drawn(&s, EDGED);
+            let (boxed, edged_plot) = (boxed.plot.expect("a plot"), edged.plot.expect("a plot"));
+            assert_eq!(edged_plot.width, boxed.width + 2, "{case}: the frame's columns are the plot's");
+            assert!(edged_plot.height > boxed.height, "{case}: {} rows edged, {} boxed", edged_plot.height, boxed.height);
+            assert!(edged.height <= 21, "{case}: the card is taller than its area");
+            for cell in buf.content() {
+                assert!(!"─│╭╮╰╯┌┐└┘".contains(cell.symbol()) || cell.symbol().is_empty(), "{case}: a box glyph with edges");
+            }
+            // the axis is the plot's foot, each rule a row's foot across the plot
+            let axis = edged_plot.bottom() - 1;
+            for x in edged_plot.left()..edged_plot.right() {
+                assert!(borders.at(x, axis).strokes.iter().any(|(m, _)| m & Side::BOTTOM == Side::BOTTOM), "{case}: no axis at {x}");
+            }
+            // the frame on the card's outer cells, its corners rounded
+            assert_eq!(borders.at(0, 0).round, Joint::TOP_LEFT);
+            assert_eq!(borders.at(79, edged.height - 1).round, Joint::BOTTOM_RIGHT);
+            assert!(borders.at(40, 0).strokes.iter().any(|(m, _)| *m & Side::TOP == Side::TOP));
+            assert!(borders.at(0, 10).strokes.iter().any(|(m, _)| *m & Side::LEFT == Side::LEFT));
+        }
+        // the numbers for one, at 80 by 21: bars by month, 66 by 13 boxed, 68 by 16 edged
+        let s = summary("bars-by-month", 1);
+        let (boxed, edged) = (drawn(&s, FINE).0.plot.unwrap(), drawn(&s, EDGED).0.plot.unwrap());
+        assert_eq!((boxed.width, boxed.height), (66, 13));
+        assert_eq!((edged.width, edged.height), (68, 16));
+    }
+
+    /// `--watch`'s rectangles are well-formed, clear the screen's borders when they change,
+    /// and only then.
+    #[test]
+    fn rectangles_are_well_formed() {
+        let (_, _, borders, _) = drawn(&summary("bars-by-month", 1), EDGED);
+        let first = rectangles(&borders, None);
+        let (found, _) = commands(&first);
+        found.iter().for_each(|d| well_formed(d));
+        assert!(found[0].starts_with("1+bcell-border;clear;4095;"), "{:?}", found[0]);
+        let again = rectangles(&borders, Some(&borders));
+        assert!(!again.contains("cell-border;clear"), "the same borders clear nothing");
+        assert!(commands(&again).0.iter().all(|d| d.starts_with("1+bcell-border;set;") || d.starts_with("1+bcell-border;round;")));
+    }
+
+    /// The terminal's answers: a border reply before DA1's is support, DA1's alone is none.
+    #[test]
+    fn the_answers_read() {
+        let ghostty = b"\x1bP1+bcell-border;ok;1;pen,rect,half,center,palette,priority,style,round,outside,radius\x1b\\\x1b[?62;22c";
+        assert_eq!(Edges::answered(ghostty), Some(Edges { round: true }));
+        assert_eq!(Edges::answered(b"\x1bP1+bcell-border;ok;1;pen,rect,half,center,palette\x1b\\\x1b[?1;2c"), Some(Edges { round: false }));
+        assert_eq!(Edges::answered(b"\x1b[?62;22c"), None);
+        // a reply after DA1's is not an answer to this query
+        assert_eq!(Edges::answered(b"\x1b[?62;22c\x1bP1+bcell-border;ok;1;pen,rect\x1b\\"), None);
+        assert_eq!(Edges::answered(b"\x1bP1+bcell-border;ok;1;half,center\x1b\\\x1b[?62c"), None);
+        assert!(da1_ends(b"\x1bP1+bcell-border;ok;1;pen\x1b\\\x1b[?62;22c"));
+        assert!(!da1_ends(b"\x1bP1+bcell-border;ok;1;pen\x1b\\\x1b[?62;2"));
+    }
 }

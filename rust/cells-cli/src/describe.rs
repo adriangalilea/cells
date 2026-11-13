@@ -127,8 +127,8 @@ pub const COMMANDS: &[Command] = &[
         says: "Its table as tab-separated text, computed cells their values as the file stores them (`0.00`).",
     },
     Command {
-        usage: "cells chart <file> [n …] [--watch] [--svg] [--glyphs fine|blocks|ascii] [--colors true|256|16]",
-        says: "Its charts listed, or charts n drawn in the terminal (`--watch`: held, drawn again as the file changes; `--svg`: as SVG); chart 0 is the one a file with none is drawn from.",
+        usage: "cells chart <file> [n …] [--watch] [--svg] [--glyphs fine|blocks|ascii] [--colors true|256|16] [--edges on|off]",
+        says: "Its charts listed, or charts n drawn in the terminal (`--watch`: held, drawn again as the file changes; `--svg`: as SVG); chart 0 is the one a file with none is drawn from. A terminal that answers the cell border protocol gets the frame, gridlines and axis as lines on the cells' edges, costing no row or column (`--edges on|off` says so instead of asking).",
     },
     Command {
         usage: "cells sql <file|folder>... <query>",
