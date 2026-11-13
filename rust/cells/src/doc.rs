@@ -4413,6 +4413,18 @@ pub fn compose(like: &Doc, header: &[&str], rows: &[Vec<&str>]) -> String {
 mod tests {
     use super::*;
 
+    /// The last column taken out takes its field out of every row, a blank one included:
+    /// no row keeps the comma that stood before it.
+    #[test]
+    fn the_last_blank_column_removed() {
+        let src = "price:num,  total:num?=price * 2,   column 1\n36.9,       73.8=,\n37.0,       74.0=,\n";
+        let doc = crate::read(src.as_bytes().to_vec()).unwrap();
+        assert!(doc.problems().is_empty(), "{:?}", doc.problems().iter().map(|p| doc.describe(p)).collect::<Vec<_>>());
+        let after = doc.reshaped(&[ColumnAt::Kept(0), ColumnAt::Kept(1)], 1).unwrap();
+        let problems: Vec<String> = after.problems().iter().map(|p| after.describe(p)).collect();
+        assert!(problems.is_empty(), "{problems:?} in {:?}", after.write());
+    }
+
     #[test]
     fn offers() {
         let accounts = "account:text!\nbank\nrent\nfood\n";
