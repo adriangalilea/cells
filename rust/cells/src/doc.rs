@@ -413,6 +413,9 @@ pub struct Chart {
     pub entries: Vec<crate::chart::Entry>,
     /// Its `title`, else what its entries say (`SUM(amount) by DATE_TRUNC('month', date)`).
     pub title: String,
+    /// The table charted, by its place among the prelude's tables (`from`); none: the
+    /// file's own. Every formula below is resolved against its columns.
+    from: Option<usize>,
     /// What runs along the axis, a formula per row; none: each row by its line.
     x: Option<Ir>,
     x_kind: K,
@@ -2910,7 +2913,6 @@ impl Doc {
     /// broken at its line; a chart missing what its kind draws is left out.
     fn resolve_charts(&mut self, broken: &mut Vec<Error>) {
         use crate::chart::{self, Kind, Stack};
-        let scope = DocScope { columns: &self.columns, tables: &self.tables };
         let taken = |n: &str| self.named.iter().any(|t| t.name == n) || self.tables.iter().any(|t| t.name == n);
         let mut charts: Vec<Chart> = Vec::new();
         // what does not read, by prelude line
@@ -2937,6 +2939,31 @@ impl Doc {
             let (entries, bad) = chart::entries(&self.source[body.start..body.end], body.line + 1);
             said.extend(bad);
             let entry = |key: &str| entries.iter().find(|e| e.key == key);
+            // the table charted, named as a formula names it: one the prelude names, or
+            // `TABLE`, the file's own as no `from` is; its rows are read as its own formulas
+            // read them
+            let from = match entry("from") {
+                None => None,
+                Some(e) if e.value == "TABLE" => None,
+                Some(e) => match self.tables.iter().position(|t| t.name == e.value) {
+                    Some(t) if self.tables[t].doc.is_some() => Some(t),
+                    Some(_) => {
+                        said.push((e.line, format!("from: {} is not reached, so it has no rows to chart", e.value)));
+                        continue;
+                    }
+                    None => {
+                        let names: Vec<&str> = self.tables.iter().map(|t| t.name.as_str()).collect();
+                        let held = if names.is_empty() { "none".to_owned() } else { names.join(", ") };
+                        said.push((e.line, format!("from: no table is named {} (the prelude's tables: {held})", e.value)));
+                        continue;
+                    }
+                },
+            };
+            let charted: &Doc = match from {
+                Some(t) => self.tables[t].doc.as_deref().expect("a table charted is reached"),
+                None => self,
+            };
+            let scope = DocScope { columns: &charted.columns, tables: &charted.tables };
             let mut slots = 0;
             let x = chart_formula(&scope, entry("x"), &mut slots, &mut said);
             let y = chart_measure(&scope, entry("y"), &mut slots, &mut said);
@@ -2979,9 +3006,6 @@ impl Doc {
                     }
                 }
             }
-            if let Some(e) = entry("from") {
-                fail(e.line, format!("from: a chart of another table is not read yet: chart {} here", e.value));
-            }
             let has = |k: &str| entry(k).is_some();
             // the kind as written, else as the entries say (SPEC.md, Charts): never the data
             let kind = written.unwrap_or(if has("layers") {
@@ -2997,6 +3021,12 @@ impl Doc {
                     _ => Kind::Bars,
                 }
             });
+            if has("layers") {
+                // each layer draws its own table, so a chart of layers names none
+                for e in entries.iter().filter(|e| !matches!(e.key.as_str(), "title" | "layers")) {
+                    fail(e.line, format!("a chart of layers takes title and layers alone, not {}", e.key));
+                }
+            }
             if layers.is_empty() {
                 for e in &entries {
                     if !matches!(e.key.as_str(), "title" | "from" | "layers") && !kind.takes().contains(&e.key.as_str()) {
@@ -3034,6 +3064,7 @@ impl Doc {
                 kind,
                 entries,
                 title,
+                from,
                 x: x_ir,
                 x_kind,
                 x_column,
@@ -3118,6 +3149,7 @@ impl Doc {
             kind: Kind::Bars,
             entries,
             title,
+            from: None,
             x: axis.map(Ir::Col),
             x_kind,
             x_column: axis,
@@ -3137,9 +3169,10 @@ impl Doc {
     /// `where` holds for, grouped by `x` (and `color`), each group's measure; the places in
     /// their order (dates and numbers ascending, a choice's words as its type lists them,
     /// other text as the file first holds it), `top` keeping the largest and folding the
-    /// rest into `other`; the series in their lasting order, each its tint.
+    /// rest into `other`; the series in their lasting order, each its tint. A chart `from`
+    /// another table reads that table's rows; a chart of layers each layer's own.
     pub fn summary(&self, chart: &Chart) -> crate::chart::Summary {
-        use crate::chart::{Kind, Shade, Summary, shades};
+        use crate::chart::Summary;
         let rows = self.rows();
         // a chart of layers: each its own, drawn on one plot
         if !chart.layers.is_empty() {
@@ -3161,6 +3194,17 @@ impl Doc {
                 layers: chart.layers.iter().map(|&i| self.summary(&self.charts[i])).collect(),
             };
         }
+        match chart.from {
+            Some(t) => self.tables[t].doc.as_deref().expect("a table charted is reached").measured(chart),
+            None => self.measured(chart),
+        }
+    }
+
+    /// What `chart` draws from this doc's rows: the doc its formulas were resolved against,
+    /// the file's own or the table it charts.
+    fn measured(&self, chart: &Chart) -> crate::chart::Summary {
+        use crate::chart::{Kind, Shade, Summary, shades};
+        let rows = self.rows();
         let cells = BTreeMap::new();
         // Every computed cell is decoded already: the evaluation reads values, computing none.
         let mut memo: Vec<Vec<Slot>> = self.columns.iter().map(|_| Vec::new()).collect();
@@ -4407,6 +4451,97 @@ mod tests {
         assert_eq!(inferred.title, "amount by date");
         let none = read("note:text\nhello\n").unwrap();
         assert!(none.inferred_chart().is_none());
+    }
+
+    #[test]
+    fn chart_of_another_table() {
+        use crate::chart::Kind;
+        let src = concat!(
+            "---\n",
+            "type Side = buy#green|sell\n",
+            "rates = ```cells\n",
+            "day:date,rate:num,side:Side\n",
+            "2026-01-01,1.10,buy\n",
+            "2026-01-02,1.20,sell\n",
+            "2026-01-02,1.30,buy\n",
+            "```\n",
+            "fx = run every day at 18:00 in Europe/Madrid\n",
+            "```ts\n",
+            "export default async () => []\n",
+            "```\n",
+            "```cells\n",
+            "at:date,eur:num\n",
+            "2026-01-01,2\n",
+            "```\n",
+            "```chart\n",
+            "from:  rates\n",
+            "x:     day\n",
+            "y:     LAST_VALUE(rate)\n",
+            "color: side\n",
+            "```\n",
+            "```chart\n",
+            "from: fx\n",
+            "x:    at\n",
+            "y:    SUM(eur * 2)\n",
+            "```\n",
+            "```chart\n",
+            "from: TABLE\n",
+            "x:    item\n",
+            "y:    SUM(cost)\n",
+            "```\n",
+            "```chart\n",
+            "from: rats\n",
+            "x:    day\n",
+            "y:    SUM(rate)\n",
+            "```\n",
+            "```chart\n",
+            "from: rates\n",
+            "x:    item\n",
+            "y:    SUM(rate)\n",
+            "```\n",
+            "mine = ```chart\n",
+            "x: item\n",
+            "y: SUM(cost)\n",
+            "```\n",
+            "```chart\n",
+            "from:   rates\n",
+            "layers: mine\n",
+            "```\n",
+            "---\n",
+            "item:text,cost:EUR\n",
+            "fuel,10\n",
+            "maps,4\n",
+        );
+        let doc = read(src).unwrap();
+        let at = |needle: &str| doc.broken().iter().find(|e| e.to_string().contains(needle)).map(|e| e.at.to_string());
+        // a name that is no table, at its line, and the chart left out
+        assert_eq!(at("no table is named rats").as_deref(), Some("prelude line 33"));
+        // the charted table's columns alone: the file's own `item` is not among them
+        assert_eq!(at("x: no column").as_deref(), Some("prelude line 39"));
+        // a chart of layers draws each layer's own table
+        assert_eq!(at("takes title and layers alone, not from").as_deref(), Some("prelude line 47"));
+        assert_eq!(doc.charts().len(), 5);
+
+        // an inline table's rows, its columns read by name, its choice's tints
+        let rates = doc.summary(&doc.charts()[0]);
+        assert_eq!(rates.kind, Kind::Steps);
+        assert_eq!(rates.rows, 3);
+        assert_eq!(rates.places, ["2026-01-01", "2026-01-02"]);
+        let names: Vec<&str> = rates.series.iter().map(|(n, _)| n.as_str()).collect();
+        assert_eq!(names, ["buy", "sell"]);
+        assert_eq!(rates.series[0].1, crate::chart::Shade::Tint(Tint::Named(3)));
+        assert_eq!(rates.values, [[Some("1.1".to_owned()), None], [Some("1.3".to_owned()), Some("1.2".to_owned())]]);
+        assert_eq!(rates.unit, None);
+
+        // a script's table, as its last run filled it
+        let fx = doc.summary(&doc.charts()[1]);
+        assert_eq!((fx.rows, fx.places.as_slice()), (1, ["2026-01-01".to_owned()].as_slice()));
+        assert_eq!(fx.values, [[Some("4".to_owned())]]);
+
+        // `TABLE` is the file's own, as no `from` is
+        let own = doc.summary(&doc.charts()[2]);
+        assert_eq!((own.rows, own.unit.as_deref()), (2, Some("EUR")));
+        assert_eq!(own.values, [[Some("10".to_owned())], [Some("4".to_owned())]]);
     }
 
     #[test]

@@ -368,7 +368,7 @@ date:date,amount:EUR,kind:Kind,account:text,budget:EUR?,balance:EUR=SUM(amount) 
 | `where` | a condition | the rows charted: those it holds for |
 | `top` | a whole number | how many places (or series) are drawn, the largest; the rest one place, `other` |
 | `title` | text, as written | what the chart is called where it is shown |
-| `from` | a table's name | the table charted, inline, a script's or imported; the file's own when none |
+| `from` | a table's name, or `TABLE` | the table charted, inline, a script's or imported; the file's own when none, or `TABLE` |
 | `layers` | names of charts, `,` between | the charts drawn on one plot, sharing its axes, in the order named |
 
 **The kinds**, each taking the entries it draws:
@@ -381,7 +381,9 @@ date:date,amount:EUR,kind:Kind,account:text,budget:EUR?,balance:EUR=SUM(amount) 
 | `heat` | `x` `y` `value` `where` | a cell a pair of `x` and `y`, `value` (an aggregate) its depth of one tint |
 | `figure` | `value` `compare` `where` | one number, `value`, and its change from the place before along `compare` (a formula per row), with that run drawn under it |
 
-Every kind also takes `title` and `from`; a chart of `layers` takes those three alone.
+Every kind also takes `title` and `from`; a chart of `layers` takes `title` and `layers` alone, each layer drawn from its own table.
+
+**A chart of another table**, `from: rates`, names it as a formula does ([The language](#the-language)): a table the prelude names above or below the chart, inline, a script's or imported, or `TABLE`, the file's own, as no `from` is. Its entries are read over that table's rows as the table's own formulas are: its columns by name, `TABLE` the table charted, and the tables the prelude names above it; the file's own columns are not among them, and a choice's tints and a column's currency are the charted table's. A name that is no table, and an import not reached, are errors naming the line, and the chart is left out.
 
 **No kind written**, the chart is drawn as its entries and the types say, never the data: `value` alone is a `figure`; `x`, `y` and `value` a `heat`; a `y` that aggregates nothing `points`; a `y` of `LAST_VALUE` or `FIRST_VALUE` `steps`; any other `y` over a date `bars`, over text or a choice `bars` across. **No chart in the file**, a reader draws one from the columns by the same rule: the first date (else choice) as `x`, the first currency (else number) column summed as `y`, `color` a choice of six words or fewer; nothing to draw when the file has no date, choice or number. A chart a person keeps is written as a fence; until then it is the reader's view, never the file's.
 
@@ -398,7 +400,7 @@ Colours are the looks', never a chart's ([How a value looks](#how-a-value-looks)
 
 What the next reader would be wrong without is the file's; where this reader looks is the reader's: a kept chart, a look, a column's type travel; the view open (table, chart, both), the charts shown, a sort, a filter, a selection, a hover, a zoom, a column's width and a pane's place do not. A reader that changes a kept chart's entries writes them, one edit each.
 
-Considered: one line, `chart spending: amount by month, split by kind`, whose commas part both the chart's words and a formula's arguments and whose words meet the names a file gives; YAML or TOML in the fence, which coerce a value's kind (`no` a boolean) or quote every formula; SQL in a chart, which says again what the types say (`DATE_TRUNC` to bucket a date the column already calls a date) in a second language beside the entries; the kind as an entry, `mark: heat`, where a heatmap is a kind of chart and a mark only what it is drawn with; every chart named, where a name earns its place only when something reads it.
+Considered: one line, `chart spending: amount by month, split by kind`, whose commas part both the chart's words and a formula's arguments and whose words meet the names a file gives; YAML or TOML in the fence, which coerce a value's kind (`no` a boolean) or quote every formula; SQL in a chart, which says again what the types say (`DATE_TRUNC` to bucket a date the column already calls a date) in a second language beside the entries; the kind as an entry, `mark: heat`, where a heatmap is a kind of chart and a mark only what it is drawn with; every chart named, where a name earns its place only when something reads it; a chart of another table reading the file's own columns beside the table's, one name in two tables at once, which no formula does (a chart that joins them charts a column of one that reads the other, `rates[currency].rate`); `from` on a chart of layers as every layer's table, where each layer says its own.
 
 ## Formulas
 
