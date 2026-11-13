@@ -15,7 +15,7 @@ import accounts from "../accounts.cells"   // shared
 import { Kind } from "./kinds.cells" with { rev: "a1b2c3d" }
 export type Category = travel|stay|'it''s fine'
 fees = \`\`\`cells
-kind:text!,pct:pct
+kind: text!,pct: pct
 card,1.4
 \`\`\`
 rates = run every day at 18:00 in Europe/Madrid
@@ -30,7 +30,7 @@ look total: negative red, gray when score < 1, scale red..green
 look on: as 'D [de] MMM'
 look row: gray when paid
 ---
-item:text!,category:Category,cost:EUR>=0,paid:yes/no,on:date(DD/MM/YYYY),note:text?,score:0..10,to:accounts.account,x:one of a b key,y:bool si no optional,z:num between 0 and 100,w:num min 1,total:EUR=ABS(cost) * (score - 1),fee:EUR(6),running:EUR=running[-1] + total,cum:EUR=SUM(total[FIRST:THIS]),low:num=round(cost),memo:text,"vat:EUR=ROUND(cost, 2)","my ""best"" item"
+item: text!,category: Category,cost: EUR>=0,paid: yes/no,on: date(DD/MM/YYYY),note: text?,score: 0..10,to: accounts.account,x: one of a b key,y: bool si no optional,z: num between 0 and 100,w: num min 1,total: EUR = ABS(cost) * (score - 1),fee: EUR(6),running: EUR = running[-1] + total,cum: EUR = SUM(total[FIRST:THIS]),low: num = round(cost),memo: text,"vat: EUR = ROUND(cost, 2)","my ""best"" item"
 fuel,travel,32.25=96.75 / 3,yes,14/08/2026,"a ""b""",7,assets:bank,a,si,2026-08-14T10:00:00Z,https://example.com,84.20=,0.001200,84.20=,=SUM(TABLE.total),84=,'=> see invoice
 maps,stay,   "2.10=ROUND(6.30 / 3, 2)"
 a,"two
@@ -178,7 +178,9 @@ const EXPECT: [string, string][] = [
   // a quoted header cell reads as a bare one inside its quotes: its name, type, formula
   ['"', "punctuation.definition.string.begin.cells"],
   ["vat", "meta.column.1.cells"],
+  [":", "punctuation.separator.type.cells"],
   ["EUR", "support.type.currency.cells"],
+  ["=", "keyword.operator.assignment.cells"],
   ["ROUND", "support.function.formula.cells"],
   ["cost", "variable.other.property.cells"],
   ["2", "constant.numeric.cells"],
@@ -224,9 +226,84 @@ const EXPECT: [string, string][] = [
   ['"', "punctuation.definition.string.end.cells"],
 ]
 
+// One table in the three spellings a reader takes as the same: the standard form a
+// writer writes (`name: type = formula`), the same with its columns aligned as `cells
+// fmt` pads them, and tight. Each header cell's name, `:`, type, `=` and formula carry
+// the same scopes in all three, the padding none of them.
+const FORMS: [string, string][] = [
+  [
+    "spaced",
+    `item: text!,cost: EUR>=0,total: EUR = cost * 2,"vat: EUR = ROUND(cost, 2)",plain
+fuel,32.25,=,=,x
+`,
+  ],
+  [
+    "aligned",
+    `item: text!,    cost: EUR>=0,   total: EUR = cost * 2,  "vat: EUR = ROUND(cost, 2)",    plain
+fuel,           32.25,          =,                      =,                              x
+`,
+  ],
+  [
+    "tight",
+    `item:text!,cost:EUR>=0,total:EUR=cost * 2,"vat:EUR=ROUND(cost, 2)",plain
+fuel,32.25,=,=,x
+`,
+  ],
+]
+
+const FORM_EXPECT: [string, string][] = [
+  ["item", "meta.column.1.cells"],
+  [":", "punctuation.separator.type.cells"],
+  ["text", "support.type.primitive.cells"],
+  ["!", "storage.modifier.key.cells"],
+  ["cost", "meta.column.2.cells"],
+  [":", "punctuation.separator.type.cells"],
+  ["EUR", "support.type.currency.cells"],
+  [">=", "keyword.operator.comparison.cells"],
+  ["0", "constant.numeric.cells"],
+  ["total", "meta.column.3.cells"],
+  [":", "punctuation.separator.type.cells"],
+  ["EUR", "support.type.currency.cells"],
+  ["=", "keyword.operator.assignment.cells"],
+  ["cost", "variable.other.property.cells"],
+  ["*", "keyword.operator.arithmetic.cells"],
+  ["2", "constant.numeric.cells"],
+  ['"', "punctuation.definition.string.begin.cells"],
+  ["vat", "meta.column.4.cells"],
+  [":", "punctuation.separator.type.cells"],
+  ["EUR", "support.type.currency.cells"],
+  ["=", "keyword.operator.assignment.cells"],
+  ["ROUND", "support.function.formula.cells"],
+  ['"', "punctuation.definition.string.end.cells"],
+  ["plain", "meta.column.5.cells"],
+  ["fuel", "meta.column.1.cells"],
+]
+
 // Fragments as prose quotes them in inline code, each read alone by cells-inline: the
 // shape decides where it enters the grammar.
 const INLINE: [string, [string, string][]][] = [
+  [
+    "cost: EUR>=0",
+    [
+      ["cost", "meta.column.1.cells"],
+      [":", "punctuation.separator.type.cells"],
+      ["EUR", "support.type.currency.cells"],
+      [">=", "keyword.operator.comparison.cells"],
+    ],
+  ],
+  [
+    "total: EUR = cost * qty",
+    [
+      ["total", "meta.column.1.cells"],
+      [":", "punctuation.separator.type.cells"],
+      ["EUR", "support.type.currency.cells"],
+      ["=", "keyword.operator.assignment.cells"],
+      ["cost", "variable.other.property.cells"],
+      ["*", "keyword.operator.arithmetic.cells"],
+      ["qty", "variable.other.property.cells"],
+    ],
+  ],
+  // the tight spelling a reader takes as the same
   [
     "cost:EUR>=0",
     [
@@ -292,12 +369,13 @@ function check(label: string, code: string, expect = EXPECT, lang = "cells"): nu
       failures++
     } else at = found + 1
   }
-  if (failures || expect === EXPECT) console.log(`${label}: ${expect.length - failures}/${expect.length}`)
+  if (failures || lang === "cells") console.log(`${label}: ${expect.length - failures}/${expect.length}`)
   return failures
 }
 
 // The same file with CRLF line endings must scope the same.
 let failures = check("lf", FIXTURE) + check("crlf", FIXTURE.replaceAll("\n", "\r\n"))
+failures += FORMS.reduce((n, [label, code]) => n + check(label, code, FORM_EXPECT), 0)
 const inlineFailures = INLINE.reduce((n, [code, expect]) => n + check(`inline ${code}`, code, expect, "cells-inline"), 0)
 console.log(`inline: ${INLINE.length} fragments${inlineFailures ? `, ${inlineFailures} wrong` : ""}`)
 failures += inlineFailures

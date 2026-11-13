@@ -263,9 +263,11 @@ const type = [
 // A quoted cell closes on this line, its last quote ending the cell; one
 // that does not is the multi-line string rule's, below.
 const CLOSED = raw`"(?:[^"]|"")*"[ \t]*(?=,|$)`
-// A header cell quoted (its formula holds a `,` or a `"`) is read as a bare one inside
-// its quotes: its name up to the first `:`, then its type and formula.
-const headerCell = raw`(?:[ \t]*(")((?:[^":\r\n]|"")*)(?:(:)((?:[^"\r\n]|"")*))?(")[ \t]*(?=,|$)|([^:,\r\n"][^:,\r\n]*)?(?:(:)([^,\r\n]*))?)`
+// A header cell is its name up to the first `:`, then its type and formula, written
+// `name: type = formula`; the spaces around them, and the padding `cells fmt` aligns
+// columns with, are no part of the name. A header cell quoted (its formula holds a `,`
+// or a `"`) is read as a bare one inside its quotes.
+const headerCell = raw`(?:[ \t]*(")((?:[^":\r\n]|"")*)(?:(:)((?:[^"\r\n]|"")*))?(")[ \t]*(?=,|$)|[ \t]*([^:,\r\n" \t](?:[^:,\r\n]*[^:,\r\n \t])?)?[ \t]*(?:(:)([^,\r\n]*))?)`
 // A field's padding, spaces and tabs at its ends, is no part of it: a quoted field may
 // stand inside some.
 const rowCell = raw`([ \t]*${CLOSED}|(?![ \t]*")[^,\r\n]*)`
@@ -629,7 +631,7 @@ const grammar = {
 
 // A FRAGMENT of Cells, as prose quotes one in inline code: no file around it, so no
 // header line to start from. It is read by its shape, the main grammar's own rules
-// entered where the fragment begins: a header cell (`total:EUR=cost * qty`, a name before
+// entered where the fragment begins: a header cell (`total: EUR = cost * qty`, a name before
 // a `:` with no `=` or `[` ahead of it), a formula (`=SUM(total[FIRST:THIS])`), a value
 // and its formula (`32.25=96.75 / 3`), an expression (`TABLE['k7m2q9xa'].cost`, anything
 // with a bracket, a quote, a name's dot or an operator), else a value as written (a
