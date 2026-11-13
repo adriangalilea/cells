@@ -366,7 +366,7 @@ date:date,amount:EUR,kind:Kind,account:text,budget:EUR?,balance:EUR=SUM(amount) 
 | `color` | a formula per row | the series: one per value, in its colours ([What a chart is drawn in](#what-a-chart-is-drawn-in)) |
 | `stack` | `stacked` · `grouped` · `percent` | how the series share a place: on each other, side by side, as shares of it |
 | `where` | a condition | the rows charted: those it holds for |
-| `top` | a whole number | how many places (or series) are drawn, the largest; the rest one place, `other` |
+| `top` | a whole number | how many places are drawn, the largest; the rest one place, `other` |
 | `title` | text, as written | what the chart is called where it is shown; none, what it measures by what runs along its axis, as written: `SUM(amount) by DATE_TRUNC('month', date)` |
 | `from` | a table's name, or `TABLE` | the table charted, inline, a script's or imported; the file's own when none, or `TABLE` |
 | `layers` | names of charts, `,` between | the charts drawn on one plot, sharing its axes, in the order named |
@@ -392,15 +392,16 @@ Every kind also takes `title` and `from`; a chart of `layers` takes `title` and 
 Colours are the looks', never a chart's ([How a value looks](#how-a-value-looks)):
 
 - **A series of a word with a tint** is drawn in it: `income#green` is green wherever it is drawn.
-- **A series of a word with none** takes the next tint no word of its kind wears, in the order `blue` `orange` `teal` `purple` `pink` `yellow` `brown` `green` `red` `gray`, the words taken in a lasting order: a choice's as its type lists them, any other value's as the file first holds it. A series keeps its colour whatever the axis, the filter or the other series; none takes its colour from its size.
-- **One series** is drawn in its measured column's colour; `other` and a blank value gray.
+- **A series of a word with none** takes the next tint no word of its kind wears, in the order `blue` `orange` `teal` `purple` `pink` `yellow` `brown` `green` `red`, the words taken in a lasting order: a choice's as its type lists them, any other value's as the file first holds it. Gray is not among them: it is `other`'s and the blank's. A series keeps its colour whatever the axis, the filter or the other series; none takes its colour from its size.
+- **More words with none than tints free** (the nine, less those its words wear): the tints go round the words drawn, in the same order, and when those are still more, the smallest by their total over the chart fold into one series, `other`, where the measure is a sum or a count (any other measure leaves them out), so no two series share a colour. A word with a tint of its own is always drawn in it.
+- **One series** is drawn in its measured column's colour; `other` and a blank value gray. A `heat`'s rows are one tint, the first.
 - **A look's condition** (`negative red`, `red when …`) tints the marks it holds for, unless the chart has series, whose words' colours hold.
 
 #### What travels in the file
 
 What the next reader would be wrong without is the file's; where this reader looks is the reader's: a kept chart, a look, a column's type travel; the view open (table, chart, both), the charts shown, a sort, a filter, a selection, a hover, a zoom, a column's width and a pane's place do not. A reader that changes a kept chart's entries writes them, one edit each.
 
-Considered: one line, `chart spending: amount by month, split by kind`, whose commas part both the chart's words and a formula's arguments and whose words meet the names a file gives; YAML or TOML in the fence, which coerce a value's kind (`no` a boolean) or quote every formula; SQL in a chart, which says again what the types say (`DATE_TRUNC` to bucket a date the column already calls a date) in a second language beside the entries; the kind as an entry, `mark: heat`, where a heatmap is a kind of chart and a mark only what it is drawn with; every chart named, where a name earns its place only when something reads it; a chart of another table reading the file's own columns beside the table's, one name in two tables at once, which no formula does (a chart that joins them charts a column of one that reads the other, `rates[currency].rate`); `from` on a chart of layers as every layer's table, where each layer says its own.
+Considered: one line, `chart spending: amount by month, split by kind`, whose commas part both the chart's words and a formula's arguments and whose words meet the names a file gives; YAML or TOML in the fence, which coerce a value's kind (`no` a boolean) or quote every formula; SQL in a chart, which says again what the types say (`DATE_TRUNC` to bucket a date the column already calls a date) in a second language beside the entries; the kind as an entry, `mark: heat`, where a heatmap is a kind of chart and a mark only what it is drawn with; every chart named, where a name earns its place only when something reads it; a chart of another table reading the file's own columns beside the table's, one name in two tables at once, which no formula does (a chart that joins them charts a column of one that reads the other, `rates[currency].rate`); `from` on a chart of layers as every layer's table, where each layer says its own; `top` counting the series too, one number for two folds a person sets apart (ten places of three series, three places of ten), when the series' count is the tints', a fact the file holds; the words past the tints sharing a last one, two series a reader cannot tell apart.
 
 ## Formulas
 

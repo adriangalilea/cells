@@ -163,20 +163,28 @@ pub enum Shade {
 }
 
 /// The tints a series takes when its word has none, in turn, past those its siblings' words
-/// wear (SPEC.md, What a chart is drawn in).
-pub const UNWORN: [&str; 10] = ["blue", "orange", "teal", "purple", "pink", "yellow", "brown", "green", "red", "gray"];
+/// wear (SPEC.md, What a chart is drawn in). Gray is not among them: it is the quiet's,
+/// `other`'s and the blank's.
+pub const UNWORN: [&str; 9] = ["blue", "orange", "teal", "purple", "pink", "yellow", "brown", "green", "red"];
 
-/// Each word its tint: its own where it has one, else the next of `UNWORN` none of the
-/// words wears, the words in their lasting order.
-pub fn shades(words: &[String], own: impl Fn(&str) -> Option<Tint>) -> Vec<Shade> {
-    let worn: Vec<Option<Tint>> = words.iter().map(|w| own(w)).collect();
-    let free: Vec<Tint> = UNWORN
+/// The tints of `UNWORN` none of `words` wears, in turn: as many words without a tint of
+/// their own can be told apart.
+pub fn free(words: &[String], own: impl Fn(&str) -> Option<Tint>) -> Vec<Tint> {
+    let worn: Vec<Tint> = words.iter().filter_map(|w| own(w)).collect();
+    UNWORN
         .iter()
         .map(|n| Tint::Named(TINTS.iter().position(|t| t == n).expect("an unworn tint is one of the ten") as u8))
-        .filter(|t| !worn.contains(&Some(*t)))
-        .collect();
-    let mut free = free.into_iter();
-    worn.into_iter().map(|t| Shade::Tint(t.or_else(|| free.next()).unwrap_or(Tint::Named(9)))).collect()
+        .filter(|t| !worn.contains(t))
+        .collect()
+}
+
+/// Each word its tint: its own where it has one, else the next of `free`, the words in
+/// their lasting order. The words without a tint are no more than the tints free.
+pub fn shades(words: &[String], own: impl Fn(&str) -> Option<Tint>, free: &[Tint]) -> Vec<Shade> {
+    let bare = words.iter().filter(|w| own(w).is_none()).count();
+    assert!(bare <= free.len(), "{bare} words without a tint and {} tints free to tell them apart", free.len());
+    let mut free = free.iter();
+    words.iter().map(|w| Shade::Tint(own(w).unwrap_or_else(|| *free.next().expect("counted above")))).collect()
 }
 
 impl Summary {
@@ -506,7 +514,10 @@ mod tests {
     fn unworn_tints_skip_the_worn() {
         let words: Vec<String> = ["income", "cost", "transfer", "other"].iter().map(|w| (*w).to_owned()).collect();
         // income wears blue: the next free is orange
-        let s = shades(&words, |w| (w == "income").then_some(Tint::Named(5)));
+        let own = |w: &str| (w == "income").then_some(Tint::Named(5));
+        let free = free(&words, own);
+        assert_eq!(free.len(), 8);
+        let s = shades(&words, own, &free);
         assert_eq!(s, [Shade::Tint(Tint::Named(5)), Shade::Tint(Tint::Named(1)), Shade::Tint(Tint::Named(4)), Shade::Tint(Tint::Named(6))]);
     }
 }

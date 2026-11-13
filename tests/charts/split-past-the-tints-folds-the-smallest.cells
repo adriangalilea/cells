@@ -1,0 +1,21 @@
+---
+```chart bars
+x:     month
+y:     SUM(amount)
+color: shop
+```
+---
+month:text,shop:text,amount:EUR
+jan,market,110.00
+jan,bakery,100.00
+jan,garage,90.00
+jan,kiosk,80.00
+jan,pharmacy,70.00
+jan,florist,60.00
+jan,butcher,50.00
+jan,cafe,40.00
+jan,tailor,30.00
+jan,cobbler,20.00
+jan,barber,10.00
+feb,cobbler,25.00
+feb,barber,5.00

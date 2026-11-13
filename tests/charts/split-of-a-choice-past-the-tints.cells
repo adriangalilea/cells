@@ -1,0 +1,18 @@
+---
+```chart bars
+x:     DATE_TRUNC('month', date)
+y:     SUM(amount)
+color: kind
+```
+---
+date:date,kind:rent#green|food|fuel|gym|books|games|music|films|toys|tools|seeds,amount:EUR
+2026-01-01,rent,500.00
+2026-01-02,tools,10.00
+2026-01-03,food,90.00
+2026-01-04,fuel,80.00
+2026-01-05,gym,70.00
+2026-01-06,books,60.00
+2026-01-07,games,50.00
+2026-01-08,music,40.00
+2026-01-09,films,30.00
+2026-01-10,toys,20.00

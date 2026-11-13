@@ -3349,28 +3349,75 @@ impl Doc {
                 names.push("other".to_owned());
             }
         }
-        // each series its tint: a choice's word's own, else the next free, in the words'
-        // lasting order; one series its measured column's colour
+        // each series its tint: its word's own, else the next free, in the words' lasting
+        // order (a choice's as its type lists them, other words as the file first holds
+        // them); one series its measured column's colour; a heat's rows one tint
+        let typed = match &chart.color {
+            Some((_, Some(c))) => Some(&self.columns[*c].ty),
+            _ => None,
+        };
+        let own = |w: &str| typed.and_then(|ty| ty.tint(w));
+        let lasting: Vec<String> = match typed.map(|ty| &ty.base) {
+            Some(Base::Choice(words)) => words.clone(),
+            _ => series.iter().filter(|n| *n != "none").cloned().collect(),
+        };
+        let free = crate::chart::free(&lasting, own);
+        let bare = |w: &String| own(w).is_none() && lasting.contains(w);
+        // More words without a tint than tints free: the tints go round the words drawn,
+        // and past their count the smallest by their total fold into one series, `other`,
+        // where a sum folds (else they are left out), so no two series share a colour.
+        let mut tinted = lasting.clone();
+        if chart.color.is_some() && lasting.iter().filter(|w| bare(w)).count() > free.len() {
+            let drawn: Vec<usize> = (0..series.len()).filter(|&s| bare(&series[s])).collect();
+            if drawn.len() > free.len() {
+                let total = |s: usize| {
+                    values
+                        .iter()
+                        .filter_map(|row| row[s].as_ref())
+                        .fold(Exact::from_int(0), |t, v| if let V::Num(n) = v { t.add(n) } else { t })
+                };
+                let at = |s: usize| lasting.iter().position(|w| *w == series[s]).expect("a word drawn bare is a lasting one");
+                let mut ranked = drawn.clone();
+                ranked.sort_by(|&a, &b| {
+                    expr::order(&V::Num(total(b)), &V::Num(total(a))).unwrap_or(core::cmp::Ordering::Equal).then(at(a).cmp(&at(b)))
+                });
+                let fold: Vec<usize> = ranked[free.len()..].to_vec();
+                let keep: Vec<usize> = (0..series.len()).filter(|s| !fold.contains(s)).collect();
+                let folds = matches!(measure, Some(Measure::Agg(expr::Agg::Sum | expr::Agg::Count, ..)));
+                values = values
+                    .into_iter()
+                    .map(|row| {
+                        let other = fold.iter().filter_map(|&s| match &row[s] {
+                            Some(V::Num(n)) => Some(n.clone()),
+                            _ => None,
+                        });
+                        let other = other.reduce(|a, b| a.add(&b)).map(V::Num);
+                        let kept = keep.iter().map(|&s| row[s].clone());
+                        if folds { kept.chain(core::iter::once(other)).collect() } else { kept.collect() }
+                    })
+                    .collect();
+                series = keep.iter().map(|&s| series[s].clone()).collect();
+                if folds {
+                    series.push("other".to_owned());
+                }
+            }
+            tinted = lasting.iter().filter(|w| series.contains(w)).cloned().collect();
+        }
         let shade_of: Vec<Shade> = match &chart.color {
             _ if series.len() == 1 && series[0].is_empty() => {
                 alloc::vec![measure.and_then(Measure::column).or(chart.x_column).map_or(Shade::Quiet, Shade::Column)]
             }
-            Some((_, Some(c))) => {
-                let ty = &self.columns[*c].ty;
-                let lasting: Vec<String> = match &ty.base {
-                    Base::Choice(words) => words.clone(),
-                    _ => series.clone(),
-                };
-                let tints = shades(&lasting, |w| ty.tint(w));
+            None => alloc::vec![Shade::Tint(free[0]); series.len()],
+            Some(_) => {
+                let tints = shades(&tinted, own, &free);
                 series
                     .iter()
-                    .map(|n| match lasting.iter().position(|w| w == n) {
+                    .map(|n| match tinted.iter().position(|w| w == n) {
                         Some(i) => tints[i],
                         None => Shade::Quiet,
                     })
                     .collect()
             }
-            _ => shades(&series, |_| None),
         };
         let mut series: Vec<(String, Shade)> = series.into_iter().zip(shade_of).collect();
         // a choice's series in its type's order

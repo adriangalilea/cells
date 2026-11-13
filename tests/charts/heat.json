@@ -17,7 +17,7 @@
       "stack": "stacked",
       "axis": "text",
       "places": ["mon", "tue"],
-      "series": [{ "name": "9", "shade": { "tint": "blue" } }, { "name": "14", "shade": { "tint": "orange" } }],
+      "series": [{ "name": "9", "shade": { "tint": "blue" } }, { "name": "14", "shade": { "tint": "blue" } }],
       "values": [["2", "1"], ["1", null]],
       "unit": null,
       "skipped": 0,

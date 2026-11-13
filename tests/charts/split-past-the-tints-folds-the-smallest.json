@@ -1,0 +1,38 @@
+{
+  "columns": [
+    { "name": "month", "type": "text" },
+    { "name": "shop", "type": "text" },
+    { "name": "amount", "type": "EUR" }
+  ],
+  "rows": [
+    { "month": { "text": "jan" }, "shop": { "text": "market" }, "amount": { "money": "110.00", "currency": "EUR" } },
+    { "month": { "text": "jan" }, "shop": { "text": "bakery" }, "amount": { "money": "100.00", "currency": "EUR" } },
+    { "month": { "text": "jan" }, "shop": { "text": "garage" }, "amount": { "money": "90.00", "currency": "EUR" } },
+    { "month": { "text": "jan" }, "shop": { "text": "kiosk" }, "amount": { "money": "80.00", "currency": "EUR" } },
+    { "month": { "text": "jan" }, "shop": { "text": "pharmacy" }, "amount": { "money": "70.00", "currency": "EUR" } },
+    { "month": { "text": "jan" }, "shop": { "text": "florist" }, "amount": { "money": "60.00", "currency": "EUR" } },
+    { "month": { "text": "jan" }, "shop": { "text": "butcher" }, "amount": { "money": "50.00", "currency": "EUR" } },
+    { "month": { "text": "jan" }, "shop": { "text": "cafe" }, "amount": { "money": "40.00", "currency": "EUR" } },
+    { "month": { "text": "jan" }, "shop": { "text": "tailor" }, "amount": { "money": "30.00", "currency": "EUR" } },
+    { "month": { "text": "jan" }, "shop": { "text": "cobbler" }, "amount": { "money": "20.00", "currency": "EUR" } },
+    { "month": { "text": "jan" }, "shop": { "text": "barber" }, "amount": { "money": "10.00", "currency": "EUR" } },
+    { "month": { "text": "feb" }, "shop": { "text": "cobbler" }, "amount": { "money": "25.00", "currency": "EUR" } },
+    { "month": { "text": "feb" }, "shop": { "text": "barber" }, "amount": { "money": "5.00", "currency": "EUR" } }
+  ],
+  "problems": [],
+  "charts": [
+    {
+      "kind": "bars",
+      "title": "SUM(amount) by month",
+      "stack": "stacked",
+      "axis": "text",
+      "places": ["jan", "feb"],
+      "series": [{ "name": "market", "shade": { "tint": "blue" } }, { "name": "bakery", "shade": { "tint": "orange" } }, { "name": "garage", "shade": { "tint": "teal" } }, { "name": "kiosk", "shade": { "tint": "purple" } }, { "name": "pharmacy", "shade": { "tint": "pink" } }, { "name": "florist", "shade": { "tint": "yellow" } }, { "name": "butcher", "shade": { "tint": "brown" } }, { "name": "cafe", "shade": { "tint": "green" } }, { "name": "cobbler", "shade": { "tint": "red" } }, { "name": "other", "shade": { "quiet": true } }],
+      "values": [["110", "100", "90", "80", "70", "60", "50", "40", "20", "40"], [null, null, null, null, null, null, null, null, "25", "5"]],
+      "unit": "EUR",
+      "skipped": 0,
+      "rows": 13,
+      "layers": []
+    }
+  ]
+}

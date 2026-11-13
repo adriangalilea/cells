@@ -1,0 +1,35 @@
+{
+  "columns": [
+    { "name": "date", "type": "date" },
+    { "name": "kind", "type": "rent#green|food|fuel|gym|books|games|music|films|toys|tools|seeds" },
+    { "name": "amount", "type": "EUR" }
+  ],
+  "rows": [
+    { "date": { "date": "2026-01-01" }, "kind": { "choice": "rent" }, "amount": { "money": "500.00", "currency": "EUR" } },
+    { "date": { "date": "2026-01-02" }, "kind": { "choice": "tools" }, "amount": { "money": "10.00", "currency": "EUR" } },
+    { "date": { "date": "2026-01-03" }, "kind": { "choice": "food" }, "amount": { "money": "90.00", "currency": "EUR" } },
+    { "date": { "date": "2026-01-04" }, "kind": { "choice": "fuel" }, "amount": { "money": "80.00", "currency": "EUR" } },
+    { "date": { "date": "2026-01-05" }, "kind": { "choice": "gym" }, "amount": { "money": "70.00", "currency": "EUR" } },
+    { "date": { "date": "2026-01-06" }, "kind": { "choice": "books" }, "amount": { "money": "60.00", "currency": "EUR" } },
+    { "date": { "date": "2026-01-07" }, "kind": { "choice": "games" }, "amount": { "money": "50.00", "currency": "EUR" } },
+    { "date": { "date": "2026-01-08" }, "kind": { "choice": "music" }, "amount": { "money": "40.00", "currency": "EUR" } },
+    { "date": { "date": "2026-01-09" }, "kind": { "choice": "films" }, "amount": { "money": "30.00", "currency": "EUR" } },
+    { "date": { "date": "2026-01-10" }, "kind": { "choice": "toys" }, "amount": { "money": "20.00", "currency": "EUR" } }
+  ],
+  "problems": [],
+  "charts": [
+    {
+      "kind": "bars",
+      "title": "SUM(amount) by DATE_TRUNC('month', date)",
+      "stack": "stacked",
+      "axis": "date",
+      "places": ["2026-01-01"],
+      "series": [{ "name": "rent", "shade": { "tint": "green" } }, { "name": "food", "shade": { "tint": "blue" } }, { "name": "fuel", "shade": { "tint": "orange" } }, { "name": "gym", "shade": { "tint": "teal" } }, { "name": "books", "shade": { "tint": "purple" } }, { "name": "games", "shade": { "tint": "pink" } }, { "name": "music", "shade": { "tint": "yellow" } }, { "name": "films", "shade": { "tint": "brown" } }, { "name": "toys", "shade": { "tint": "red" } }, { "name": "other", "shade": { "quiet": true } }],
+      "values": [["500", "90", "80", "70", "60", "50", "40", "30", "20", "10"]],
+      "unit": "EUR",
+      "skipped": 0,
+      "rows": 10,
+      "layers": []
+    }
+  ]
+}
