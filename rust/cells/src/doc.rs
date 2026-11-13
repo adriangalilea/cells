@@ -3229,7 +3229,8 @@ impl Doc {
                 skipped += 1;
                 continue;
             }
-            let key = said(&place);
+            // a place a value; points a row each, their values free to repeat
+            let key = if chart.kind == Kind::Points { format!("{r}") } else { said(&place) };
             let p = match places.iter().position(|(k, _)| *k == key) {
                 Some(p) => p,
                 None => {
@@ -3251,7 +3252,7 @@ impl Doc {
         let mut order: Vec<usize> = (0..places.len()).collect();
         match chart.x_column.map(|c| &self.columns[c].ty.base) {
             Some(Base::Choice(words)) => {
-                order.sort_by_key(|&p| words.iter().position(|w| *w == places[p].0).unwrap_or(usize::MAX));
+                order.sort_by_key(|&p| words.iter().position(|w| *w == said(&places[p].1)).unwrap_or(usize::MAX));
             }
             _ if matches!(chart.x_kind, K::Date | K::Num) || chart.kind == Kind::Figure => {
                 order.sort_by(|&a, &b| expr::order(&places[a].1, &places[b].1).unwrap_or(core::cmp::Ordering::Equal));
@@ -3266,7 +3267,7 @@ impl Doc {
             })
         };
         let mut values: Vec<Vec<Option<V>>> = order.iter().map(|&p| (0..series.len()).map(|s| give(p, s)).collect()).collect();
-        let mut names: Vec<String> = order.iter().map(|&p| places[p].0.clone()).collect();
+        let mut names: Vec<String> = order.iter().map(|&p| said(&places[p].1)).collect();
         // `top`: the largest places kept, the rest one place, `other`, where a sum folds
         if let Some(top) = chart.top
             && names.len() > top
