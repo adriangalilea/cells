@@ -464,6 +464,8 @@ fn statement(source: &str, lines: &[(usize, &str)], k: &mut usize) -> Result<Opt
     }
     if let Some(rest) = value.strip_prefix("run").filter(|r| r.is_empty() || r.starts_with(BLANK)) {
         // The script's fence, then what the engine stored: blank lines may stand between.
+        // Past the script's own fence only a ```cells fence is the script's; any other
+        // (a chart) is the next statement.
         let mut blocks = Vec::new();
         loop {
             while lines.get(*k).is_some_and(|l| content(l.1).trim_matches(BLANK).is_empty()) {
@@ -471,6 +473,9 @@ fn statement(source: &str, lines: &[(usize, &str)], k: &mut usize) -> Result<Opt
             }
             let Some(&(_, l)) = lines.get(*k) else { break };
             let Some((ticks, lang, label)) = opening(content(l).trim_matches(BLANK)) else { break };
+            if !blocks.is_empty() && lang != "cells" {
+                break;
+            }
             blocks.push(fenced(*k, ticks, lang, label, k)?);
         }
         let schedule = schedule(rest.trim_matches(BLANK)).map_err(|why| (n, why))?;
