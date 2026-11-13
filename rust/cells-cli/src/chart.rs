@@ -152,7 +152,9 @@ pub fn run(args: &[String]) -> Result<(), String> {
         return watch(&asked, &summaries);
     }
     let width = terminal_width();
-    let height = if io::stdout().is_terminal() { 16 } else { 12 };
+    // the plot's rows, and what stands round them: the margins, title, legend, the gap
+    // and the places
+    let height = 14 + 7;
     let mut out = io::stdout().lock();
     for s in &drawn {
         let area = Rect::new(0, 0, width, height);
@@ -172,43 +174,75 @@ fn terminal_width() -> u16 {
 }
 
 /// The charts held on the alternate screen, drawn again when the file changes or the
-/// terminal is resized; `q` or Esc leaves.
+/// terminal is resized, a status line along the foot: the file, how long ago it was read,
+/// the rows charted, and the keys. `q`, Esc or Ctrl+C leaves; a file that does not read
+/// keeps the charts it last drew, why in the status line.
 fn watch(asked: &Asked, summaries: &dyn Fn(&Path) -> Result<(Vec<(String, Kind)>, Vec<Summary>), String>) -> Result<(), String> {
-    use ratatui::crossterm::event::{self, Event, KeyCode};
-    let mut terminal = ratatui::init();
+    use ratatui::crossterm::event::{self, Event, KeyCode, KeyModifiers};
+    use std::time::Instant;
     let modified = |p: &Path| fs::metadata(p).and_then(|m| m.modified()).unwrap_or(SystemTime::UNIX_EPOCH);
     let mut seen = modified(&asked.path);
-    let mut drawn = summaries(&asked.path).map(|(_, d)| d);
+    let mut drawn = summaries(&asked.path).map(|(_, d)| d)?;
+    let mut refused: Option<String> = None;
+    let mut read = Instant::now();
+    let name = asked.path.file_name().map_or_else(|| asked.path.display().to_string(), |n| n.to_string_lossy().into_owned());
+    let mut terminal = ratatui::init();
     let result = loop {
         let frame = terminal.draw(|f| {
             let area = f.area();
-            match &drawn {
-                Ok(charts) => {
-                    let n = charts.len().max(1) as u16;
-                    let h = area.height / n;
-                    for (i, s) in charts.iter().enumerate() {
-                        let part = Rect::new(area.x, area.y + h * i as u16, area.width, h);
-                        draw(s, part, f.buffer_mut(), asked.tier);
-                    }
-                }
-                Err(why) => {
-                    f.buffer_mut().set_string(area.x, area.y, why, Style::default().fg(Color::Red));
-                }
+            let foot = Rect::new(area.x, area.bottom().saturating_sub(1), area.width, 1);
+            let room = Rect::new(area.x, area.y, area.width, area.height.saturating_sub(1));
+            let n = drawn.len().max(1) as u16;
+            let h = room.height / n;
+            for (i, s) in drawn.iter().enumerate() {
+                draw(s, Rect::new(room.x, room.y + h * i as u16, room.width, h), f.buffer_mut(), asked.tier);
             }
+            let rows = drawn.first().map_or(0, |s| s.rows);
+            let skipped: usize = drawn.iter().map(|s| s.skipped).sum();
+            let ago = read.elapsed().as_secs();
+            let mut said = format!("  {name} · read {} · {rows} rows", if ago < 2 { "now".to_owned() } else { format!("{ago}s ago") });
+            if skipped > 0 {
+                said += &format!(" · {skipped} left out (no place or no value)");
+            }
+            let buf = f.buffer_mut();
+            buf.set_string(foot.x, foot.y, &said, Style::default().fg(Color::DarkGray));
+            if let Some(why) = &refused {
+                let x = foot.x + said.chars().count() as u16 + 3;
+                buf.set_string(x, foot.y, why, Style::default().fg(Color::Red));
+            }
+            let keys = "q · esc · ctrl+c  leave  ";
+            let at = foot.right().saturating_sub(keys.chars().count() as u16);
+            buf.set_string(at, foot.y, keys, Style::default().fg(Color::DarkGray));
         });
         if let Err(e) = frame {
             break Err(e.to_string());
         }
-        if event::poll(Duration::from_millis(400)).map_err(|e| e.to_string())? {
-            match event::read().map_err(|e| e.to_string())? {
-                Event::Key(k) if matches!(k.code, KeyCode::Char('q') | KeyCode::Esc) => break Ok(()),
-                _ => {}
-            }
+        // a second's tick keeps the status line's age true
+        match event::poll(Duration::from_millis(400)) {
+            Ok(true) => match event::read() {
+                Ok(Event::Key(k))
+                    if matches!(k.code, KeyCode::Char('q') | KeyCode::Esc)
+                        || (k.code == KeyCode::Char('c') && k.modifiers.contains(KeyModifiers::CONTROL)) =>
+                {
+                    break Ok(());
+                }
+                Ok(_) => {}
+                Err(e) => break Err(e.to_string()),
+            },
+            Ok(false) => {}
+            Err(e) => break Err(e.to_string()),
         }
         let now = modified(&asked.path);
         if now != seen {
             seen = now;
-            drawn = summaries(&asked.path).map(|(_, d)| d);
+            match summaries(&asked.path) {
+                Ok((_, d)) => {
+                    drawn = d;
+                    refused = None;
+                    read = Instant::now();
+                }
+                Err(why) => refused = Some(why),
+            }
         }
     };
     ratatui::restore();
@@ -217,7 +251,9 @@ fn watch(asked: &Asked, summaries: &dyn Fn(&Path) -> Result<(Vec<(String, Kind)>
 
 /// A summary drawn into `area`: its title, its legend, its scale and its marks.
 pub fn draw(s: &Summary, area: Rect, buf: &mut Buffer, tier: Tier) {
-    if area.height < 4 || area.width < 16 {
+    // a cell of room round it, as a page's margin
+    let area = Rect::new(area.x + 2, area.y + 1, area.width.saturating_sub(4), area.height.saturating_sub(2));
+    if area.height < 6 || area.width < 20 {
         return;
     }
     buf.set_string(area.x, area.y, &s.title, Style::default().add_modifier(Modifier::BOLD));
@@ -231,14 +267,16 @@ pub fn draw(s: &Summary, area: Rect, buf: &mut Buffer, tier: Tier) {
         for (name, shade) in &series {
             let mark = if tier.glyphs == Glyphs::Ascii { "* " } else { "● " };
             buf.set_string(x, y0, mark, Style::default().fg(color(*shade, tier)));
-            buf.set_string(x + 2, y0, name, Style::default());
-            x += name.chars().count() as u16 + 4;
+            buf.set_string(x + 2, y0, name, Style::default().fg(Color::Gray));
+            x += name.chars().count() as u16 + 5;
             if x >= area.right() {
                 break;
             }
         }
         y0 += 1;
     }
+    // a line of room between what names the chart and the chart
+    y0 += 1;
     let body = Rect::new(area.x, y0, area.width, area.bottom().saturating_sub(y0));
     if s.kind == Kind::Figure && s.layers.is_empty() {
         figure(s, body, buf, tier);
@@ -265,24 +303,43 @@ pub fn draw(s: &Summary, area: Rect, buf: &mut Buffer, tier: Tier) {
     if hi <= lo {
         hi = lo + 1.0;
     }
-    let labels = [s.figure(hi), s.figure(lo)];
-    let left = labels.iter().map(|l| l.chars().count()).max().unwrap_or(1) as u16 + 1;
-    let plot = Rect::new(body.x + left, body.y, body.width.saturating_sub(left), body.height.saturating_sub(1));
+    // the scale as every reader draws it: whole steps of 1, 2 or 5 times a power of ten,
+    // about one a few rows
+    let rows = body.height.saturating_sub(2).max(2);
+    let (lo, hi, step) = cells::chart::scale(lo, hi, (rows / 3).clamp(2, 6) as u32);
+    let steps = ((hi - lo) / step + 0.5) as i64;
+    let labels: Vec<String> = (0..=steps).map(|i| s.figure(lo + step * i as f64)).collect();
+    let left = labels.iter().map(|l| l.chars().count()).max().unwrap_or(1) as u16 + 2;
+    let plot = Rect::new(body.x + left, body.y, body.width.saturating_sub(left), body.height.saturating_sub(2));
     if plot.width < 4 || plot.height < 2 {
         return;
     }
     let quiet = Style::default().fg(Color::DarkGray);
-    buf.set_string(body.x, plot.y, &labels[0], quiet);
-    buf.set_string(body.x, plot.bottom() - 1, &labels[1], quiet);
-    // the places under the plot, as many as fit
+    let rule = if tier.glyphs == Glyphs::Ascii { "-" } else { "─" };
+    let grid = Style::default().fg(match tier.colors {
+        Colors::True => Color::Rgb(58, 58, 64),
+        Colors::Indexed => Color::Indexed(237),
+        Colors::Sixteen => Color::DarkGray,
+    });
+    for (i, label) in labels.iter().enumerate() {
+        let v = lo + step * i as f64;
+        let row = plot.bottom() - 1 - (((v - lo) / (hi - lo)) * (plot.height - 1) as f64).round() as u16;
+        // right-aligned against the plot, a faint rule across it the marks draw over
+        buf.set_string(plot.x - 2 - label.chars().count() as u16, row, label, quiet);
+        buf.set_string(plot.x, row, rule.repeat(plot.width as usize), grid);
+    }
+    // each place named under its mark's middle, as many as fit with a space between
     let places = parts[0].places.len().max(1);
     let band = plot.width as f64 / places as f64;
+    let names: Vec<String> = place_names(&parts[0].places, parts[0].axis);
     let mut free = plot.x;
-    for (i, name) in parts[0].places.iter().enumerate() {
-        let at = plot.x + (band * i as f64) as u16;
-        if at >= free && at + name.chars().count() as u16 <= plot.right() {
-            buf.set_string(at, plot.bottom(), name, quiet);
-            free = at + name.chars().count() as u16 + 1;
+    for (i, name) in names.iter().enumerate() {
+        let w = name.chars().count() as u16;
+        let middle = plot.x as f64 + band * (i as f64 + 0.5);
+        let at = (middle - w as f64 / 2.0).round().max(plot.x as f64) as u16;
+        if at >= free && at + w <= plot.right() {
+            buf.set_string(at, plot.bottom() + 1, name, quiet);
+            free = at + w + 2;
         }
     }
     for part in &parts {
@@ -292,6 +349,35 @@ pub fn draw(s: &Summary, area: Rect, buf: &mut Buffer, tier: Tier) {
             _ => lines(part, plot, buf, tier, (lo, hi)),
         }
     }
+}
+
+/// Places as a person reads them: dates by their day (`14 Aug`), every one a month's first
+/// day by its month (`Jan 26`), every one a year's by its year; anything else as written.
+fn place_names(places: &[String], axis: &str) -> Vec<String> {
+    const MONTHS: [&str; 12] = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+    let parts = |p: &str| -> Option<(String, usize, String)> {
+        let mut it = p.split('-');
+        let (y, m, d) = (it.next()?, it.next()?.parse::<usize>().ok()?, it.next()?);
+        (it.next().is_none() && (1..=12).contains(&m)).then(|| (y.to_owned(), m, d.to_owned()))
+    };
+    if axis != "date" || !places.iter().all(|p| parts(p).is_some()) {
+        return places.to_vec();
+    }
+    let years = places.iter().all(|p| p.ends_with("-01-01"));
+    let months = places.iter().all(|p| p.ends_with("-01"));
+    places
+        .iter()
+        .map(|p| {
+            let (y, m, d) = parts(p).expect("every place a date, checked above");
+            if years {
+                y
+            } else if months {
+                format!("{} {}", MONTHS[m - 1], &y[y.len().saturating_sub(2)..])
+            } else {
+                format!("{} {}", d.trim_start_matches('0'), MONTHS[m - 1])
+            }
+        })
+        .collect()
 }
 
 /// Bars in eighths along the value: where two stacked series meet in one cell, the lower
