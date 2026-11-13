@@ -408,6 +408,20 @@ pub unsafe extern "C" fn cells_written_as(d: *mut CellsDoc, sep: u8, header: *co
     CellsStr::of(&d.out)
 }
 
+/// The doc's text as the format's standard writes it (`cells fmt`,
+/// `cells::layout::formatted`): every table's fields brought to their column's start when
+/// `align`, with no padding otherwise; every byte outside a table as written.
+///
+/// # Safety
+/// `d` is a live doc.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn cells_formatted(d: *mut CellsDoc, align: bool) -> CellsStr {
+    // SAFETY: the caller's promise.
+    let d = unsafe { doc(d) };
+    d.out = cells::layout::formatted(&d.doc.write(), align);
+    CellsStr::of(&d.out)
+}
+
 /// Lets a doc go. The arrays exported from it live on until released.
 ///
 /// # Safety
