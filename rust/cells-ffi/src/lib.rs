@@ -446,6 +446,24 @@ pub unsafe extern "C" fn cells_header_cell(
     CellsStr::of(&d.out)
 }
 
+/// Whether the folder at `root` is served whole or shallow (`cells::folder::served_whole`):
+/// false for the home folder `home` and the disk's root, whose own files alone are served.
+/// The one rule the engine serves by and a host lists folders by.
+///
+/// # Safety
+/// `root` and `home` point at `root_len` and `home_len` bytes of UTF-8.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn cells_served_whole(
+    root: *const c_char,
+    root_len: usize,
+    home: *const c_char,
+    home_len: usize,
+) -> bool {
+    // SAFETY: the caller's promise.
+    let (root, home) = unsafe { (text_of(root, root_len), text_of(home, home_len)) };
+    cells::folder::served_whole(root, home)
+}
+
 /// Lets a doc go. The arrays exported from it live on until released.
 ///
 /// # Safety

@@ -295,6 +295,16 @@ impl Folder {
     }
 }
 
+/// Whether the folder at `root` is served whole, every file under it, or shallow, its own
+/// files alone: the home folder (`home`) and the disk's root are shallow, so a file kept
+/// there is followed without crawling the disk. Paths as the host writes them, absolute
+/// and canonical, no trailing `/`. The one rule: the engine serves by it, and a host
+/// lists a folder's files (an app's sidebar) and finds the books a file belongs to by it.
+pub fn served_whole(root: &str, home: &str) -> bool {
+    assert!(root.starts_with('/'), "a folder served is an absolute path, not {root:?}");
+    root != home && root != "/"
+}
+
 /// The text of the key cell of `doc`'s `row` (from 0), when its table has a key.
 pub fn key_of(doc: &Doc, row: usize) -> Option<String> {
     let k = doc.columns().iter().position(|c| c.ty.key)?;

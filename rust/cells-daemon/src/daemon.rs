@@ -210,7 +210,10 @@ impl<W: World> Daemon<W> {
         if let Some(holder) = self.served.iter().find(|l| l.root == root || (l.whole && root.starts_with(&l.root))) {
             return Ok(holder.root.clone());
         }
-        let whole = root != self.world.home() && root.parent().is_some();
+        let whole = cells::folder::served_whole(
+            &root.to_string_lossy(),
+            &self.world.home().to_string_lossy(),
+        );
         let span = tracing::info_span!(target: ENGINE, "serve", path = %root.display(), whole);
         let _serving = span.enter();
         self.world.lock(root)?;

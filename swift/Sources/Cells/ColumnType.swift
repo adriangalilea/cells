@@ -155,6 +155,18 @@ extension Cells {
         }!
     }
 
+    /// Whether the engine serves `folder` whole, every file under it, or shallow, its own
+    /// files alone (the home folder, the disk's root): the engine's one rule
+    /// (`cells_served_whole`), which a host lists a folder by and finds a file's books by.
+    public static func servedWhole(_ folder: URL) -> Bool {
+        let root = folder.standardizedFileURL.resolvingSymlinksInPath().path
+        let home = FileManager.default.homeDirectoryForCurrentUser.standardizedFileURL
+            .resolvingSymlinksInPath().path
+        return lending([root, home]) { s in
+            cells_served_whole(s[0].ptr, s[0].len, s[1].ptr, s[1].len)
+        }
+    }
+
     /// A type spelled so the engine reads it back as itself under `names`: every word
     /// quoted, every part said once, a named type's own parts left to its definition.
     /// Never shown; the engine writes the shorthand from it.
