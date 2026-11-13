@@ -166,6 +166,10 @@ fn main() -> ExitCode {
             println!("{}", describe::help());
             ExitCode::SUCCESS
         }
+        Some("help") if args.len() == 2 && args[1] == "format" => {
+            println!("{}", describe::format_guide());
+            ExitCode::SUCCESS
+        }
         Some("skill") => match args.get(1).map(String::as_str) {
             None => skill::status(),
             Some("show") if args.len() == 2 => {
