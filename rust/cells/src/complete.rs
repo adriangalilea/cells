@@ -336,8 +336,16 @@ where
             let here = at - s.start as usize;
             let from = word[..here].rfind(|c: char| !(ident(c) || c == '.')).map_or(0, |i| i + 1);
             let to = here + word[here..].find(|c: char| !(ident(c) || c == '.')).unwrap_or(word.len() - here);
+            let named = from == 0 || word[..from].ends_with([' ', '\t', '|', '<', '(']);
             let (from, to) = (s.start + from as u32, s.start + to as u32);
-            if tinting(&text[..from as usize]) { tints(from, to) } else { types(doc, from, to) }
+            if tinting(&text[..from as usize]) {
+                tints(from, to)
+            } else if named {
+                types(doc, from, to)
+            } else {
+                // after a mark (`text?`, `id!`), a bound or a quote no name begins
+                Vec::new()
+            }
         }
         Spot::Formula(f) => formula(&reach, &f, at),
         Spot::Prelude => prelude(&reach, text, at),
@@ -674,6 +682,13 @@ mod tests {
     fn a_declaration_typed() {
         let text = "---\nprice: E\n---\nprice,cost:EUR\n1,2.00\n";
         let at = text.find(": E").unwrap() + 3;
+        assert!(labels(text, at).iter().any(|l| l == "text"));
+        // a mark ends the name: nothing after `text?`, a name again after `|`
+        let text = "---\nnote: text?\n---\nnote\nx\n";
+        let at = text.find("text?").unwrap() + 5;
+        assert_eq!(labels(text, at), Vec::<String>::new());
+        let text = "---\nwho: people.id|t\n---\nwho\nx\n";
+        let at = text.find("|t").unwrap() + 2;
         assert!(labels(text, at).iter().any(|l| l == "text"));
         let text = "---\ntotal: EUR = co\n---\ncost:EUR,total\n2.00,2.00\n";
         let at = text.find("= co").unwrap() + 4;
