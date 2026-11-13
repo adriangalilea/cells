@@ -40,6 +40,10 @@
 //!                                     what changed, by whom, when, and what each change
 //!                                     reached, newest first; or a cell's every value, each
 //!                                     beside the change that wrote it (ENGINE.md, History)
+//!   cells editors install helix        the editor set up for `.cells`: the grammar and queries
+//!                                     this binary carries written where it reads them, the
+//!                                     language and its server added to its config, the
+//!                                     parser built (EDITORS.md)
 //!
 //! A folder means every `.cells` file under it, hidden folders (`.git`, the engine's `.cells`)
 //! left out. Exit 0 when nothing is found (or every run succeeds), 1 when something is (or
@@ -50,6 +54,7 @@
 
 mod allow;
 mod chart;
+mod editors;
 mod history;
 mod lsp;
 mod merge;
@@ -63,7 +68,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 
 use cells_disk::{Disk, files};
 
-const USAGE: &str = "cells check <file|folder>...\ncells fmt [--check] [--align on|off] <file|folder>...\ncells diff <file>\ncells fix <file|folder>...\ncells merge <base> <ours> <theirs>\ncells pin <file>...\ncells run <file> [script]\ncells allow <file> [script]\ncells show <file>\ncells chart <file> [n …] [--watch] [--svg] [--glyphs fine|blocks|ascii] [--colors true|256|16]\ncells sql <file|folder>... <query>\ncells lsp\ncells serve [--verbose] <folder>...\ncells history <file|folder> [<row> <column>]";
+const USAGE: &str = "cells check <file|folder>...\ncells fmt [--check] [--align on|off] <file|folder>...\ncells diff <file>\ncells fix <file|folder>...\ncells merge <base> <ours> <theirs>\ncells pin <file>...\ncells run <file> [script]\ncells allow <file> [script]\ncells show <file>\ncells chart <file> [n …] [--watch] [--svg] [--glyphs fine|blocks|ascii] [--colors true|256|16]\ncells sql <file|folder>... <query>\ncells lsp\ncells serve [--verbose] <folder>...\ncells history <file|folder> [<row> <column>]\ncells editors install helix";
 
 /// What one file says: its lines of output, or the reason it could not be read.
 enum Said {
@@ -278,6 +283,16 @@ fn main() -> ExitCode {
             }
             ExitCode::SUCCESS
         }
+        Some("editors") if args.len() == 3 && args[1] == "install" => match editors::install(&args[2]) {
+            Ok(said) => {
+                said.iter().for_each(|l| println!("{l}"));
+                ExitCode::SUCCESS
+            }
+            Err(why) => {
+                eprintln!("cells: {why}");
+                ExitCode::from(2)
+            }
+        },
         Some("chart") if args.len() >= 2 => match chart::run(&args[1..]) {
             Ok(()) => ExitCode::SUCCESS,
             Err(why) => {

@@ -38,7 +38,11 @@ The same reading lays a table out as a table: `cells::tokens::layout` gives the 
 
 ## Helix
 
-`~/.config/helix/languages.toml`:
+```sh
+cells editors install helix
+```
+
+writes the grammar and Helix's queries that this `cells` carries (`~/.local/share/cells/tree-sitter`, `~/.config/helix/runtime/queries/cells`), adds the language and its server to `~/.config/helix/languages.toml`, and builds the parser, so the parser, its queries and the server are one version. A `cells` language the config already declares is kept as it is, and so is a queries folder that is a link (a checkout's). Run it again after updating Cells. By hand, the same in `~/.config/helix/languages.toml`:
 
 ```toml
 [[language]]
