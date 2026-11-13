@@ -3093,12 +3093,30 @@ impl Doc {
             Some(_) => K::Text,
             None => K::Num,
         };
+        // the entries that say it, so a reader keeping it writes it as it is; the rows by
+        // their line have no formula, so such a chart says no x
+        let said = |k: usize| formula_name(&self.columns[k].name);
+        let mut entries = Vec::new();
+        let mut entry = |key: &str, value: String| entries.push(crate::chart::Entry { key: key.to_owned(), value, line: 0 });
+        if let Some(a) = axis {
+            entry("x", said(a));
+        }
+        entry(
+            "y",
+            match measured {
+                Some(m) => format!("SUM({})", said(m)),
+                None => "COUNT(*)".to_owned(),
+            },
+        );
+        if let Some(c) = color {
+            entry("color", said(c));
+        }
         Some(Chart {
             line: None,
             name: None,
             written: None,
             kind: Kind::Bars,
-            entries: Vec::new(),
+            entries,
             title,
             x: axis.map(Ir::Col),
             x_kind,
@@ -3854,6 +3872,15 @@ fn render(c: &Column, results: &[(usize, V)]) -> Vec<(usize, String)> {
             (*r, text)
         })
         .collect()
+}
+
+/// A column's name as a formula writes it: bare when it is a word of lower-case letters,
+/// digits and `_` that is not the language's, else quoted, `""` a quote inside (SPEC.md,
+/// The language).
+fn formula_name(name: &str) -> String {
+    let word = name.bytes().next().is_some_and(|b| b.is_ascii_lowercase() || b == b'_')
+        && name.bytes().all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'_');
+    if word { name.to_owned() } else { format!("\"{}\"", name.replace('"', "\"\"")) }
 }
 
 /// A chart's entry read as a formula over a row: what it resolves to, its kind, and the

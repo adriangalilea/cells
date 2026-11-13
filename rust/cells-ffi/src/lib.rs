@@ -1501,6 +1501,19 @@ pub unsafe extern "C" fn cells_chart_summary(d: *mut CellsDoc, index: usize) -> 
     CellsStr::of(&d.out)
 }
 
+/// The chart a reader draws for a file with none (`Doc::inferred_chart`), as `Chart::json`
+/// writes it, its entries what keeping it writes; empty when there is nothing to measure.
+///
+/// # Safety
+/// `d` is a live document.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn cells_inferred_chart(d: *mut CellsDoc) -> CellsStr {
+    // SAFETY: the caller's promise.
+    let d = unsafe { doc(d) };
+    d.out = d.doc.inferred_chart().map_or(String::new(), |c| c.json());
+    CellsStr::of(&d.out)
+}
+
 /// What the chart a reader draws for a file with none draws (`Doc::inferred_chart`), as
 /// JSON; empty when there is nothing to measure.
 ///
