@@ -3045,9 +3045,11 @@ impl Doc {
                     continue;
                 }
             }
+            // untitled: what it measures (a heat chart's `value`, every other's `y`) by
+            // what runs along its axis, as written
             let title = match entry("title") {
                 Some(t) => t.value.clone(),
-                None => match (entry("y").or(entry("value")), entry("x")) {
+                None => match (entry("value").or(entry("y")), entry("x")) {
                     (Some(m), Some(x)) => format!("{} by {}", m.value, x.value),
                     (Some(m), None) => m.value.clone(),
                     _ => format!("chart {}", charts.len() + 1),

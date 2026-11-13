@@ -367,7 +367,7 @@ date:date,amount:EUR,kind:Kind,account:text,budget:EUR?,balance:EUR=SUM(amount) 
 | `stack` | `stacked` · `grouped` · `percent` | how the series share a place: on each other, side by side, as shares of it |
 | `where` | a condition | the rows charted: those it holds for |
 | `top` | a whole number | how many places (or series) are drawn, the largest; the rest one place, `other` |
-| `title` | text, as written | what the chart is called where it is shown |
+| `title` | text, as written | what the chart is called where it is shown; none, what it measures by what runs along its axis, as written: `SUM(amount) by DATE_TRUNC('month', date)` |
 | `from` | a table's name, or `TABLE` | the table charted, inline, a script's or imported; the file's own when none, or `TABLE` |
 | `layers` | names of charts, `,` between | the charts drawn on one plot, sharing its axes, in the order named |
 
