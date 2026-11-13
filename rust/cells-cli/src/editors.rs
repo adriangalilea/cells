@@ -51,6 +51,7 @@ const NEOVIM_PACKAGE: &[(&str, &[u8])] = &[
 const ZED_EXTENSION: &[(&str, &[u8])] = &[
     ("extension.toml", include_bytes!("../../../editors/zed/extension.toml")),
     ("Cargo.toml", include_bytes!("../../../editors/zed/Cargo.toml")),
+    ("LICENSE", include_bytes!("../../../editors/zed/LICENSE")),
     ("src/lib.rs", include_bytes!("../../../editors/zed/src/lib.rs")),
     ("languages/cells/config.toml", include_bytes!("../../../editors/zed/languages/cells/config.toml")),
     ("languages/cells/highlights.scm", include_bytes!("../../../editors/zed/languages/cells/highlights.scm")),

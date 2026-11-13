@@ -114,7 +114,7 @@ Zed asks a server for colours and inlay hints only where a setting says so; in `
 
 `combined` lays the server's colours over the grammar's: a name that reads a column wears its column's (`semantic_token_rules.json` maps `column1` to `column6` onto six theme colours), and the inlay hints draw the columns aligned. Formatting on save is on by default, and stores the computed values.
 
-`tree-sitter/scripts/queries.ts` writes the extension's highlights from the canonical queries, in Zed's theme names, and sets `rev` to the last commit that changed the parser, so a change to the grammar reaches Zed once that commit is pushed. Zed's registry (a pull request to zed-industries/extensions adding this repository as a submodule, `path = "editors/zed"`) would install it with one click and no Rust; it needs a licence file inside `editors/zed`, which this repository does not have yet.
+`tree-sitter/scripts/queries.ts` writes the extension's highlights from the canonical queries, in Zed's theme names, and sets `rev` to the last commit that changed the parser, so a change to the grammar reaches Zed once that commit is pushed. Zed's registry (a pull request to zed-industries/extensions adding this repository as a submodule, `path = "editors/zed"`) would install it with one click and no Rust; the extension carries the repository's MIT licence in its own folder, as the registry asks.
 
 ## VS Code
 
