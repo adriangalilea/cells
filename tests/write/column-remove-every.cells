@@ -1,0 +1,7 @@
+---
+// kept when the columns go
+qty: int>=1
+---
+item:text!,qty
+fuel,2
+water,6

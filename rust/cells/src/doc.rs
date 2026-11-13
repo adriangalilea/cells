@@ -1950,10 +1950,10 @@ impl Doc {
     /// columns. What inserting, removing, moving and renaming columns is. A `.cells` file
     /// whose columns no longer read (two of one name, a computed column reading one taken
     /// out) is refused, this one untouched, and so is a new cell holding a control
-    /// character, at its row.
+    /// character, at its row. No columns is the file's prelude alone: with no header there
+    /// are no rows (SPEC.md, The header), so they go with the last column.
     pub fn reshaped(&self, columns: &[ColumnAt], threads: usize) -> Result<Doc, Error> {
-        assert!(!columns.is_empty(), "a file keeps one column at least");
-        let rows = self.rows();
+        let rows = if columns.is_empty() { 0 } else { self.rows() };
         let blank = self.quote("");
         let heads = self.raw_fields(self.header_line());
         // Each declared column's prelude line (SPEC.md, Columns): renamed with its column,
@@ -2038,7 +2038,10 @@ impl Doc {
                 out.push_str(&self.sound(extra));
             }
         }
-        self.close(&mut out, rows > 0, self.newline());
+        // A line after the prelude would be a header, one blank column.
+        if !columns.is_empty() {
+            self.close(&mut out, rows > 0, self.newline());
+        }
         let mut again = self.unbroken(self.reread(out, threads)?, None)?;
         // Each computed cell's value before, at its column's new place.
         let at: BTreeMap<u32, u32> = columns
