@@ -1,0 +1,18 @@
+---
+fx = run every day at 18:00 in Europe/Madrid
+```ts
+export default async () => []
+```
+```cells
+at:date,usd:num
+2026-01-01,1.08
+2026-01-02,1.11
+```
+```chart line
+from: fx
+x:    at
+y:    LAST_VALUE(usd)
+```
+---
+item:text,cost:EUR
+fuel,10.00

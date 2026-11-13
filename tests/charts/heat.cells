@@ -1,0 +1,12 @@
+---
+```chart heat
+x:     weekday
+y:     hour
+value: COUNT(*)
+```
+---
+weekday:text,hour:int
+mon,9
+mon,9
+tue,9
+mon,14

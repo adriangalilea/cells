@@ -1,0 +1,29 @@
+{
+  "columns": [
+    { "name": "shop", "type": "text" },
+    { "name": "amount", "type": "EUR" }
+  ],
+  "rows": [
+    { "shop": { "text": "market" }, "amount": { "money": "40.00", "currency": "EUR" } },
+    { "shop": { "text": "bakery" }, "amount": { "money": "12.00", "currency": "EUR" } },
+    { "shop": { "text": "garage" }, "amount": { "money": "90.00", "currency": "EUR" } },
+    { "shop": { "text": "kiosk" }, "amount": { "money": "3.00", "currency": "EUR" } },
+    { "shop": { "text": "pharmacy" }, "amount": { "money": "5.00", "currency": "EUR" } }
+  ],
+  "problems": [],
+  "charts": [
+    {
+      "kind": "bars",
+      "title": "SUM(amount) by shop",
+      "stack": "stacked",
+      "axis": "text",
+      "places": ["market", "garage", "other"],
+      "series": [{ "name": "", "shade": { "column": 1 } }],
+      "values": [["40"], ["90"], ["20"]],
+      "unit": "EUR",
+      "skipped": 0,
+      "rows": 5,
+      "layers": []
+    }
+  ]
+}

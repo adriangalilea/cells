@@ -1,0 +1,25 @@
+{
+  "columns": [
+    { "name": "item", "type": "text" },
+    { "name": "cost", "type": "EUR" }
+  ],
+  "rows": [
+    { "item": { "text": "fuel" }, "cost": { "money": "10.00", "currency": "EUR" } }
+  ],
+  "problems": [],
+  "charts": [
+    {
+      "kind": "line",
+      "title": "LAST_VALUE(usd) by at",
+      "stack": "stacked",
+      "axis": "date",
+      "places": ["2026-01-01", "2026-01-02"],
+      "series": [{ "name": "", "shade": { "column": 1 } }],
+      "values": [["1.08"], ["1.11"]],
+      "unit": null,
+      "skipped": 0,
+      "rows": 2,
+      "layers": []
+    }
+  ]
+}

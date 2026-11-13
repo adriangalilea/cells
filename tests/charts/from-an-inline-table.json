@@ -1,0 +1,38 @@
+{
+  "columns": [
+    { "name": "item", "type": "text" },
+    { "name": "cost", "type": "EUR" }
+  ],
+  "rows": [
+    { "item": { "text": "fuel" }, "cost": { "money": "10.00", "currency": "EUR" } }
+  ],
+  "problems": [],
+  "charts": [
+    {
+      "kind": "steps",
+      "title": "LAST_VALUE(rate) by day",
+      "stack": "stacked",
+      "axis": "date",
+      "places": ["2026-01-01", "2026-01-02"],
+      "series": [{ "name": "buy", "shade": { "tint": "green" } }, { "name": "sell", "shade": { "tint": "blue" } }],
+      "values": [["1.1", null], ["1.3", "1.2"]],
+      "unit": null,
+      "skipped": 0,
+      "rows": 3,
+      "layers": []
+    },
+    {
+      "kind": "bars",
+      "title": "COUNT(*) by side",
+      "stack": "stacked",
+      "axis": "text",
+      "places": ["buy", "sell"],
+      "series": [{ "name": "", "shade": { "column": 2 } }],
+      "values": [["2"], ["1"]],
+      "unit": null,
+      "skipped": 0,
+      "rows": 3,
+      "layers": []
+    }
+  ]
+}

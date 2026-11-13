@@ -77,6 +77,41 @@ interface Want {
   tints?: Record<string, Record<string, string>>
   looks?: Record<string, string[]>
   drawn?: { row: number; column?: string; text?: string; tint?: unknown }[]
+  charts?: unknown[]
+  inferred?: unknown
+}
+
+/** JSON in one spelling: an object's keys sorted, and under `values` (a chart's) every
+ *  decimal in one spelling, so two summaries compare as the suite compares them. */
+function canon(v: unknown, values = false): string {
+  if (Array.isArray(v)) return `[${v.map((x) => canon(x, values)).join(",")}]`
+  if (v !== null && typeof v === "object")
+    return `{${Object.entries(v)
+      .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
+      .map(([k, x]) => `${JSON.stringify(k)}:${canon(x, k === "values")}`)
+      .join(",")}}`
+  if (values && typeof v === "string") return normal(v)
+  return JSON.stringify(v)
+}
+
+/** What the file's charts draw (SPEC.md, Charts), each against the suite's, and the chart
+ *  a file with none is drawn as. */
+function charted(doc: Doc, want: Want): string[] {
+  const f: string[] = []
+  if (want.charts) {
+    const ours = doc.charts().map((_, i) => canon(doc.summary(i)))
+    const theirs = want.charts.map((c) => canon(c))
+    if (ours.length !== theirs.length) f.push(`${ours.length} charts, the suite says ${theirs.length}`)
+    ours.forEach((a, i) => {
+      if (i < theirs.length && a !== theirs[i]) f.push(`chart ${i + 1} draws ${a}, the suite says ${theirs[i]}`)
+    })
+  }
+  if (want.inferred !== undefined) {
+    const ours = canon(doc.inferredSummary())
+    const theirs = canon(want.inferred)
+    if (ours !== theirs) f.push(`drawn from its columns as ${ours}, the suite says ${theirs}`)
+  }
+  return f
 }
 
 /** How the values look (SPEC.md, How a value looks), as the suite says: each column's
@@ -287,7 +322,7 @@ for (const path of all) {
       else if (got.where !== want.error.at) fails.push(`refused at ${got.where}, the suite says ${want.error.at}`)
     } else if (want.error) fails.push(`reads, the suite says it breaks at ${want.error.at}`)
     else {
-      fails.push(...check(got.doc, want), ...spanned(got.doc, want, bytes), ...looked(got.doc, want))
+      fails.push(...check(got.doc, want), ...spanned(got.doc, want, bytes), ...looked(got.doc, want), ...charted(got.doc, want))
       if (write(got.doc) !== text(bytes)) fails.push("does not round-trip")
     }
   }

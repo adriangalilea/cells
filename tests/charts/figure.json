@@ -1,0 +1,27 @@
+{
+  "columns": [
+    { "name": "date", "type": "date" },
+    { "name": "amount", "type": "EUR" }
+  ],
+  "rows": [
+    { "date": { "date": "2026-02-14" }, "amount": { "money": "100.00", "currency": "EUR" } },
+    { "date": { "date": "2026-01-05" }, "amount": { "money": "250.00", "currency": "EUR" } },
+    { "date": { "date": "2026-02-01" }, "amount": { "money": "-20.00", "currency": "EUR" } }
+  ],
+  "problems": [],
+  "charts": [
+    {
+      "kind": "figure",
+      "title": "Saved",
+      "stack": "stacked",
+      "axis": "date",
+      "places": ["2026-01-01", "2026-02-01"],
+      "series": [{ "name": "", "shade": { "column": 1 } }],
+      "values": [["250"], ["80"]],
+      "unit": "EUR",
+      "skipped": 0,
+      "rows": 3,
+      "layers": []
+    }
+  ]
+}

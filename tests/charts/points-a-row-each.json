@@ -1,0 +1,27 @@
+{
+  "columns": [
+    { "name": "height", "type": "num" },
+    { "name": "weight", "type": "num" }
+  ],
+  "rows": [
+    { "height": { "num": "1.80" }, "weight": { "num": "75" } },
+    { "height": { "num": "1.65" }, "weight": { "num": "60" } },
+    { "height": { "num": "1.80" }, "weight": { "num": "82" } }
+  ],
+  "problems": [],
+  "charts": [
+    {
+      "kind": "points",
+      "title": "weight by height",
+      "stack": "stacked",
+      "axis": "number",
+      "places": ["1.65", "1.8", "1.8"],
+      "series": [{ "name": "", "shade": { "column": 1 } }],
+      "values": [["60"], ["75"], ["82"]],
+      "unit": null,
+      "skipped": 0,
+      "rows": 3,
+      "layers": []
+    }
+  ]
+}

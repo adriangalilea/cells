@@ -1,0 +1,29 @@
+{
+  "types": { "Mood": "good|fine|bad" },
+  "columns": [
+    { "name": "day", "type": "date" },
+    { "name": "mood", "type": "Mood?" }
+  ],
+  "rows": [
+    { "day": { "date": "2026-04-01" }, "mood": { "choice": "fine" } },
+    { "day": { "date": "2026-04-02" }, "mood": { "choice": "good" } },
+    { "day": { "date": "2026-04-03" }, "mood": { "choice": "fine" } },
+    { "day": { "date": "2026-04-04" }, "mood": null }
+  ],
+  "problems": [],
+  "charts": [
+    {
+      "kind": "bars",
+      "title": "COUNT(*) by mood",
+      "stack": "stacked",
+      "axis": "text",
+      "places": ["good", "fine"],
+      "series": [{ "name": "", "shade": { "column": 1 } }],
+      "values": [["1"], ["2"]],
+      "unit": null,
+      "skipped": 1,
+      "rows": 4,
+      "layers": []
+    }
+  ]
+}

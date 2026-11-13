@@ -1,0 +1,11 @@
+---
+```chart bars
+x:    item
+just words
+size: 3
+x:    cost
+y:    SUM(cost)
+```
+---
+item:text,cost:EUR
+fuel,10.00

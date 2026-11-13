@@ -1,0 +1,21 @@
+---
+```chart bars
+x:     item
+y:     SUM(cost)
+stack: piled
+top:   none
+where: cost
+```
+```chart line
+x:     item
+y:     SUM(cost)
+color: itme
+stack: grouped
+```
+```chart line
+x: item
+y: SUM(cots)
+```
+---
+item:text,cost:EUR
+fuel,10.00

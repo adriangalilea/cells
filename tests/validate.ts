@@ -22,7 +22,12 @@ const FOLDERS = [
   "problems",
   "write",
   "plain",
+  "charts",
 ]
+// SPEC.md, Charts
+const CHART_KINDS = ["bars", "line", "area", "steps", "points", "heat", "figure"]
+const STACKS = ["stacked", "grouped", "percent"]
+const AXES = ["date", "number", "text"]
 const SEPARATORS = [",", ";", "\t", "|"]
 // SPEC.md, How a value looks: the names a tint has
 const TINTS = ["red", "orange", "yellow", "green", "teal", "blue", "purple", "pink", "brown", "gray"]
@@ -132,7 +137,7 @@ function readsCase(path: string, j: { [k: string]: Json }, plain: boolean) {
       if (typeof n.column !== "number" || !Number.isInteger(n.column) || n.column < 0) fault(path, `${what} names no column`)
       if (typeof n.kind !== "string" || !NAMINGS.includes(n.kind)) fault(path, `${what} has no known kind`)
     })
-  } else keysAre(path, "the case", j, ["columns", "rows", "problems"], ["types", "broken", "tints", "looks", "drawn"])
+  } else keysAre(path, "the case", j, ["columns", "rows", "problems"], ["types", "broken", "tints", "looks", "drawn", "charts", "inferred"])
   // A header cell that breaks may name its column as another does, or not at all.
   const broken = "broken" in j
   if (broken) {
@@ -236,6 +241,61 @@ function readsCase(path: string, j: { [k: string]: Json }, plain: boolean) {
     if (p.kind === "stale" && (v === null || v.from === undefined)) fault(path, `${what} is stale, but its value is no formula's`)
   })
   looks(path, j, stored, rows.length)
+  if ("charts" in j) {
+    if (!Array.isArray(j.charts)) fault(path, `"charts" is not a list`)
+    else j.charts.forEach((c, i) => chart(path, `chart ${i + 1}`, c))
+  }
+  if ("inferred" in j) {
+    if (Array.isArray(j.charts) && j.charts.length > 0) fault(path, `"inferred" is the chart of a file with none, and this one has ${j.charts.length}`)
+    if (j.inferred !== null) chart(path, "the inferred chart", j.inferred)
+  }
+}
+
+/// What a chart draws: its kind, title and stack, its axis and places, its series and
+/// their shades, a value per place and series (an exact decimal or null), its unit, the
+/// rows it read and skipped, and its layers, each a chart.
+function chart(path: string, what: string, c: Json | undefined) {
+  if (!isObject(c)) return fault(path, `${what} is not an object`)
+  keysAre(path, what, c, ["kind", "title", "stack", "axis", "places", "series", "values", "unit", "skipped", "rows", "layers"])
+  if (typeof c.kind !== "string" || !CHART_KINDS.includes(c.kind)) fault(path, `${what} has no known kind`)
+  if (typeof c.title !== "string" || c.title === "") fault(path, `${what} has no title`)
+  if (typeof c.stack !== "string" || !STACKS.includes(c.stack)) fault(path, `${what}: "stack" is stacked, grouped or percent`)
+  if (typeof c.axis !== "string" || !AXES.includes(c.axis)) fault(path, `${what}: "axis" is date, number or text`)
+  const places = Array.isArray(c.places) && c.places.every((p) => typeof p === "string") ? c.places : null
+  if (places === null) fault(path, `${what}: "places" is not a list of texts`)
+  const series = Array.isArray(c.series) ? c.series : []
+  if (!Array.isArray(c.series)) fault(path, `${what}: "series" is not a list`)
+  series.forEach((s, k) => {
+    const of = `${what}, series ${k + 1}`
+    if (!isObject(s)) return fault(path, `${of} is not an object`)
+    keysAre(path, of, s, ["name", "shade"])
+    if (typeof s.name !== "string") fault(path, `${of} has no name`)
+    const d = s.shade
+    const shaded =
+      isObject(d) &&
+      Object.keys(d).length === 1 &&
+      ((typeof d.tint === "string" && TINTS.includes(d.tint)) ||
+        (typeof d.hex === "string" && /^#[0-9a-f]{6}$/.test(d.hex)) ||
+        (typeof d.column === "number" && Number.isInteger(d.column) && d.column >= 0) ||
+        d.quiet === true)
+    if (!shaded) fault(path, `${of}: "shade" is a tint, a hex, a column or quiet`)
+  })
+  if (!Array.isArray(c.values)) fault(path, `${what}: "values" is not a list`)
+  else {
+    if (places !== null && c.values.length !== places.length) fault(path, `${what} has ${c.values.length} rows of values for ${places.length} places`)
+    c.values.forEach((row, p) => {
+      if (!Array.isArray(row) || row.length !== series.length) return fault(path, `${what}: place ${p + 1}'s values are not one a series`)
+      if (!row.every((v) => v === null || (typeof v === "string" && DECIMAL.test(v)))) fault(path, `${what}: place ${p + 1}'s values are not decimals or null`)
+    })
+  }
+  if (c.unit !== null && (typeof c.unit !== "string" || !CURRENCY.test(c.unit))) fault(path, `${what}: "unit" is a currency code or null`)
+  for (const k of ["skipped", "rows"]) {
+    const n = c[k]
+    if (typeof n !== "number" || !Number.isInteger(n) || n < 0) fault(path, `${what}: "${k}" is not a count`)
+  }
+  if (!Array.isArray(c.layers)) return fault(path, `${what}: "layers" is not a list`)
+  if (c.layers.length > 0 && (series.length > 0 || (places?.length ?? 0) > 0)) fault(path, `${what} draws its layers, so it has no places or series of its own`)
+  c.layers.forEach((l, k) => chart(path, `${what}, layer ${k + 1}`, l))
 }
 
 /// How a value looks: `tints` (each column's tinted words), `looks` (each look statement's

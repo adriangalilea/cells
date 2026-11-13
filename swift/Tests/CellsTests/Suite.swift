@@ -71,6 +71,7 @@ import Testing
             case (nil, nil):
                 fails += read(doc, want)
                 fails += looked(doc, want)
+                fails += charted(doc, want)
                 if plain {
                     let ours = String(doc.layout.delimiter)
                     if ours != want["separator"] as? String {
@@ -153,6 +154,68 @@ private func looked(_ doc: Cells.Document, _ want: [String: Any]) -> [String] {
         }
     }
     return fails
+}
+
+/// What the file's charts draw, as the suite says (its README, `charts`, `inferred`): each
+/// chart's summary through this binding's own types, and the chart a file with none is
+/// drawn as.
+private func charted(_ doc: Cells.Document, _ want: [String: Any]) -> [String] {
+    var fails: [String] = []
+    if let theirs = want["charts"] as? [Any] {
+        let ours = doc.charts.indices.map { canon(said(doc.summary(chart: $0))) }
+        let wanted = theirs.map { canon($0) }
+        if ours.count != wanted.count {
+            fails.append("\(ours.count) charts, the suite says \(wanted.count)")
+        }
+        for (i, (a, b)) in zip(ours, wanted).enumerated() where a != b {
+            fails.append("chart \(i + 1) draws \(a), the suite says \(b)")
+        }
+    }
+    if let theirs = want["inferred"] {
+        let ours = canon(doc.inferredSummary.map(said) ?? NSNull())
+        if ours != canon(theirs) {
+            fails.append("drawn from its columns as \(ours), the suite says \(canon(theirs))")
+        }
+    }
+    return fails
+}
+
+/// A summary as the suite writes it.
+private func said(_ s: Cells.ChartSummary) -> [String: Any] {
+    func shade(_ s: Cells.ChartSummary.Shade) -> [String: Any] {
+        switch s {
+        case .tint(.named(let n)): ["tint": "\(n)"]
+        case .tint(.hex(let v)): ["hex": String(format: "#%06x", v)]
+        case .column(let k): ["column": k]
+        case .quiet: ["quiet": true]
+        }
+    }
+    return [
+        "kind": s.kind, "title": s.title, "stack": s.stack, "axis": s.axis, "places": s.places,
+        "series": s.series.map { ["name": $0.name, "shade": shade($0.shade)] as [String: Any] },
+        "values": s.values.map { $0.map { $0 as Any? ?? NSNull() } },
+        "unit": s.unit as Any? ?? NSNull(), "skipped": s.skipped, "rows": s.rows,
+        "layers": s.layers.map(said),
+    ]
+}
+
+/// JSON in one spelling: an object's keys sorted, and under `values` (a chart's) every
+/// decimal in one spelling, so two summaries compare as the suite compares them.
+private func canon(_ v: Any, values: Bool = false) -> String {
+    switch v {
+    case is NSNull: return "null"
+    case let a as [Any]: return "[\(a.map { canon($0, values: values) }.joined(separator: ","))]"
+    case let o as [String: Any]:
+        let pairs = o.keys.sorted().map {
+            "\($0.debugDescription):\(canon(o[$0]!, values: $0 == "values"))"
+        }
+        return "{\(pairs.joined(separator: ","))}"
+    case let s as String: return values ? normal(s) : s.debugDescription
+    case let n as NSNumber:
+        return CFGetTypeID(n) == CFBooleanGetTypeID()
+            ? (n.boolValue ? "true" : "false") : n.stringValue
+    default: preconditionFailure("a chart's JSON holds \(type(of: v))")
+    }
 }
 
 private func json(_ url: URL) throws -> Any {

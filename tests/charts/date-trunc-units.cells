@@ -1,0 +1,28 @@
+---
+```chart bars
+x: DATE_TRUNC('day', date)
+y: SUM(n)
+```
+```chart bars
+x: DATE_TRUNC('week', date)
+y: SUM(n)
+```
+```chart bars
+x: DATE_TRUNC('month', date)
+y: SUM(n)
+```
+```chart bars
+x: DATE_TRUNC('quarter', date)
+y: SUM(n)
+```
+```chart bars
+x: DATE_TRUNC('year', date)
+y: SUM(n)
+```
+---
+date:date,n:int
+2025-12-31,1
+2026-01-01,2
+2026-01-04,4
+2026-01-05,8
+2026-04-02,16

@@ -1,0 +1,29 @@
+{
+  "types": { "Room": "kitchen|hall|bath" },
+  "columns": [
+    { "name": "room", "type": "Room" },
+    { "name": "hours", "type": "num" }
+  ],
+  "rows": [
+    { "room": { "choice": "bath" }, "hours": { "num": "2" } },
+    { "room": { "choice": "kitchen" }, "hours": { "num": "1.5" } },
+    { "room": { "choice": "bath" }, "hours": { "num": "0.5" } },
+    { "room": { "choice": "hall" }, "hours": { "num": "3" } }
+  ],
+  "problems": [],
+  "charts": [
+    {
+      "kind": "bars",
+      "title": "SUM(hours) by room",
+      "stack": "stacked",
+      "axis": "text",
+      "places": ["kitchen", "hall", "bath"],
+      "series": [{ "name": "", "shade": { "column": 1 } }],
+      "values": [["1.5"], ["3"], ["2.5"]],
+      "unit": null,
+      "skipped": 0,
+      "rows": 4,
+      "layers": []
+    }
+  ]
+}

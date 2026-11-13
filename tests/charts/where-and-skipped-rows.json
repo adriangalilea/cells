@@ -1,0 +1,30 @@
+{
+  "columns": [
+    { "name": "date", "type": "date?" },
+    { "name": "account", "type": "text" },
+    { "name": "amount", "type": "EUR?" }
+  ],
+  "rows": [
+    { "date": { "date": "2026-01-01" }, "account": { "text": "rent" }, "amount": { "money": "850.00", "currency": "EUR" } },
+    { "date": { "date": "2026-01-15" }, "account": { "text": "food" }, "amount": { "money": "40.00", "currency": "EUR" } },
+    { "date": null, "account": { "text": "rent" }, "amount": { "money": "850.00", "currency": "EUR" } },
+    { "date": { "date": "2026-02-01" }, "account": { "text": "rent" }, "amount": null },
+    { "date": { "date": "2026-02-02" }, "account": { "text": "rent" }, "amount": { "money": "850.00", "currency": "EUR" } }
+  ],
+  "problems": [],
+  "charts": [
+    {
+      "kind": "bars",
+      "title": "SUM(amount) by DATE_TRUNC('month', date)",
+      "stack": "stacked",
+      "axis": "date",
+      "places": ["2026-01-01", "2026-02-01"],
+      "series": [{ "name": "", "shade": { "column": 2 } }],
+      "values": [["850"], ["850"]],
+      "unit": "EUR",
+      "skipped": 2,
+      "rows": 5,
+      "layers": []
+    }
+  ]
+}

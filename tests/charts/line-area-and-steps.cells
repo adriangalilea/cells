@@ -1,0 +1,19 @@
+---
+```chart line
+x: day
+y: SUM(km)
+```
+```chart area
+x: day
+y: SUM(km)
+```
+```chart steps
+x: day
+y: SUM(km)
+```
+---
+day:date,km:num
+2026-05-02,4
+2026-05-01,3
+2026-05-02,1
+2026-05-04,6

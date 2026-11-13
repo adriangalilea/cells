@@ -1,0 +1,24 @@
+---
+type Kind = income|cost
+```chart bars
+x:     DATE_TRUNC('month', date)
+y:     SUM(amount)
+color: kind
+```
+```chart bars
+x:     DATE_TRUNC('month', date)
+y:     SUM(amount)
+color: kind
+stack: grouped
+```
+```chart bars
+x:     DATE_TRUNC('month', date)
+y:     SUM(amount)
+color: kind
+stack: percent
+```
+---
+date:date,kind:Kind,amount:EUR
+2026-01-02,income,300.00
+2026-01-09,cost,120.00
+2026-02-02,income,300.00

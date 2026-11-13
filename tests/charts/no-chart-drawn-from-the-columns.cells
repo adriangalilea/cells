@@ -1,0 +1,4 @@
+date:date,kind:income|cost,amount:EUR
+2026-01-03,income,100.00
+2026-01-03,cost,30.00
+2026-01-04,cost,5.00

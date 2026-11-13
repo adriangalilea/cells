@@ -1,0 +1,31 @@
+{
+  "columns": [
+    { "name": "date", "type": "date" },
+    { "name": "kind", "type": "income#green|cost|transfer#blue|refund?" },
+    { "name": "amount", "type": "EUR" }
+  ],
+  "rows": [
+    { "date": { "date": "2026-01-02" }, "kind": { "choice": "refund" }, "amount": { "money": "5.00", "currency": "EUR" } },
+    { "date": { "date": "2026-01-03" }, "kind": { "choice": "cost" }, "amount": { "money": "40.00", "currency": "EUR" } },
+    { "date": { "date": "2026-01-04" }, "kind": { "choice": "income" }, "amount": { "money": "900.00", "currency": "EUR" } },
+    { "date": { "date": "2026-02-01" }, "kind": { "choice": "transfer" }, "amount": { "money": "100.00", "currency": "EUR" } },
+    { "date": { "date": "2026-02-02" }, "kind": null, "amount": { "money": "1.00", "currency": "EUR" } },
+    { "date": { "date": "2026-02-03" }, "kind": { "choice": "cost" }, "amount": { "money": "60.00", "currency": "EUR" } }
+  ],
+  "problems": [],
+  "charts": [
+    {
+      "kind": "bars",
+      "title": "SUM(amount) by DATE_TRUNC('month', date)",
+      "stack": "stacked",
+      "axis": "date",
+      "places": ["2026-01-01", "2026-02-01"],
+      "series": [{ "name": "income", "shade": { "tint": "green" } }, { "name": "cost", "shade": { "tint": "orange" } }, { "name": "transfer", "shade": { "tint": "blue" } }, { "name": "refund", "shade": { "tint": "teal" } }, { "name": "none", "shade": { "quiet": true } }],
+      "values": [["900", "40", null, "5", null], [null, "60", "100", null, "1"]],
+      "unit": "EUR",
+      "skipped": 0,
+      "rows": 6,
+      "layers": []
+    }
+  ]
+}

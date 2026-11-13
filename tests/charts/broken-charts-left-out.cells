@@ -1,0 +1,40 @@
+---
+fees = ```cells
+kind:text!,pct:num
+card,2
+```
+```chart pie
+x: item
+y: SUM(cost)
+```
+```chart bars
+x: item
+```
+```chart
+from: rates
+x:    day
+y:    SUM(rate)
+```
+```chart
+from: fees
+x:    item
+y:    SUM(pct)
+```
+fees = ```chart
+x: item
+y: SUM(cost)
+```
+```chart
+layers: nothing
+```
+```chart
+from:   fees
+layers: nothing
+```
+```chart
+x: item
+y: SUM(cost)
+```
+---
+item:text,cost:EUR
+fuel,10.00

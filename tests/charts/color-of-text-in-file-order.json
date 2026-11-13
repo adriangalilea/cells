@@ -1,0 +1,29 @@
+{
+  "columns": [
+    { "name": "day", "type": "date" },
+    { "name": "who", "type": "text" },
+    { "name": "km", "type": "num" }
+  ],
+  "rows": [
+    { "day": { "date": "2026-05-01" }, "who": { "text": "lena" }, "km": { "num": "3" } },
+    { "day": { "date": "2026-05-01" }, "who": { "text": "omar" }, "km": { "num": "5" } },
+    { "day": { "date": "2026-05-02" }, "who": { "text": "ada" }, "km": { "num": "2" } },
+    { "day": { "date": "2026-05-02" }, "who": { "text": "lena" }, "km": { "num": "4" } }
+  ],
+  "problems": [],
+  "charts": [
+    {
+      "kind": "line",
+      "title": "SUM(km) by day",
+      "stack": "stacked",
+      "axis": "date",
+      "places": ["2026-05-01", "2026-05-02"],
+      "series": [{ "name": "lena", "shade": { "tint": "blue" } }, { "name": "omar", "shade": { "tint": "orange" } }, { "name": "ada", "shade": { "tint": "teal" } }],
+      "values": [["3", "5", null], ["4", null, "2"]],
+      "unit": null,
+      "skipped": 0,
+      "rows": 4,
+      "layers": []
+    }
+  ]
+}

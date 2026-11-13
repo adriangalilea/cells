@@ -1,0 +1,11 @@
+---
+```chart figure
+title:   Saved
+value:   SUM(amount)
+compare: DATE_TRUNC('month', date)
+```
+---
+date:date,amount:EUR
+2026-02-14,100.00
+2026-01-05,250.00
+2026-02-01,-20.00

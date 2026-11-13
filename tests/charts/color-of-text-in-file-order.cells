@@ -1,0 +1,12 @@
+---
+```chart line
+x:     day
+y:     SUM(km)
+color: who
+```
+---
+day:date,who:text,km:num
+2026-05-01,lena,3
+2026-05-01,omar,5
+2026-05-02,ada,2
+2026-05-02,lena,4

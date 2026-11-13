@@ -4,7 +4,7 @@ The spec's rules as data, read by every implementation. An implementation confor
 
 ## A case
 
-A case is a `.cells` file and a `.json` beside it, under the folder of what it checks: `records/`, `header/`, `types/`, `choices/`, `constraints/`, `formats/`, `marks/`, `explicit/`, `prelude/`, `formulas/`, `tables/` (tables written inline and filled by scripts), `imports/`, `inference/`, `problems/`, `write/`, and `plain/` (below), the one folder whose files are not Cells files. The file's name says the rule: `constraints/money-at-least-zero.cells`. A case whose grammar breaks is named `broken-…`, and the one whose file is refused, `error-…`.
+A case is a `.cells` file and a `.json` beside it, under the folder of what it checks: `records/`, `header/`, `types/`, `choices/`, `constraints/`, `formats/`, `marks/`, `explicit/`, `prelude/`, `formulas/`, `tables/` (tables written inline and filled by scripts), `imports/`, `inference/`, `problems/`, `charts/` (a file's charts, below), `write/`, and `plain/` (below), the one folder whose files are not Cells files. The file's name says the rule: `constraints/money-at-least-zero.cells`. A case whose grammar breaks is named `broken-…`, and the one whose file is refused, `error-…`.
 
 The `.cells` is bytes, never text to be normalized: its line endings, its trailing break and its byte order mark are the case. `.gitattributes` here keeps git from touching them.
 
@@ -48,6 +48,38 @@ The `.json` is one of two shapes.
 - `drawn`: cells as a reader in English draws them, `{ "row": 0, "column": "amount", "text": "(950.00)", "tint": "red" }`, the `text` under the column's look and the `tint` the cell is drawn in (none when the key is absent; a scale's point as `{ "from": "red", "to": "green", "at": 500 }`, from 0 to 1000); and rows, `{ "row": 0, "tint": "gray" }`, as `look row:` tints them. English is `ENGLISH` in the Rust core: `,` grouping, `.` for the point, English month and day names.
 
 A case without these keys says nothing of how its values look.
+
+**What its charts draw** (SPEC.md, Charts), when a case says so, in two keys beside the rest:
+
+- `charts`: every chart the file keeps, in the order written, each as a reader draws it from the rows. A chart that does not read is not in it; its entries' errors are the case's `broken`, each at the prelude line of the entry that breaks (or of the fence, for a chart its kind cannot draw).
+- `inferred`: what a file with no chart is drawn as, from its columns; `null` when there is nothing to draw.
+
+A chart is one object:
+
+```json
+{
+  "kind": "bars",
+  "title": "SUM(amount) by DATE_TRUNC('month', date)",
+  "stack": "stacked",
+  "axis": "date",
+  "places": ["2026-01-01", "2026-02-01"],
+  "series": [{ "name": "income", "shade": { "tint": "green" } }, { "name": "none", "shade": { "quiet": true } }],
+  "values": [["900", null], [null, "1"]],
+  "unit": "EUR",
+  "skipped": 0,
+  "rows": 6,
+  "layers": []
+}
+```
+
+- `kind` is the fence's label, or the kind its entries say; `title` its `title`, or what it measures by what runs along its axis as the entries write them (SPEC.md, Charts); `stack` its `stack`, `stacked` when none.
+- `axis` is what its places are: `date`, `number` or `text`. `places` are each place along it, in the order drawn, as a value is written in a row (a date `YYYY-MM-DD`, a number plain, a word as it is), `other` the one `top` folds the rest into; a `points` chart has a place a row, so a place may repeat.
+- `series` are its series in their lasting order, each its name (its `color` value, `none` for a blank one, `""` for the one series of a chart with no `color`; a `heat` chart's series are its `y` values) and its shade: `{ "tint": "green" }` or `{ "hex": "#3fa34d" }` (a word's own, or the next no word wears), `{ "column": 2 }` (the colour of the measured column, from 0, of the table charted), `{ "quiet": true }` (`other` and a blank value).
+- `values` are a list a place, a value a series, each an exact decimal as text, compared as decimals as a row's numbers are, or `null` where the series has no row at the place.
+- `unit` is the measure's currency, or `null`. `rows` are the rows the chart read (its table's, for a chart `from` another), `skipped` those `where` held for that had no place or no value.
+- `layers` are a chart of layers' own charts, each one object, in the order named; such a chart has no places, series or values of its own.
+
+A case without these keys says nothing of its charts.
 
 **The grammar breaks**: the file reads, and `broken` lists where, in the file's order (the prelude, the header, the rows). Each break takes out only what it breaks (SPEC.md, Reading), and the columns, rows and problems are what is left.
 
@@ -114,7 +146,7 @@ The `.json` also says `separator` (`","` `";"` `"\t"` `"|"`), and `names`, the h
 
 ## The checker
 
-`bun tests/validate.ts` checks that every case is well-formed by this contract: every `.cells` has its `.json` (or, in `write/`, its `.edit.json` and `.out.cells`; in `plain/`, every file one or the other), every `.json` has one of the two shapes, every tag and kind is known, every value names a column and every row holds every column. No implementation is involved.
+`bun tests/validate.ts` checks that every case is well-formed by this contract: every `.cells` has its `.json` (or, in `write/`, its `.edit.json` and `.out.cells`; in `plain/`, every file one or the other), every `.json` has one of the two shapes, every tag and kind is known, every value names a column, every row holds every column, and every chart has every key, a value a place and series. No implementation is involved.
 
 ## Running it
 

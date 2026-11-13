@@ -1,0 +1,13 @@
+---
+```chart bars
+x:     DATE_TRUNC('month', date)
+y:     SUM(amount)
+where: account = 'rent'
+```
+---
+date:date?,account:text,amount:EUR?
+2026-01-01,rent,850.00
+2026-01-15,food,40.00
+,rent,850.00
+2026-02-01,rent,
+2026-02-02,rent,850.00

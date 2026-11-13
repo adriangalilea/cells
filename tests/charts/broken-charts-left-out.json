@@ -1,0 +1,38 @@
+{
+  "columns": [
+    { "name": "item", "type": "text" },
+    { "name": "cost", "type": "EUR" }
+  ],
+  "rows": [
+    { "item": { "text": "fuel" }, "cost": { "money": "10.00", "currency": "EUR" } }
+  ],
+  "problems": [],
+  "broken": [
+    { "at": "prelude line 5", "span": [50, 12] },
+    { "at": "prelude line 9", "span": [88, 13] },
+    { "at": "prelude line 13", "span": [123, 11] },
+    { "at": "prelude line 17", "span": [165, 8] },
+    { "at": "prelude line 19", "span": [185, 10] },
+    { "at": "prelude line 22", "span": [215, 15] },
+    { "at": "prelude line 26", "span": [256, 8] },
+    { "at": "prelude line 27", "span": [265, 15] },
+    { "at": "prelude line 29", "span": [285, 8] },
+    { "at": "prelude line 30", "span": [294, 12] },
+    { "at": "prelude line 31", "span": [307, 15] }
+  ],
+  "charts": [
+    {
+      "kind": "bars",
+      "title": "SUM(cost) by item",
+      "stack": "stacked",
+      "axis": "text",
+      "places": ["fuel"],
+      "series": [{ "name": "", "shade": { "column": 1 } }],
+      "values": [["10"]],
+      "unit": "EUR",
+      "skipped": 0,
+      "rows": 1,
+      "layers": []
+    }
+  ]
+}

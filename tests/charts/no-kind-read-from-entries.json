@@ -1,0 +1,108 @@
+{
+  "types": { "Shop": "market|bakery" },
+  "columns": [
+    { "name": "date", "type": "date" },
+    { "name": "shop", "type": "Shop" },
+    { "name": "amount", "type": "EUR" },
+    { "name": "balance", "type": "EUR" }
+  ],
+  "rows": [
+    { "date": { "date": "2026-03-01" }, "shop": { "choice": "market" }, "amount": { "money": "10.00", "currency": "EUR" }, "balance": { "money": "90.00", "currency": "EUR" } },
+    { "date": { "date": "2026-03-01" }, "shop": { "choice": "bakery" }, "amount": { "money": "2.00", "currency": "EUR" }, "balance": { "money": "88.00", "currency": "EUR" } },
+    { "date": { "date": "2026-03-02" }, "shop": { "choice": "market" }, "amount": { "money": "5.00", "currency": "EUR" }, "balance": { "money": "83.00", "currency": "EUR" } }
+  ],
+  "problems": [],
+  "charts": [
+    {
+      "kind": "figure",
+      "title": "SUM(amount)",
+      "stack": "stacked",
+      "axis": "number",
+      "places": [""],
+      "series": [{ "name": "", "shade": { "column": 2 } }],
+      "values": [["17"]],
+      "unit": "EUR",
+      "skipped": 0,
+      "rows": 3,
+      "layers": []
+    },
+    {
+      "kind": "heat",
+      "title": "SUM(amount) by shop",
+      "stack": "stacked",
+      "axis": "text",
+      "places": ["market", "bakery"],
+      "series": [{ "name": "2026-03-01", "shade": { "tint": "blue" } }, { "name": "2026-03-02", "shade": { "tint": "orange" } }],
+      "values": [["10", "5"], ["2", null]],
+      "unit": null,
+      "skipped": 0,
+      "rows": 3,
+      "layers": []
+    },
+    {
+      "kind": "points",
+      "title": "amount by date",
+      "stack": "stacked",
+      "axis": "date",
+      "places": ["2026-03-01", "2026-03-01", "2026-03-02"],
+      "series": [{ "name": "", "shade": { "column": 2 } }],
+      "values": [["10"], ["2"], ["5"]],
+      "unit": "EUR",
+      "skipped": 0,
+      "rows": 3,
+      "layers": []
+    },
+    {
+      "kind": "steps",
+      "title": "LAST_VALUE(balance) by date",
+      "stack": "stacked",
+      "axis": "date",
+      "places": ["2026-03-01", "2026-03-02"],
+      "series": [{ "name": "", "shade": { "column": 3 } }],
+      "values": [["88"], ["83"]],
+      "unit": "EUR",
+      "skipped": 0,
+      "rows": 3,
+      "layers": []
+    },
+    {
+      "kind": "steps",
+      "title": "FIRST_VALUE(balance) by date",
+      "stack": "stacked",
+      "axis": "date",
+      "places": ["2026-03-01", "2026-03-02"],
+      "series": [{ "name": "", "shade": { "column": 3 } }],
+      "values": [["90"], ["83"]],
+      "unit": "EUR",
+      "skipped": 0,
+      "rows": 3,
+      "layers": []
+    },
+    {
+      "kind": "bars",
+      "title": "SUM(amount) by date",
+      "stack": "stacked",
+      "axis": "date",
+      "places": ["2026-03-01", "2026-03-02"],
+      "series": [{ "name": "", "shade": { "column": 2 } }],
+      "values": [["12"], ["5"]],
+      "unit": "EUR",
+      "skipped": 0,
+      "rows": 3,
+      "layers": []
+    },
+    {
+      "kind": "bars",
+      "title": "SUM(amount) by shop",
+      "stack": "stacked",
+      "axis": "text",
+      "places": ["market", "bakery"],
+      "series": [{ "name": "", "shade": { "column": 2 } }],
+      "values": [["15"], ["2"]],
+      "unit": "EUR",
+      "skipped": 0,
+      "rows": 3,
+      "layers": []
+    }
+  ]
+}

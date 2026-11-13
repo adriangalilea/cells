@@ -1,0 +1,12 @@
+---
+type Mood = good|fine|bad
+```chart bars
+x: mood
+y: COUNT(*)
+```
+---
+day:date,mood:Mood?
+2026-04-01,fine
+2026-04-02,good
+2026-04-03,fine
+2026-04-04,

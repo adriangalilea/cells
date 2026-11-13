@@ -1,0 +1,26 @@
+{
+  "columns": [
+    { "name": "item", "type": "text" },
+    { "name": "cost", "type": "EUR" }
+  ],
+  "rows": [
+    { "item": { "text": "fuel" }, "cost": { "money": "10.00", "currency": "EUR" } },
+    { "item": { "text": "maps" }, "cost": { "money": "4.00", "currency": "EUR" } }
+  ],
+  "problems": [],
+  "charts": [
+    {
+      "kind": "bars",
+      "title": "SUM(cost) by item",
+      "stack": "stacked",
+      "axis": "text",
+      "places": ["fuel", "maps"],
+      "series": [{ "name": "", "shade": { "column": 1 } }],
+      "values": [["10"], ["4"]],
+      "unit": "EUR",
+      "skipped": 0,
+      "rows": 2,
+      "layers": []
+    }
+  ]
+}

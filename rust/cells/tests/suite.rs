@@ -326,6 +326,7 @@ fn check_read(doc: &Doc, want: &Json) -> Vec<String> {
         fails.push(format!("broken at {ours:?}, the suite says {theirs:?} ({})", whys.join("; ")));
     }
     fails.extend(check_looks(doc, want));
+    fails.extend(check_charts(doc, want));
     fails
 }
 
@@ -402,6 +403,51 @@ fn check_looks(doc: &Doc, want: &Json) -> Vec<String> {
                     }
                 }
             }
+        }
+    }
+    fails
+}
+
+/// JSON in one spelling: an object's keys sorted, and under `values` (a chart's) every
+/// decimal in one spelling, so two summaries compare as the suite compares them.
+fn canon(j: &Json, values: bool) -> String {
+    match j {
+        Json::Null => "null".to_string(),
+        Json::Bool(b) => b.to_string(),
+        Json::Number(n) => normal(n),
+        Json::Str(s) if values => normal(s),
+        Json::Str(s) => format!("{s:?}"),
+        Json::Array(a) => format!("[{}]", a.iter().map(|v| canon(v, values)).collect::<Vec<_>>().join(",")),
+        Json::Object(o) => {
+            let mut o: Vec<&(String, Json)> = o.iter().collect();
+            o.sort_by(|a, b| a.0.cmp(&b.0));
+            format!("{{{}}}", o.iter().map(|(k, v)| format!("{k:?}:{}", canon(v, k == "values"))).collect::<Vec<_>>().join(","))
+        }
+    }
+}
+
+/// What the file's charts draw (SPEC.md, Charts), each against the suite's, and the chart
+/// a file with none is drawn as.
+fn check_charts(doc: &Doc, want: &Json) -> Vec<String> {
+    let mut fails = Vec::new();
+    let drawn = |summary: cells::chart::Summary| canon(&json(&summary.json()), false);
+    if let Some(charts) = want.get("charts") {
+        let ours: Vec<String> = doc.charts().iter().map(|c| drawn(doc.summary(c))).collect();
+        let theirs: Vec<String> = charts.array().iter().map(|c| canon(c, false)).collect();
+        if ours.len() != theirs.len() {
+            fails.push(format!("{} charts, the suite says {}", ours.len(), theirs.len()));
+        }
+        for (i, (a, b)) in ours.iter().zip(&theirs).enumerate() {
+            if a != b {
+                fails.push(format!("chart {} draws {a}, the suite says {b}", i + 1));
+            }
+        }
+    }
+    if let Some(inferred) = want.get("inferred") {
+        let ours = doc.inferred_chart().map_or("null".to_string(), |c| drawn(doc.summary(&c)));
+        let theirs = canon(inferred, false);
+        if ours != theirs {
+            fails.push(format!("drawn from its columns as {ours}, the suite says {theirs}"));
         }
     }
     fails

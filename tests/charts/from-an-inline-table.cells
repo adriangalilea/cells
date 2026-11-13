@@ -1,0 +1,21 @@
+---
+rates = ```cells
+day:date,rate:num,side:buy#green|sell
+2026-01-01,1.10,buy
+2026-01-02,1.20,sell
+2026-01-02,1.30,buy
+```
+```chart
+from:  rates
+x:     day
+y:     LAST_VALUE(rate)
+color: side
+```
+```chart bars
+from: rates
+x:    side
+y:    COUNT(*)
+```
+---
+item:text,cost:EUR
+fuel,10.00

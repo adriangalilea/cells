@@ -1,0 +1,35 @@
+---
+type Shop = market|bakery
+```chart
+value: SUM(amount)
+```
+```chart
+x:     shop
+y:     date
+value: SUM(amount)
+```
+```chart
+x: date
+y: amount
+```
+```chart
+x: date
+y: LAST_VALUE(balance)
+```
+```chart
+x: date
+y: FIRST_VALUE(balance)
+```
+```chart
+x: date
+y: SUM(amount)
+```
+```chart
+x: shop
+y: SUM(amount)
+```
+---
+date:date,shop:Shop,amount:EUR,balance:EUR
+2026-03-01,market,10.00,90.00
+2026-03-01,bakery,2.00,88.00
+2026-03-02,market,5.00,83.00

@@ -1,0 +1,54 @@
+{
+  "columns": [
+    { "name": "day", "type": "date" },
+    { "name": "km", "type": "num" }
+  ],
+  "rows": [
+    { "day": { "date": "2026-05-02" }, "km": { "num": "4" } },
+    { "day": { "date": "2026-05-01" }, "km": { "num": "3" } },
+    { "day": { "date": "2026-05-02" }, "km": { "num": "1" } },
+    { "day": { "date": "2026-05-04" }, "km": { "num": "6" } }
+  ],
+  "problems": [],
+  "charts": [
+    {
+      "kind": "line",
+      "title": "SUM(km) by day",
+      "stack": "stacked",
+      "axis": "date",
+      "places": ["2026-05-01", "2026-05-02", "2026-05-04"],
+      "series": [{ "name": "", "shade": { "column": 1 } }],
+      "values": [["3"], ["5"], ["6"]],
+      "unit": null,
+      "skipped": 0,
+      "rows": 4,
+      "layers": []
+    },
+    {
+      "kind": "area",
+      "title": "SUM(km) by day",
+      "stack": "stacked",
+      "axis": "date",
+      "places": ["2026-05-01", "2026-05-02", "2026-05-04"],
+      "series": [{ "name": "", "shade": { "column": 1 } }],
+      "values": [["3"], ["5"], ["6"]],
+      "unit": null,
+      "skipped": 0,
+      "rows": 4,
+      "layers": []
+    },
+    {
+      "kind": "steps",
+      "title": "SUM(km) by day",
+      "stack": "stacked",
+      "axis": "date",
+      "places": ["2026-05-01", "2026-05-02", "2026-05-04"],
+      "series": [{ "name": "", "shade": { "column": 1 } }],
+      "values": [["3"], ["5"], ["6"]],
+      "unit": null,
+      "skipped": 0,
+      "rows": 4,
+      "layers": []
+    }
+  ]
+}

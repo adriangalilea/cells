@@ -1,0 +1,14 @@
+---
+fees = ```cells
+kind:text!,pct:num
+card,2
+```
+```chart bars
+from: TABLE
+x:    item
+y:    SUM(cost)
+```
+---
+item:text,cost:EUR
+fuel,10.00
+maps,4.00

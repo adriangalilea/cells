@@ -1,0 +1,27 @@
+{
+  "columns": [
+    { "name": "date", "type": "date" },
+    { "name": "kind", "type": "income|cost" },
+    { "name": "amount", "type": "EUR" }
+  ],
+  "rows": [
+    { "date": { "date": "2026-01-03" }, "kind": { "choice": "income" }, "amount": { "money": "100.00", "currency": "EUR" } },
+    { "date": { "date": "2026-01-03" }, "kind": { "choice": "cost" }, "amount": { "money": "30.00", "currency": "EUR" } },
+    { "date": { "date": "2026-01-04" }, "kind": { "choice": "cost" }, "amount": { "money": "5.00", "currency": "EUR" } }
+  ],
+  "problems": [],
+  "charts": [],
+  "inferred": {
+    "kind": "bars",
+    "title": "amount by date",
+    "stack": "stacked",
+    "axis": "date",
+    "places": ["2026-01-03", "2026-01-04"],
+    "series": [{ "name": "income", "shade": { "tint": "blue" } }, { "name": "cost", "shade": { "tint": "orange" } }],
+    "values": [["100", "30"], [null, "5"]],
+    "unit": "EUR",
+    "skipped": 0,
+    "rows": 3,
+    "layers": []
+  }
+}

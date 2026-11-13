@@ -1,0 +1,12 @@
+---
+```chart bars
+title: Spending by month
+x:     DATE_TRUNC('month', date)
+y:     SUM(amount)
+```
+---
+date:date,amount:EUR
+2026-01-03,12.50
+2026-01-20,7.50
+2026-02-11,30.00
+2026-03-01,4.25

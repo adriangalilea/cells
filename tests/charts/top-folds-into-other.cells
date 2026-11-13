@@ -1,0 +1,13 @@
+---
+```chart bars
+x:   shop
+y:   SUM(amount)
+top: 3
+```
+---
+shop:text,amount:EUR
+market,40.00
+bakery,12.00
+garage,90.00
+kiosk,3.00
+pharmacy,5.00

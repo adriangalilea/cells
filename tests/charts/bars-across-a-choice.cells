@@ -1,0 +1,12 @@
+---
+type Room = kitchen|hall|bath
+```chart bars
+x: room
+y: SUM(hours)
+```
+---
+room:Room,hours:num
+bath,2
+kitchen,1.5
+bath,0.5
+hall,3

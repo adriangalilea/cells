@@ -1,0 +1,28 @@
+{
+  "columns": [
+    { "name": "weekday", "type": "text" },
+    { "name": "hour", "type": "int" }
+  ],
+  "rows": [
+    { "weekday": { "text": "mon" }, "hour": { "int": "9" } },
+    { "weekday": { "text": "mon" }, "hour": { "int": "9" } },
+    { "weekday": { "text": "tue" }, "hour": { "int": "9" } },
+    { "weekday": { "text": "mon" }, "hour": { "int": "14" } }
+  ],
+  "problems": [],
+  "charts": [
+    {
+      "kind": "heat",
+      "title": "COUNT(*) by weekday",
+      "stack": "stacked",
+      "axis": "text",
+      "places": ["mon", "tue"],
+      "series": [{ "name": "9", "shade": { "tint": "blue" } }, { "name": "14", "shade": { "tint": "orange" } }],
+      "values": [["2", "1"], ["1", null]],
+      "unit": null,
+      "skipped": 0,
+      "rows": 4,
+      "layers": []
+    }
+  ]
+}

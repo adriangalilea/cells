@@ -1,0 +1,23 @@
+---
+plan = ```cells
+month:date,budget:EUR
+2026-01-01,800.00
+2026-02-01,900.00
+```
+actual = ```chart bars
+x: DATE_TRUNC('month', date)
+y: SUM(amount)
+```
+planned = ```chart line
+from: plan
+x:    month
+y:    SUM(budget)
+```
+```chart
+title:  Rent, actual and planned
+layers: actual, planned
+```
+---
+date:date,amount:EUR
+2026-01-05,850.00
+2026-02-05,850.00

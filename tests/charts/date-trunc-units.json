@@ -1,0 +1,81 @@
+{
+  "columns": [
+    { "name": "date", "type": "date" },
+    { "name": "n", "type": "int" }
+  ],
+  "rows": [
+    { "date": { "date": "2025-12-31" }, "n": { "int": "1" } },
+    { "date": { "date": "2026-01-01" }, "n": { "int": "2" } },
+    { "date": { "date": "2026-01-04" }, "n": { "int": "4" } },
+    { "date": { "date": "2026-01-05" }, "n": { "int": "8" } },
+    { "date": { "date": "2026-04-02" }, "n": { "int": "16" } }
+  ],
+  "problems": [],
+  "charts": [
+    {
+      "kind": "bars",
+      "title": "SUM(n) by DATE_TRUNC('day', date)",
+      "stack": "stacked",
+      "axis": "date",
+      "places": ["2025-12-31", "2026-01-01", "2026-01-04", "2026-01-05", "2026-04-02"],
+      "series": [{ "name": "", "shade": { "column": 1 } }],
+      "values": [["1"], ["2"], ["4"], ["8"], ["16"]],
+      "unit": null,
+      "skipped": 0,
+      "rows": 5,
+      "layers": []
+    },
+    {
+      "kind": "bars",
+      "title": "SUM(n) by DATE_TRUNC('week', date)",
+      "stack": "stacked",
+      "axis": "date",
+      "places": ["2025-12-29", "2026-01-05", "2026-03-30"],
+      "series": [{ "name": "", "shade": { "column": 1 } }],
+      "values": [["7"], ["8"], ["16"]],
+      "unit": null,
+      "skipped": 0,
+      "rows": 5,
+      "layers": []
+    },
+    {
+      "kind": "bars",
+      "title": "SUM(n) by DATE_TRUNC('month', date)",
+      "stack": "stacked",
+      "axis": "date",
+      "places": ["2025-12-01", "2026-01-01", "2026-04-01"],
+      "series": [{ "name": "", "shade": { "column": 1 } }],
+      "values": [["1"], ["14"], ["16"]],
+      "unit": null,
+      "skipped": 0,
+      "rows": 5,
+      "layers": []
+    },
+    {
+      "kind": "bars",
+      "title": "SUM(n) by DATE_TRUNC('quarter', date)",
+      "stack": "stacked",
+      "axis": "date",
+      "places": ["2025-10-01", "2026-01-01", "2026-04-01"],
+      "series": [{ "name": "", "shade": { "column": 1 } }],
+      "values": [["1"], ["14"], ["16"]],
+      "unit": null,
+      "skipped": 0,
+      "rows": 5,
+      "layers": []
+    },
+    {
+      "kind": "bars",
+      "title": "SUM(n) by DATE_TRUNC('year', date)",
+      "stack": "stacked",
+      "axis": "date",
+      "places": ["2025-01-01", "2026-01-01"],
+      "series": [{ "name": "", "shade": { "column": 1 } }],
+      "values": [["1"], ["30"]],
+      "unit": null,
+      "skipped": 0,
+      "rows": 5,
+      "layers": []
+    }
+  ]
+}

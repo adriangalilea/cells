@@ -1,0 +1,55 @@
+{
+  "types": { "Kind": "income|cost" },
+  "columns": [
+    { "name": "date", "type": "date" },
+    { "name": "kind", "type": "Kind" },
+    { "name": "amount", "type": "EUR" }
+  ],
+  "rows": [
+    { "date": { "date": "2026-01-02" }, "kind": { "choice": "income" }, "amount": { "money": "300.00", "currency": "EUR" } },
+    { "date": { "date": "2026-01-09" }, "kind": { "choice": "cost" }, "amount": { "money": "120.00", "currency": "EUR" } },
+    { "date": { "date": "2026-02-02" }, "kind": { "choice": "income" }, "amount": { "money": "300.00", "currency": "EUR" } }
+  ],
+  "problems": [],
+  "charts": [
+    {
+      "kind": "bars",
+      "title": "SUM(amount) by DATE_TRUNC('month', date)",
+      "stack": "stacked",
+      "axis": "date",
+      "places": ["2026-01-01", "2026-02-01"],
+      "series": [{ "name": "income", "shade": { "tint": "blue" } }, { "name": "cost", "shade": { "tint": "orange" } }],
+      "values": [["300", "120"], ["300", null]],
+      "unit": "EUR",
+      "skipped": 0,
+      "rows": 3,
+      "layers": []
+    },
+    {
+      "kind": "bars",
+      "title": "SUM(amount) by DATE_TRUNC('month', date)",
+      "stack": "grouped",
+      "axis": "date",
+      "places": ["2026-01-01", "2026-02-01"],
+      "series": [{ "name": "income", "shade": { "tint": "blue" } }, { "name": "cost", "shade": { "tint": "orange" } }],
+      "values": [["300", "120"], ["300", null]],
+      "unit": "EUR",
+      "skipped": 0,
+      "rows": 3,
+      "layers": []
+    },
+    {
+      "kind": "bars",
+      "title": "SUM(amount) by DATE_TRUNC('month', date)",
+      "stack": "percent",
+      "axis": "date",
+      "places": ["2026-01-01", "2026-02-01"],
+      "series": [{ "name": "income", "shade": { "tint": "blue" } }, { "name": "cost", "shade": { "tint": "orange" } }],
+      "values": [["300", "120"], ["300", null]],
+      "unit": "EUR",
+      "skipped": 0,
+      "rows": 3,
+      "layers": []
+    }
+  ]
+}
