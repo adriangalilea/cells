@@ -1450,6 +1450,10 @@ pub unsafe extern "C" fn cells_statement_part(d: *mut CellsDoc, i: usize, part: 
         (P::CellsStatementCode, S::Run { code, .. }) => fenced(code),
         (P::CellsStatementRows, S::Table { body, .. }) => fenced(body),
         (P::CellsStatementRows, S::Run { stored, .. }) => stored.as_ref().map(fenced).unwrap_or_default(),
+        // a chart: its name when it has one, its kind as its fence's label, its entries
+        (P::CellsStatementName, S::Chart { name, .. }) => name.clone().unwrap_or_default(),
+        (P::CellsStatementSpelled, S::Chart { body, .. }) => body.label.clone(),
+        (P::CellsStatementRows, S::Chart { body, .. }) => fenced(body),
         _ => String::new(),
     };
     d.out = text;
