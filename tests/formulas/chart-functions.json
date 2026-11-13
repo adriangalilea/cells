@@ -1,0 +1,19 @@
+{
+  "columns": [
+    { "name": "on", "type": "date" },
+    { "name": "balance", "type": "EUR?" },
+    { "name": "week", "type": "date", "formula": "DATE_TRUNC('week', on)" },
+    { "name": "month", "type": "date", "formula": "DATE_TRUNC('month', on)" },
+    { "name": "quarter", "type": "date", "formula": "DATE_TRUNC('quarter', on)" },
+    { "name": "year", "type": "date", "formula": "DATE_TRUNC('year', on)" },
+    { "name": "rows", "type": "int", "formula": "COUNT(*)" },
+    { "name": "first", "type": "EUR", "formula": "FIRST_VALUE(balance)" },
+    { "name": "last", "type": "EUR", "formula": "LAST_VALUE(balance)" }
+  ],
+  "rows": [
+    { "on": { "date": "2026-05-14" }, "balance": { "money": "100.00", "currency": "EUR" }, "week": { "date": "2026-05-11", "from": "formula" }, "month": { "date": "2026-05-01", "from": "formula" }, "quarter": { "date": "2026-04-01", "from": "formula" }, "year": { "date": "2026-01-01", "from": "formula" }, "rows": { "int": "3", "from": "formula" }, "first": { "money": "100.00", "currency": "EUR", "from": "formula" }, "last": { "money": "300.00", "currency": "EUR", "from": "formula" } },
+    { "on": { "date": "2026-08-02" }, "balance": null, "week": { "date": "2026-07-27", "from": "formula" }, "month": { "date": "2026-08-01", "from": "formula" }, "quarter": { "date": "2026-07-01", "from": "formula" }, "year": { "date": "2026-01-01", "from": "formula" }, "rows": { "int": "3", "from": "formula" }, "first": { "money": "100.00", "currency": "EUR", "from": "formula" }, "last": { "money": "300.00", "currency": "EUR", "from": "formula" } },
+    { "on": { "date": "2026-11-13" }, "balance": { "money": "300.00", "currency": "EUR" }, "week": { "date": "2026-11-09", "from": "formula" }, "month": { "date": "2026-11-01", "from": "formula" }, "quarter": { "date": "2026-10-01", "from": "formula" }, "year": { "date": "2026-01-01", "from": "formula" }, "rows": { "int": "3", "from": "formula" }, "first": { "money": "100.00", "currency": "EUR", "from": "formula" }, "last": { "money": "300.00", "currency": "EUR", "from": "formula" } }
+  ],
+  "problems": []
+}

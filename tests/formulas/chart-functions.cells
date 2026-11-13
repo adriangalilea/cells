@@ -1,0 +1,4 @@
+on:date,balance:EUR?,"week:date=DATE_TRUNC('week', on)","month:date=DATE_TRUNC('month', on)","quarter:date=DATE_TRUNC('quarter', on)","year:date=DATE_TRUNC('year', on)",rows:int=COUNT(*),first:EUR=FIRST_VALUE(balance),last:EUR=LAST_VALUE(balance)
+2026-05-14,100.00,2026-05-11=,2026-05-01=,2026-04-01=,2026-01-01=,3=,100.00=,300.00=
+2026-08-02,,2026-07-27=,2026-08-01=,2026-07-01=,2026-01-01=,3=,100.00=,300.00=
+2026-11-13,300.00,2026-11-09=,2026-11-01=,2026-10-01=,2026-01-01=,3=,100.00=,300.00=

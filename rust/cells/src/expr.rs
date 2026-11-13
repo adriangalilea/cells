@@ -553,7 +553,11 @@ impl Parser {
                 let first = if matches!(t, Tok::Name(_)) && first == "TABLE" { THIS.to_owned() } else { first };
                 if matches!(t, Tok::Name(_)) && self.eat_sym("(") {
                     let mut args = Vec::new();
-                    if !self.eat_sym(")") {
+                    // `COUNT(*)`, the rows: SQL's count of a value never null, `COUNT(1)`
+                    if first == "COUNT" && self.eat_sym("*") {
+                        self.expect_sym(")")?;
+                        args.push(Expr::Num(Exact::from_int(1)));
+                    } else if !self.eat_sym(")") {
                         loop {
                             args.push(self.or()?);
                             if self.eat_sym(")") {
@@ -665,8 +669,26 @@ pub fn low_words(src: &str) -> Vec<(Sp, String)> {
 
 /// Every function a formula may call, the aggregates first: what a language server
 /// completes.
-pub const FUNCTIONS: [&str; 15] =
-    ["SUM", "AVG", "MIN", "MAX", "COUNT", "ROUND", "FLOOR", "CEIL", "ABS", "COALESCE", "NULLIF", "LENGTH", "LOWER", "UPPER", "TRIM"];
+pub const FUNCTIONS: [&str; 18] = [
+    "SUM",
+    "AVG",
+    "MIN",
+    "MAX",
+    "COUNT",
+    "FIRST_VALUE",
+    "LAST_VALUE",
+    "ROUND",
+    "FLOOR",
+    "CEIL",
+    "ABS",
+    "COALESCE",
+    "NULLIF",
+    "LENGTH",
+    "LOWER",
+    "UPPER",
+    "TRIM",
+    "DATE_TRUNC",
+];
 
 /// A function's call as written and what it gives, in a line: what a completion and a
 /// hover say of it. Every one of `FUNCTIONS` has one.
@@ -676,7 +698,10 @@ pub fn signature(name: &str) -> Option<(&'static str, &'static str)> {
         "AVG" => ("AVG(column)", "the mean of the column's values that are not blank"),
         "MIN" => ("MIN(column)", "the column's smallest value"),
         "MAX" => ("MAX(column)", "the column's largest value"),
-        "COUNT" => ("COUNT(column)", "how many of the column's values are not blank"),
+        "COUNT" => ("COUNT(column)", "how many of the column's values are not blank; COUNT(*) the rows"),
+        "FIRST_VALUE" => ("FIRST_VALUE(column)", "the column's first value that is not blank, in the lines' order"),
+        "LAST_VALUE" => ("LAST_VALUE(column)", "the column's last value that is not blank, in the lines' order"),
+        "DATE_TRUNC" => ("DATE_TRUNC('month', date)", "the date's first day of its day, week (from Monday), month, quarter or year"),
         "ROUND" => ("ROUND(x, digits)", "x rounded half to even to `digits` places after the point, none unless given"),
         "FLOOR" => ("FLOOR(x)", "the whole number at or below x"),
         "CEIL" => ("CEIL(x)", "the whole number at or above x"),
@@ -793,6 +818,10 @@ pub enum Agg {
     Min,
     Max,
     Count,
+    /// `FIRST_VALUE`: the first value that is not null, in the lines' order.
+    First,
+    /// `LAST_VALUE`: the last value that is not null, in the lines' order.
+    Last,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -807,6 +836,45 @@ pub enum F {
     Upper,
     Trim,
     Length,
+    /// `DATE_TRUNC('month', date)`: its unit written, read when the formula is.
+    DateTrunc(Unit),
+}
+
+/// What `DATE_TRUNC` takes a date to the first day of.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Unit {
+    Day,
+    /// From Monday.
+    Week,
+    Month,
+    Quarter,
+    Year,
+}
+
+impl Unit {
+    fn of(word: &str) -> Option<Unit> {
+        Some(match word {
+            "day" => Unit::Day,
+            "week" => Unit::Week,
+            "month" => Unit::Month,
+            "quarter" => Unit::Quarter,
+            "year" => Unit::Year,
+            _ => return None,
+        })
+    }
+
+    /// `days` (since 1970-01-01) to the first day of its unit.
+    pub fn first(self, days: i32) -> i32 {
+        let (y, m, _) = crate::value::civil_from_days(days);
+        match self {
+            Unit::Day => days,
+            // 1970-01-01 was a Thursday, three days past a Monday
+            Unit::Week => days - (days + 3).rem_euclid(7),
+            Unit::Month => crate::value::days_from_civil(y, m, 1),
+            Unit::Quarter => crate::value::days_from_civil(y, (m - 1) / 3 * 3 + 1, 1),
+            Unit::Year => crate::value::days_from_civil(y, 1, 1),
+        }
+    }
 }
 
 /// Where a column read is: the row being computed's table (`None`), or a table by its
@@ -1037,6 +1105,7 @@ impl Resolver<'_, '_> {
             }
             Win::Agg(Agg::Count) => K::Num,
             Win::Agg(Agg::Min | Agg::Max) | Win::Lag => k,
+            Win::Agg(Agg::First | Agg::Last) => unreachable!("FIRST_VALUE and LAST_VALUE are named no window"),
         };
         let mut keys = Vec::with_capacity(order.len());
         for (key, descending) in order {
@@ -1132,6 +1201,8 @@ impl Resolver<'_, '_> {
             "MIN" => Some(Agg::Min),
             "MAX" => Some(Agg::Max),
             "COUNT" => Some(Agg::Count),
+            "FIRST_VALUE" => Some(Agg::First),
+            "LAST_VALUE" => Some(Agg::Last),
             _ => None,
         };
         if let Some(agg) = agg {
@@ -1150,7 +1221,7 @@ impl Resolver<'_, '_> {
                         K::Num
                     }
                     Agg::Count => K::Num,
-                    Agg::Min | Agg::Max => k,
+                    Agg::Min | Agg::Max | Agg::First | Agg::Last => k,
                 };
                 let slot = *self.aggregates;
                 *self.aggregates += 1;
@@ -1164,7 +1235,7 @@ impl Resolver<'_, '_> {
                     K::Num
                 }
                 Agg::Count => K::Num,
-                Agg::Min | Agg::Max => k,
+                Agg::Min | Agg::Max | Agg::First | Agg::Last => k,
             };
             let slot = *self.aggregates;
             *self.aggregates += 1;
@@ -1224,6 +1295,18 @@ impl Resolver<'_, '_> {
                     "TRIM" => (F::Trim, K::Text),
                     _ => (F::Length, K::Num),
                 }
+            }
+            "DATE_TRUNC" => {
+                arity(2..=2)?;
+                let units = "'day', 'week', 'month', 'quarter' or 'year'";
+                let Expr::Text(word) = &args[0] else {
+                    return Err(fail(format!("DATE_TRUNC takes its unit written: {units}")));
+                };
+                let unit = Unit::of(word).ok_or_else(|| fail(format!("DATE_TRUNC: no unit '{word}'; {units}")))?;
+                if !matches!(kinds[1], K::Date | K::Null) {
+                    return Err(fail(format!("DATE_TRUNC takes a date, not {}", kinds[1].word())));
+                }
+                (F::DateTrunc(unit), K::Date)
             }
             "LAG" => return Err(fail("LAG is a window's: LAG(balance) OVER (ORDER BY date)".to_owned())),
             _ => return Err(fail(format!("no function {name}"))),
@@ -1396,6 +1479,8 @@ pub fn eval(ir: &Ir, table: Table, row: usize, src: &mut dyn Source) -> V {
                     }
                     acc.unwrap_or(V::Null)
                 }
+                Agg::First => (lo..=hi).map(|r| src.cell(None, r, *k)).find(|v| *v != V::Null).unwrap_or(V::Null),
+                Agg::Last => (lo..=hi).rev().map(|r| src.cell(None, r, *k)).find(|v| *v != V::Null).unwrap_or(V::Null),
             }
         }
         Ir::Follow(key, targets) => {
@@ -1443,6 +1528,8 @@ pub fn eval(ir: &Ir, table: Table, row: usize, src: &mut dyn Source) -> V {
                             a
                         }
                     }
+                    // the lines' order: the last value read is the last
+                    (Agg::Last, Some(_)) => v,
                     (_, Some(a)) => a,
                 });
             }
@@ -1453,7 +1540,7 @@ pub fn eval(ir: &Ir, table: Table, row: usize, src: &mut dyn Source) -> V {
                     Some(V::Num(s)) => s.div(&Exact::from_int(count)).map_or(V::Null, V::Num),
                     _ => V::Null,
                 },
-                Agg::Min | Agg::Max => acc.unwrap_or(V::Null),
+                Agg::Min | Agg::Max | Agg::First | Agg::Last => acc.unwrap_or(V::Null),
             };
             src.remember(*slot, v.clone());
             v
@@ -1647,6 +1734,10 @@ fn call(f: F, vs: Vec<V>) -> V {
         other => other.canonical().unwrap(),
     };
     match f {
+        F::DateTrunc(unit) => match vs[1] {
+            V::Date(days) => V::Date(unit.first(days)),
+            _ => unreachable!("a date, checked when resolved"),
+        },
         F::Round => {
             let digits = match vs.get(1) {
                 Some(d) => {
@@ -1796,6 +1887,7 @@ mod tests {
                 (None, "cost") => Some((0, K::Num)),
                 (None, "qty") => Some((1, K::Num)),
                 (None, "item") => Some((2, K::Text)),
+                (None, "on") => Some((3, K::Date)),
                 _ => None,
             }
         }
@@ -1986,6 +2078,7 @@ mod tests {
             let call = match f {
                 "LOWER" | "UPPER" | "TRIM" | "LENGTH" => format!("{f}(item)"),
                 "ROUND" | "NULLIF" | "COALESCE" => format!("{f}(cost, 1)"),
+                "DATE_TRUNC" => format!("{f}('month', on)"),
                 _ => format!("{f}(cost)"),
             };
             let resolved = parse(&call).and_then(|e| resolve(&e, &One, &mut 0));
