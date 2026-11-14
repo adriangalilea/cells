@@ -62,16 +62,19 @@ final class Engine: @unchecked Sendable {
         return made(doc, &failure, text: text(), sep: sep)
     }
 
-    /// A `.cells` file's bytes read, its imports followed by `follow` (the core's
-    /// `cells_read_at` or `cells_read_with`, handed the bytes and the failure to set).
+    /// The bytes of the file at `path` read in the dialect its name says, its imports followed
+    /// by `follow` (the core's `cells_read_at` or `cells_read_with`, handed the bytes and the
+    /// failure to set). The dialect is the core's rule (`cells_dialect_of`), the one `follow`
+    /// read by, so a refused file says it too.
     static func reading(
-        _ bytes: UnsafeRawBufferPointer, text: @autoclosure () -> String,
+        _ bytes: UnsafeRawBufferPointer, at path: String, text: @autoclosure () -> String,
         following follow: (UnsafePointer<UInt8>?, Int, inout CellsFailure) -> OpaquePointer?
     ) -> Engine {
         var failure = CellsFailure()
-        let doc = follow(
-            bytes.baseAddress?.assumingMemoryBound(to: UInt8.self), bytes.count, &failure)
-        return made(doc, &failure, text: text(), sep: 0)
+        let raw = bytes.baseAddress?.assumingMemoryBound(to: UInt8.self)
+        let sep = lending([path]) { s in cells_dialect_of(s[0], raw, bytes.count) }
+        let doc = follow(raw, bytes.count, &failure)
+        return made(doc, &failure, text: text(), sep: sep)
     }
 
     /// A doc the core made, or its refusal of `text`.

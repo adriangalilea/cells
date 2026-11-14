@@ -34,11 +34,10 @@ import Testing
         let stem = path.deletingPathExtension()
         let edit = stem.appendingPathExtension("edit.json")
         var fails: [String] = []
-        let plain = path.pathExtension != "cells"
-        let doc =
-            plain
-            ? Cells.Document(reading: bytes, as: .plain())
-            : Cells.Document(reading: bytes, at: relative(path), files: files)
+        // read as its name says, the core's rule: a file not named .cells is plain
+        let doc = Cells.Document(reading: bytes, at: relative(path), files: files)
+        let plain = doc.dialect != .cells
+        #expect(plain == (path.pathExtension != "cells"), "\(relative(path))")
         if FileManager.default.fileExists(atPath: edit.path) {
             let out = try Data(contentsOf: stem.appendingPathExtension("out.\(path.pathExtension)"))
             if let refusal = doc.broken.first {

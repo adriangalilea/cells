@@ -260,6 +260,22 @@ pub unsafe extern "C" fn cells_read_as(bytes: *const u8, len: usize, sep: u8, th
     doc_or_fail(cells::read_as(src, dialect(sep), threads.max(1)), failure)
 }
 
+/// The dialect the file at `path` is read in, its `len` bytes given: the core's one rule
+/// (`cells::dialect`), which `cells_read_with` and `cells_read_at` read by. 0 for Cells,
+/// else a plain file's separator byte.
+///
+/// # Safety
+/// `path` is UTF-8; `bytes` points at `len` readable bytes.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn cells_dialect_of(path: CellsStr, bytes: *const u8, len: usize) -> u8 {
+    // SAFETY: the caller's promise.
+    let (path, src) = unsafe { (text_of(path.ptr, path.len), if len == 0 { &[][..] } else { std::slice::from_raw_parts(bytes, len) }) };
+    match cells::dialect(path, src) {
+        Dialect::Cells => 0,
+        Dialect::Plain(s) => s.byte(),
+    }
+}
+
 /// The separator byte the first lines of `len` bytes agree on (`cells::detect`).
 ///
 /// # Safety

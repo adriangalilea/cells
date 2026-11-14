@@ -267,13 +267,14 @@ extension Cells {
       }
     }
 
-    /// The `.cells` file at `url`, its bytes `data`, its imports followed from the disk:
+    /// The file at `url`, its bytes `data`, read in the dialect its name says (the core's
+    /// one rule: a `.cells` file as Cells, any other plain), its imports followed from the disk:
     /// a path read from the file's folder as it is now. A URL, or a file at a revision,
     /// reads as unreachable (a reference into it unchecked), as one never found does.
     public init(reading data: Data, at url: URL) {
       let path = url.path
       engine = data.withUnsafeBytes { raw in
-        Engine.reading(raw, text: String(decoding: data, as: UTF8.self)) {
+        Engine.reading(raw, at: path, text: String(decoding: data, as: UTF8.self)) {
           bytes, count, failure in
           lending([path]) { s in
             cells_read_at(
@@ -284,19 +285,20 @@ extension Cells {
       }
     }
 
-    /// The `.cells` file at `path`, its imports followed through `files` (each file's
-    /// text by its path, as imports name them from `path`'s folder). A file `files`
-    /// does not hold reads as unreachable.
+    /// The file at `path`, read in the dialect its name says (a `.cells` file as Cells, any
+    /// other plain), its imports followed through `files` (each file's text by its path, as
+    /// imports name them from `path`'s folder). A file `files` does not hold reads as
+    /// unreachable.
     public init(reading text: String, at path: String, files: [String: String]) {
       self.init(reading: Data(text.utf8), at: path, files: files)
     }
 
-    /// The bytes of the `.cells` file at `path`, its imports followed through `files`;
+    /// The bytes of the file at `path`, read as its name says, its imports followed through `files`;
     /// bytes that are not UTF-8 are a refusal of the file.
     public init(reading data: Data, at path: String, files: [String: String]) {
       let held = files.sorted { $0.key < $1.key }
       engine = data.withUnsafeBytes { raw in
-        Engine.reading(raw, text: String(decoding: data, as: UTF8.self)) {
+        Engine.reading(raw, at: path, text: String(decoding: data, as: UTF8.self)) {
           b, count, failure in
           lending([path] + held.map(\.key) + held.map(\.value)) { s in
             let paths = Array(s[1...held.count])
