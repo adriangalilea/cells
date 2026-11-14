@@ -10,7 +10,7 @@ repository = "https://github.com/adriangalilea/cells"
 # changed the parser, written by tree-sitter/scripts/queries.ts; Zed fetches it from GitHub.
 [grammars.cells]
 repository = "https://github.com/adriangalilea/cells"
-rev = "c2ba218f62680d97193f1a25cff251b9733cc95f"
+rev = "2f641c95650424d390ee05b8de35503a1aef30f5"
 path = "tree-sitter"
 
 [language_servers.cells]

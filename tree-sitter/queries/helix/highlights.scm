@@ -18,7 +18,10 @@
 
 "type" @keyword.storage.type
 
-"export" @keyword.storage.modifier
+[
+  "export"
+  "packed"
+] @keyword.storage.modifier
 
 [
   "import"

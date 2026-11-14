@@ -18,7 +18,10 @@
 
 "type" @keyword
 
-"export" @keyword
+[
+  "export"
+  "packed"
+] @keyword
 
 [
   "import"
