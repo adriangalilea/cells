@@ -26,6 +26,7 @@
       "series": [{ "name": "", "shade": { "column": 1 } }],
       "values": [["10"]],
       "unit": "EUR",
+      "scale": { "lo": 0, "hi": 10, "step": 5 },
       "skipped": 0,
       "rows": 1,
       "layers": []
@@ -39,6 +40,7 @@
       "series": [{ "name": "", "shade": { "column": 1 } }],
       "values": [["10"]],
       "unit": "EUR",
+      "scale": { "lo": 0, "hi": 10, "step": 5 },
       "skipped": 0,
       "rows": 1,
       "layers": []

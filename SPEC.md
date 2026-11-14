@@ -430,6 +430,8 @@ Every kind also takes `title` and `from`; a chart of `layers` takes `title` and 
 
 **No kind written**, the chart is drawn as its entries and the types say, never the data: `value` alone is a `figure`; `x`, `y` and `value` a `heat`; a `y` that aggregates nothing `points`; a `y` of `LAST_VALUE` or `FIRST_VALUE` `steps`; any other `y` over a date `bars`, over text or a choice `bars` across. **No chart in the file**, a reader draws one from the columns by the same rule: the first date (else choice) as `x`, the first currency (else number) column summed as `y`, `color` a choice of six words or fewer; nothing to draw when the file has no date, choice or number. A chart a person keeps is written as a fence; until then it is the reader's view, never the file's.
 
+**The scale is the data's**, the same in every view at every size: from zero, or the least a place draws below it, to the most a place draws (a stacked bar its sum, its parts below zero apart; a chart of layers every layer's), in steps of 1, 2 or 5 times a power of ten, the smallest that takes it in about four steps, its ends whole steps: `SUM(amount)` of 2,400 at most runs 0 to 3,000 by 1,000. A view too short to label every step labels fewer of them, every second or only the ends, on the same axis; a view never picks steps of its own. A `figure` has none, and a `heat` drawn alone none: its rows stand where a scale's labels would.
+
 #### What a chart is drawn in
 
 Colours are the looks', never a chart's ([How a value looks](#how-a-value-looks)):

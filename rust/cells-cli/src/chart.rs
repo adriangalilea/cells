@@ -493,46 +493,30 @@ fn marks(s: &Summary, area: Rect, buf: &mut Buffer, borders: &mut Borders, tier:
         return heat(s, body, buf, tier, &inks);
     }
     let edged = tier.edges.is_some();
-    let num = |v: &Option<String>| v.as_deref().and_then(|t| t.parse::<f64>().ok());
-    // the scale: from zero (or below it) to the most, stacked where bars stack; a heat as a
-    // layer is its stacked bars, as the app draws it
+    // a heat as a layer is its stacked bars, as the app draws it
     let stacked = |p: &Summary| (p.kind == Kind::Bars && p.stack == Stack::Stacked) || p.kind == Kind::Heat;
-    let (mut lo, mut hi) = (0.0f64, 0.0f64);
-    for p in &parts {
-        for row in &p.values {
-            let vals: Vec<f64> = row.iter().filter_map(num).collect();
-            if stacked(p) {
-                hi = hi.max(vals.iter().filter(|v| **v > 0.0).sum());
-                lo = lo.min(vals.iter().filter(|v| **v < 0.0).sum());
-            } else {
-                for v in &vals {
-                    hi = hi.max(*v);
-                    lo = lo.min(*v);
-                }
-            }
-        }
-    }
-    if hi <= lo {
-        hi = lo + 1.0;
-    }
-    // the scale as every reader draws it: whole steps of 1, 2 or 5 times a power of ten;
-    // the plot as many rows as gives every step the same whole number of rows, so each
-    // step's rule stands on a row (with edges, on a row's foot) and each mark meets it
-    // there; under the plot the places, a row of room before them where no edge is the axis
+    // the summary's scale, the same at every size; the plot as many rows as gives every
+    // labelled step the same whole number of rows, so each labelled step's rule stands on
+    // a row (with edges, on a row's foot) and each mark meets it there: every step where
+    // the rows hold them, else every second, or fewer, a number of steps that divides the
+    // scale's so the top is labelled too; under the plot the places, a row of room before
+    // them where no edge is the axis
+    let drawn = s.scale.expect("a plot's summary carries its scale");
     let room = body.height.saturating_sub(if edged { 1 } else { 2 }).max(3);
-    let (lo, hi, step) = cells::chart::scale(lo, hi, (room / 3).clamp(2, 6) as u32);
-    let steps = (((hi - lo) / step + 0.5) as u16).max(1);
-    let per = ((room - 1) / steps).max(1);
-    let labels: Vec<String> = (0..=steps).map(|i| s.figure(lo + step * i as f64)).collect();
+    let steps = drawn.steps().max(1) as u16;
+    let every = (1..=steps).find(|k| steps % k == 0 && steps / k <= room - 1).expect("one step, lo to hi, takes two rows");
+    let ruled_steps = steps / every;
+    let per = (room - 1) / ruled_steps;
+    let labels: Vec<String> = (0..=ruled_steps).map(|i| s.figure(drawn.tick((i * every) as u32))).collect();
     let left = labels.iter().map(|l| l.chars().count()).max().unwrap_or(1) as u16 + 2;
-    let plot = Rect::new(body.x + left, body.y, body.width.saturating_sub(left), steps * per + 1);
+    let plot = Rect::new(body.x + left, body.y, body.width.saturating_sub(left), ruled_steps * per + 1);
     if plot.width < 4 {
         return (body.y, None);
     }
-    let scale = Scale { lo, hi, rows: plot.height };
+    let scale = Scale { lo: drawn.lo, hi: drawn.hi, rows: plot.height };
     let quiet = Style::default().fg(Color::DarkGray);
     let rule = if tier.glyphs == Glyphs::Ascii { "-" } else { "─" };
-    let ruled: Vec<u16> = (0..=steps).map(|i| plot.bottom() - 1 - i * per).collect();
+    let ruled: Vec<u16> = (0..=ruled_steps).map(|i| plot.bottom() - 1 - i * per).collect();
     for (label, &row) in labels.iter().zip(&ruled) {
         // right-aligned against the plot, a faint rule across it through the row's middle
         // (with edges, the row's centre arms, drawn once the marks are)
@@ -1414,6 +1398,40 @@ mod tests {
         let (boxed, edged) = (drawn(&s, FINE).0.plot.unwrap(), drawn(&s, EDGED).0.plot.unwrap());
         assert_eq!((boxed.width, boxed.height), (66, 13));
         assert_eq!((edged.width, edged.height), (68, 13));
+    }
+
+    /// The scale is the summary's at every size and in both tiers: the plot's foot is its
+    /// `lo` and its top its `hi`, and a card too short to label every step labels fewer of
+    /// the same steps, never steps of its own.
+    #[test]
+    fn the_scale_is_the_datas_at_every_size() {
+        for (case, n) in [("bars-by-month", 1), ("date-trunc-units", 1), ("stack-modes", 1), ("line-area-and-steps", 1)] {
+            let s = summary(case, n);
+            let scale = s.scale.expect("a plot's scale");
+            let ticks: Vec<String> = (0..=scale.steps()).map(|i| s.figure(scale.tick(i))).collect();
+            for tier in [FINE, EDGED] {
+                // the shortest card that holds a plot, its frame and its rows of room
+                let short = if tier.edges.is_some() { 12 } else { 10 };
+                for (width, height) in [(80, 21), (80, 14), (40, short + 2), (40, short + 1), (30, short)] {
+                    let area = Rect::new(0, 0, width, height);
+                    let mut buf = Buffer::empty(area);
+                    let card = draw(&s, area, &mut buf, &mut Borders::new(area), tier, Foot { said: Vec::new(), keys: Vec::new() });
+                    let plot = card.plot.unwrap_or_else(|| panic!("{case} at {width}x{height} ({tier:?}) has no plot"));
+                    let label = |y: u16| (0..plot.x).map(|x| buf[(x, y)].symbol()).collect::<String>().trim_matches(['│', ' ']).to_owned();
+                    let labels: Vec<(u16, String)> =
+                        (plot.top()..plot.bottom()).map(|y| (y, label(y))).filter(|(_, l)| !l.is_empty()).collect();
+                    let at = format!("{case} at {width}x{height} ({tier:?})");
+                    assert!(labels.iter().all(|(_, l)| ticks.contains(l)), "{at}: {labels:?} are not all of {ticks:?}");
+                    assert_eq!(labels.first().map(|l| (l.0, l.1.as_str())), Some((plot.top(), ticks.last().unwrap().as_str())), "{at}");
+                    assert_eq!(labels.last().map(|l| (l.0, l.1.as_str())), Some((plot.bottom() - 1, ticks[0].as_str())), "{at}");
+                }
+            }
+            // at full height, every step
+            let (c, buf, _, _) = drawn(&s, FINE);
+            let plot = c.plot.expect("a plot");
+            let shown = (plot.top()..plot.bottom()).filter(|&y| (1..plot.x).any(|x| !buf[(x, y)].symbol().trim().is_empty())).count();
+            assert_eq!(shown, ticks.len(), "{case}: every step labelled at 80x21");
+        }
     }
 
     /// `--watch`'s rectangles are well-formed, clear the screen's borders when they change,

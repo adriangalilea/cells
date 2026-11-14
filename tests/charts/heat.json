@@ -20,6 +20,7 @@
       "series": [{ "name": "9", "shade": { "tint": "blue" } }, { "name": "14", "shade": { "tint": "blue" } }],
       "values": [["2", "1"], ["1", null]],
       "unit": null,
+      "scale": null,
       "skipped": 0,
       "rows": 4,
       "layers": []

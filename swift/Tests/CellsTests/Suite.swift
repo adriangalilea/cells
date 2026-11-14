@@ -198,7 +198,9 @@ private func said(_ s: Cells.ChartSummary) -> [String: Any] {
         "kind": s.kind, "title": s.title, "stack": s.stack, "axis": s.axis, "places": s.places,
         "series": s.series.map { ["name": $0.name, "shade": shade($0.shade)] as [String: Any] },
         "values": s.values.map { $0.map { $0 as Any? ?? NSNull() } },
-        "unit": s.unit as Any? ?? NSNull(), "skipped": s.skipped, "rows": s.rows,
+        "unit": s.unit as Any? ?? NSNull(),
+        "scale": s.scale.map { ["lo": $0.lo, "hi": $0.hi, "step": $0.step] as Any } ?? NSNull(),
+        "skipped": s.skipped, "rows": s.rows,
         "layers": s.layers.map(said),
     ]
 }

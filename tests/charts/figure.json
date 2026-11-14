@@ -19,6 +19,7 @@
       "series": [{ "name": "", "shade": { "column": 1 } }],
       "values": [["250"], ["80"]],
       "unit": "EUR",
+      "scale": null,
       "skipped": 0,
       "rows": 3,
       "layers": []

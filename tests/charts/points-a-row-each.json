@@ -19,6 +19,7 @@
       "series": [{ "name": "", "shade": { "column": 1 } }],
       "values": [["60"], ["75"], ["82"]],
       "unit": null,
+      "scale": { "lo": 0, "hi": 100, "step": 50 },
       "skipped": 0,
       "rows": 3,
       "layers": []

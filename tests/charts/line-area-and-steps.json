@@ -20,6 +20,7 @@
       "series": [{ "name": "", "shade": { "column": 1 } }],
       "values": [["3"], ["5"], ["6"]],
       "unit": null,
+      "scale": { "lo": 0, "hi": 6, "step": 2 },
       "skipped": 0,
       "rows": 4,
       "layers": []
@@ -33,6 +34,7 @@
       "series": [{ "name": "", "shade": { "column": 1 } }],
       "values": [["3"], ["5"], ["6"]],
       "unit": null,
+      "scale": { "lo": 0, "hi": 6, "step": 2 },
       "skipped": 0,
       "rows": 4,
       "layers": []
@@ -46,6 +48,7 @@
       "series": [{ "name": "", "shade": { "column": 1 } }],
       "values": [["3"], ["5"], ["6"]],
       "unit": null,
+      "scale": { "lo": 0, "hi": 6, "step": 2 },
       "skipped": 0,
       "rows": 4,
       "layers": []

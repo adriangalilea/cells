@@ -22,6 +22,7 @@
       "series": [{ "name": "", "shade": { "column": 2 } }],
       "values": [["17"]],
       "unit": "EUR",
+      "scale": null,
       "skipped": 0,
       "rows": 3,
       "layers": []
@@ -35,6 +36,7 @@
       "series": [{ "name": "2026-03-01", "shade": { "tint": "blue" } }, { "name": "2026-03-02", "shade": { "tint": "blue" } }],
       "values": [["10", "5"], ["2", null]],
       "unit": null,
+      "scale": null,
       "skipped": 0,
       "rows": 3,
       "layers": []
@@ -48,6 +50,7 @@
       "series": [{ "name": "", "shade": { "column": 2 } }],
       "values": [["10"], ["2"], ["5"]],
       "unit": "EUR",
+      "scale": { "lo": 0, "hi": 10, "step": 5 },
       "skipped": 0,
       "rows": 3,
       "layers": []
@@ -61,6 +64,7 @@
       "series": [{ "name": "", "shade": { "column": 3 } }],
       "values": [["88"], ["83"]],
       "unit": "EUR",
+      "scale": { "lo": 0, "hi": 100, "step": 50 },
       "skipped": 0,
       "rows": 3,
       "layers": []
@@ -74,6 +78,7 @@
       "series": [{ "name": "", "shade": { "column": 3 } }],
       "values": [["90"], ["83"]],
       "unit": "EUR",
+      "scale": { "lo": 0, "hi": 100, "step": 50 },
       "skipped": 0,
       "rows": 3,
       "layers": []
@@ -87,6 +92,7 @@
       "series": [{ "name": "", "shade": { "column": 2 } }],
       "values": [["12"], ["5"]],
       "unit": "EUR",
+      "scale": { "lo": 0, "hi": 15, "step": 5 },
       "skipped": 0,
       "rows": 3,
       "layers": []
@@ -100,6 +106,7 @@
       "series": [{ "name": "", "shade": { "column": 2 } }],
       "values": [["15"], ["2"]],
       "unit": "EUR",
+      "scale": { "lo": 0, "hi": 15, "step": 5 },
       "skipped": 0,
       "rows": 3,
       "layers": []

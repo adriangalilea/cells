@@ -66,6 +66,7 @@ A chart is one object:
   "series": [{ "name": "income", "shade": { "tint": "green" } }, { "name": "none", "shade": { "quiet": true } }],
   "values": [["900", null], [null, "1"]],
   "unit": "EUR",
+  "scale": { "lo": 0, "hi": 1000, "step": 500 },
   "skipped": 0,
   "rows": 6,
   "layers": []
@@ -76,7 +77,7 @@ A chart is one object:
 - `axis` is what its places are: `date`, `number` or `text`. `places` are each place along it, in the order drawn, as a value is written in a row (a date `YYYY-MM-DD`, a number plain, a word as it is), `other` the one `top` folds the rest into; a `points` chart has a place a row, so a place may repeat.
 - `series` are its series in their lasting order, each its name (its `color` value, `none` for a blank one, `""` for the one series of a chart with no `color`; a `heat` chart's series are its `y` values) and its shade: `{ "tint": "green" }` or `{ "hex": "#3fa34d" }` (a word's own, or the next no word wears), `{ "column": 2 }` (the colour of the measured column, from 0, of the table charted), `{ "quiet": true }` (`other` and a blank value). A split of more words with no tint than tints free folds its smallest into a series `other` (SPEC.md, What a chart is drawn in).
 - `values` are a list a place, a value a series, each an exact decimal as text, compared as decimals as a row's numbers are, or `null` where the series has no row at the place.
-- `unit` is the measure's currency, or `null`. `rows` are the rows the chart read (its table's, for a chart `from` another), `skipped` those `where` held for that had no place or no value.
+- `unit` is the measure's currency, or `null`. `scale` is what its values are drawn on (SPEC.md, Charts), `lo`, `hi` and `step` as numbers, every layer's for a chart of layers; `null` for a `figure` or a `heat` drawn alone. `rows` are the rows the chart read (its table's, for a chart `from` another), `skipped` those `where` held for that had no place or no value.
 - `layers` are a chart of layers' own charts, each one object, in the order named; such a chart has no places, series or values of its own.
 
 A case without these keys says nothing of its charts.

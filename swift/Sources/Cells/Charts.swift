@@ -85,6 +85,14 @@ extension Cells {
             }
         }
 
+        /// A chart's scale (SPEC.md, Charts): its ends, whole steps, and its step, 1, 2 or
+        /// 5 times a power of ten.
+        public struct Scale: Decodable, Sendable, Equatable {
+            public let lo: Double
+            public let hi: Double
+            public let step: Double
+        }
+
         public struct Series: Decodable, Sendable, Equatable {
             /// Its value of the `color` entry; empty for a chart's one series.
             public let name: String
@@ -104,6 +112,9 @@ extension Cells {
         public let values: [[String?]]
         /// The measure's currency, when it is money.
         public let unit: String?
+        /// What its values are drawn on, the same in every view: `lo` to `hi` in whole
+        /// steps of `step`, every layer's; nil for a figure or a heat drawn alone.
+        public let scale: Scale?
         /// Rows `where` held for that had no place or no value, of the rows read.
         public let skipped: Int
         public let rows: Int

@@ -194,6 +194,13 @@ export type ChartKind = "bars" | "line" | "area" | "steps" | "points" | "heat" |
  *  its number, the reader's palette in turn), or the quiet gray of `other` and the blank. */
 export type Shade = { tint: string } | { hex: string } | { column: number } | { quiet: true }
 
+/** A chart's scale: its ends, whole steps, and its step, 1, 2 or 5 times a power of ten. */
+export interface ChartScale {
+  lo: number
+  hi: number
+  step: number
+}
+
 /** What a chart draws, read from the rows as they are now: its places along its axis, its
  *  series and each one's shade, each place's value of each series as an exact decimal. */
 export interface ChartSummary {
@@ -209,6 +216,9 @@ export interface ChartSummary {
   values: (string | null)[][]
   /** The measure's currency, when it is money. */
   unit: string | null
+  /** What its values are drawn on, the same in every view: `lo` to `hi` in whole steps of
+   *  `step`, every layer's; null for a figure or a heat drawn alone (SPEC.md, Charts). */
+  scale: ChartScale | null
   /** Rows `where` held for that had no place or no value, of the rows read. */
   skipped: number
   rows: number

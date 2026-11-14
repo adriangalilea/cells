@@ -20,6 +20,7 @@
     "series": [{ "name": "income", "shade": { "tint": "blue" } }, { "name": "cost", "shade": { "tint": "orange" } }],
     "values": [["100", "30"], [null, "5"]],
     "unit": "EUR",
+    "scale": { "lo": 0, "hi": 150, "step": 50 },
     "skipped": 0,
     "rows": 3,
     "layers": []

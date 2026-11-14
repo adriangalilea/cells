@@ -257,7 +257,7 @@ function readsCase(path: string, j: { [k: string]: Json }, plain: boolean) {
 /// rows it read and skipped, and its layers, each a chart.
 function chart(path: string, what: string, c: Json | undefined) {
   if (!isObject(c)) return fault(path, `${what} is not an object`)
-  keysAre(path, what, c, ["kind", "title", "stack", "axis", "places", "series", "values", "unit", "skipped", "rows", "layers"])
+  keysAre(path, what, c, ["kind", "title", "stack", "axis", "places", "series", "values", "unit", "scale", "skipped", "rows", "layers"])
   if (typeof c.kind !== "string" || !CHART_KINDS.includes(c.kind)) fault(path, `${what} has no known kind`)
   if (typeof c.title !== "string" || c.title === "") fault(path, `${what} has no title`)
   if (typeof c.stack !== "string" || !STACKS.includes(c.stack)) fault(path, `${what}: "stack" is stacked, grouped or percent`)
@@ -290,6 +290,18 @@ function chart(path: string, what: string, c: Json | undefined) {
     })
   }
   if (c.unit !== null && (typeof c.unit !== "string" || !CURRENCY.test(c.unit))) fault(path, `${what}: "unit" is a currency code or null`)
+  const drawnAlone = c.layers instanceof Array && c.layers.length === 0 && (c.kind === "figure" || c.kind === "heat")
+  if (c.scale === null) {
+    if (!drawnAlone) fault(path, `${what} is drawn on a plot, so it has a scale`)
+  } else if (!isObject(c.scale)) fault(path, `${what}: "scale" is an object or null`)
+  else {
+    const { lo, hi, step } = c.scale
+    keysAre(path, `${what}, scale`, c.scale, ["lo", "hi", "step"])
+    if (drawnAlone) fault(path, `${what} is a ${c.kind} drawn alone, which has no scale`)
+    if (![lo, hi, step].every((n) => typeof n === "number")) fault(path, `${what}: a scale's lo, hi and step are numbers`)
+    else if (!(step > 0 && hi > lo && lo <= 0 && Number.isInteger(Math.round((hi - lo) / step * 1e9) / 1e9)))
+      fault(path, `${what}: a scale runs from zero or below to above it, in whole steps`)
+  }
   for (const k of ["skipped", "rows"]) {
     const n = c[k]
     if (typeof n !== "number" || !Number.isInteger(n) || n < 0) fault(path, `${what}: "${k}" is not a count`)

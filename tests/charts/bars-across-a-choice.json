@@ -21,6 +21,7 @@
       "series": [{ "name": "", "shade": { "column": 1 } }],
       "values": [["1.5"], ["3"], ["2.5"]],
       "unit": null,
+      "scale": { "lo": 0, "hi": 3, "step": 1 },
       "skipped": 0,
       "rows": 4,
       "layers": []

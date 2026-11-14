@@ -21,6 +21,7 @@
       "series": [{ "name": "", "shade": { "column": 1 } }],
       "values": [["40"], ["90"], ["20"]],
       "unit": "EUR",
+      "scale": { "lo": 0, "hi": 100, "step": 50 },
       "skipped": 0,
       "rows": 5,
       "layers": []

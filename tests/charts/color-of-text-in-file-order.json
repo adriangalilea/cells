@@ -21,6 +21,7 @@
       "series": [{ "name": "lena", "shade": { "tint": "blue" } }, { "name": "omar", "shade": { "tint": "orange" } }, { "name": "ada", "shade": { "tint": "teal" } }],
       "values": [["3", "5", null], ["4", null, "2"]],
       "unit": null,
+      "scale": { "lo": 0, "hi": 6, "step": 2 },
       "skipped": 0,
       "rows": 4,
       "layers": []

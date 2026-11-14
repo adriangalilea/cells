@@ -25,6 +25,7 @@
       "series": [{ "name": "income", "shade": { "tint": "green" } }, { "name": "cost", "shade": { "tint": "orange" } }, { "name": "transfer", "shade": { "tint": "blue" } }, { "name": "refund", "shade": { "tint": "teal" } }, { "name": "none", "shade": { "quiet": true } }],
       "values": [["900", "40", null, "5", null], [null, "60", "100", null, "1"]],
       "unit": "EUR",
+      "scale": { "lo": 0, "hi": 1000, "step": 500 },
       "skipped": 0,
       "rows": 6,
       "layers": []

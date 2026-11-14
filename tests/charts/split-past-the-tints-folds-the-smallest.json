@@ -30,6 +30,7 @@
       "series": [{ "name": "market", "shade": { "tint": "blue" } }, { "name": "bakery", "shade": { "tint": "orange" } }, { "name": "garage", "shade": { "tint": "teal" } }, { "name": "kiosk", "shade": { "tint": "purple" } }, { "name": "pharmacy", "shade": { "tint": "pink" } }, { "name": "florist", "shade": { "tint": "yellow" } }, { "name": "butcher", "shade": { "tint": "brown" } }, { "name": "cafe", "shade": { "tint": "green" } }, { "name": "cobbler", "shade": { "tint": "red" } }, { "name": "other", "shade": { "quiet": true } }],
       "values": [["110", "100", "90", "80", "70", "60", "50", "40", "20", "40"], [null, null, null, null, null, null, null, null, "25", "5"]],
       "unit": "EUR",
+      "scale": { "lo": 0, "hi": 800, "step": 200 },
       "skipped": 0,
       "rows": 13,
       "layers": []

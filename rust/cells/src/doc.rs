@@ -3535,6 +3535,8 @@ impl Doc {
         let rows = self.rows();
         // a chart of layers: each its own, drawn on one plot
         if !chart.layers.is_empty() {
+            let layers = crate::chart::apart(chart.layers.iter().map(|&i| self.summary(&self.charts[i])).collect());
+            let parts: Vec<_> = layers.iter().map(|l| (l.kind, l.stack, l.values.as_slice())).collect();
             return Summary {
                 kind: self.charts[chart.layers[0]].kind,
                 title: chart.title.clone(),
@@ -3548,9 +3550,10 @@ impl Doc {
                 series: Vec::new(),
                 values: Vec::new(),
                 unit: None,
+                scale: Some(crate::chart::Scale::drawn(&parts)),
                 skipped: 0,
                 rows,
-                layers: crate::chart::apart(chart.layers.iter().map(|&i| self.summary(&self.charts[i])).collect()),
+                layers,
             };
         }
         match chart.from {
@@ -3789,6 +3792,11 @@ impl Doc {
                 *s = Shade::Quiet;
             }
         }
+        let values: Vec<Vec<Option<String>>> =
+            values.into_iter().map(|row| row.into_iter().map(|v| v.and_then(|v| v.canonical())).collect()).collect();
+        // a figure is one number, a heat's rows stand where a scale's labels would
+        let scale =
+            (!matches!(chart.kind, Kind::Figure | Kind::Heat)).then(|| crate::chart::Scale::drawn(&[(chart.kind, chart.stack, &values)]));
         Summary {
             kind: chart.kind,
             title: chart.title.clone(),
@@ -3796,8 +3804,9 @@ impl Doc {
             axis,
             places: names,
             series,
-            values: values.into_iter().map(|row| row.into_iter().map(|v| v.and_then(|v| v.canonical())).collect()).collect(),
+            values,
             unit,
+            scale,
             skipped,
             rows,
             layers: Vec::new(),

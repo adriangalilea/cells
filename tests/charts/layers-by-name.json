@@ -18,6 +18,7 @@
       "series": [{ "name": "", "shade": { "column": 1 } }],
       "values": [["850"], ["850"]],
       "unit": "EUR",
+      "scale": { "lo": 0, "hi": 1000, "step": 500 },
       "skipped": 0,
       "rows": 2,
       "layers": []
@@ -31,6 +32,7 @@
       "series": [{ "name": "", "shade": { "column": 1 } }],
       "values": [["800"], ["900"]],
       "unit": "EUR",
+      "scale": { "lo": 0, "hi": 1000, "step": 500 },
       "skipped": 0,
       "rows": 2,
       "layers": []
@@ -44,6 +46,7 @@
       "series": [],
       "values": [],
       "unit": null,
+      "scale": { "lo": 0, "hi": 1000, "step": 500 },
       "skipped": 0,
       "rows": 2,
       "layers": [
@@ -56,6 +59,7 @@
           "series": [{ "name": "", "shade": { "column": 1 } }],
           "values": [["850"], ["850"]],
           "unit": "EUR",
+          "scale": { "lo": 0, "hi": 1000, "step": 500 },
           "skipped": 0,
           "rows": 2,
           "layers": []
@@ -69,6 +73,7 @@
           "series": [{ "name": "", "shade": { "column": 2 } }],
           "values": [["800"], ["900"]],
           "unit": "EUR",
+          "scale": { "lo": 0, "hi": 1000, "step": 500 },
           "skipped": 0,
           "rows": 2,
           "layers": []

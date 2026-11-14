@@ -27,6 +27,7 @@
       "series": [{ "name": "rent", "shade": { "tint": "green" } }, { "name": "food", "shade": { "tint": "blue" } }, { "name": "fuel", "shade": { "tint": "orange" } }, { "name": "gym", "shade": { "tint": "teal" } }, { "name": "books", "shade": { "tint": "purple" } }, { "name": "games", "shade": { "tint": "pink" } }, { "name": "music", "shade": { "tint": "yellow" } }, { "name": "films", "shade": { "tint": "brown" } }, { "name": "toys", "shade": { "tint": "red" } }, { "name": "other", "shade": { "quiet": true } }],
       "values": [["500", "90", "80", "70", "60", "50", "40", "30", "20", "10"]],
       "unit": "EUR",
+      "scale": { "lo": 0, "hi": 1000, "step": 500 },
       "skipped": 0,
       "rows": 10,
       "layers": []
