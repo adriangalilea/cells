@@ -451,8 +451,9 @@ export interface Problem {
    *  two do; `stale`: a computed cell storing another value than its formula gives (its
    *  value the formula's; `fixStale` or `keepStale` resolve it); `unreached`: a computed
    *  cell whose formula reads an import not reached, its stored value standing; `unstored`:
-   *  a computed cell whose formula gives a value the file does not store yet. */
-  kind: "type" | "missing" | "key" | "ragged" | "formula" | "reference" | "stale" | "unreached" | "unstored"
+   *  a computed cell whose formula gives a value the file does not store yet; `lookup`: a
+   *  computed cell left with nothing, its lookup by key (`rates[day]`) finding no row. */
+  kind: "type" | "missing" | "key" | "ragged" | "formula" | "reference" | "stale" | "unreached" | "unstored" | "lookup"
   /** How much it weighs, the same in every reader (`Kind::severity`): `error`, a value
    *  that is wrong (its type broken, a key repeated, a reference to no row, a formula
    *  that does not compute); `warning`, something absent or behind (a value not written,
@@ -501,7 +502,7 @@ export interface Naming {
   readonly reason: string
 }
 
-const KINDS = ["type", "missing", "key", "ragged", "formula", "reference", "stale", "unreached", "unstored"] as const
+const KINDS = ["type", "missing", "key", "ragged", "formula", "reference", "stale", "unreached", "unstored", "lookup"] as const
 const live = new FinalizationRegistry<number>((h) => x.cells_drop(h))
 
 /** A file read, held by the module. */
