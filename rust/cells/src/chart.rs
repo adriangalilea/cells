@@ -9,6 +9,7 @@ use alloc::format;
 use alloc::string::String;
 use alloc::vec::Vec;
 
+use crate::exact::Exact;
 use crate::json::quote;
 use crate::look::{TINTS, Tint};
 
@@ -82,6 +83,54 @@ impl Stack {
             Stack::Percent => "percent",
         }
     }
+
+    /// Whether a place's series of `kind` stand on one another: stacked bars and bars of
+    /// shares, a heat (as a layer, its stacked bars).
+    pub fn piles(kind: Kind, stack: Stack) -> bool {
+        (kind == Kind::Bars && stack != Stack::Grouped) || kind == Kind::Heat
+    }
+}
+
+/// The unit of a `percent` stack's values: each a share of its place, in percent.
+pub const PERCENT: &str = "%";
+
+/// A place's values as shares of it, in percent to two places (SPEC.md, Charts): each
+/// value's size over the sum of the place's sizes, its sign kept, rounded so the sizes
+/// sum to exactly 100 (the hundredths short of it go to the largest remainders, the
+/// first series first among equals). A place whose values are all zero keeps them.
+pub fn shares(row: &[Option<Exact>]) -> Vec<Option<Exact>> {
+    let total = row.iter().flatten().fold(Exact::zero(), |t, v| t.add(&v.abs()));
+    if total.is_zero() {
+        return row.to_vec();
+    }
+    let whole = Exact::from_int(10_000);
+    // each size in hundredths of a percent, exactly enough to rank what rounding drops
+    let parts: Vec<Option<(i128, Exact)>> = row
+        .iter()
+        .map(|v| {
+            v.as_ref().map(|v| {
+                let q = v.abs().mul(&whole).quotient(&total, crate::exact::SCALED_QUOTIENT_DIGITS).expect("a total of sizes, not zero");
+                let floor = q.trunc();
+                (floor.to_i128(0).expect("at most 10,000 hundredths"), q.sub(&floor))
+            })
+        })
+        .collect();
+    let short = 10_000 - parts.iter().flatten().map(|(u, _)| u).sum::<i128>();
+    let mut ranked: Vec<usize> = (0..row.len()).filter(|&s| parts[s].is_some()).collect();
+    let rem = |s: usize| &parts[s].as_ref().expect("ranked are present").1;
+    ranked.sort_by(|&a, &b| rem(b).order(rem(a)).then(a.cmp(&b)));
+    assert!(short >= 0 && short as usize <= ranked.len(), "{short} hundredths short of 100 over {} values", ranked.len());
+    let lifted = &ranked[..short as usize];
+    row.iter()
+        .enumerate()
+        .map(|(s, v)| {
+            let (units, _) = parts[s].as_ref()?;
+            let units = *units + lifted.contains(&s) as i128;
+            let share =
+                Exact::from_int(units as i64).quotient(&Exact::from_int(100), crate::exact::QUOTIENT_DIGITS).expect("100 is not zero");
+            Some(if v.as_ref().expect("a part is a value").negative { share.neg() } else { share })
+        })
+        .collect()
 }
 
 /// Every key a chart may hold.
@@ -141,9 +190,11 @@ pub struct Summary {
     /// Each series: its name (empty for the one series of a chart without `color`) and its
     /// tint.
     pub series: Vec<(String, Shade)>,
-    /// `values[place][series]`.
+    /// `values[place][series]`: the measure's, or for a `percent` stack each its share of
+    /// its place.
     pub values: Vec<Vec<Option<String>>>,
-    /// The measure's currency, when it is money.
+    /// What the values are in: the measure's currency when it is money, `%` for a
+    /// `percent` stack's shares.
     pub unit: Option<String>,
     /// The scale its values are drawn on, every layer's; none for a figure or a heat drawn
     /// alone, whose rows stand where a scale's labels would.
@@ -333,7 +384,7 @@ impl Summary {
             return out + "</svg>\n";
         }
         // the scale, the summary's; a heat drawn alone has none, its rows at the plot's left
-        let stacked = |p: &Summary| (p.kind == Kind::Bars && p.stack == Stack::Stacked) || p.kind == Kind::Heat;
+        let stacked = |p: &Summary| Stack::piles(p.kind, p.stack);
         let scale = self.scale.unwrap_or(Scale { lo: 0.0, hi: 1.0, step: 1.0 });
         assert!(heat || self.scale.is_some(), "{}: a plot with no scale", self.title);
         let (lo, hi) = (scale.lo, scale.hi);
@@ -459,13 +510,15 @@ impl Summary {
         out + "</svg>\n"
     }
 
-    /// A value as the chart says it: an amount with its currency's code, a number plain.
+    /// A value as the chart says it: an amount with its currency's code, a share with its
+    /// `%`, a number plain.
     pub fn figure(&self, v: f64) -> String {
         // a zero is a zero: an empty sum of floats is -0.0
         let v = if v == 0.0 { 0.0 } else { v };
         // whole when it is its own truncation (no `fract` without std)
         let n = if v == (v as i64) as f64 { format!("{v:.0}") } else { format!("{v:.2}") };
-        match &self.unit {
+        match self.unit.as_deref() {
+            Some(PERCENT) => format!("{n}%"),
             Some(u) => format!("{n} {u}"),
             None => n,
         }
@@ -507,12 +560,13 @@ pub struct Scale {
 impl Scale {
     /// The scale over what `parts` draw (each a kind, its stack and its values, a layer
     /// each): from zero, or the least below it, to the most a place draws, a stacked
-    /// bar's sum (a heat's, as a layer, is its stacked bars), in about `STEPS` steps.
+    /// bar's sum (a bar of shares, 100; a heat's, as a layer, is its stacked bars), in
+    /// about `STEPS` steps.
     pub fn drawn(parts: &[(Kind, Stack, &[Vec<Option<String>>])]) -> Scale {
         let num = |v: &Option<String>| v.as_deref().and_then(|s| s.parse::<f64>().ok());
         let (mut lo, mut hi) = (0.0f64, 0.0f64);
         for &(kind, stack, values) in parts {
-            let stacked = (kind == Kind::Bars && stack == Stack::Stacked) || kind == Kind::Heat;
+            let stacked = Stack::piles(kind, stack);
             for row in values {
                 let vals: Vec<f64> = row.iter().filter_map(num).collect();
                 if stacked {
@@ -631,6 +685,30 @@ mod tests {
         let s = Scale::drawn(&[(Kind::Line, Stack::Stacked, &[alloc::vec![Some("0.3".to_owned())]])]);
         assert_eq!(s.json(), "{\"lo\":0,\"hi\":0.3,\"step\":0.1}");
         assert_eq!(s.steps(), 3);
+    }
+
+    /// A place's shares are exact hundredths of a percent whose sizes sum to 100, the
+    /// hundredths rounding drops given to the largest remainders, the first among equals.
+    #[test]
+    fn shares_of_a_place_sum_to_100() {
+        let signed = |v: &str| v.strip_prefix('-').map_or_else(|| Exact::parse(v), |v| Exact::parse(v).neg());
+        let of = |row: &[Option<&str>]| {
+            let row: Vec<Option<Exact>> = row.iter().map(|v| v.map(signed)).collect();
+            shares(&row).into_iter().map(|v| v.and_then(|v| crate::expr::V::Num(v).canonical())).collect::<Vec<Option<String>>>()
+        };
+        let s = |v: &[Option<&str>]| v.iter().map(|v| v.map(|v| v.to_owned())).collect::<Vec<_>>();
+        assert_eq!(of(&[Some("300"), Some("120")]), s(&[Some("71.43"), Some("28.57")]));
+        assert_eq!(of(&[Some("1"), Some("1"), Some("1")]), s(&[Some("33.34"), Some("33.33"), Some("33.33")]));
+        assert_eq!(of(&[Some("300"), None]), s(&[Some("100"), None]));
+        assert_eq!(of(&[Some("0"), Some("0")]), s(&[Some("0"), Some("0")]));
+        assert_eq!(of(&[Some("75"), Some("-25")]), s(&[Some("75"), Some("-25")]));
+        for row in [&[Some("2"), Some("3"), Some("7"), Some("11")][..], &[Some("0.01"), Some("999.99"), Some("1")]] {
+            let sum = of(row).iter().flatten().fold(Exact::zero(), |t: Exact, v| t.add(&Exact::parse(v)));
+            assert_eq!(sum.order(&Exact::from_int(100)), core::cmp::Ordering::Equal, "{row:?}");
+        }
+        // a bar of shares stands to 100: 0 to 100 by 50, the rule's steps
+        let s = Scale::drawn(&[(Kind::Bars, Stack::Percent, &[alloc::vec![Some("71.43".to_owned()), Some("28.57".to_owned())]])]);
+        assert_eq!((s.lo, s.hi, s.step), (0.0, 100.0, 50.0));
     }
 
     fn drawn(kind: Kind, title: &str, series: &[(&str, Shade)], layers: Vec<Summary>) -> Summary {

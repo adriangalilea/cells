@@ -212,9 +212,10 @@ export interface ChartSummary {
   places: string[]
   /** Each series: its value of `color` (empty for a chart's one series) and its shade. */
   series: { name: string; shade: Shade }[]
-  /** `values[place][series]`; null where a series has no row at a place. */
+  /** `values[place][series]`; null where a series has no row at a place. A `percent`
+   *  stack's are each value's share of its place, in percent, drawn as they are. */
   values: (string | null)[][]
-  /** The measure's currency, when it is money. */
+  /** The measure's currency when it is money, `%` for a `percent` stack's shares. */
   unit: string | null
   /** What its values are drawn on, the same in every view: `lo` to `hi` in whole steps of
    *  `step`, every layer's; null for a figure or a heat drawn alone (SPEC.md, Charts). */

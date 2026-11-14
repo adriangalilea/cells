@@ -3565,7 +3565,7 @@ impl Doc {
     /// What `chart` draws from this doc's rows: the doc its formulas were resolved against,
     /// the file's own or the table it charts.
     fn measured(&self, chart: &Chart) -> crate::chart::Summary {
-        use crate::chart::{Kind, Shade, Summary, shades};
+        use crate::chart::{Kind, Shade, Stack, Summary, shades};
         let rows = self.rows();
         let cells = BTreeMap::new();
         // Every computed cell is decoded already: the evaluation reads values, computing none.
@@ -3792,6 +3792,26 @@ impl Doc {
                 *s = Shade::Quiet;
             }
         }
+        // a percent stack draws each value as its share of its place, in `%`
+        let percent = chart.kind == Kind::Bars && chart.stack == Stack::Percent;
+        let values: Vec<Vec<Option<V>>> = if percent {
+            values
+                .into_iter()
+                .map(|row| {
+                    let sizes: Vec<Option<Exact>> = row
+                        .into_iter()
+                        .map(|v| match v {
+                            Some(V::Num(n)) => Some(n),
+                            _ => None,
+                        })
+                        .collect();
+                    crate::chart::shares(&sizes).into_iter().map(|v| v.map(V::Num)).collect()
+                })
+                .collect()
+        } else {
+            values
+        };
+        let unit = if percent { Some(crate::chart::PERCENT.to_owned()) } else { unit };
         let values: Vec<Vec<Option<String>>> =
             values.into_iter().map(|row| row.into_iter().map(|v| v.and_then(|v| v.canonical())).collect()).collect();
         // a figure is one number, a heat's rows stand where a scale's labels would

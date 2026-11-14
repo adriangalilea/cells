@@ -493,8 +493,9 @@ fn marks(s: &Summary, area: Rect, buf: &mut Buffer, borders: &mut Borders, tier:
         return heat(s, body, buf, tier, &inks);
     }
     let edged = tier.edges.is_some();
-    // a heat as a layer is its stacked bars, as the app draws it
-    let stacked = |p: &Summary| (p.kind == Kind::Bars && p.stack == Stack::Stacked) || p.kind == Kind::Heat;
+    // stacked bars and bars of shares; a heat as a layer is its stacked bars, as the app
+    // draws it
+    let stacked = |p: &Summary| Stack::piles(p.kind, p.stack);
     // the summary's scale, the same at every size; the plot as many rows as gives every
     // labelled step the same whole number of rows, so each labelled step's rule stands on
     // a row (with edges, on a row's foot) and each mark meets it there: every step where
@@ -1405,7 +1406,8 @@ mod tests {
     /// the same steps, never steps of its own.
     #[test]
     fn the_scale_is_the_datas_at_every_size() {
-        for (case, n) in [("bars-by-month", 1), ("date-trunc-units", 1), ("stack-modes", 1), ("line-area-and-steps", 1)] {
+        for (case, n) in [("bars-by-month", 1), ("date-trunc-units", 1), ("stack-modes", 1), ("stack-modes", 3), ("line-area-and-steps", 1)]
+        {
             let s = summary(case, n);
             let scale = s.scale.expect("a plot's scale");
             let ticks: Vec<String> = (0..=scale.steps()).map(|i| s.figure(scale.tick(i))).collect();
@@ -1431,6 +1433,24 @@ mod tests {
             let plot = c.plot.expect("a plot");
             let shown = (plot.top()..plot.bottom()).filter(|&y| (1..plot.x).any(|x| !buf[(x, y)].symbol().trim().is_empty())).count();
             assert_eq!(shown, ticks.len(), "{case}: every step labelled at 80x21");
+        }
+    }
+
+    /// A percent stack draws the summary's shares on the summary's 0% to 100%, in both
+    /// tiers: every place's bar stands from the foot to the top, its series stacked.
+    #[test]
+    fn shares_fill_the_scale() {
+        let s = summary("stack-modes", 3);
+        assert_eq!(s.figure(s.scale.expect("a plot's scale").hi), "100%");
+        for tier in [FINE, EDGED] {
+            let (c, buf, _, _) = drawn(&s, tier);
+            let plot = c.plot.expect("a plot");
+            for p in 0..s.places.len() {
+                let (x0, w) = slot(plot, s.places.len(), p);
+                let mid = x0 + w / 2;
+                let filled = (plot.top()..plot.bottom()).all(|y| !buf[(mid, y)].symbol().trim().is_empty());
+                assert!(filled, "place {p} ({tier:?}) is not a whole bar");
+            }
         }
     }
 

@@ -289,7 +289,18 @@ function chart(path: string, what: string, c: Json | undefined) {
       if (!row.every((v) => v === null || (typeof v === "string" && DECIMAL.test(v)))) fault(path, `${what}: place ${p + 1}'s values are not decimals or null`)
     })
   }
-  if (c.unit !== null && (typeof c.unit !== "string" || !CURRENCY.test(c.unit))) fault(path, `${what}: "unit" is a currency code or null`)
+  const shares = c.kind === "bars" && c.stack === "percent"
+  if (shares) {
+    if (c.unit !== "%") fault(path, `${what}: a percent stack's "unit" is "%"`)
+    // each place's sizes, in hundredths of a percent, sum to 100 (or are all zero)
+    if (Array.isArray(c.values))
+      c.values.forEach((row, p) => {
+        if (!Array.isArray(row)) return
+        const hundredths = row.map((v) => (typeof v === "string" && /^-?\d+(\.\d{1,2})?$/.test(v) ? Math.round(Math.abs(Number(v)) * 100) : v === null ? 0 : NaN))
+        const sum = hundredths.reduce((a, b) => a + b, 0)
+        if (!(sum === 10000 || sum === 0)) fault(path, `${what}: place ${p + 1}'s shares are not hundredths of a percent summing to 100`)
+      })
+  } else if (c.unit !== null && (typeof c.unit !== "string" || !CURRENCY.test(c.unit))) fault(path, `${what}: "unit" is a currency code or null`)
   const drawnAlone = c.layers instanceof Array && c.layers.length === 0 && (c.kind === "figure" || c.kind === "heat")
   if (c.scale === null) {
     if (!drawnAlone) fault(path, `${what} is drawn on a plot, so it has a scale`)

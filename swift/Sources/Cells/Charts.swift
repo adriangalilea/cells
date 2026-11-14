@@ -108,9 +108,10 @@ extension Cells {
         /// Each place, as its value is written (a date ISO, a number plain).
         public let places: [String]
         public let series: [Series]
-        /// `values[place][series]`; nil where a series has no row at a place.
+        /// `values[place][series]`; nil where a series has no row at a place. A `percent`
+        /// stack's are each value's share of its place, in percent, drawn as they are.
         public let values: [[String?]]
-        /// The measure's currency, when it is money.
+        /// The measure's currency when it is money, `%` for a `percent` stack's shares.
         public let unit: String?
         /// What its values are drawn on, the same in every view: `lo` to `hi` in whole
         /// steps of `step`, every layer's; nil for a figure or a heat drawn alone.

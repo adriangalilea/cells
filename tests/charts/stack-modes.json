@@ -47,9 +47,9 @@
       "axis": "date",
       "places": ["2026-01-01", "2026-02-01"],
       "series": [{ "name": "income", "shade": { "tint": "blue" } }, { "name": "cost", "shade": { "tint": "orange" } }],
-      "values": [["300", "120"], ["300", null]],
-      "unit": "EUR",
-      "scale": { "lo": 0, "hi": 300, "step": 100 },
+      "values": [["71.43", "28.57"], ["100", null]],
+      "unit": "%",
+      "scale": { "lo": 0, "hi": 100, "step": 50 },
       "skipped": 0,
       "rows": 3,
       "layers": []
