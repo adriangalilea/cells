@@ -96,21 +96,25 @@
               }
             },
             {
-              "match": "^[ \\t]*(?:(export)[ \\t]+)?(type)[ \\t]+([A-Z][A-Za-z0-9_]*)[ \\t]*(=)[ \\t]*((?:[^/\\r\\n]|/(?!/))*)",
+              "comment": "A named type, exported or a packed copy of an import's.",
+              "match": "^[ \\t]*(?:(export)[ \\t]+|(packed)[ \\t]+)?(type)[ \\t]+([A-Z][A-Za-z0-9_]*)[ \\t]*(=)[ \\t]*((?:[^/\\r\\n]|/(?!/))*)",
               "captures": {
                 "1": {
                   "name": "storage.modifier.export.cells"
                 },
                 "2": {
-                  "name": "storage.type.cells"
+                  "name": "storage.modifier.packed.cells"
                 },
                 "3": {
-                  "name": "entity.name.type.cells"
+                  "name": "storage.type.cells"
                 },
                 "4": {
-                  "name": "keyword.operator.assignment.cells"
+                  "name": "entity.name.type.cells"
                 },
                 "5": {
+                  "name": "keyword.operator.assignment.cells"
+                },
+                "6": {
                   "name": "meta.type.cells",
                   "patterns": [
                     {
@@ -159,40 +163,46 @@
               }
             },
             {
-              "comment": "A table written inline: its name, then its fence on the same line.",
-              "match": "^[ \\t]*(?:(export)[ \\t]+)?([A-Za-z_][A-Za-z0-9_]*)[ \\t]*(=)(?=[ \\t]*\\x60{3,})",
+              "comment": "A table written inline, or a packed copy of an import's: its name, then its fence on the same line.",
+              "match": "^[ \\t]*(?:(export)[ \\t]+|(packed)[ \\t]+)?([A-Za-z_][A-Za-z0-9_]*)[ \\t]*(=)(?=[ \\t]*\\x60{3,})",
               "captures": {
                 "1": {
                   "name": "storage.modifier.export.cells"
                 },
                 "2": {
-                  "name": "entity.name.function.table.cells"
+                  "name": "storage.modifier.packed.cells"
                 },
                 "3": {
+                  "name": "entity.name.function.table.cells"
+                },
+                "4": {
                   "name": "keyword.operator.assignment.cells"
                 }
               }
             },
             {
-              "comment": "How a value looks: `look`, what it is for (the row, a named type, a column), then its rules.",
-              "match": "^[ \\t]*(look)[ \\t]+(?:(row)|([A-Z][A-Za-z0-9_]*)|(\"(?:[^\"]|\"\")*\"|[^:\\r\\n]*?))[ \\t]*(:)((?:[^/\\r\\n]|/(?!/))*)",
+              "comment": "How a value looks: `look`, what it is for (the row, a named type, a column), then its rules; a packed copy of an import's type's.",
+              "match": "^[ \\t]*(?:(packed)[ \\t]+)?(look)[ \\t]+(?:(row)|([A-Z][A-Za-z0-9_]*)|(\"(?:[^\"]|\"\")*\"|[^:\\r\\n]*?))[ \\t]*(:)((?:[^/\\r\\n]|/(?!/))*)",
               "captures": {
                 "1": {
-                  "name": "keyword.other.look.cells"
+                  "name": "storage.modifier.packed.cells"
                 },
                 "2": {
-                  "name": "variable.language.cells"
+                  "name": "keyword.other.look.cells"
                 },
                 "3": {
-                  "name": "entity.name.type.cells"
+                  "name": "variable.language.cells"
                 },
                 "4": {
-                  "name": "variable.other.member.column.declared.cells"
+                  "name": "entity.name.type.cells"
                 },
                 "5": {
-                  "name": "punctuation.separator.type.cells"
+                  "name": "variable.other.member.column.declared.cells"
                 },
                 "6": {
+                  "name": "punctuation.separator.type.cells"
+                },
+                "7": {
                   "patterns": [
                     {
                       "include": "#look"
