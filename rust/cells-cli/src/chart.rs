@@ -117,8 +117,9 @@ impl Edges {
     }
 
     /// What the replies to `QUERY` say: a border reply before DA1's, `DCS 1 + b
-    /// cell-border;ok;VERSION;FEATURES ST`, naming `pen` and `rect`, is a terminal that
-    /// draws them; `round` among its features, one that rounds corners.
+    /// cell-border;ok;VERSION;FEATURES ST`, naming `pen`, `rect` and `center` (the rules
+    /// run through their rows' middles), is a terminal that draws them; `round` among its
+    /// features, one that rounds corners.
     fn answered(replies: &[u8]) -> Option<Edges> {
         let da1 = find(replies, b"\x1b[?")?;
         let before = &replies[..da1];
@@ -130,7 +131,7 @@ impl Edges {
         let (version, features) = fields.split_once(';')?;
         version.parse::<u32>().ok().filter(|v| *v >= 1)?;
         let has = |f: &str| features.split(',').any(|x| x == f);
-        (has("pen") && has("rect")).then_some(Edges { round: has("round") })
+        (has("pen") && has("rect") && has("center")).then_some(Edges { round: has("round") })
     }
 }
 
@@ -413,8 +414,8 @@ pub struct Card {
 /// A summary drawn into `area` as a card: its title in the card's top edge, its foot in
 /// the bottom one, its legend inside, then its scale and marks, every mark on the scale's
 /// one grid of rows. With edges, the frame is lines on the card's outer cells' edges and
-/// the title and foot rows of their own inside it, so the plot has the frame's columns and
-/// the rows that stood between it and its frame.
+/// the title and foot rows of their own inside it, a row of room from each line, so the
+/// plot has the frame's columns.
 /// The card is as tall as what it holds, at most `area`.
 pub fn draw(s: &Summary, area: Rect, buf: &mut Buffer, borders: &mut Borders, tier: Tier, foot: Foot) -> Card {
     use ratatui::text::Line as Words;
@@ -422,13 +423,13 @@ pub fn draw(s: &Summary, area: Rect, buf: &mut Buffer, borders: &mut Borders, ti
     let (said, keys) = foot.segments(area.width.saturating_sub(2));
     if let Some(edges) = tier.edges {
         let title = Style::default().fg(Color::White).add_modifier(Modifier::BOLD);
-        buf.set_stringn(area.x + 2, area.y, &s.title, area.width.saturating_sub(4) as usize, title);
-        // the title's row, then the marks (the plot's top row, above its highest rule, is
-        // the room under the title), a row of room and the foot's row
-        let room = Rect::new(area.x + 2, area.y + 1, area.width.saturating_sub(4), area.height.saturating_sub(3));
+        buf.set_stringn(area.x + 2, area.y + 1, &s.title, area.width.saturating_sub(4) as usize, title);
+        // a row of room under the frame's top line, the title's row and a row of room, then
+        // the marks, a row of room, the foot's row and a row of room over the bottom line
+        let room = Rect::new(area.x + 2, area.y + 3, area.width.saturating_sub(4), area.height.saturating_sub(6));
         let (end, plot) = if room.height < 6 || room.width < 20 { (room.y, None) } else { marks(s, room, buf, borders, tier) };
-        let held = Rect::new(area.x, area.y, area.width, (end + 2 - area.y).min(area.height));
-        let row = Rect::new(area.x + 1, held.bottom() - 1, area.width.saturating_sub(2), 1);
+        let held = Rect::new(area.x, area.y, area.width, (end + 3 - area.y).min(area.height));
+        let row = Rect::new(area.x + 1, held.bottom() - 2, area.width.saturating_sub(2), 1);
         said.render(row, buf);
         if let Some(keys) = keys {
             keys.render(row, buf);
@@ -528,13 +529,13 @@ fn marks(s: &Summary, area: Rect, buf: &mut Buffer, borders: &mut Borders, tier:
     if plot.width < 4 {
         return (body.y, None);
     }
-    let scale = Scale { lo, hi, rows: plot.height, edged };
+    let scale = Scale { lo, hi, rows: plot.height };
     let quiet = Style::default().fg(Color::DarkGray);
     let rule = if tier.glyphs == Glyphs::Ascii { "-" } else { "─" };
     let ruled: Vec<u16> = (0..=steps).map(|i| plot.bottom() - 1 - i * per).collect();
     for (label, &row) in labels.iter().zip(&ruled) {
-        // right-aligned against the plot, a faint rule across it (with edges, the rule is
-        // the row's foot, drawn once the marks are)
+        // right-aligned against the plot, a faint rule across it through the row's middle
+        // (with edges, the row's centre arms, drawn once the marks are)
         buf.set_string(plot.x - 2 - label.chars().count() as u16, row, label, quiet);
         if !edged {
             buf.set_string(plot.x, row, rule.repeat(plot.width as usize), Style::default().fg(grid_color(tier)));
@@ -547,22 +548,18 @@ fn marks(s: &Summary, area: Rect, buf: &mut Buffer, borders: &mut Borders, tier:
         }
     }
     if edged {
-        // each rule on its row's foot: the lowest is the axis, the plot's own foot, drawn
-        // over the bars standing on it; a rule through a bar (a block whose ink reaches its
-        // cell's foot) is a shade of the bar's colour drawn over it, as the rules through
-        // bars are without edges
-        let footed = ["▁", "▂", "▃", "▄", "▅", "▆", "▇", "█"];
+        // each rule through its row's middle, where its label stands and its value is: the
+        // lowest is the axis, drawn over the bars standing on it; a rule through a bar is a
+        // shade of the bar's colour drawn over it, as the rules through bars are without
+        // edges
         for (i, &row) in ruled.iter().enumerate() {
             for x in plot.x..plot.right() {
-                let cell = &buf[(x, row)];
-                let stroke = if i == 0 {
-                    Stroke { width: AXIS, color: edge_color(tier), above: true }
-                } else if footed.contains(&cell.symbol()) {
-                    Stroke { width: RULE, color: shaded(cell.fg, tier), above: true }
-                } else {
-                    Stroke { width: RULE, color: grid_color(tier), above: false }
+                let stroke = match (i, through(&buf[(x, row)])) {
+                    (0, _) => Stroke { width: AXIS, color: edge_color(tier), above: true },
+                    (_, Some(bar)) => Stroke { width: RULE, color: shaded(bar, tier), above: true },
+                    (_, None) => Stroke { width: RULE, color: grid_color(tier), above: false },
                 };
-                borders.add(x, row, Side::BOTTOM, stroke);
+                borders.add(x, row, Side::HORIZONTAL, stroke);
             }
         }
     } else if tier.glyphs != Glyphs::Ascii {
@@ -656,27 +653,21 @@ fn swatch(kind: Kind, glyphs: Glyphs) -> &'static str {
 
 /// Where a value stands on a plot of `rows` rows, in eighths of a row from its foot: `lo`
 /// on the foot row's middle, `hi` on the top row's, so a step's rule (drawn through a
-/// row's middle) is where its value is, for a bar's top and a line's point alike. With
-/// edges a rule is a row's foot, so `lo` is the foot row's foot and `hi` the top row's.
+/// row's middle, as a glyph or as the row's centre arms) is where its value is, for a
+/// bar's top and a line's point alike.
 struct Scale {
     lo: f64,
     hi: f64,
     rows: u16,
-    edged: bool,
 }
 
 impl Scale {
     fn eighths(&self, v: f64) -> i64 {
-        let foot = if self.edged { 0.0 } else { 4.0 };
-        (foot + (v - self.lo) / (self.hi - self.lo) * (self.rows as f64 - 1.0) * 8.0).round() as i64
+        (4.0 + (v - self.lo) / (self.hi - self.lo) * (self.rows as f64 - 1.0) * 8.0).round() as i64
     }
 
-    /// The bounds a canvas spans so its rows' middles are `lo` and `hi`, or with edges, so
-    /// `lo` is its foot and `hi` the top row's foot.
+    /// The bounds a canvas spans so its rows' middles are `lo` and `hi`.
     fn bounds(&self) -> [f64; 2] {
-        if self.edged {
-            return [self.lo, self.hi + (self.hi - self.lo) / (self.rows as f64 - 1.0)];
-        }
         let half = (self.hi - self.lo) / ((self.rows as f64 - 1.0) * 2.0);
         [self.lo - half, self.hi + half]
     }
@@ -705,6 +696,16 @@ fn edge_color(tier: Tier) -> Color {
         Colors::True => Color::Rgb(84, 84, 92),
         Colors::Indexed => Color::Indexed(240),
         Colors::Sixteen => Color::DarkGray,
+    }
+}
+
+/// The bar a cell holds across its middle, where a rule runs: an eighth block's ink when it
+/// rises past the middle, else its ground, the stacked bar over it, where it has one.
+fn through(cell: &ratatui::buffer::Cell) -> Option<Color> {
+    match cell.symbol() {
+        "▅" | "▆" | "▇" | "█" => Some(cell.fg),
+        "▁" | "▂" | "▃" | "▄" => (cell.bg != Color::Reset).then_some(cell.bg),
+        _ => None,
     }
 }
 
@@ -1038,8 +1039,8 @@ const AXIS: u8 = 16;
 const RULE: u8 = 8;
 
 /// One line's look: its thickness, its colour, and whether it is drawn over the cell's
-/// text or under it. Every line here lies inside its cell, flush with the edge, in the
-/// protocol's solid style.
+/// text or under it. Every line here is in the protocol's solid style, an edge's inside its
+/// cell, flush with the edge, and a centre arm on the cell's centreline.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Stroke {
     width: u8,
@@ -1061,7 +1062,8 @@ impl Stroke {
     }
 }
 
-/// The protocol's segments: a cell's four edges, each its two halves.
+/// The protocol's segments: a cell's four edges, each its two halves, and the two arms of
+/// its horizontal centreline, a line through its middle.
 struct Side;
 
 impl Side {
@@ -1069,6 +1071,7 @@ impl Side {
     const RIGHT: u16 = 0b1100;
     const BOTTOM: u16 = 0b11_0000;
     const LEFT: u16 = 0b1100_0000;
+    const HORIZONTAL: u16 = 0b11_0000_0000;
 }
 
 /// The protocol's joints: a cell's corners, the quadrant of each inside the cell.
@@ -1369,8 +1372,9 @@ mod tests {
         }
     }
 
-    /// With edges the frame takes no cell: the plot has the frame's two columns and the
-    /// rows that stood between it and its frame, and nothing is drawn in box drawing.
+    /// With edges the frame takes no cell: the plot has the frame's two columns, and the
+    /// rows the frame gives back stand between the frame's lines and the title and the
+    /// foot, so no text touches a line; nothing is drawn in box drawing.
     #[test]
     fn edges_give_the_plot_the_frames_room() {
         for (case, n) in [("bars-by-month", 1), ("line-area-and-steps", 1)] {
@@ -1379,27 +1383,37 @@ mod tests {
             let (edged, buf, borders, _) = drawn(&s, EDGED);
             let (boxed, edged_plot) = (boxed.plot.expect("a plot"), edged.plot.expect("a plot"));
             assert_eq!(edged_plot.width, boxed.width + 2, "{case}: the frame's columns are the plot's");
-            assert!(edged_plot.height > boxed.height, "{case}: {} rows edged, {} boxed", edged_plot.height, boxed.height);
+            assert_eq!(edged_plot.height, boxed.height, "{case}: {} rows edged, {} boxed", edged_plot.height, boxed.height);
             assert!(edged.height <= 21, "{case}: the card is taller than its area");
             for cell in buf.content() {
                 assert!(!"─│╭╮╰╯┌┐└┘".contains(cell.symbol()) || cell.symbol().is_empty(), "{case}: a box glyph with edges");
             }
-            // the axis is the plot's foot, each rule a row's foot across the plot
+            // a row of room between each frame line and the text nearest it
+            let text = |y: u16| (1..79).any(|x| !buf[(x, y)].symbol().trim().is_empty());
+            assert!(!text(0) && text(1), "{case}: the title is not a row under the frame's top");
+            assert!(!text(edged.height - 1) && text(edged.height - 2), "{case}: the foot is not a row over the frame's bottom");
+            // the axis through the plot's foot row's middle, each rule through its row's
+            // middle, where its label stands
             let axis = edged_plot.bottom() - 1;
             for x in edged_plot.left()..edged_plot.right() {
-                assert!(borders.at(x, axis).strokes.iter().any(|(m, _)| m & Side::BOTTOM == Side::BOTTOM), "{case}: no axis at {x}");
+                let arms = borders.at(x, axis).strokes.iter().find(|(m, _)| m & Side::HORIZONTAL == Side::HORIZONTAL);
+                assert!(arms.is_some_and(|(_, s)| s.width == AXIS && s.above), "{case}: no axis at {x}");
             }
+            assert!(
+                borders.cells.iter().all(|b| b.strokes.iter().all(|(m, s)| s.width == FRAME || m & Side::BOTTOM == 0)),
+                "{case}: a rule on a row's foot"
+            );
             // the frame on the card's outer cells, its corners rounded
             assert_eq!(borders.at(0, 0).round, Joint::TOP_LEFT);
             assert_eq!(borders.at(79, edged.height - 1).round, Joint::BOTTOM_RIGHT);
             assert!(borders.at(40, 0).strokes.iter().any(|(m, _)| *m & Side::TOP == Side::TOP));
             assert!(borders.at(0, 10).strokes.iter().any(|(m, _)| *m & Side::LEFT == Side::LEFT));
         }
-        // the numbers for one, at 80 by 21: bars by month, 66 by 13 boxed, 68 by 16 edged
+        // the numbers for one, at 80 by 21: bars by month, 66 by 13 boxed, 68 by 13 edged
         let s = summary("bars-by-month", 1);
         let (boxed, edged) = (drawn(&s, FINE).0.plot.unwrap(), drawn(&s, EDGED).0.plot.unwrap());
         assert_eq!((boxed.width, boxed.height), (66, 13));
-        assert_eq!((edged.width, edged.height), (68, 16));
+        assert_eq!((edged.width, edged.height), (68, 13));
     }
 
     /// `--watch`'s rectangles are well-formed, clear the screen's borders when they change,
@@ -1426,6 +1440,8 @@ mod tests {
         // a reply after DA1's is not an answer to this query
         assert_eq!(Edges::answered(b"\x1b[?62;22c\x1bP1+bcell-border;ok;1;pen,rect\x1b\\"), None);
         assert_eq!(Edges::answered(b"\x1bP1+bcell-border;ok;1;half,center\x1b\\\x1b[?62c"), None);
+        // no centre arms, no rules through a row's middle
+        assert_eq!(Edges::answered(b"\x1bP1+bcell-border;ok;1;pen,rect,half\x1b\\\x1b[?62c"), None);
         assert!(da1_ends(b"\x1bP1+bcell-border;ok;1;pen\x1b\\\x1b[?62;22c"));
         assert!(!da1_ends(b"\x1bP1+bcell-border;ok;1;pen\x1b\\\x1b[?62;2"));
     }
@@ -1452,13 +1468,15 @@ mod tests {
             keys: vec![Span::raw(" "), Span::raw("q"), Span::raw("/"), Span::raw("esc"), Span::raw(" leave ")],
         };
         for tier in [FINE, EDGED] {
+            // with edges, a row of room under the foot
+            let under = if tier.edges.is_some() { 2 } else { 1 };
             let (c, buf) = card(&s, tier, 80, foot());
-            let line = row(&buf, c.height - 1);
+            let line = row(&buf, c.height - under);
             let (said, keys) = (line.find("4 rows").expect("what was read") + 6, line.find("q/esc").expect("the keys"));
             assert!(line[said..keys].chars().count() > APART, "{tier:?}: the segments run on: {line:?}");
             assert!(line.trim_end_matches(['╯', '─', ' ']).ends_with("leave"), "{tier:?}: the keys end the foot: {line:?}");
             let (c, buf) = card(&s, tier, 50, foot());
-            let line = row(&buf, c.height - 1);
+            let line = row(&buf, c.height - under);
             assert!(line.contains("4 rows") && !line.contains("q/esc"), "{tier:?}: at 50 the keys go first: {line:?}");
         }
         // printed and left, no keys
