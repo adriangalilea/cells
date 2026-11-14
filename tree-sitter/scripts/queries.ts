@@ -62,7 +62,9 @@ const ZED: Names = {
   "comment": "comment",
   "constant": "constant",
   "constant.builtin": "constant",
-  "constant.builtin.computed": "constant",
+  // what the engine wrote, never a value typed: Zed's colour for text the editor adds
+  // (inlay hints), quiet in every theme, where `constant` wears a number's colour
+  "constant.builtin.computed": "hint",
   "function": "function",
   "keyword": "keyword",
   "keyword.import": "keyword",
