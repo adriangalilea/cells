@@ -154,6 +154,10 @@ pub const COMMANDS: &[Command] = &[
         says: "The editor set up for `.cells`: the grammar and queries this binary carries written where it reads them, the language and its server added to its config, the parser built; Zed's extension written as the folder Zed installs (EDITORS.md).",
     },
     Command {
+        usage: "cells editors update",
+        says: "Every editor set up brought to this binary's version, one already holding it left alone; Zed's extension, which only Zed's window rebuilds, said when older. Cells.app runs it on every launch, so an update of Cells is its editors' (EDITORS.md).",
+    },
+    Command {
         usage: "cells skill [show|install|remove]",
         says: "This description as an agent skill: where it is installed and whether it is current, printed whole (`show`), linked into Claude Code's and Codex's skill folders (`install`; inside Cells.app a link to the app's copy, so the app's update is the skill's), or taken out (`remove`).",
     },

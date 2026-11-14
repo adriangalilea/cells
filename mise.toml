@@ -5,11 +5,9 @@
 "aqua:tree-sitter/tree-sitter" = "0.26.13"
 
 [tasks.grammar]
-description = "The tree-sitter parser regenerated from grammar.js, its corpus run and Helix's parser rebuilt; commit it, then `mise run queries`"
+description = "The tree-sitter parser regenerated from grammar.js and its corpus run; commit it, then `mise run queries`"
 dir = "tree-sitter"
-# Helix compiles a parser once and drops a file's highlights whole, silently, when its queries
-# name a node that parser lacks; it is rebuilt with the parser, wherever Helix is installed.
-run = ["tree-sitter generate", "tree-sitter test", "if command -v hx >/dev/null; then hx --grammar build; fi"]
+run = ["tree-sitter generate", "tree-sitter test"]
 
 [tasks.queries]
 description = "The editors' queries written from the canonical ones, Zed's pointed at the last commit that changed the parser (so it runs after that commit)"

@@ -295,6 +295,11 @@ fn main() -> ExitCode {
                 ExitCode::from(2)
             }
         },
+        Some("editors") if args.len() == 2 && args[1] == "update" => {
+            let (said, failed) = editors::update();
+            said.iter().for_each(|l| println!("{l}"));
+            if failed { ExitCode::from(2) } else { ExitCode::SUCCESS }
+        }
         Some("editors") if args.len() == 3 && args[1] == "install" => match editors::install(&args[2]) {
             Ok(said) => {
                 said.iter().for_each(|l| println!("{l}"));

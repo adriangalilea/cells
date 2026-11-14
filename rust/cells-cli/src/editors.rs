@@ -1,5 +1,5 @@
 //! `cells editors install helix|neovim|zed`: an editor set up for `.cells` from this binary
-//! alone.
+//! alone; `cells editors update`: every editor set up brought to this binary's version.
 //!
 //! The grammar's source and the editor's queries are carried inside `cells`, so the parser
 //! an editor builds, the queries it reads and the server it runs (`cells lsp`) are always
@@ -72,6 +72,114 @@ pub fn install(editor: &str) -> Result<Vec<String>, String> {
     }
 }
 
+/// `cells editors update`: every editor `install` set up brought to what this binary carries,
+/// one already holding it left untouched, so it is run on every launch of an installed
+/// Cells.app and an update of Cells is its editors'. Zed is never rewritten here: its
+/// grammar is built only by its own window, and new queries over the old grammar would drop
+/// its highlights until then, so it is said instead. What was done, a line each, and whether
+/// any editor failed.
+pub fn update() -> (Vec<String>, bool) {
+    let mut said = Vec::new();
+    let mut failed = false;
+    for editor in EDITORS {
+        let state = match set_up(editor).and_then(|s| if s { current(editor).map(Some) } else { Ok(None) }) {
+            Ok(s) => s,
+            Err(why) => {
+                said.push(format!("{editor}: {why}"));
+                failed = true;
+                continue;
+            }
+        };
+        match state {
+            None => {}
+            Some(true) => said.push(format!("{editor}: current")),
+            Some(false) if *editor == "zed" => said.push(
+                "zed: Cells is older than this cells: `cells editors install zed`, then Zed › Extensions › Cells › Rebuild".to_owned(),
+            ),
+            Some(false) => match install(editor) {
+                Ok(lines) => {
+                    said.push(format!("{editor}: updated to this version"));
+                    said.extend(lines.into_iter().map(|l| format!("  {l}")));
+                }
+                Err(why) => {
+                    said.push(format!("{editor}: {why}"));
+                    failed = true;
+                }
+            },
+        }
+    }
+    if said.is_empty() {
+        said.push(format!("no editor is set up: cells editors install {}", EDITORS.join("|")));
+    }
+    (said, failed)
+}
+
+/// Whether `install` set `editor` up here: what it writes stands.
+fn set_up(editor: &str) -> Result<bool, String> {
+    let path = match editor {
+        "helix" => helix_queries()?,
+        "neovim" => neovim_package()?,
+        "zed" => zed_extension()?,
+        other => unreachable!("an editor of EDITORS: {other}"),
+    };
+    Ok(fs::symlink_metadata(path).is_ok())
+}
+
+/// Whether `editor` holds what this binary carries: every file it writes, byte for byte, and
+/// a parser built after the grammar it is built from.
+fn current(editor: &str) -> Result<bool, String> {
+    let grammar = grammar_dir()?;
+    Ok(match editor {
+        "helix" => holds(&grammar, GRAMMAR) && holds(&helix_queries()?, HELIX_QUERIES) && built_after(&helix_parser()?, &grammar),
+        "neovim" => {
+            let package = neovim_package()?;
+            holds(&grammar, GRAMMAR)
+                && holds(&package, NEOVIM_PACKAGE)
+                && holds(&package.join("queries/cells"), NEOVIM_QUERIES)
+                && built_after(&package.join("parser/cells.so"), &grammar)
+        }
+        "zed" => holds(&zed_extension()?, ZED_EXTENSION),
+        other => unreachable!("an editor of EDITORS: {other}"),
+    })
+}
+
+/// `files` under `root` as these bytes, `root` a folder of its own (a link to another is
+/// someone else's files).
+fn holds(root: &Path, files: &[(&str, &[u8])]) -> bool {
+    fs::symlink_metadata(root).is_ok_and(|m| m.is_dir())
+        && files.iter().all(|(name, bytes)| fs::read(root.join(name)).is_ok_and(|b| b == *bytes))
+}
+
+/// A parser built no earlier than the grammar's source was written.
+fn built_after(parser: &Path, grammar: &Path) -> bool {
+    let at = |p: &Path| fs::metadata(p).and_then(|m| m.modified()).ok();
+    matches!((at(parser), at(&grammar.join("src/parser.c"))), (Some(built), Some(written)) if built >= written)
+}
+
+fn grammar_dir() -> Result<PathBuf, String> {
+    Ok(xdg("XDG_DATA_HOME", ".local/share")?.join("cells/tree-sitter"))
+}
+
+fn helix_config() -> Result<PathBuf, String> {
+    Ok(xdg("XDG_CONFIG_HOME", ".config")?.join("helix"))
+}
+
+fn helix_queries() -> Result<PathBuf, String> {
+    Ok(helix_config()?.join("runtime/queries/cells"))
+}
+
+fn helix_parser() -> Result<PathBuf, String> {
+    Ok(helix_config()?.join("runtime/grammars").join(if cfg!(target_os = "macos") { "cells.dylib" } else { "cells.so" }))
+}
+
+fn neovim_package() -> Result<PathBuf, String> {
+    Ok(xdg("XDG_DATA_HOME", ".local/share")?.join("nvim/site/pack/cells/start/cells"))
+}
+
+fn zed_extension() -> Result<PathBuf, String> {
+    Ok(xdg("XDG_DATA_HOME", ".local/share")?.join("cells/zed"))
+}
+
 fn home() -> Result<PathBuf, String> {
     std::env::var_os("HOME").filter(|h| !h.is_empty()).map(PathBuf::from).ok_or_else(|| "HOME is not set".to_owned())
 }
@@ -93,11 +201,6 @@ fn write_all(root: &Path, files: &[(&str, &[u8])]) -> Result<(), String> {
     Ok(())
 }
 
-/// When the grammar's parser source was last written.
-fn grammar_written(grammar: &Path) -> std::time::SystemTime {
-    fs::metadata(grammar.join("src/parser.c")).and_then(|m| m.modified()).expect("the parser source, written above")
-}
-
 /// Whether `cells` on PATH is a command a shell finds, so an editor's `command = "cells"` runs.
 fn on_path() -> Option<PathBuf> {
     let path = std::env::var_os("PATH")?;
@@ -106,7 +209,7 @@ fn on_path() -> Option<PathBuf> {
 
 /// The grammar's source written to `<data>/cells/tree-sitter`, where every editor builds it.
 fn grammar(said: &mut Vec<String>) -> Result<PathBuf, String> {
-    let grammar = xdg("XDG_DATA_HOME", ".local/share")?.join("cells/tree-sitter");
+    let grammar = grammar_dir()?;
     write_all(&grammar, GRAMMAR)?;
     said.push(format!("grammar written to {}", grammar.display()));
     Ok(grammar)
@@ -126,19 +229,7 @@ fn helix() -> Result<Vec<String>, String> {
     let mut said = Vec::new();
     let grammar = grammar(&mut said)?;
 
-    let config = xdg("XDG_CONFIG_HOME", ".config")?.join("helix");
-    let queries = config.join("runtime/queries/cells");
-    match fs::symlink_metadata(&queries) {
-        Ok(m) if m.file_type().is_symlink() => {
-            let to = fs::read_link(&queries).map_err(|e| format!("{}: {e}", queries.display()))?;
-            said.push(format!("queries kept: {} is a link to {}", queries.display(), to.display()));
-        }
-        _ => {
-            write_all(&queries, HELIX_QUERIES)?;
-            said.push(format!("queries written to {}", queries.display()));
-        }
-    }
-
+    let config = helix_config()?;
     let languages = config.join("languages.toml");
     let text = match fs::read_to_string(&languages) {
         Ok(t) => t,
@@ -146,6 +237,26 @@ fn helix() -> Result<Vec<String>, String> {
         Err(e) => return Err(format!("{}: {e}", languages.display())),
     };
     let kept = text.lines().any(|l| l.split('#').next().unwrap_or("").replace(' ', "") == "name=\"cells\"");
+    // Helix builds the parser from the source its config names and reads the queries
+    // written here: from any other source the two are two versions, and a query naming a
+    // node that parser lacks drops the file's highlights whole, silently.
+    let source = format!("{:?}", grammar.display().to_string());
+    if kept && !text.contains(&source) {
+        return Err(format!(
+            "{} builds the cells parser from another source; these queries are this version's, so its [[grammar]] cells must read: source = {{ path = {source} }}",
+            languages.display()
+        ));
+    }
+
+    let queries = helix_queries()?;
+    if fs::symlink_metadata(&queries).is_ok_and(|m| m.file_type().is_symlink()) {
+        let to = fs::read_link(&queries).map_err(|e| format!("{}: {e}", queries.display()))?;
+        fs::remove_file(&queries).map_err(|e| format!("{}: {e}", queries.display()))?;
+        said.push(format!("the link to {} replaced by this version's queries", to.display()));
+    }
+    write_all(&queries, HELIX_QUERIES)?;
+    said.push(format!("queries written to {}", queries.display()));
+
     if kept {
         said.push(format!("{} already declares cells: kept as it is", languages.display()));
     } else {
@@ -184,19 +295,12 @@ fn helix() -> Result<Vec<String>, String> {
     // highlights whole, so it is built now, from what was just written. Helix links into
     // `runtime/grammars` without making it, and exits 0 whatever failed, so the folder is
     // made first and the parser's file is what says it was built.
-    let built = config.join("runtime/grammars");
-    fs::create_dir_all(&built).map_err(|e| format!("{}: {e}", built.display()))?;
-    let parser = built.join(if cfg!(target_os = "macos") { "cells.dylib" } else { "cells.so" });
+    let parser = helix_parser()?;
+    let built = parser.parent().expect("runtime/grammars");
+    fs::create_dir_all(built).map_err(|e| format!("{}: {e}", built.display()))?;
     match Command::new("hx").args(["--grammar", "build"]).output() {
         Ok(o) => {
-            // built from our source: newer than it; from a source the config already named
-            // (kept): there at all
-            let after = fs::metadata(&parser).and_then(|m| m.modified()).ok();
-            let fresh = match after {
-                None => false,
-                Some(t) => kept || t >= grammar_written(&grammar),
-            };
-            if !fresh {
+            if !built_after(&parser, &grammar) {
                 let log = String::from_utf8_lossy(&o.stdout).into_owned() + &String::from_utf8_lossy(&o.stderr);
                 let ours: Vec<&str> = log.lines().skip_while(|l| !l.contains(" cells ")).take(6).collect();
                 return Err(format!("hx --grammar build did not build {}:\n{}", parser.display(), ours.join("\n")));
@@ -217,7 +321,7 @@ fn helix() -> Result<Vec<String>, String> {
 fn neovim() -> Result<Vec<String>, String> {
     let mut said = Vec::new();
     let grammar = grammar(&mut said)?;
-    let package = xdg("XDG_DATA_HOME", ".local/share")?.join("nvim/site/pack/cells/start/cells");
+    let package = neovim_package()?;
     write_all(&package, NEOVIM_PACKAGE)?;
     write_all(&package.join("queries/cells"), NEOVIM_QUERIES)?;
     said.push(format!("plugin and queries written to {}", package.display()));
@@ -287,7 +391,7 @@ fn zed_installed() -> Result<PathBuf, String> {
 /// the extension is installed or rebuilt, which only Zed's window does.
 fn zed() -> Result<Vec<String>, String> {
     let mut said = Vec::new();
-    let extension = xdg("XDG_DATA_HOME", ".local/share")?.join("cells/zed");
+    let extension = zed_extension()?;
     write_all(&extension, ZED_EXTENSION)?;
     said.push(format!("extension written to {}", extension.display()));
 

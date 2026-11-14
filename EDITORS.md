@@ -42,7 +42,13 @@ The same reading lays a table out as a table: `cells::tokens::layout` gives the 
 cells editors install helix
 ```
 
-writes the grammar and Helix's queries that this `cells` carries (`~/.local/share/cells/tree-sitter`, `~/.config/helix/runtime/queries/cells`), adds the language and its server to `~/.config/helix/languages.toml`, and builds the parser, so the parser, its queries and the server are one version. A `cells` language the config already declares is kept as it is, and so is a queries folder that is a link (a checkout's). Run it again after updating Cells. By hand, the same in `~/.config/helix/languages.toml`:
+writes the grammar and Helix's queries that this `cells` carries (`~/.local/share/cells/tree-sitter`, `~/.config/helix/runtime/queries/cells`), adds the language and its server to `~/.config/helix/languages.toml`, and builds the parser, so the parser, its queries and the server are one version. A `cells` language the config already declares is kept as it is, but its `[[grammar]]` must build from that folder: from any other (a checkout, say) the parser and the queries are two versions, and a query naming a node the parser lacks makes Helix drop the file's highlights whole, silently, with `--health` still showing ✓, so install refuses and says the line to write. A queries folder that is a link is replaced by the queries themselves, for the same reason. To try a grammar from a checkout, run that checkout's `cells` (`cargo run -p cells-cli -- editors install helix`), never a link to it.
+
+```sh
+cells editors update
+```
+
+brings every editor set up to the `cells` it is run by, rewriting and rebuilding only one whose files differ from what it carries, so it is cheap to run often: Cells.app runs it each time it opens from /Applications, so updating Cells updates Helix and Neovim with it. Zed's extension it only reports, since Zed alone rebuilds it (below). What `install` adds to `~/.config/helix/languages.toml`:
 
 ```toml
 [[language]]
@@ -57,14 +63,14 @@ auto-format = true
 
 [[grammar]]
 name = "cells"
-source = { path = "/path/to/cells/tree-sitter" }
+source = { path = "~/.local/share/cells/tree-sitter" }  # written out in full
 
 [language-server.cells]
 command = "cells"
 args = ["lsp"]
 ```
 
-Then `hx --grammar build`, and link the queries: `ln -s /path/to/cells/tree-sitter/queries/helix ~/.config/helix/runtime/queries/cells`. `hx --health cells` shows the server, the parser and the highlights. After a pull that changes `tree-sitter/src`, `hx --grammar build` again: a parser older than its queries makes Helix drop the highlights whole and say nothing, and `--health` still shows ✓. Hover is `space k`, the diagnostics `space d`, go to definition `g d`, rename `space r`, the code action `space a`. A cell is an argument (`mia` and `maa` select it, `]a` and `[a` go to the next and the one before), a row an entry (`]e`, `[e`), a formula a function's body (`mif`), and the symbol picker (`space s`) lists every column, named type and table. A formula's brackets wear rainbow colours where `rainbow-brackets` is on. `auto-format` is what stores the computed values on `:w` and lays the file out as `cells fmt` does, its columns aligned; without it, `:format` does. A file nobody formatted still shows aligned: the server's inlay hints draw the spaces `cells fmt` would write. To write no padding, `config = { align = false }` under `[language-server.cells]`.
+`hx --health cells` shows the server, the parser and the highlights. Hover is `space k`, the diagnostics `space d`, go to definition `g d`, rename `space r`, the code action `space a`. A cell is an argument (`mia` and `maa` select it, `]a` and `[a` go to the next and the one before), a row an entry (`]e`, `[e`), a formula a function's body (`mif`), and the symbol picker (`space s`) lists every column, named type and table. A formula's brackets wear rainbow colours where `rainbow-brackets` is on. `auto-format` is what stores the computed values on `:w` and lays the file out as `cells fmt` does, its columns aligned; without it, `:format` does. A file nobody formatted still shows aligned: the server's inlay hints draw the spaces `cells fmt` would write. To write no padding, `config = { align = false }` under `[language-server.cells]`.
 
 ## Git
 
@@ -90,7 +96,7 @@ A conflict in what was written is left in the file with git's markers, and the m
 cells editors install neovim
 ```
 
-writes a package on Neovim's own packpath, `~/.local/share/nvim/site/pack/cells/start/cells` (`$XDG_DATA_HOME`), that Neovim 0.11 or later loads at start with no line of config: `plugin/cells.lua` (the `cells` filetype, the server enabled, tree-sitter highlighting started), `lsp/cells.lua` (the server, `cells lsp`), `queries/cells` (the queries outside `tree-sitter/queries/helix`) and `parser/cells.so`, which it builds with `cc` from the grammar this `cells` carries. Then it opens a `.cells` file in `nvim --headless` and checks the filetype, the parser, its highlights and the server's config. Your config is never touched: a `vim.lsp.config("cells", { ... })` of yours is laid over `lsp/cells.lua`. Run it again after updating Cells; the package is written whole each time.
+writes a package on Neovim's own packpath, `~/.local/share/nvim/site/pack/cells/start/cells` (`$XDG_DATA_HOME`), that Neovim 0.11 or later loads at start with no line of config: `plugin/cells.lua` (the `cells` filetype, the server enabled, tree-sitter highlighting started), `lsp/cells.lua` (the server, `cells lsp`), `queries/cells` (the queries outside `tree-sitter/queries/helix`) and `parser/cells.so`, which it builds with `cc` from the grammar this `cells` carries. Then it opens a `.cells` file in `nvim --headless` and checks the filetype, the parser, its highlights and the server's config. Your config is never touched: a `vim.lsp.config("cells", { ... })` of yours is laid over `lsp/cells.lua`. The package is written whole each time; `cells editors update` (Helix, above) rewrites it when it differs from what the `cells` running carries.
 
 The package turns on what Helix's `auto-format` and inlay hints do: a `.cells` buffer is formatted by the server on `:w`, which stores the computed values, and draws the server's inlay hints, its columns aligned. A name the server reads as a column wears that column's colour (`@lsp.typemod.column.column1.cells` to `column6`, linked to the queries' six), so `=cost * qty` shows what it reads. `:checkhealth vim.lsp vim.treesitter` in a `.cells` file shows the server and the parser.
 
@@ -102,7 +108,7 @@ Zed takes a language only from an extension, and starts a language server only f
 cells editors install zed
 ```
 
-writes the extension this `cells` carries to `~/.local/share/cells/zed` and says the one step Zed keeps for its own window: Extensions › Install Dev Extension › that folder (or the `zed: install dev extension` action). Zed builds it there, the launcher with Rust from rustup and the grammar with the wasi-sdk it downloads. Run again after updating Cells, it rewrites the folder and says to press Rebuild on Cells in Zed's extensions. A checkout installs `editors/zed` the same way.
+writes the extension this `cells` carries to `~/.local/share/cells/zed` and says the one step Zed keeps for its own window: Extensions › Install Dev Extension › that folder (or the `zed: install dev extension` action). Zed builds it there, the launcher with Rust from rustup and the grammar with the wasi-sdk it downloads. Run again after updating Cells, it rewrites the folder and says to press Rebuild on Cells in Zed's extensions. `cells editors update` never rewrites it: Zed loads the folder's queries over the grammar it last built, so new queries before a Rebuild would drop the highlights; it says when the folder is older than the `cells` running, and Cells.app's Settings › Command Line shows that line. A checkout installs `editors/zed` the same way.
 
 Zed asks a server for colours and inlay hints only where a setting says so; in `settings.json`:
 
