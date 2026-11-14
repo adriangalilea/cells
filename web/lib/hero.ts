@@ -1,10 +1,12 @@
 // THE HERO, as data: two screens on one desk, one file. spending.cells, six months of a
 // household's spending, its four charts and the month's budgets declared in its prelude,
 // is open in Cells on a MacBook, its table and its chart view side by side; on a Studio
-// Display beside it, a terminal, where `cells chart spending.cells 1 --watch` is typed
-// and draws its first chart full screen, again each time it changes. Then small edits in the app,
-// a note filled in, an amount nudged, a coffee added at the end of October, each put back
-// so the loop ends on the file it began with, and both screens redraw at every one. One
+// Display beside it, a terminal running `cells chart spending.cells 1 --watch` (its
+// command on the window's bar), its first chart full screen from the first frame and again
+// each time the file changes. Then edits in the app, July's festival and a September
+// dinner raised, a dinner added at the end of October, each put back so the loop ends on
+// the file it began with, and both screens redraw at every one: the terminal never blank,
+// round after round. One
 // clock (ui's table-session, every commit the engine's, `playable`), so a player, a
 // playback and a fixed progress draw the same frames: the app draws the file at the
 // moment, the terminal the screen the real `cells chart` drew for that file at its size
@@ -15,7 +17,7 @@
 import { screenRows } from "@/lib/chart-screen"
 import type { Playable } from "@/lib/playable"
 import { PRODUCT } from "@/lib/product"
-import { BAR_EM, TYPE_MS } from "@/lib/terminal-session"
+import { BAR_EM } from "@/lib/terminal-session"
 import { type TableFile, type TableStep, type TableTimeline, tableFrameAt, tableTimeline } from "@/lib/table-session"
 import { type Engine, writeCell } from "@/lib/view"
 
@@ -48,10 +50,6 @@ export const SCREENS_AT = {
   phone: { cols: 80, rows: 44 },
 } as const
 export type ScreenAt = keyof typeof SCREENS_AT
-
-/** The command typed at the terminal's prompt, ms: a key at the terminal's pace, then a
- *  beat before Enter. */
-export const TYPED_MS = WATCH_COMMAND.length * TYPE_MS + 400
 
 /** The file: its types and its charts first in its prelude, then the budgets the last
  *  chart reads. */
@@ -137,18 +135,19 @@ export const SPENDING_SHOWN = (() => {
   return `${lines.slice(0, header + 4).join("\n")}\n`
 })()
 
-/** The month's small edits, in data rows from 0: a note filled in, an amount nudged, a
- *  coffee added at the end; then the coffee deleted, the amount and the note put back, so
- *  the loop ends on the file it began with. Small enough that no chart's scale moves
- *  (scripts/examples.ts checks every frame's axis against the first). */
-const TAPAS = { row: 27, note: "tapas" } as const
-const FRIENDS = { row: 32, was: "112.50", now: "118.50" } as const
+/** The edits, in data rows from 0, all among the rows the table shows (its end): the
+ *  festival in July and a dinner in September raised, a dinner added at the end of
+ *  October; then the dinner deleted and the two put back, so the loop ends on the file it
+ *  began with. Each moves a bar by a fifth of the axis, so it is seen, and no month
+ *  passes the axis's top, so no scale moves (scripts/examples.ts checks every frame's
+ *  axis against the first). */
+const FESTIVAL = { row: 16, was: "180.00", now: "380.00" } as const
+const SEPTEMBER = { row: 27, was: "38.90", now: "238.90" } as const
 const NEW_ROW = 35
-export const COFFEE = { date: "2026-10-31", category: "dining", note: "coffee", amount: "3.80" } as const
+export const DINNER = { date: "2026-10-31", category: "dining", note: "dinner", amount: "180.00" } as const
 
-/** The command typed and the charts drawn, then a beat to see both screens, ms, before
- *  the hand moves. */
-const OPENING = TYPED_MS + 1600
+/** The charts drawn, a beat to see both screens before the hand moves, ms. */
+const OPENING = 1600
 /** Between one edit and the next, ms: the redrawn charts looked at. */
 const BEAT = 1800
 /** Between the cells of the new row, ms. */
@@ -156,35 +155,35 @@ const NEXT_CELL = 350
 /** The last frame held before the loop starts again. */
 const HOLD_MS = 1600
 
-/** The edits up to the coffee's last cell: the file they leave is the one the deletion
+/** The edits up to the dinner's last cell: the file they leave is the one the deletion
  *  starts from. */
 const ADDING: TableStep[] = [
-  { kind: "select", row: TAPAS.row, column: "note", delay: OPENING },
-  { kind: "type", text: TAPAS.note },
-  { kind: "select", row: FRIENDS.row, column: "amount", delay: BEAT },
-  { kind: "type", text: FRIENDS.now },
+  { kind: "select", row: FESTIVAL.row, column: "amount", delay: OPENING },
+  { kind: "type", text: FESTIVAL.now },
+  { kind: "select", row: SEPTEMBER.row, column: "amount", delay: BEAT },
+  { kind: "type", text: SEPTEMBER.now },
   { kind: "select", row: NEW_ROW, column: "date", delay: BEAT },
-  { kind: "type", text: COFFEE.date },
+  { kind: "type", text: DINNER.date },
   { kind: "select", row: NEW_ROW, column: "category", delay: NEXT_CELL },
-  { kind: "type", text: COFFEE.category },
+  { kind: "type", text: DINNER.category },
   { kind: "select", row: NEW_ROW, column: "note", delay: NEXT_CELL },
-  { kind: "type", text: COFFEE.note },
+  { kind: "type", text: DINNER.note },
   { kind: "select", row: NEW_ROW, column: "amount", delay: NEXT_CELL },
-  { kind: "type", text: COFFEE.amount },
+  { kind: "type", text: DINNER.amount },
 ]
 
-/** The coffee's row deleted: the file without its last line, as the app writes a row
- *  deleted; then the amount and the note put back. */
-const putBack = (withCoffee: string): TableStep[] => {
-  const lines = withCoffee.split("\n")
+/** The dinner's row deleted: the file without its last line, as the app writes a row
+ *  deleted; then September and the festival put back. */
+const putBack = (withDinner: string): TableStep[] => {
+  const lines = withDinner.split("\n")
   const last = lines.length - 2
-  if (!lines[last]?.startsWith(COFFEE.date)) throw new Error("hero: the coffee is not the file's last row")
+  if (!lines[last]?.startsWith(DINNER.date)) throw new Error("hero: the dinner is not the file's last row")
   return [
     { kind: "written", path: SPENDING_PATH, text: [...lines.slice(0, last), ""].join("\n"), delay: BEAT + 600 },
-    { kind: "select", row: FRIENDS.row, column: "amount", delay: BEAT },
-    { kind: "type", text: FRIENDS.was },
-    { kind: "select", row: TAPAS.row, column: "note", delay: BEAT },
-    { kind: "type", text: "" },
+    { kind: "select", row: SEPTEMBER.row, column: "amount", delay: BEAT },
+    { kind: "type", text: SEPTEMBER.was },
+    { kind: "select", row: FESTIVAL.row, column: "amount", delay: BEAT },
+    { kind: "type", text: FESTIVAL.was },
   ]
 }
 
@@ -210,8 +209,8 @@ export function hero(engine: Engine): Hero {
   const write = (file: TableFile, cell: { row: number; column: string }, value: string, others: readonly TableFile[]) =>
     writeCell(engine, file, cell, value, others)
   const adding = tableTimeline(files, ADDING, write)
-  const withCoffee = tableFrameAt(adding, adding.total).texts[SPENDING_PATH] as string
-  const timeline = tableTimeline(files, [...ADDING, ...putBack(withCoffee)], write)
+  const withDinner = tableFrameAt(adding, adding.total).texts[SPENDING_PATH] as string
+  const timeline = tableTimeline(files, [...ADDING, ...putBack(withDinner)], write)
   const states = timeline.plans.flatMap((p) => (p.texts ? [p.texts[SPENDING_PATH] as string] : []))
   if (states.at(-1) !== SPENDING_TEXT) throw new Error("hero: the loop does not end on the file it began with")
   const h: Hero = {

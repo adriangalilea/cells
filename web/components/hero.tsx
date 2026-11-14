@@ -2,10 +2,10 @@
 
 // THE HERO: a desk at night (ui's desk), a MacBook and a Studio Display beside it, each at
 // its real width, one file on both. The MacBook shows spending.cells in Cells, its table
-// and its chart view; the display is a terminal where `cells chart spending.cells 1
-// --watch` is typed and its one chart takes the screen. Small edits in the app, a note, an amount, a row
-// added and deleted, each put back so the loop ends where it began, and both screens redraw
-// at every one (lib/hero, ui's table-session; the terminal's screens the real program's,
+// and its chart view; the display is a terminal running `cells chart spending.cells 1
+// --watch`, its one chart on the screen from the first frame, never blank. Edits in the
+// app, two amounts raised and a row added and deleted, each put back so the loop ends where
+// it began, and both screens redraw at every one (lib/hero, ui's table-session; the terminal's screens the real program's,
 // lib/hero-screens). The table shows its end, where the row is added. One clock: `Playback` plays it
 // in view and round again; the app's window draws the session's frame at the hero's
 // moment, the hand (its cursor, what it types) in it, and the terminal the screen drawn
@@ -26,11 +26,10 @@ import { StudioDisplayFrame } from "@/components/ui/device-frame"
 import { Macos } from "@/components/ui/macos"
 import { Playback, Playhead, usePlayhead } from "@/components/ui/playback"
 import { useEngine } from "@/components/use-engine"
-import { APP_CHARTS, hero, SPENDING_PATH, SPENDING_TEXT, STAGE, TYPED_MS, WATCH_COMMAND } from "@/lib/hero"
+import { APP_CHARTS, hero, SPENDING_PATH, SPENDING_TEXT, STAGE, WATCH_COMMAND } from "@/lib/hero"
 import { type Art, LID_MS, sceneClock, type Timeline } from "@/lib/macos-session"
 import { PRODUCT } from "@/lib/product"
 import { sceneOf, tableFrameAt } from "@/lib/table-session"
-import { TYPE_MS } from "@/lib/terminal-session"
 
 /** The Mac's own story: open from the first frame, the same layout for the whole hero (its
  *  windows change only their contents), and shut only by the scroll. */
@@ -54,13 +53,14 @@ const useHero = () => hero(useEngine())
 /** The site's cold edge light: the accent of every terminal and editor on the page. */
 export const ACCENT = "#7fdcf0"
 /** Where each stands on the desk (ui desk), in centimetres: the MacBook to the left and
- *  the display to the right, the display twice as far as the laptop it is twice as wide
- *  as, so both screens read at one size; the eye low over the desk, so both stand on one
- *  line, the farther foot only a little higher, as a photo of a desk shows it. */
+ *  the display to the right, side by side with no desk between them, the display twice as
+ *  far as the laptop it is twice as wide as, so both screens read at one size; the eye low
+ *  over the desk, so both stand on one line, the farther foot only a little higher, as a
+ *  photo of a desk shows it. */
 const DESK = {
   eye: 3,
-  macbook: { x: -20, distance: 45 },
-  display: { x: 40, distance: 90 },
+  macbook: { x: -16, distance: 45 },
+  display: { x: 32, distance: 90 },
 } as const
 
 /** The Cells window on the MacBook's stage (lib/hero `STAGE`), the one that flies. */
@@ -68,16 +68,15 @@ const { inset: INSET, top: TOP } = STAGE
 const WINDOW_W = STAGE.window.width
 const WINDOW_H = STAGE.window.height
 
-/** The file, the hand and the terminal at the hero's instant: the command's characters
- *  typed so far, or null once it runs, and the screen drawn for the file as it stands. */
+/** The file, the hand and the terminal at the hero's instant: the screen drawn for the
+ *  file as it stands. */
 function useFrame(ms: number) {
   const h = useHero()
   const f = tableFrameAt(h.timeline, Math.min(ms, h.timeline.total))
   const text = f.texts[SPENDING_PATH] as string
   const screen = h.texts.indexOf(text)
   if (screen < 0) throw new Error("hero: a frame holds a text the hero never writes")
-  const typed = ms < TYPED_MS ? Math.min(WATCH_COMMAND.length, Math.floor(ms / TYPE_MS)) : null
-  return { text, screen, typed, scene: sceneOf(f, SPENDING_PATH) }
+  return { text, screen, scene: sceneOf(f, SPENDING_PATH) }
 }
 
 /** The Cells window's height on the page, at its stage width: shorter than the Mac's
@@ -99,7 +98,7 @@ function SpendingWindow({ width, height }: { width: number; height: number }) {
 }
 
 /** What the hero shows, said: for assistive tech, the same on the desk and stacked. */
-const ALT = `A MacBook and a Studio Display on a desk at night. On the MacBook, ${SPENDING_PATH} is open in ${PRODUCT.name}, six months of spending by category beside its charts; on the display, ${WATCH_COMMAND} is typed into a terminal and draws spending by category full screen. In ${PRODUCT.name} a note is filled in, an amount nudged, a coffee added at the end of October and deleted again, and each edit put back; both screens redraw the charts at every one.`
+const ALT = `A MacBook and a Studio Display on a desk at night. On the MacBook, ${SPENDING_PATH} is open in ${PRODUCT.name}, six months of spending by category beside its charts; on the display, a terminal running ${WATCH_COMMAND} draws spending by category full screen. In ${PRODUCT.name} July's festival and a September dinner are raised and a dinner is added at the end of October, then the dinner is deleted and the two put back; both screens redraw the charts at every edit.`
 
 /** The landing's width on the page. */
 const LANDING_W = 640
@@ -145,7 +144,7 @@ function Scene({ lid }: { lid: number }) {
         <DeskDevice width={DEVICE_WIDTH_CM.display} x={DESK.display.x} distance={DESK.display.distance}>
           {/* The whole screen is the terminal, at the display's own size of the frames. */}
           <StudioDisplayFrame screenClassName="bg-black">
-            <ChartTerminal at="display" index={f.screen} typed={f.typed} accent={ACCENT} className="absolute inset-0" />
+            <ChartTerminal at="display" index={f.screen} accent={ACCENT} className="absolute inset-0" />
           </StudioDisplayFrame>
         </DeskDevice>
       </Desk>
@@ -172,7 +171,7 @@ function Stacked() {
           <CellsWindow name={SPENDING_PATH} text={f.text} scene={f.scene} prelude={false} end className="h-full" />
         </div>
       </div>
-      <ChartTerminal at="phone" index={f.screen} typed={f.typed} accent={ACCENT} />
+      <ChartTerminal at="phone" index={f.screen} accent={ACCENT} />
     </div>
   )
 }

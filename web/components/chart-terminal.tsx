@@ -1,7 +1,7 @@
 "use client"
 
-// THE HERO'S TERMINAL: `cells chart spending.cells 1 --watch` typed at the prompt, then
-// the screen the real program drew for the file as it stands, at the terminal's size
+// THE HERO'S TERMINAL: `cells chart spending.cells 1 --watch` running, its command on the
+// window's bar, the screen the real program drew for the file as it stands, at the terminal's size
 // (lib/hero-screens, `pnpm charts`). ui's terminal window with the screen as its program
 // (`children`): each cell of the program's screen in its place, a glyph the page's mono
 // face may lack held to one cell's width so no column moves, and the type a share of the
@@ -61,19 +61,6 @@ function Glyphs({ text, ink, ground }: { text: string; ink: string; ground: stri
   return parts
 }
 
-/** The prompt, the command typed `typed` characters into, the cursor after it: the shell
- *  before the program takes the screen. */
-function Prompt({ typed }: { typed: number }) {
-  const palette = useTerminalPalette()
-  return (
-    <div aria-hidden style={{ lineHeight: PITCH, paddingBlock: `${SCREEN_EM.pad}em`, whiteSpace: "pre" }}>
-      <span style={{ color: palette.prompt }}>$ </span>
-      <span style={{ color: palette.command }}>{WATCH_COMMAND.slice(0, typed)}</span>
-      <span style={{ color: palette.dot }}>█</span>
-    </div>
-  )
-}
-
 /** One frame of the program's screen. */
 function Screen({ frame }: { frame: ScreenFrame }) {
   const palette = useTerminalPalette()
@@ -98,21 +85,19 @@ function Screen({ frame }: { frame: ScreenFrame }) {
   )
 }
 
-/** The terminal at a size of lib/hero `SCREENS_AT`: the command being typed (`typed`, its
- *  characters so far), or once it runs, the charts of the hero's `index`th text (lib/hero
- *  `texts`, in the order the screens were drawn from them), in a box of any width, the
- *  type the share of it that fits the size's columns. */
+/** The terminal at a size of lib/hero `SCREENS_AT`: the chart of the hero's `index`th text
+ *  (lib/hero `texts`, in the order the screens were drawn from them), its command on the
+ *  window's bar, in a box of any width, the type the share of it that fits the size's
+ *  columns. */
 export function ChartTerminal({
   at,
   index,
-  typed,
   accent,
   className,
   style,
 }: {
   at: ScreenAt
   index: number
-  typed: number | null
   accent: string
   className?: string
   style?: React.CSSProperties
@@ -124,11 +109,12 @@ export function ChartTerminal({
     <div className={`[container-type:inline-size] ${className ?? ""}`} style={style}>
       <Terminal
         alt={`A terminal running ${WATCH_COMMAND}: spending by category, by month, drawn again each time the file changes.`}
+        title={WATCH_COMMAND}
         accent={accent}
         size={`calc(100cqw / ${wideOf(size.cols)})`}
         className="h-full"
       >
-        {typed === null ? <Screen frame={frame} /> : <Prompt typed={typed} />}
+        <Screen frame={frame} />
       </Terminal>
     </div>
   )

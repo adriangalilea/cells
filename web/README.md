@@ -5,7 +5,7 @@ The Cells site: the landing, every example read live by the engine (this reposit
 | | |
 |---|---|
 | `lib/story.ts` | every step's words and files, as data |
-| `lib/hero.ts` | the seconds on a Mac, as data: `spending.cells` open in the app and in `cells chart --watch`, a dinner typed with a zero too many and back, one clock |
+| `lib/hero.ts` | the desk, as data: `spending.cells` open in the app on a MacBook and charted by `cells chart --watch` on a Studio Display, edits that move the bars and are put back, one clock, every scale held |
 | `scripts/charts.ts` | the hero terminal's frames, `lib/hero-screens.ts`: this checkout's `cells chart … --watch` run in a pseudo-terminal of 80 by 44, its screen read after each text the hero writes, never drawn by hand |
 | `lib/product.ts` | the name, the extension, the command: change them here only |
 | `lib/docs.ts` | the docs: which files, where each lives on the site, SPEC.md cut a page per section, every link resolved at build (a broken one throws) |

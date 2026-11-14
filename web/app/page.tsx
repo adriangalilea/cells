@@ -10,7 +10,7 @@ import { Code as Block } from "@/components/ui/code"
 import { Glass } from "@/components/ui/material-glass"
 import { PRODUCT } from "@/lib/product"
 import { ONE_FILE, PROOFS } from "@/lib/proofs"
-import { SPENDING_PATH, SPENDING_SHOWN, WATCH_COMMAND } from "@/lib/hero"
+import { SPENDING_PATH, SPENDING_SHOWN } from "@/lib/hero"
 
 /** What each neighbour does, honestly, and what a Cells file does instead. */
 const ROWS = [
@@ -179,7 +179,8 @@ export default function Page() {
               )}
             </p>
           </div>
-          <div className="relative w-[min(84rem,96vw,calc((100svh-19rem)*2.6))]">
+          {/* The desk takes the width it is given: the screens are the page's first words. */}
+          <div className="relative w-[min(96vw,calc((100svh-15rem)*2.6))]">
             {/* A soft rim of light behind the machine, neutral: a product shot at night. */}
             <div aria-hidden className="absolute inset-x-[14%] top-[4%] bottom-[22%] -z-10 rounded-[40%] bg-white/5 blur-[80px] dark:bg-white/6" />
             {/* The engine streams in; the server's HTML of the hero and the story stays on
@@ -187,11 +188,6 @@ export default function Page() {
             <Suspense>
               <Hero />
             </Suspense>
-            {/* What the screens show, said once under them: the one file, twice. */}
-            <p className="mx-auto mt-4 max-w-[70ch] text-center text-pretty text-[14px] leading-relaxed text-muted-foreground">
-              <Spelled>{SPENDING_PATH}</Spelled> in {PRODUCT.name}, and on the display <Spelled>{WATCH_COMMAND}</Spelled>. Every edit in{" "}
-              {PRODUCT.name}, a note, an amount, a row added and deleted, redraws the charts on both screens.
-            </p>
           </div>
         </div>
       </section>

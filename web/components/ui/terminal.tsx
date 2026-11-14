@@ -67,6 +67,10 @@ interface TerminalWindowProps {
   size?: string
   /** Accessible description (the terminal is one picture). */
   alt: string
+  /** What the window's bar says, centred as a Mac's terminal says what runs in it (a
+   *  full-screen program's command, `cells chart spending.cells 1 --watch`). None, the
+   *  bar holds its dots alone. */
+  title?: string
   className?: string
 }
 
@@ -91,12 +95,13 @@ export function useTerminalPalette(): TerminalPalette {
 
 export function Terminal(props: TerminalProps) {
   if (props.session === undefined) {
-    const { children, interactive, accent, size, alt, className } = props
+    const { children, interactive, accent, size, alt, title, className } = props
     return (
       <TerminalWindow
         accent={accent}
         size={size}
         alt={alt}
+        title={title}
         interactive={interactive}
         className={className}
       >
@@ -112,6 +117,7 @@ function TerminalWindow({
   accent,
   size = "13px",
   alt,
+  title,
   interactive = false,
   className,
   children,
@@ -162,6 +168,7 @@ function TerminalWindow({
             alignItems: "center",
             background: palette.bar,
             padding: `${em(WINDOW.padY)} ${em(WINDOW.padX)}`,
+            position: "relative",
           }}
         >
           {[0, 1, 2].map((d) => (
@@ -175,6 +182,24 @@ function TerminalWindow({
               }}
             />
           ))}
+          {title && (
+            // Centred on the window, never on what is left beside the dots, so it
+            // stands where a Mac's terminal puts it.
+            <span
+              style={{
+                position: "absolute",
+                insetInline: 0,
+                textAlign: "center",
+                color: palette.muted,
+                pointerEvents: "none",
+                whiteSpace: "nowrap",
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+              }}
+            >
+              {title}
+            </span>
+          )}
         </div>
         <PaletteContext.Provider value={palette}>
           <div
@@ -209,6 +234,7 @@ function TerminalScript({
   rows = 0,
   size,
   alt,
+  title,
   className,
 }: TerminalWindowProps & ScriptProps) {
   const timeline = React.useMemo(
@@ -303,7 +329,13 @@ function TerminalScript({
   }
 
   return (
-    <TerminalWindow accent={accent} size={size} alt={alt} className={className}>
+    <TerminalWindow
+      accent={accent}
+      size={size}
+      alt={alt}
+      title={title}
+      className={className}
+    >
       {/* The box is sized by the FINISHED session (an invisible full copy in the
           same cell), so playback never grows the page: text streams into a fixed
           frame. Both layers share width, so wrapping is identical. */}
