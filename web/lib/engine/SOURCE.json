@@ -1,8 +1,8 @@
 {
-  "copied": "2026-11-14T10:58:34.025Z",
+  "copied": "2026-11-14T11:03:02.315Z",
   "files": {
     "lib/engine/cells.ts": "rust/cells-wasm/js/cells.ts sha256:923a46180edf6cad",
-    "public/cells.wasm": "rust/cells-wasm/js/cells.wasm sha256:2a4fd6f9c6ae9d88",
+    "public/cells.wasm": "rust/cells-wasm/js/cells.wasm sha256:ce34dcc6cb98a69f",
     "lib/engine/cells.tmLanguage.json": "syntaxes/cells.tmLanguage.json sha256:bf5a47ae68aebb8b"
   }
 }
