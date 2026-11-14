@@ -182,13 +182,20 @@
             }
 
             /// What a version changed beside the one before: cells, rows added (numbered as
-            /// after) and removed (numbered as before), columns added and removed.
+            /// after) and removed (numbered as before), columns added, removed and renamed.
             public struct Edit: Decodable, Sendable, Hashable {
                 public let cells: [Cell]
                 public let rowsAdded: [Int]
                 public let rowsRemoved: [Int]
                 public let columnsAdded: [String]
                 public let columnsRemoved: [String]
+                public let columnsRenamed: [Renamed]
+
+                /// A column held under another name: its name before, its name now.
+                public struct Renamed: Decodable, Sendable, Hashable {
+                    public let from: String
+                    public let to: String
+                }
 
                 public init(from decoder: any Decoder) throws {
                     let c = try decoder.container(keyedBy: Key.self)
@@ -199,6 +206,8 @@
                         try c.decodeIfPresent([String].self, forKey: .columnsAdded) ?? []
                     columnsRemoved =
                         try c.decodeIfPresent([String].self, forKey: .columnsRemoved) ?? []
+                    columnsRenamed =
+                        try c.decodeIfPresent([Renamed].self, forKey: .columnsRenamed) ?? []
                 }
 
                 /// The engine's words, snake case.
@@ -208,6 +217,7 @@
                     case rowsRemoved = "rows_removed"
                     case columnsAdded = "columns_added"
                     case columnsRemoved = "columns_removed"
+                    case columnsRenamed = "columns_renamed"
                 }
             }
 

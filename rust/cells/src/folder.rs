@@ -111,10 +111,12 @@ pub struct Cell {
 /// What a version changed in a file beside the version before it. Rows are matched by
 /// the table's key when it has one; without one, the lines the two versions share at
 /// their start and their end are the same rows, and between them rows pair by place when
-/// both versions hold as many, else are removed and added. Columns are matched by name.
+/// both versions hold as many, else are removed and added. Columns are matched as
+/// `same_columns` says: by name, else renamed.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct Edited {
-    /// Each cell whose text changed, of a row and a column both versions hold.
+    /// Each cell whose text changed, of a row and a column both versions hold, the column
+    /// named as the new version names it.
     pub cells: Vec<Cell>,
     /// Rows the new version holds and the one before did not, numbered as the new one.
     pub rows_added: Vec<usize>,
@@ -122,6 +124,8 @@ pub struct Edited {
     pub rows_removed: Vec<usize>,
     pub columns_added: Vec<String>,
     pub columns_removed: Vec<String>,
+    /// Each column both versions hold under another name: its name before, its name now.
+    pub columns_renamed: Vec<(String, String)>,
 }
 
 impl Edited {
@@ -131,6 +135,7 @@ impl Edited {
             && self.rows_removed.is_empty()
             && self.columns_added.is_empty()
             && self.columns_removed.is_empty()
+            && self.columns_renamed.is_empty()
     }
 }
 
@@ -403,23 +408,54 @@ fn walk_back(rounds: &[Vec<isize>], a: &[String], b: &[String], n: isize, m: isi
     kept
 }
 
+/// The columns `before` and `after` hold as one, as pairs of their places, in `before`'s
+/// order. A file has no column ids, so a column is known by what it says: the same name is
+/// the same column; of the columns left on each side, one whose type and formula are the
+/// same and whose cells read the same, row for row, is the same column renamed, wherever
+/// it now stands. A column renamed and retyped, or renamed with a cell changed in the same
+/// version, shares only its place, and is one column removed and another added. Each
+/// column left before is paired with the first one left after that is it, in header order,
+/// so blank columns alike are paired in the order they stand.
+pub fn same_columns(before: &Doc, after: &Doc) -> Vec<(usize, usize)> {
+    let (cb, ca) = (before.columns(), after.columns());
+    let by_name = |k: usize| ca.iter().position(|c| c.name == cb[k].name);
+    let left_after: Vec<usize> = (0..ca.len()).filter(|&j| !cb.iter().any(|c| c.name == ca[j].name)).collect();
+    let same = |k: usize, j: usize| {
+        cb[k].ty == ca[j].ty
+            && cb[k].formula == ca[j].formula
+            && before.rows() == after.rows()
+            && (0..before.rows()).all(|r| before.text(r, k) == after.text(r, j))
+    };
+    let mut taken: Vec<usize> = Vec::new();
+    let mut out = Vec::new();
+    for k in 0..cb.len() {
+        let j = by_name(k).or_else(|| left_after.iter().copied().find(|&j| !taken.contains(&j) && same(k, j)));
+        if let Some(j) = j {
+            taken.push(j);
+            out.push((k, j));
+        }
+    }
+    out
+}
+
 /// What `after` changed beside `before` (`Edited`): rows matched by the table's key, else by
 /// what their cells read, the rows both share at their ends set aside first, so a large file
 /// with a few rows changed costs what reading its rows does.
 pub fn edited(before: &Doc, after: &Doc) -> Edited {
     let mut out = Edited::default();
     let name = |d: &Doc, k: usize| d.columns()[k].name.clone();
-    let find = |d: &Doc, n: &str| d.columns().iter().position(|c| c.name == n);
-    let shared: Vec<(usize, usize)> =
-        (0..before.columns().len()).filter_map(|k| find(after, &before.columns()[k].name).map(|j| (k, j))).collect();
-    out.columns_removed =
-        (0..before.columns().len()).filter(|&k| find(after, &before.columns()[k].name).is_none()).map(|k| name(before, k)).collect();
-    out.columns_added =
-        (0..after.columns().len()).filter(|&j| find(before, &after.columns()[j].name).is_none()).map(|j| name(after, j)).collect();
+    let shared = same_columns(before, after);
+    out.columns_removed = (0..before.columns().len()).filter(|&k| !shared.iter().any(|&(b, _)| b == k)).map(|k| name(before, k)).collect();
+    out.columns_added = (0..after.columns().len()).filter(|&j| !shared.iter().any(|&(_, a)| a == j)).map(|j| name(after, j)).collect();
+    out.columns_renamed = shared
+        .iter()
+        .filter(|&&(k, j)| before.columns()[k].name != after.columns()[j].name)
+        .map(|&(k, j)| (name(before, k), name(after, j)))
+        .collect();
 
     let keyed = |d: &Doc| d.columns().iter().position(|c| c.ty.key);
     let pairs: Vec<(usize, usize)> = match (keyed(before), keyed(after)) {
-        (Some(kb), Some(ka)) if before.columns()[kb].name == after.columns()[ka].name => {
+        (Some(kb), Some(ka)) if shared.contains(&(kb, ka)) => {
             let mut at = BTreeMap::new();
             for r in 0..before.rows() {
                 at.insert(before.text(r, kb).into_owned(), r);
@@ -498,6 +534,7 @@ pub fn edited(before: &Doc, after: &Doc) -> Edited {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use alloc::vec;
 
     const Q4: &str = "/w/q4/money.cells";
     const QUARTERS: &str = "/w/quarters.cells";
@@ -628,6 +665,49 @@ mod tests {
         let e = edited(&before, &moved);
         assert_eq!(e.cells.iter().map(|c| (c.row, c.now.as_str())).collect::<Vec<_>>(), [(3, "31.00")], "{e:?}");
         assert_eq!((e.rows_added.len(), e.rows_removed.len()), (1, 1), "a row moved: removed where it was, added where it is");
+    }
+
+    fn doc(text: &str) -> Doc {
+        read_with(text.as_bytes().to_vec(), &mut Files::new(&BTreeMap::new(), "/x"), 1).unwrap()
+    }
+
+    fn columns(e: &Edited) -> (Vec<(&str, &str)>, Vec<&str>, Vec<&str>) {
+        (
+            e.columns_renamed.iter().map(|(a, b)| (a.as_str(), b.as_str())).collect(),
+            e.columns_added.iter().map(String::as_str).collect(),
+            e.columns_removed.iter().map(String::as_str).collect(),
+        )
+    }
+
+    #[test]
+    fn a_column_renamed_is_one_change() {
+        let before = doc("what:text,something:text,amount:EUR\nrent,a,900.00\npower,b,60.00\n");
+        let e = edited(&before, &doc("what:text,somethingff:text,amount:EUR\nrent,a,900.00\npower,b,60.00\n"));
+        assert_eq!(columns(&e), (vec![("something", "somethingff")], vec![], vec![]));
+        assert!(e.cells.is_empty() && e.rows_added.is_empty() && e.rows_removed.is_empty(), "its cells are the same: {e:?}");
+
+        let e = edited(&before, &doc("somethingff:text,what:text,amount:EUR\na,rent,900.00\nb,power,60.00\n"));
+        assert_eq!(columns(&e), (vec![("something", "somethingff")], vec![], vec![]), "moved and renamed, still the column");
+        assert!(e.cells.is_empty(), "{e:?}");
+
+        let e = edited(&before, &doc("what:text,somethingff:int,amount:EUR\nrent,1,900.00\npower,2,60.00\n"));
+        assert_eq!(columns(&e), (vec![], vec!["somethingff"], vec!["something"]), "renamed and retyped is another column");
+
+        let e = edited(&before, &doc("what:text,somethingff:text,amount:EUR\nrent,a,900.00\npower,c,60.00\n"));
+        assert_eq!(columns(&e), (vec![], vec!["somethingff"], vec!["something"]), "renamed with a cell changed");
+
+        let e = edited(&before, &doc("what:text,note:text,amount:EUR\nrent,x,900.00\npower,y,60.00\n"));
+        assert_eq!(columns(&e), (vec![], vec!["note"], vec!["something"]), "one column removed, another added in its place");
+        assert!(e.cells.is_empty(), "no cell of a column removed is a cell changed: {e:?}");
+
+        let keyed = doc("what:text!,amount:EUR\nrent,900.00\npower,60.00\n");
+        let e = edited(&keyed, &doc("item:text!,amount:EUR\nrent,900.00\npower,65.00\n"));
+        assert_eq!(e.columns_renamed, [("what".into(), "item".into())]);
+        assert_eq!(
+            e.cells,
+            [Cell { row: 2, key: Some("power".into()), column: "amount".into(), was: "60.00".into(), now: "65.00".into() }],
+            "a key renamed still names its rows, another column's cells changed beside it"
+        );
     }
 
     #[test]

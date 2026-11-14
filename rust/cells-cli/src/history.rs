@@ -94,6 +94,7 @@ fn edit(e: &Edit) -> Vec<String> {
     out.extend(rows(&e.rows_removed, "removed"));
     out.extend((!e.columns_added.is_empty()).then(|| format!("added column {}", e.columns_added.join(", "))));
     out.extend((!e.columns_removed.is_empty()).then(|| format!("removed column {}", e.columns_removed.join(", "))));
+    out.extend(e.columns_renamed.iter().map(|r| format!("renamed column {} to {}", r.from, r.to)));
     out
 }
 

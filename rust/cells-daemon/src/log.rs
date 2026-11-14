@@ -272,6 +272,15 @@ pub struct Edit {
     pub columns_added: Vec<String>,
     #[serde(skip_serializing_if = "Vec::is_empty", default)]
     pub columns_removed: Vec<String>,
+    #[serde(skip_serializing_if = "Vec::is_empty", default)]
+    pub columns_renamed: Vec<Renamed>,
+}
+
+/// A column a version holds under another name: its name before and its name now.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Renamed {
+    pub from: String,
+    pub to: String,
 }
 
 impl From<&Edited> for Edit {
@@ -282,6 +291,7 @@ impl From<&Edited> for Edit {
             rows_removed: e.rows_removed.clone(),
             columns_added: e.columns_added.clone(),
             columns_removed: e.columns_removed.clone(),
+            columns_renamed: e.columns_renamed.iter().map(|(from, to)| Renamed { from: from.clone(), to: to.clone() }).collect(),
         }
     }
 }

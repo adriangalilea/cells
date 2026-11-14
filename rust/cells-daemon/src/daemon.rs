@@ -136,6 +136,7 @@ fn said(e: &Edited) -> String {
     count(e.rows_removed.len(), "row", "removed");
     count(e.columns_added.len(), "column", "added");
     count(e.columns_removed.len(), "column", "removed");
+    parts.extend(e.columns_renamed.iter().map(|(from, to)| format!("column {from} renamed {to}")));
     if parts.is_empty() { "nothing a table holds".into() } else { parts.join(", ") }
 }
 
@@ -210,10 +211,7 @@ impl<W: World> Daemon<W> {
         if let Some(holder) = self.served.iter().find(|l| l.root == root || (l.whole && root.starts_with(&l.root))) {
             return Ok(holder.root.clone());
         }
-        let whole = cells::folder::served_whole(
-            &root.to_string_lossy(),
-            &self.world.home().to_string_lossy(),
-        );
+        let whole = cells::folder::served_whole(&root.to_string_lossy(), &self.world.home().to_string_lossy());
         let span = tracing::info_span!(target: ENGINE, "serve", path = %root.display(), whole);
         let _serving = span.enter();
         self.world.lock(root)?;

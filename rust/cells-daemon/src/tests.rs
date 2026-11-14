@@ -425,6 +425,32 @@ fn a_cell_says_every_value_it_held_and_the_root_of_each() {
 }
 
 #[test]
+fn a_cell_is_followed_through_its_column_renamed() {
+    let notes = "/w/notes.cells";
+    let sim = Sim::default();
+    sim.put(notes, "note:text,amount:EUR\nrent,900.00\n");
+    let mut d = served(sim, "/w");
+    let first = hash(&d.world().get(notes));
+    for text in ["note:text,amount:EUR\nrent,950.00\n", "note:text,sum:EUR\nrent,950.00\n", "note:text,sum:EUR\nrent,1000.00\n"] {
+        d.world().put(notes, text);
+        heard(&mut d, &[notes]);
+    }
+    let log = d.world().log();
+    assert!(log.iter().any(|l| l.contains("\"columns_renamed\":[{\"from\":\"amount\",\"to\":\"sum\"}]")), "{log:#?}");
+    let FromEngine::Values { values } = ask(&mut d, "app", ToEngine::Cell { file: notes.into(), row: 1, column: "sum".into() }) else {
+        panic!()
+    };
+    assert_eq!(
+        values.iter().map(|v| (v.was.as_str(), v.value.as_str())).collect::<Vec<_>>(),
+        [("950.00", "1000.00"), ("900.00", "950.00")],
+        "the value it held under its old name"
+    );
+    let FromEngine::Since { marks, .. } = ask(&mut d, "app", ToEngine::Since { file: notes.into(), version: first }) else { panic!() };
+    let [m] = &marks[..] else { panic!("one cell, renamed between its changes: {marks:#?}") };
+    assert_eq!((m.column.as_deref(), m.was.as_deref(), m.now.as_str()), (Some("sum"), Some("900.00"), "1000.00"));
+}
+
+#[test]
 fn a_file_returned_to_a_version_is_a_change_of_its_own() {
     let mut d = daemon();
     let first = hash(MONEY);

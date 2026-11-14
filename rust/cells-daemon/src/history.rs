@@ -9,7 +9,7 @@ use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
 
-use crate::log::{Line, Log, Logged};
+use crate::log::{Line, Log, Logged, Renamed};
 
 /// An entry of a folder's log, with the folder it is in.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -156,12 +156,12 @@ pub fn since(log: &Log, file: &Path, version: &str, current: &str) -> Option<Vec
     };
     let mut marks: Vec<Mark> = Vec::new();
     for l in &lines[start..] {
-        let (cells, added, removed): (&[crate::log::Changed], &[usize], &[usize]) = match &l.entry {
-            Logged::Store { stored, .. } => (stored, &[], &[]),
+        let (cells, added, removed, renamed): (&[crate::log::Changed], &[usize], &[usize], &[Renamed]) = match &l.entry {
+            Logged::Store { stored, .. } => (stored, &[], &[], &[]),
             Logged::External { edited: Some(e), .. }
             | Logged::Restore { edited: Some(e), .. }
             | Logged::Run { edited: Some(e), .. }
-            | Logged::Edit { edited: Some(e), .. } => (&e.cells, &e.rows_added, &e.rows_removed),
+            | Logged::Edit { edited: Some(e), .. } => (&e.cells, &e.rows_added, &e.rows_removed, &e.columns_renamed),
             // a version either side of which did not read says no cells: what it changed is
             // not known, so nothing before it is either
             Logged::External { .. } | Logged::Restore { .. } | Logged::Run { .. } | Logged::Edit { .. } => {
@@ -171,6 +171,9 @@ pub fn since(log: &Log, file: &Path, version: &str, current: &str) -> Option<Vec
             Logged::Moved { .. } => continue,
         };
         let (entry, root) = ((log.root.clone(), l.n), root_of(l));
+        for r in renamed {
+            marks.iter_mut().filter(|m| m.column.as_deref() == Some(r.from.as_str())).for_each(|m| m.column = Some(r.to.clone()));
+        }
         // removed rows, numbered as before the version; then added ones, as after it
         let mut gone: Vec<usize> = removed.to_vec();
         gone.sort_unstable_by(|a, b| b.cmp(a));
@@ -235,13 +238,14 @@ pub fn cell(log: &Log, file: &Path, row: usize, key: Option<&str>, column: &str)
     };
     let mut out = Vec::new();
     let mut row = row;
+    let mut column = column.to_owned();
     for l in lines.into_iter().rev() {
-        let (cells, added, removed): (&[_], &[usize], &[usize]) = match &l.entry {
-            Logged::Store { stored, .. } => (stored, &[], &[]),
+        let (cells, added, removed, renamed): (&[_], &[usize], &[usize], &[Renamed]) = match &l.entry {
+            Logged::Store { stored, .. } => (stored, &[], &[], &[]),
             Logged::External { edited: Some(e), .. }
             | Logged::Restore { edited: Some(e), .. }
             | Logged::Run { edited: Some(e), .. }
-            | Logged::Edit { edited: Some(e), .. } => (&e.cells, &e.rows_added, &e.rows_removed),
+            | Logged::Edit { edited: Some(e), .. } => (&e.cells, &e.rows_added, &e.rows_removed, &e.columns_renamed),
             // a file new, removed, or a version either side of which did not read, has no
             // cells to follow through
             Logged::External { .. } | Logged::Restore { .. } | Logged::Run { .. } | Logged::Edit { .. } => break,
@@ -251,6 +255,10 @@ pub fn cell(log: &Log, file: &Path, row: usize, key: Option<&str>, column: &str)
             |c: &&crate::log::Changed| c.column == column && (key.is_some() && c.key.as_deref() == key || key.is_none() && c.row == row);
         if let Some(c) = cells.iter().find(same) {
             out.push(Held { value: c.now.clone(), was: c.was.clone(), at: l.at, folder: log.root.clone(), n: l.n, root: root_of(l) });
+        }
+        // before a version that renamed the column, it had its old name
+        if let Some(r) = renamed.iter().find(|r| r.to == column) {
+            column = r.from.clone();
         }
         if key.is_none() {
             if added.contains(&row) {
