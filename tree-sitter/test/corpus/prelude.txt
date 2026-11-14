@@ -512,3 +512,71 @@ kind:Kind
       name: (column_name)
       type: (type
         (named_type)))))
+
+==================|||
+Packed copies of what imports expose
+==================|||
+---
+import accounts from "./accounts.cells" with { pack: "auto" }
+import { Kind } from "./kinds.cells"
+packed type Kind = income|cost
+packed look Kind: grouped
+packed accounts = ```cells
+account: text!
+bank
+```
+---
+to: accounts.account, kind: Kind
+bank, income
+---|||
+
+(source_file
+  (prelude
+    (fence)
+    (import_statement
+      default: (table_name)
+      source: (string
+        (string_content))
+      (import_attributes
+        (import_attribute
+          key: (attribute_name)
+          value: (string
+            (string_content)))))
+    (import_statement
+      (named_imports
+        (imported_name))
+      source: (string
+        (string_content)))
+    (type_definition
+      name: (type_name)
+      type: (type
+        (choices
+          (choice)
+          (choice))))
+    (look_statement
+      target: (type_name)
+      (look_rule))
+    (table_definition
+      name: (table_name)
+      table: (code_block
+        (fence_open)
+        language: (fence_language)
+        content: (fence_content)
+        (fence_close)))
+    (fence))
+  (header
+    (header_cell
+      name: (column_name)
+      type: (type
+        (reference_type
+          file: (reference_file)
+          column: (reference_column))))
+    (header_cell
+      name: (column_name)
+      type: (type
+        (named_type))))
+  (row
+    (field
+      (text))
+    (field
+      (text))))

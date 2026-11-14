@@ -19,7 +19,10 @@
 
 "type" @keyword.type
 
-"export" @keyword.modifier
+[
+  "export"
+  "packed"
+] @keyword.modifier
 
 [
   "import"

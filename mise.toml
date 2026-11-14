@@ -1,0 +1,15 @@
+# The tools this repository's generated files come from, pinned, so a change regenerates
+# them the same on any machine: `mise install` once, then the task.
+[tools]
+# writes tree-sitter/src/parser.c from grammar.js; ABI 15, the one Helix, Neovim and Zed load
+"aqua:tree-sitter/tree-sitter" = "0.26.13"
+
+[tasks.grammar]
+description = "The tree-sitter parser regenerated from grammar.js and its corpus run; commit it, then `mise run queries`"
+dir = "tree-sitter"
+run = ["tree-sitter generate", "tree-sitter test"]
+
+[tasks.queries]
+description = "The editors' queries written from the canonical ones, Zed's pointed at the last commit that changed the parser (so it runs after that commit)"
+dir = "tree-sitter"
+run = "bun scripts/queries.ts"

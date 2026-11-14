@@ -117,6 +117,8 @@ module.exports = grammar({
     // column, a named type or the row, then its rules. `look` opens it as `type` opens
     // its own, so a column whose name opens with `look ` is declared quoted.
     look_statement: $ => seq(
+      // `packed look Kind: …`: a copy of an import's looks (SPEC, Packed imports)
+      optional('packed'),
       'look',
       field('target', choice(
         alias('row', $.row_target),
@@ -164,8 +166,9 @@ module.exports = grammar({
 
     _name_piece: _ => token(prec(-1, /[^:=,"\r\n\s\/`A-Za-z0-9_][^:=,"\r\n\s\/`]*/)),
 
+    // `export type`, or `packed type`: a copy of an import's type (SPEC, Packed imports)
     type_definition: $ => seq(
-      optional('export'),
+      optional(choice('export', 'packed')),
       'type',
       field('name', alias($._type_identifier, $.type_name)),
       '=',
@@ -200,9 +203,10 @@ module.exports = grammar({
 
     string: $ => seq('"', optional(alias(/[^"\r\n]+/, $.string_content)), '"'),
 
-    // `fees = ```cells`, its rows on the lines after it.
+    // `fees = ```cells`, its rows on the lines after it; `packed fees = ```cells`, a copy
+    // of an import's table.
     table_definition: $ => seq(
-      optional('export'),
+      optional(choice('export', 'packed')),
       field('name', alias($.identifier, $.table_name)),
       '=',
       field('table', $.code_block),

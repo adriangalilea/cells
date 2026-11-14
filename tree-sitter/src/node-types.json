@@ -3400,6 +3400,10 @@
     "named": false
   },
   {
+    "type": "packed",
+    "named": false
+  },
+  {
     "type": "parentheses",
     "named": false
   },
