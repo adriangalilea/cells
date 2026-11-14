@@ -179,7 +179,7 @@ export default function Page() {
               )}
             </p>
           </div>
-          <div className="relative w-[min(84rem,96vw,calc((100svh-19rem)*2))]">
+          <div className="relative w-[min(84rem,96vw,calc((100svh-19rem)*2.6))]">
             {/* A soft rim of light behind the machine, neutral: a product shot at night. */}
             <div aria-hidden className="absolute inset-x-[14%] top-[4%] bottom-[22%] -z-10 rounded-[40%] bg-white/5 blur-[80px] dark:bg-white/6" />
             {/* The engine streams in; the server's HTML of the hero and the story stays on

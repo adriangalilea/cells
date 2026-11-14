@@ -39,7 +39,7 @@ export const DISPLAY = { width: 960, height: 540 } as const
 /** The terminals the frames are drawn for: the display's, its columns many enough for a
  *  wide chart and its rows the ones its screen holds at the type that fits them; and a
  *  phone's, where the terminal stands alone under the app, at `cells chart`'s own width. */
-const DISPLAY_COLS = 140
+const DISPLAY_COLS = 120
 export const SCREENS_AT = {
   display: { cols: DISPLAY_COLS, rows: screenRows(DISPLAY_COLS, DISPLAY.width, DISPLAY.height, BAR_EM) },
   phone: { cols: 80, rows: 44 },

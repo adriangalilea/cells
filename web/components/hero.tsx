@@ -53,6 +53,15 @@ const useHero = () => hero(useEngine())
 
 /** The site's cold edge light: the accent of every terminal and editor on the page. */
 export const ACCENT = "#7fdcf0"
+/** Where each stands on the desk (ui desk), in centimetres: the MacBook near, in front and
+ *  to the left, so the app reads; the display behind it to the right, its screen clear of
+ *  the laptop; the eye a little over the desk. */
+const DESK = {
+  eye: 8,
+  macbook: { x: -16, distance: 45 },
+  display: { x: 36, distance: 150 },
+} as const
+
 /** The Cells window on the MacBook's stage (lib/hero `STAGE`), the one that flies. */
 const { inset: INSET, top: TOP } = STAGE
 const WINDOW_W = STAGE.window.width
@@ -115,8 +124,8 @@ function Scene({ lid }: { lid: number }) {
   const macMs = SHUT_FROM + lid * LID_MS
   return (
     <div role="img" aria-label={ALT}>
-      <Desk>
-        <DeskDevice width={DEVICE_WIDTH_CM.macbook}>
+      <Desk eye={DESK.eye}>
+        <DeskDevice width={DEVICE_WIDTH_CM.macbook} x={DESK.macbook.x} distance={DESK.macbook.distance}>
           <Playhead progress={macMs / MAC_CLOCK.total}>
             <Macos timeline={MAC} art={NO_ART} device="macbook" captions={false} front={PRODUCT.name} alt="">
               {/* Night over the desktop picture: the windows are the brightest thing. */}
@@ -132,7 +141,7 @@ function Scene({ lid }: { lid: number }) {
             </Macos>
           </Playhead>
         </DeskDevice>
-        <DeskDevice width={DEVICE_WIDTH_CM.display}>
+        <DeskDevice width={DEVICE_WIDTH_CM.display} x={DESK.display.x} distance={DESK.display.distance}>
           {/* The whole screen is the terminal, at the display's own size of the frames. */}
           <StudioDisplayFrame screenClassName="bg-black">
             <ChartTerminal at="display" index={f.screen} typed={f.typed} accent={ACCENT} className="absolute inset-0" />
