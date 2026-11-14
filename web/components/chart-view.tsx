@@ -3,8 +3,8 @@
 // A CHART AS THE APP'S CHART VIEW DRAWS IT, from the engine's summary of it (the wasm's
 // `doc.summary`, the one `cells chart` and Cells.app draw from): its title, its legend
 // (each series named in its shade with its kind's mark), its scale (the summary's, the
-// one every view draws), gridlines at each step, its marks (stacked bars, a line, layers on one
-// plot) and its places named under them. An SVG on the window's dark ground, sized by
+// one every view draws), gridlines at each step, its marks (stacked bars, a percent stack's
+// shares as the summary holds them, a line, layers on one plot) and its places named under them. An SVG on the window's dark ground, sized by
 // its box.
 
 import { CELLS_COLUMNS } from "@/lib/cells-code"
@@ -73,7 +73,7 @@ export function ChartView({ summary, className }: { summary: ChartSummary; class
         <g key={v}>
           <line x1={PLOT.left} x2={PLOT.right} y1={y(v)} y2={y(v)} stroke="rgb(255 255 255 / 0.08)" />
           <text x={PLOT.left - 6} y={y(v) + 3} fontSize={9} textAnchor="end" fill="rgb(255 255 255 / 0.45)">
-            {v}
+            {summary.unit === "%" ? `${v}%` : v}
           </text>
         </g>
       ))}
