@@ -10,6 +10,7 @@
     { "date": { "date": "2026-11-05" }, "usd": { "money": "42.50", "currency": "USD" }, "eur": { "from": "formula" }, "note": null }
   ],
   "problems": [
-    { "row": 0, "column": "eur", "kind": "unstored", "span": [535, 0] }
+    { "row": 0, "column": "eur", "kind": "unstored", "span": [535, 0] },
+    { "row": 1, "column": "eur", "kind": "lookup", "span": [564, 0] }
   ]
 }

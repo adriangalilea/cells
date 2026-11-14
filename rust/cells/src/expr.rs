@@ -1362,6 +1362,9 @@ pub trait Source {
     /// non-null values on rows before `i`, entry 0 nothing. They grow as rows are read, in
     /// the rows' order, so a range of a column's own rows above reads no row below it.
     fn running(&mut self, slot: usize) -> &mut Vec<(Exact, i64)>;
+    /// A lookup by key (`rates[day]`) that found no row of `table` holding `key`: its value
+    /// is nothing, said by whoever keeps the cell computing it.
+    fn missed(&mut self, _table: Table, _key: &V) {}
 }
 
 /// A window evaluated: its value on each row, and each row its order does not place,
@@ -1502,6 +1505,7 @@ pub fn eval_kept(ir: &Ir, table: Table, row: usize, src: &mut dyn Source, kept: 
                     return src.cell(t, r, col);
                 }
             }
+            src.missed(targets[0].0, &k);
             V::Null
         }
         Ir::Agg(agg, over, arg, slot) => {

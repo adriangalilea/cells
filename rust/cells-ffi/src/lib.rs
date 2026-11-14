@@ -614,6 +614,8 @@ pub enum CellsKind {
     CellsKindUnreached = 7,
     /// A computed cell whose formula gives a value the file does not store yet.
     CellsKindUnstored = 8,
+    /// A computed cell left with nothing: its lookup by key found no row.
+    CellsKindLookup = 9,
 }
 
 /// How much a problem weighs: `cells::Kind::severity`, the one rule every reader shows.
@@ -666,6 +668,7 @@ pub unsafe extern "C" fn cells_problem(d: *mut CellsDoc, i: usize) -> CellsProbl
         cells::Kind::Stale => CellsKind::CellsKindStale,
         cells::Kind::Unreached => CellsKind::CellsKindUnreached,
         cells::Kind::Unstored => CellsKind::CellsKindUnstored,
+        cells::Kind::Lookup => CellsKind::CellsKindLookup,
     };
     let severity = match p.kind().severity() {
         cells::Severity::Error => CellsSeverity::CellsSeverityError,

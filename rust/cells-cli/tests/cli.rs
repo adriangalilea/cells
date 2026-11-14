@@ -76,7 +76,8 @@ fn imports_formulas_and_a_script() {
         String::from_utf8(check.stdout).unwrap(),
         format!(
             "{shown} row 1, eur: not stored yet: the formula gives 25.00, the next write stores it\n\
-             {shown} row 2, to: \"bar\" is no key of accounts\n"
+             {shown} row 2, to: \"bar\" is no key of accounts\n\
+             {shown} row 2, eur: rates has no row 2026-11-04, so the formula gives nothing\n"
         )
     );
 

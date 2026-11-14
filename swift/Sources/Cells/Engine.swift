@@ -221,6 +221,7 @@ final class Engine: @unchecked Sendable {
                 case CellsKindStale: .stale
                 case CellsKindUnreached: .unreached
                 case CellsKindUnstored: .unstored
+                case CellsKindLookup: .lookup
                 default:
                     preconditionFailure(
                         "Cells: the core names a problem kind \(p.kind.rawValue) this binding does not know"

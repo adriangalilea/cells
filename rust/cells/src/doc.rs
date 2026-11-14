@@ -432,6 +432,10 @@ pub struct Doc {
     problems: Vec<Problem>,
     /// Why a cell's own formula does not compute, by place.
     unwell: BTreeMap<(u32, u32), expr::Fault>,
+    /// Each computed cell whose lookup by key found no row, by place: the table (its place
+    /// among the prelude's tables, or their count for the file's own rows) and the key, so
+    /// its problem can say.
+    missed: BTreeMap<(u32, u32), (usize, String)>,
     /// What a formula gave a cell whose type it breaks, or that stores another value, by
     /// place, so its problem can say.
     gave: BTreeMap<(u32, u32), String>,
@@ -671,6 +675,7 @@ fn read_in(bytes: Vec<u8>, dialect: Dialect, threads: usize, imports: &mut dyn I
         broken: Vec::new(),
         problems: Vec::new(),
         unwell: BTreeMap::new(),
+        missed: BTreeMap::new(),
         gave: BTreeMap::new(),
         rendered: BTreeMap::new(),
         header: None,
@@ -2252,6 +2257,11 @@ impl Doc {
                 // never "the file", which reads as the disk
                 return format!("the formula gives {gives}, the cell stores {stored}");
             }
+            Why::Lookup => {
+                let (table, key) = self.missed.get(&at).expect("a lookup's miss, kept as found");
+                let name = self.tables.get(*table).map_or("this table", |t| t.name.as_str());
+                return format!("{name} has no row {key}, so the formula gives nothing");
+            }
             Why::Unstored => {
                 let gives = gave.expect("an unstored cell's value, kept as found");
                 return format!("not stored yet: the formula gives {gives}, the next write stores it");
@@ -3279,6 +3289,8 @@ impl Doc {
             cycles: Vec::new(),
             windows: alloc::vec![None; self.look_slots],
             running: alloc::vec![Vec::new(); self.look_slots],
+            computing: Vec::new(),
+            missed: BTreeMap::new(),
         };
         let mut hits = |p: &Painted| -> Vec<bool> {
             let Some(ir) = &p.condition else { return Vec::new() };
@@ -3616,6 +3628,8 @@ impl Doc {
             cycles: Vec::new(),
             windows: alloc::vec![None; chart.slots],
             running: alloc::vec![Vec::new(); chart.slots],
+            computing: Vec::new(),
+            missed: BTreeMap::new(),
         };
         let axis = match chart.x_kind {
             K::Date => "date",
@@ -3870,18 +3884,42 @@ impl Doc {
     /// Every computed cell computed again, each column holding one decoded with what its
     /// cells gave, and every reference checked against its tables.
     fn recompute(&mut self) {
-        self.problems
-            .retain(|p| !matches!(p.why, Why::Formula | Why::Absent | Why::Ambiguous | Why::Stale | Why::Unstored | Why::Unreached { .. }));
+        self.problems.retain(|p| {
+            !matches!(p.why, Why::Formula | Why::Absent | Why::Ambiguous | Why::Stale | Why::Unstored | Why::Lookup | Why::Unreached { .. })
+        });
         self.unwell.clear();
+        self.missed.clear();
         self.gave.clear();
         if self.computes() {
             self.compute();
         }
         self.check_references();
+        self.say_lookups();
         self.problems.sort_by_key(|p| p.order());
         // A cell has one problem: a record too long is its last cell's, before the cell's own.
         self.problems.dedup_by_key(|p| p.order());
         self.paint();
+    }
+
+    /// A computed cell left with nothing because its lookup found no row, said, so an empty
+    /// cell is never silent. Not where the key is a reference of its row already said to
+    /// name no row (`kind: fees.kind` holding `crad`, read by `fees[kind].pct`): that is one
+    /// fact, said once where it was written. A formula that covers the miss (`COALESCE`)
+    /// gives a value, and says nothing.
+    fn say_lookups(&mut self) {
+        let said: Vec<(u32, String)> = self
+            .problems
+            .iter()
+            .filter(|p| matches!(p.why, Why::Absent | Why::Ambiguous))
+            .map(|p| (p.row, self.text(p.row as usize, p.column as usize).into_owned()))
+            .collect();
+        for (&(r, k), (_, key)) in &self.missed {
+            let empty = value_v(&self.columns[k as usize], r as usize) == V::Null;
+            let echoed = said.iter().any(|(row, text)| *row == r && text == key);
+            if empty && !echoed && !self.problems.iter().any(|p| p.order() == (r, k)) {
+                self.problems.push(Problem { row: r, column: k, why: Why::Lookup });
+            }
+        }
     }
 
     fn compute(&mut self) {
@@ -3942,6 +3980,8 @@ impl Doc {
             cycles: Vec::new(),
             windows: alloc::vec![None; aggregates],
             running: alloc::vec![Vec::new(); aggregates],
+            computing: Vec::new(),
+            missed: BTreeMap::new(),
         };
         let mut results: Vec<Vec<(usize, V)>> = Vec::with_capacity(self.columns.len());
         for (k, c) in self.columns.iter().enumerate() {
@@ -3955,6 +3995,7 @@ impl Doc {
             results.push(out);
         }
         let cycles = core::mem::take(&mut eval.cycles);
+        let missed = core::mem::take(&mut eval.missed);
         // A row its column's window does not place: a problem on its computed cell.
         for (k, f) in self.formulas.iter().enumerate() {
             let Some(ir) = f else { continue };
@@ -4022,6 +4063,7 @@ impl Doc {
                 self.problems.push(Problem { row: r, column: k, why: Why::Unreached { table: table as u32 } });
             }
         }
+        self.missed = missed;
         self.find_stale(&rendered);
         self.rendered = rendered;
     }
@@ -4613,6 +4655,12 @@ struct Eval<'a> {
     windows: Vec<Option<Option<expr::Evaluated>>>,
     /// Each range's running sums so far (`expr::Source::running`).
     running: Vec<Vec<(crate::exact::Exact, i64)>>,
+    /// The computed cells being evaluated, innermost last: a lookup's miss is the last's.
+    computing: Vec<(u32, u32)>,
+    /// Each computed cell whose formula looked a key up in a table holding no row of it: the
+    /// table (the prelude's tables' place, or theirs' length for the file's own rows) and the
+    /// key as a key is compared (`V::canonical`). Its first miss only.
+    missed: BTreeMap<(u32, u32), (usize, String)>,
 }
 
 impl expr::Source for Eval<'_> {
@@ -4645,12 +4693,23 @@ impl expr::Source for Eval<'_> {
             Origin::Formula => formulas[column].as_ref(),
             _ => cells.get(&(row as u32, column as u32)).and_then(|r| r.as_ref().ok()),
         };
+        self.computing.push((row as u32, column as u32));
         let v = match ir {
             Some(ir) => expr::eval_kept(ir, None, row, self, kept),
             None => V::Null,
         };
+        self.computing.pop();
         self.memo[column][row] = Slot::Done(v.clone());
         v
+    }
+
+    fn missed(&mut self, table: expr::Table, key: &V) {
+        // a table not reached is the unreached problem's, never a miss
+        if table.is_some_and(|t| self.tables[t].doc.is_none()) {
+            return;
+        }
+        let (Some(&at), Some(key)) = (self.computing.last(), key.canonical()) else { return };
+        self.missed.entry(at).or_insert((table.unwrap_or(self.tables.len()), key));
     }
 
     fn rows(&self, table: expr::Table) -> usize {

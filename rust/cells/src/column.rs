@@ -224,6 +224,10 @@ pub enum Why {
     /// its formula gives a value (SPEC.md, Reading): it reads the same, and the next write
     /// stores it.
     Unstored,
+    /// A computed cell left with nothing because its formula looked a key up (`rates[day]`)
+    /// in a table holding no row of it (SPEC.md, Reading): a rate not fetched yet, a key
+    /// mistyped.
+    Lookup,
     /// A computed cell whose formula reads a table the prelude's tables hold at `table`, an
     /// import not reached (SPEC.md, Reading): its value is what the file stores, never
     /// computed again until the import is reached.
@@ -250,6 +254,8 @@ pub enum Kind {
     Unreached,
     /// A computed cell its formula gives a value that the file does not store yet.
     Unstored,
+    /// A computed cell left with nothing: its lookup by key found no row.
+    Lookup,
 }
 
 /// How much a problem weighs, the same in every reader (the command line, the language
@@ -272,7 +278,7 @@ impl Kind {
     pub fn severity(self) -> Severity {
         match self {
             Kind::Type | Kind::Key | Kind::Formula | Kind::Reference => Severity::Error,
-            Kind::Missing | Kind::Stale | Kind::Ragged => Severity::Warning,
+            Kind::Missing | Kind::Stale | Kind::Ragged | Kind::Lookup => Severity::Warning,
             Kind::Unreached | Kind::Unstored => Severity::Note,
         }
     }
@@ -288,6 +294,7 @@ impl Kind {
             Kind::Stale => "stale",
             Kind::Unreached => "unreached",
             Kind::Unstored => "unstored",
+            Kind::Lookup => "lookup",
         }
     }
 }
@@ -302,6 +309,7 @@ impl Why {
             Why::Absent | Why::Ambiguous => Kind::Reference,
             Why::Stale => Kind::Stale,
             Why::Unstored => Kind::Unstored,
+            Why::Lookup => Kind::Lookup,
             Why::Unreached { .. } => Kind::Unreached,
             _ => Kind::Type,
         }

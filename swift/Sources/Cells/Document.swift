@@ -118,6 +118,9 @@ extension Cells {
       /// A computed cell its formula gives a value that the file does not store yet (a
       /// blank field, a lone `=`): it reads the same, and the next write stores it. A note.
       case unstored
+      /// A computed cell left with nothing because its formula looked a key up
+      /// (`rates[day]`) in a table holding no row of it. A warning.
+      case lookup
       /// A row longer than its header, on its last cell (its fields past the header
       /// kept), or a plain file's row shorter, on the first cell it lacks. The cell
       /// keeps its value.

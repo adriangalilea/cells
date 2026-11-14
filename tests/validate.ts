@@ -49,7 +49,7 @@ const TAGS = new Set([
   "choice",
   "ref",
 ])
-const KINDS = ["type", "missing", "key", "ragged", "formula", "reference", "stale", "unreached", "unstored"]
+const KINDS = ["type", "missing", "key", "ragged", "formula", "reference", "stale", "unreached", "unstored", "lookup"]
 const FROM = ["formula", "cell"]
 const AT = /^(the file|the header|the prelude|column [1-9]\d*|prelude line [1-9]\d*|row [1-9]\d*)$/
 const DECIMAL = /^-?(0|[1-9]\d*)(\.\d+)?$/
