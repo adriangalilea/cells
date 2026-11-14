@@ -284,16 +284,19 @@ impl Shade {
 impl Summary {
     /// The chart as an SVG of `width` by `height`, for a page or a README: its title, a
     /// scale of four steps, its marks in its series' shades (the light page's), each
-    /// place named under its mark. A chart of layers draws each layer on one plot.
+    /// place named under its mark. A chart of layers draws each layer on one plot, a heat
+    /// among them as its stacked bars; a heat drawn alone names its rows at their left.
     pub fn svg(&self, width: u32, height: u32) -> String {
         let (w, h) = (width as f64, height as f64);
         let parts: Vec<&Summary> = if self.layers.is_empty() { alloc::vec![self] } else { self.layers.iter().collect() };
-        // every series by its name in its shade, once there is more than one
-        let legend: Vec<(&str, String)> = parts
+        let heat = self.kind == Kind::Heat && self.layers.is_empty();
+        // every series by its kind's mark and its name in its shade, once there is more than
+        // one; a heat drawn alone has none, its series being its rows
+        let legend: Vec<(Kind, &str, String)> = parts
             .iter()
-            .flat_map(|p| p.series.iter().map(|(n, s)| (if n.is_empty() { p.title.as_str() } else { n.as_str() }, s.hex(false))))
+            .flat_map(|p| p.series.iter().map(|(n, s)| (p.kind, if n.is_empty() { p.title.as_str() } else { n.as_str() }, s.hex(false))))
             .collect();
-        let legend = if legend.len() > 1 { legend } else { Vec::new() };
+        let legend = if legend.len() > 1 && !heat { legend } else { Vec::new() };
         // the title's and a figure's inset; a plot's left is as wide as its scale's labels
         let (inset, right, bottom) = (16.0, 16.0, 32.0);
         let top = if legend.is_empty() { 40.0 } else { 56.0 };
@@ -305,14 +308,9 @@ impl Summary {
             escape(&self.title)
         );
         let mut at = inset;
-        for (name, hex) in &legend {
-            out += &format!(
-                "<circle cx=\"{:.1}\" cy=\"34\" r=\"4\" fill=\"{hex}\"/><text x=\"{:.1}\" y=\"38\" fill=\"#444\">{}</text>\n",
-                at + 4.0,
-                at + 12.0,
-                escape(name)
-            );
-            at += 24.0 + 6.5 * name.chars().count() as f64;
+        for (kind, name, hex) in &legend {
+            out += &format!("{}<text x=\"{:.1}\" y=\"38\" fill=\"#444\">{}</text>\n", swatch(*kind, at, hex), at + 16.0, escape(name));
+            at += 28.0 + 6.5 * name.chars().count() as f64;
         }
         if self.kind == Kind::Figure && self.layers.is_empty() {
             let run: Vec<f64> = self.values.iter().filter_map(|r| num(&r[0])).collect();
@@ -331,7 +329,7 @@ impl Summary {
             return out + "</svg>\n";
         }
         // the scale: from zero (or the least, below zero) to the most, stacked where bars stack
-        let stacked = |p: &Summary| p.kind == Kind::Bars && p.stack == Stack::Stacked;
+        let stacked = |p: &Summary| (p.kind == Kind::Bars && p.stack == Stack::Stacked) || p.kind == Kind::Heat;
         let mut lo: f64 = 0.0;
         let mut hi: f64 = 0.0;
         for p in &parts {
@@ -355,13 +353,24 @@ impl Summary {
         let step = nice((hi - lo) / 4.0);
         let (lo, hi) = (whole(lo / step, false) * step, whole(hi / step, true) * step);
         let steps = ((hi - lo) / step + 0.5) as i64;
+        // the labels at the plot's left: a heat's rows, anything else's scale
+        let ticks: Vec<f64> = if heat { Vec::new() } else { (0..=steps).map(|i| lo + step * i as f64).collect() };
+        let rows: Vec<&str> = if heat { self.series.iter().map(|(n, _)| n.as_str()).collect() } else { Vec::new() };
         // the labels' room: their widest, at a sans serif's average width of 11 points
-        let widest = (0..=steps).map(|i| self.figure(lo + step * i as f64).chars().count()).max().unwrap_or(1);
+        let widest = ticks.iter().map(|v| self.figure(*v).chars().count()).chain(rows.iter().map(|n| n.chars().count())).max().unwrap_or(1);
         let left = inset + 6.5 * widest as f64 + 6.0;
         let pw = w - left - right;
         let y = |v: f64| top + ph * (hi - v) / (hi - lo);
-        for i in 0..=steps {
-            let v = lo + step * i as f64;
+        let ch = ph / rows.len().max(1) as f64;
+        for (k, name) in rows.iter().enumerate() {
+            out += &format!(
+                "<text x=\"{}\" y=\"{:.1}\" text-anchor=\"end\" fill=\"#666\">{}</text>\n",
+                left - 6.0,
+                top + ch * (k as f64 + 0.5) + 4.0,
+                escape(name)
+            );
+        }
+        for &v in &ticks {
             out += &format!(
                 "<line x1=\"{left}\" x2=\"{}\" y1=\"{y0:.1}\" y2=\"{y0:.1}\" stroke=\"#000\" stroke-opacity=\"0.08\"/>\n<text x=\"{}\" y=\"{:.1}\" text-anchor=\"end\" fill=\"#666\">{}</text>\n",
                 left + pw,
@@ -383,7 +392,23 @@ impl Summary {
         for part in &parts {
             let shades: Vec<String> = part.series.iter().map(|(_, s)| s.hex(false)).collect();
             match part.kind {
-                Kind::Bars => {
+                Kind::Heat if heat => {
+                    let all: Vec<f64> = part.values.iter().flatten().filter_map(num).collect();
+                    let (vl, vh) = all.iter().fold((f64::MAX, f64::MIN), |(a, b), v| (a.min(*v), b.max(*v)));
+                    for (p, row) in part.values.iter().enumerate() {
+                        for (s, v) in row.iter().enumerate() {
+                            let Some(v) = num(v) else { continue };
+                            let depth = if vh > vl { 0.15 + 0.85 * (v - vl) / (vh - vl) } else { 1.0 };
+                            out += &format!(
+                                "<rect x=\"{:.1}\" y=\"{:.1}\" width=\"{band:.1}\" height=\"{ch:.1}\" fill=\"{}\" fill-opacity=\"{depth:.2}\"/>\n",
+                                left + band * p as f64,
+                                top + ch * s as f64,
+                                shades.first().map_or("#2a78d6", |s| s.as_str())
+                            );
+                        }
+                    }
+                }
+                Kind::Bars | Kind::Heat => {
                     let n = part.series.len().max(1) as f64;
                     for (p, row) in part.values.iter().enumerate() {
                         let mut up = 0.0;
@@ -407,24 +432,6 @@ impl Summary {
                                 y(from.max(to)),
                                 (y(from) - y(to)).abs(),
                                 shades[s]
-                            );
-                        }
-                    }
-                }
-                Kind::Heat => {
-                    let cells = part.series.len().max(1) as f64;
-                    let ch = ph / cells;
-                    let all: Vec<f64> = part.values.iter().flatten().filter_map(num).collect();
-                    let (vl, vh) = all.iter().fold((f64::MAX, f64::MIN), |(a, b), v| (a.min(*v), b.max(*v)));
-                    for (p, row) in part.values.iter().enumerate() {
-                        for (s, v) in row.iter().enumerate() {
-                            let Some(v) = num(v) else { continue };
-                            let depth = if vh > vl { 0.15 + 0.85 * (v - vl) / (vh - vl) } else { 1.0 };
-                            out += &format!(
-                                "<rect x=\"{:.1}\" y=\"{:.1}\" width=\"{band:.1}\" height=\"{ch:.1}\" fill=\"{}\" fill-opacity=\"{depth:.2}\"/>\n",
-                                left + band * p as f64,
-                                top + ch * s as f64,
-                                shades.first().map_or("#2a78d6", |s| s.as_str())
                             );
                         }
                     }
@@ -479,6 +486,25 @@ impl Summary {
             Some(u) => format!("{n} {u}"),
             None => n,
         }
+    }
+}
+
+/// A series' mark in the legend, twelve points wide from `x` on its line's middle: what its
+/// kind draws, in its shade.
+fn swatch(kind: Kind, x: f64, hex: &str) -> String {
+    let stroke = format!("fill=\"none\" stroke=\"{hex}\" stroke-width=\"2\" stroke-linejoin=\"round\"");
+    match kind {
+        Kind::Bars | Kind::Heat | Kind::Figure => {
+            format!("<rect x=\"{:.1}\" y=\"30\" width=\"8\" height=\"8\" fill=\"{hex}\" rx=\"2\"/>", x + 2.0)
+        }
+        Kind::Line => format!("<path d=\"M{x:.1},34 H{:.1}\" {stroke}/>", x + 12.0),
+        Kind::Area => format!(
+            "<path d=\"M{x:.1},31 L{:.1},29 V38 H{x:.1} Z\" fill=\"{hex}\" fill-opacity=\"0.25\"/><path d=\"M{x:.1},31 L{:.1},29\" {stroke}/>",
+            x + 12.0,
+            x + 12.0
+        ),
+        Kind::Steps => format!("<path d=\"M{x:.1},38 H{:.1} V30 H{:.1}\" {stroke}/>", x + 6.0, x + 12.0),
+        Kind::Points => format!("<circle cx=\"{:.1}\" cy=\"34\" r=\"3\" fill=\"{hex}\"/>", x + 6.0),
     }
 }
 
@@ -540,5 +566,39 @@ mod tests {
         assert_eq!(free.len(), 8);
         let s = shades(&words, own, &free);
         assert_eq!(s, [Shade::Tint(Tint::Named(5)), Shade::Tint(Tint::Named(1)), Shade::Tint(Tint::Named(4)), Shade::Tint(Tint::Named(6))]);
+    }
+
+    fn drawn(kind: Kind, title: &str, series: &[(&str, Shade)], layers: Vec<Summary>) -> Summary {
+        let one = || alloc::vec![Some("2".to_owned()); series.len()];
+        Summary {
+            kind,
+            title: title.to_owned(),
+            stack: Stack::Stacked,
+            axis: "text",
+            places: if layers.is_empty() { alloc::vec!["mon".to_owned(), "tue".to_owned()] } else { Vec::new() },
+            series: series.iter().map(|(n, s)| ((*n).to_owned(), *s)).collect(),
+            values: if layers.is_empty() { alloc::vec![one(), one()] } else { Vec::new() },
+            unit: None,
+            skipped: 0,
+            rows: 2,
+            layers,
+        }
+    }
+
+    /// The SVG's legend names each series by its kind's mark in its own shade; a heat drawn
+    /// alone has none, its rows named at their left in place of a scale.
+    #[test]
+    fn the_svg_legend_marks_each_series() {
+        let bars = drawn(Kind::Bars, "actual", &[("", Shade::Column(1))], Vec::new());
+        let line = drawn(Kind::Line, "planned", &[("", Shade::Column(2))], Vec::new());
+        let svg = drawn(Kind::Bars, "both", &[], alloc::vec![bars, line]).svg(720, 320);
+        assert!(svg.contains("<rect x=\"18.0\" y=\"30\" width=\"8\" height=\"8\" fill=\"#6250d6\""), "{svg}");
+        assert!(svg.contains("<path d=\"M83.0,34 H95.0\" fill=\"none\" stroke=\"#eb6834\""), "{svg}");
+
+        let blue = Shade::Tint(Tint::Named(5));
+        let svg = drawn(Kind::Heat, "weekdays", &[("9", blue), ("14", blue)], Vec::new()).svg(720, 320);
+        assert!(!svg.contains("y=\"30\"") && !svg.contains("cy=\"34\""), "a heat has a legend: {svg}");
+        assert!(!svg.contains("stroke-opacity"), "a heat has a scale: {svg}");
+        assert!(svg.contains("text-anchor=\"end\" fill=\"#666\">9<") && svg.contains("text-anchor=\"end\" fill=\"#666\">14<"), "{svg}");
     }
 }
