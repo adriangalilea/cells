@@ -154,6 +154,10 @@ pub const COMMANDS: &[Command] = &[
         says: "The editor set up for `.cells`: the grammar and queries this binary carries written where it reads them, the language and its server added to its config, the parser built; Zed's extension written as the folder Zed installs (EDITORS.md).",
     },
     Command {
+        usage: "cells editors status",
+        says: "Each editor's standing, a line each, `<editor> <state>`: `absent`, `available` (on this machine, not set up), `current`, `older` or `failed <why>`; what Cells.app's Settings shows.",
+    },
+    Command {
         usage: "cells editors update",
         says: "Every editor set up brought to this binary's version, one already holding it left alone; Zed's extension, which only Zed's window rebuilds, said when older. Cells.app runs it on every launch, so an update of Cells is its editors' (EDITORS.md).",
     },

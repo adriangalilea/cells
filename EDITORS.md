@@ -48,7 +48,7 @@ writes the grammar and Helix's queries that this `cells` carries (`~/.local/shar
 cells editors update
 ```
 
-brings every editor set up to the `cells` it is run by, rewriting and rebuilding only one whose files differ from what it carries, so it is cheap to run often: Cells.app runs it each time it opens from /Applications, so updating Cells updates Helix and Neovim with it. Zed's extension it only reports, since Zed alone rebuilds it (below). What `install` adds to `~/.config/helix/languages.toml`:
+brings every editor set up to the `cells` it is run by, rewriting and rebuilding only one whose files differ from what it carries, so it is cheap to run often: Cells.app runs it each time it opens from /Applications, so updating Cells updates Helix and Neovim with it. Zed's extension it only reports, since Zed alone rebuilds it (below). `cells editors status` says where each editor stands, a line each (`helix current`, `neovim available`, `zed older`): what Cells.app's Settings › Command Line shows. What `install` adds to `~/.config/helix/languages.toml`:
 
 ```toml
 [[language]]

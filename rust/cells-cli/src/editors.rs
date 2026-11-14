@@ -114,6 +114,40 @@ pub fn update() -> (Vec<String>, bool) {
     (said, failed)
 }
 
+/// `cells editors status`: each editor's standing here, a line each, `<editor> <state>`, for
+/// a host to show (Cells.app's Settings) without reading prose: `absent` (the editor is not on
+/// this machine and nothing was set up for it), `available` (it is, not set up), `current`,
+/// `older` (set up from another version: `update` brings it, Zed's `install` and a Rebuild),
+/// or `failed <why>`.
+pub fn status() -> Vec<String> {
+    EDITORS
+        .iter()
+        .map(|editor| {
+            let state = match set_up(editor).and_then(|s| if s { current(editor).map(Some) } else { Ok(None) }) {
+                Err(why) => format!("failed {why}"),
+                Ok(Some(true)) => "current".to_owned(),
+                Ok(Some(false)) => "older".to_owned(),
+                Ok(None) if present(editor) => "available".to_owned(),
+                Ok(None) => "absent".to_owned(),
+            };
+            format!("{editor} {state}")
+        })
+        .collect()
+}
+
+/// Whether `editor` is on this machine: its command on PATH, or for Zed its app.
+fn present(editor: &str) -> bool {
+    let command = |name: &str| std::env::var_os("PATH").is_some_and(|path| std::env::split_paths(&path).any(|d| d.join(name).is_file()));
+    match editor {
+        "helix" => command("hx"),
+        "neovim" => command("nvim"),
+        "zed" => {
+            command("zed") || Path::new("/Applications/Zed.app").exists() || home().is_ok_and(|h| h.join("Applications/Zed.app").exists())
+        }
+        other => unreachable!("an editor of EDITORS: {other}"),
+    }
+}
+
 /// Whether `install` set `editor` up here: what it writes stands.
 fn set_up(editor: &str) -> Result<bool, String> {
     let path = match editor {

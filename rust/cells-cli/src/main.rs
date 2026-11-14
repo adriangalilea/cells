@@ -295,6 +295,10 @@ fn main() -> ExitCode {
                 ExitCode::from(2)
             }
         },
+        Some("editors") if args.len() == 2 && args[1] == "status" => {
+            editors::status().iter().for_each(|l| println!("{l}"));
+            ExitCode::SUCCESS
+        }
         Some("editors") if args.len() == 2 && args[1] == "update" => {
             let (said, failed) = editors::update();
             said.iter().for_each(|l| println!("{l}"));
