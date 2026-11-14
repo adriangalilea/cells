@@ -20,6 +20,25 @@ export interface ScreenFrames {
   frames: { source: string; rows: [string, number][][] }[]
 }
 
-/** The terminal the frames are drawn in: the width `cells chart` falls back to, and tall
- *  enough for the two charts' cards, each given half. */
-export const SCREEN = { cols: 80, rows: 44 } as const
+/** The screen's columns: the width `cells chart` falls back to. */
+export const SCREEN_COLS = 80
+
+/** How the page sets a screen, in em of the terminal's type: a character's advance (Geist
+ *  Mono's), the screen's width with the window's insets either side, a row's pitch (where a
+ *  block meets the block under it, so a bar is one bar), and the room above and below the
+ *  rows. */
+export const SCREEN_EM = {
+  advance: 0.6,
+  wide: SCREEN_COLS * 0.6 + 4,
+  pitch: 1.18,
+  pad: 0.6,
+} as const
+
+/** The rows a terminal window `width` by `height` (px) shows at the type that fits its
+ *  columns to its width: its height less its bar, its hairlines and the room around the
+ *  rows, in rows, whole. */
+export function screenRows(width: number, height: number, barEm: number): number {
+  const type = width / SCREEN_EM.wide
+  const hairlines = 2
+  return Math.floor(((height - hairlines) / type - barEm - 2 * SCREEN_EM.pad) / SCREEN_EM.pitch)
+}

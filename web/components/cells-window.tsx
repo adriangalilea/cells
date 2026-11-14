@@ -222,10 +222,13 @@ export function CellsWindow({
   others = NONE,
   light,
   scene,
+  prelude = true,
   className,
 }: {
   name: string
   text: string
+  /** Its prelude's panel along its foot, as the app opens it; false, the table alone. */
+  prelude?: boolean
   /** The files it imports, as they stand. */
   others?: { name: string; text: string }[]
   /** A column or a cell lit, the rest dimmed. */
@@ -255,7 +258,7 @@ export function CellsWindow({
           {/* The table's own type size: its columns are counted in its characters. */}
           <CellsTable name={name} text={text} others={others} label={name} light={light} scene={scene} className="h-full text-[11px]" />
         </div>
-        <Prelude text={text} />
+        {prelude && <Prelude text={text} />}
         <div
           data-slot="cells-window-problems"
           className="flex h-6 shrink-0 items-center gap-2 overflow-hidden border-t border-white/8 px-3 font-mono text-[10px] whitespace-nowrap"

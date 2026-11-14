@@ -16,9 +16,9 @@ import { createHash } from "node:crypto"
 import { mkdtempSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
-import { type ScreenColor, type ScreenStyle, SCREEN } from "@/lib/chart-screen"
+import type { ScreenColor, ScreenStyle } from "@/lib/chart-screen"
 import { loadEngine } from "@/lib/engine-module"
-import { hero, SPENDING_PATH, WATCH_COMMAND } from "@/lib/hero"
+import { hero, SCREEN, SPENDING_PATH, WATCH_COMMAND } from "@/lib/hero"
 
 const repo = join(import.meta.dir, "../..")
 

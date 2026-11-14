@@ -8,7 +8,7 @@
 
 import type * as React from "react"
 import { Terminal, useTerminalPalette } from "@/components/ui/terminal"
-import { type ScreenColor, type ScreenFrames, SCREEN } from "@/lib/chart-screen"
+import { type ScreenColor, type ScreenFrames, SCREEN_EM } from "@/lib/chart-screen"
 import { WATCH_COMMAND } from "@/lib/hero"
 import { SCREENS } from "@/lib/hero-screens"
 import { ansiColor } from "@/lib/terminal-session"
@@ -19,7 +19,7 @@ const colourOf = (c: ScreenColor) => (typeof c === "number" ? ansiColor(c) : c)
 
 /** The screen's rows at a pitch where a block meets the block under it, as a terminal
  *  draws them: a bar is one bar, never stripes. */
-const PITCH = 1.18
+const PITCH = SCREEN_EM.pitch
 
 /** Printable ASCII: what every mono face holds at its one width. */
 const ASCII = /^[\x20-\x7e]$/
@@ -64,7 +64,7 @@ function Glyphs({ text, ink, ground }: { text: string; ink: string; ground: stri
 function Screen({ frame }: { frame: ScreenFrames["frames"][number] }) {
   const palette = useTerminalPalette()
   return (
-    <div aria-hidden style={{ lineHeight: PITCH, paddingBlock: "0.6em", whiteSpace: "pre" }}>
+    <div aria-hidden style={{ lineHeight: PITCH, paddingBlock: `${SCREEN_EM.pad}em`, whiteSpace: "pre" }}>
       {frame.rows.map((row, r) => (
         <div key={r} style={{ height: `${PITCH}em` }}>
           {row.map(([text, k], i) => {
@@ -104,7 +104,8 @@ export function ChartTerminal({
       <Terminal
         alt={`A terminal running ${WATCH_COMMAND}: spending by category and spent against budget, by month, drawn again each time the file changes.`}
         accent={accent}
-        size={`calc(100cqw / ${SCREEN.cols * 0.6 + 4})`}
+        size={`calc(100cqw / ${SCREEN_EM.wide})`}
+        className="h-full"
       >
         <Screen frame={frame} />
       </Terminal>

@@ -11,8 +11,10 @@
 // leaves the screen for the page (components/hero). scripts/examples.ts asserts what it
 // claims.
 
+import { SCREEN_COLS, screenRows } from "@/lib/chart-screen"
 import type { Playable } from "@/lib/playable"
 import { PRODUCT } from "@/lib/product"
+import { BAR_EM } from "@/lib/terminal-session"
 import { type TableFile, type TableStep, type TableTimeline, tableFrameAt, tableTimeline } from "@/lib/table-session"
 import { type Engine, writeCell } from "@/lib/view"
 
@@ -21,6 +23,19 @@ export const SPENDING_PATH = `spending${PRODUCT.extension}`
 /** The charts the terminal holds: the first the file declares and the last. */
 export const WATCHED_CHARTS = [1, 4] as const
 export const WATCH_COMMAND = `${PRODUCT.cli} chart ${SPENDING_PATH} ${WATCHED_CHARTS.join(" ")} --watch`
+
+/** The windows on the Mac's stage (960 by 600, ui macos): 36 from the top (under the menu
+ *  bar), 12 from the foot and the sides, 12 between them, the screen split in two halves of
+ *  the full height. The Cells window on the left, the terminal on the right, each `window`
+ *  wide and tall: one top, one foot. */
+const INSET = 12
+const TOP = 36
+const WINDOW = { width: (960 - 3 * INSET) / 2, height: 600 - TOP - INSET }
+export const STAGE = { inset: INSET, top: TOP, window: WINDOW, side: INSET + WINDOW.width + INSET } as const
+
+/** The terminal the frames are drawn in: its columns, and the rows that fill the hero's
+ *  terminal window, at the type that fits those columns to its width. */
+export const SCREEN = { cols: SCREEN_COLS, rows: screenRows(WINDOW.width, WINDOW.height, BAR_EM) } as const
 
 /** The file: its types and its charts first in the prelude, where the app's prelude panel
  *  shows them, then the budgets the last chart reads. */

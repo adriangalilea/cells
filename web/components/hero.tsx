@@ -22,7 +22,7 @@ import { ChartTerminal } from "@/components/chart-terminal"
 import { Macos } from "@/components/ui/macos"
 import { Playback, Playhead, usePlayhead } from "@/components/ui/playback"
 import { useEngine } from "@/components/use-engine"
-import { DINNER, hero, SPENDING_PATH, WATCH_COMMAND } from "@/lib/hero"
+import { DINNER, hero, SPENDING_PATH, STAGE, WATCH_COMMAND } from "@/lib/hero"
 import { type Art, LID_MS, sceneClock, type Timeline } from "@/lib/macos-session"
 import { PRODUCT } from "@/lib/product"
 import { sceneOf, tableFrameAt } from "@/lib/table-session"
@@ -48,15 +48,11 @@ const useHero = () => hero(useEngine())
 
 /** The site's cold edge light: the accent of every terminal and editor on the page. */
 export const ACCENT = "#7fdcf0"
-/** The windows on the Mac's stage (960 by 600, ui macos): 36 from the top (under the menu
- *  bar), 12 from the foot and the sides, 12 between them, the screen split in two halves of
- *  the full height. The Cells window, the one that flies, on the left; the terminal on the
- *  right, as tall as its screen. */
-const INSET = 12
-const TOP = 36
-const WINDOW_W = (960 - 3 * INSET) / 2
-const WINDOW_H = 600 - TOP - INSET
-const SIDE = { left: INSET + WINDOW_W + INSET, width: WINDOW_W }
+/** The windows on the Mac's stage (lib/hero `STAGE`): the Cells window, the one that
+ *  flies, on the left; the terminal on the right, on the same top and foot. */
+const { inset: INSET, top: TOP, side: SIDE } = STAGE
+const WINDOW_W = STAGE.window.width
+const WINDOW_H = STAGE.window.height
 
 /** The file, the hand and the terminal's screen at the hero's instant. */
 function useFrame(ms: number) {
@@ -81,7 +77,7 @@ function SpendingWindow({ width, height }: { width: number; height: number }) {
   return (
     <div style={{ width, height: `calc(var(--stage-h, ${height}px) * ${width / WINDOW_W})` }}>
       <div style={{ width: WINDOW_W, height: `var(--stage-h, ${height}px)`, transform: `scale(${width / WINDOW_W})`, transformOrigin: "0 0" }}>
-        <CellsWindow name={SPENDING_PATH} text={h.checkpoints.fixed} className="h-full" />
+        <CellsWindow name={SPENDING_PATH} text={h.checkpoints.fixed} prelude={false} className="h-full" />
       </div>
     </div>
   )
@@ -123,9 +119,9 @@ function Scene({ lid }: { lid: number }) {
           className="absolute"
           style={{ top: TOP, left: INSET, width: WINDOW_W, height: WINDOW_H, visibility: lid > 0 ? "hidden" : undefined }}
         >
-          <CellsWindow name={SPENDING_PATH} text={f.text} scene={f.scene} className="h-full" />
+          <CellsWindow name={SPENDING_PATH} text={f.text} scene={f.scene} prelude={false} className="h-full" />
         </div>
-        <ChartTerminal index={f.screen} accent={ACCENT} className="absolute" style={{ top: TOP, left: SIDE.left, width: SIDE.width }} />
+        <ChartTerminal index={f.screen} accent={ACCENT} className="absolute" style={{ top: TOP, left: SIDE, width: WINDOW_W, height: WINDOW_H }} />
       </Macos>
     </Playhead>
   )
@@ -147,7 +143,7 @@ function Stacked() {
           amount the hand types into among them, all fit. */}
       <div style={{ height: PHONE_H * PHONE_SCALE }}>
         <div style={{ width: `${100 / PHONE_SCALE}%`, height: PHONE_H, transform: `scale(${PHONE_SCALE})`, transformOrigin: "0 0" }}>
-          <CellsWindow name={SPENDING_PATH} text={f.text} scene={f.scene} className="h-full" />
+          <CellsWindow name={SPENDING_PATH} text={f.text} scene={f.scene} prelude={false} className="h-full" />
         </div>
       </div>
       <ChartTerminal index={f.screen} accent={ACCENT} />
