@@ -66,7 +66,7 @@
           "stack": "stacked",
           "axis": "date",
           "places": ["2026-01-01", "2026-02-01"],
-          "series": [{ "name": "", "shade": { "column": 1 } }],
+          "series": [{ "name": "", "shade": { "column": 2 } }],
           "values": [["800"], ["900"]],
           "unit": "EUR",
           "skipped": 0,

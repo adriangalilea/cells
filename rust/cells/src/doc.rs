@@ -3195,7 +3195,7 @@ impl Doc {
                 unit: None,
                 skipped: 0,
                 rows,
-                layers: chart.layers.iter().map(|&i| self.summary(&self.charts[i])).collect(),
+                layers: crate::chart::apart(chart.layers.iter().map(|&i| self.summary(&self.charts[i])).collect()),
             };
         }
         match chart.from {

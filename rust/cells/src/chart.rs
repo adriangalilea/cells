@@ -244,6 +244,27 @@ const SHADES: [(u32, u32); 10] = [
 /// The columns' colours in turn, as a reader colours a column with no tint of its own.
 const COLUMNS: [u32; 6] = [0x14a3b8, 0x6250d6, 0xeb6834, 0x1baf7a, 0xe87ba4, 0xeda100];
 
+/// Layers on one plot, told apart (SPEC.md, What a chart is drawn in): a layer whose one
+/// series wears a column's colour a layer before it wears takes the next of the columns'
+/// colours none before it wears, so two layers measuring columns at one place in two
+/// tables, or one column twice, differ. Every other series is as its layer draws it alone;
+/// past the six colours, a layer keeps its column's.
+pub fn apart(layers: Vec<Summary>) -> Vec<Summary> {
+    let mut worn: Vec<usize> = Vec::new();
+    layers
+        .into_iter()
+        .map(|mut layer| {
+            if let [(_, Shade::Column(k))] = layer.series.as_mut_slice() {
+                if let Some(free) = (*k..*k + COLUMNS.len()).find(|c| !worn.contains(&(c % COLUMNS.len()))) {
+                    *k = free;
+                }
+                worn.push(*k % COLUMNS.len());
+            }
+            layer
+        })
+        .collect()
+}
+
 impl Shade {
     /// As `#rrggbb` on a light page (`dark`: on a dark one).
     pub fn hex(self, dark: bool) -> String {
