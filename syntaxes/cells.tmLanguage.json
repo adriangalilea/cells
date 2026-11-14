@@ -163,6 +163,18 @@
               }
             },
             {
+              "comment": "A chart another one reads: its name, then its ```chart fence on the same line.",
+              "match": "^[ \\t]*([A-Za-z_][A-Za-z0-9_]*)[ \\t]*(=)(?=[ \\t]*\\x60{3,}chart(?:[ \\t]|$))",
+              "captures": {
+                "1": {
+                  "name": "entity.name.function.chart.cells"
+                },
+                "2": {
+                  "name": "keyword.operator.assignment.cells"
+                }
+              }
+            },
+            {
               "comment": "A table written inline, or a packed copy of an import's: its name, then its fence on the same line.",
               "match": "^[ \\t]*(?:(export)[ \\t]+|(packed)[ \\t]+)?([A-Za-z_][A-Za-z0-9_]*)[ \\t]*(=)(?=[ \\t]*\\x60{3,})",
               "captures": {
@@ -258,6 +270,146 @@
               ]
             },
             {
+              "begin": "(\\x60{3,})(chart)(?:[ \\t]+(bars|line|area|steps|points|heat|figure))?[ \\t]*$",
+              "beginCaptures": {
+                "1": {
+                  "name": "punctuation.definition.fence.cells"
+                },
+                "2": {
+                  "name": "entity.name.section.language.cells"
+                },
+                "3": {
+                  "name": "entity.other.attribute-name.fence.cells"
+                }
+              },
+              "end": "^(\\1)[ \\t]*$",
+              "endCaptures": {
+                "1": {
+                  "name": "punctuation.definition.fence.cells"
+                }
+              },
+              "contentName": "meta.embedded.block.chart.cells",
+              "patterns": [
+                {
+                  "match": "^[ \\t]*(title)[ \\t]*(:)[ \\t]*(.*?)[ \\t]*$",
+                  "captures": {
+                    "1": {
+                      "name": "variable.other.member.chart.cells"
+                    },
+                    "2": {
+                      "name": "punctuation.separator.type.cells"
+                    },
+                    "3": {
+                      "name": "string.unquoted.title.chart.cells"
+                    }
+                  }
+                },
+                {
+                  "match": "^[ \\t]*(stack)[ \\t]*(:)[ \\t]*(.*?)[ \\t]*$",
+                  "captures": {
+                    "1": {
+                      "name": "variable.other.member.chart.cells"
+                    },
+                    "2": {
+                      "name": "punctuation.separator.type.cells"
+                    },
+                    "3": {
+                      "patterns": [
+                        {
+                          "match": "(?<![^\\s|/!?<>=()',\":#])(?:stacked|grouped|percent)(?![^\\s|/!?<>=()',\":#])",
+                          "name": "keyword.other.chart.cells"
+                        }
+                      ]
+                    }
+                  }
+                },
+                {
+                  "match": "^[ \\t]*(top)[ \\t]*(:)[ \\t]*(.*?)[ \\t]*$",
+                  "captures": {
+                    "1": {
+                      "name": "variable.other.member.chart.cells"
+                    },
+                    "2": {
+                      "name": "punctuation.separator.type.cells"
+                    },
+                    "3": {
+                      "patterns": [
+                        {
+                          "match": "\\b\\d+\\b",
+                          "name": "constant.numeric.cells"
+                        }
+                      ]
+                    }
+                  }
+                },
+                {
+                  "match": "^[ \\t]*(from)[ \\t]*(:)[ \\t]*(.*?)[ \\t]*$",
+                  "captures": {
+                    "1": {
+                      "name": "variable.other.member.chart.cells"
+                    },
+                    "2": {
+                      "name": "punctuation.separator.type.cells"
+                    },
+                    "3": {
+                      "patterns": [
+                        {
+                          "match": "(?<![^\\s|/!?<>=()',\":#])(?:TABLE)(?![^\\s|/!?<>=()',\":#])",
+                          "name": "variable.language.cells"
+                        },
+                        {
+                          "match": "[A-Za-z_][A-Za-z0-9_]*",
+                          "name": "entity.name.function.table.cells"
+                        }
+                      ]
+                    }
+                  }
+                },
+                {
+                  "match": "^[ \\t]*(layers)[ \\t]*(:)[ \\t]*(.*?)[ \\t]*$",
+                  "captures": {
+                    "1": {
+                      "name": "variable.other.member.chart.cells"
+                    },
+                    "2": {
+                      "name": "punctuation.separator.type.cells"
+                    },
+                    "3": {
+                      "patterns": [
+                        {
+                          "match": ",",
+                          "name": "punctuation.separator.comma.cells"
+                        },
+                        {
+                          "match": "[A-Za-z_][A-Za-z0-9_]*",
+                          "name": "entity.name.function.chart.cells"
+                        }
+                      ]
+                    }
+                  }
+                },
+                {
+                  "match": "^[ \\t]*(x|y|color|where|value|compare)[ \\t]*(:)[ \\t]*(.*?)[ \\t]*$",
+                  "captures": {
+                    "1": {
+                      "name": "variable.other.member.chart.cells"
+                    },
+                    "2": {
+                      "name": "punctuation.separator.type.cells"
+                    },
+                    "3": {
+                      "name": "meta.formula.cells",
+                      "patterns": [
+                        {
+                          "include": "#formula"
+                        }
+                      ]
+                    }
+                  }
+                }
+              ]
+            },
+            {
               "begin": "(\\x60{3,})(cells)(?:[ \\t]+(runs))?[ \\t]*$",
               "beginCaptures": {
                 "1": {
@@ -301,7 +453,7 @@
               ]
             },
             {
-              "begin": "(\\x60{3,})([A-Za-z0-9_+-]*)[ \\t]*$",
+              "begin": "(\\x60{3,})([A-Za-z0-9_+-]*)(?:[ \\t]+([A-Za-z0-9_+-]+))?[ \\t]*$",
               "beginCaptures": {
                 "1": {
                   "name": "punctuation.definition.fence.cells"

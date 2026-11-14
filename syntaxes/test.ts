@@ -279,6 +279,49 @@ const FORM_EXPECT: [string, string][] = [
   ["fuel", "meta.column.1.cells"],
 ]
 
+// A prelude's charts, named or not: each fence's entries are a chart's (a key, its `:`,
+// its value by the key's grammar), never a column's declaration or a table's header.
+const CHARTS = `---
+\`\`\`chart bars
+title: Spending, by month
+x:     DATE_TRUNC('month', date)
+stack: stacked
+top:   5
+\`\`\`
+spent = \`\`\`chart line
+where: COALESCE(kind, 'x') = 'x'
+from:  TABLE
+\`\`\`
+\`\`\`chart
+layers: spent, plan
+\`\`\`
+---
+date: date
+`
+
+const CHART_EXPECT: [string, string][] = [
+  ["chart", "entity.name.section.language.cells"],
+  ["bars", "entity.other.attribute-name.fence.cells"],
+  ["title", "variable.other.member.chart.cells"],
+  ["Spending, by month", "string.unquoted.title.chart.cells"],
+  ["x", "variable.other.member.chart.cells"],
+  ["DATE_TRUNC", "support.function.formula.cells"],
+  [",", "punctuation.separator.comma.cells"],
+  ["date", "variable.other.property.cells"],
+  ["stacked", "keyword.other.chart.cells"],
+  ["5", "constant.numeric.cells"],
+  ["spent", "entity.name.function.chart.cells"],
+  ["line", "entity.other.attribute-name.fence.cells"],
+  ["where", "variable.other.member.chart.cells"],
+  ["COALESCE", "support.function.formula.cells"],
+  ["kind", "variable.other.property.cells"],
+  ["TABLE", "variable.language.cells"],
+  ["layers", "variable.other.member.chart.cells"],
+  ["spent", "entity.name.function.chart.cells"],
+  ["plan", "entity.name.function.chart.cells"],
+  ["date", "meta.column.1.cells"],
+]
+
 // Fragments as prose quotes them in inline code, each read alone by cells-inline: the
 // shape decides where it enters the grammar.
 const INLINE: [string, [string, string][]][] = [
@@ -375,6 +418,7 @@ function check(label: string, code: string, expect = EXPECT, lang = "cells"): nu
 
 // The same file with CRLF line endings must scope the same.
 let failures = check("lf", FIXTURE) + check("crlf", FIXTURE.replaceAll("\n", "\r\n"))
+failures += check("charts", CHARTS, CHART_EXPECT)
 failures += FORMS.reduce((n, [label, code]) => n + check(label, code, FORM_EXPECT), 0)
 const inlineFailures = INLINE.reduce((n, [code, expect]) => n + check(`inline ${code}`, code, expect, "cells-inline"), 0)
 console.log(`inline: ${INLINE.length} fragments${inlineFailures ? `, ${inlineFailures} wrong` : ""}`)

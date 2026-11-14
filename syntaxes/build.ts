@@ -97,6 +97,10 @@ const S = {
   fence: "punctuation.definition.fence.cells",
   fenceLanguage: "entity.name.section.language.cells",
   fenceLabel: "entity.other.attribute-name.fence.cells",
+  chart: "entity.name.function.chart.cells",
+  chartKey: "variable.other.member.chart.cells",
+  chartTitle: "string.unquoted.title.chart.cells",
+  chartWord: "keyword.other.chart.cells",
   formula: "meta.formula.cells",
   formulaMark: "punctuation.definition.formula.cells",
   function: "support.function.formula.cells",
@@ -434,8 +438,25 @@ const fence = (language: string, inner: object[], contentName: string, label = "
   patterns: inner,
 })
 
+// A chart's entries (SPEC, Charts): a key, its `:`, and the rest of the line read by
+// that key's grammar, a formula holding what commas it needs. Never a table's.
+const CHART_KINDS = ["bars", "line", "area", "steps", "points", "heat", "figure"]
+const chartEntry = (keys: string, value: object) => ({
+  match: raw`^[ \t]*(${keys})[ \t]*(:)[ \t]*(.*?)[ \t]*$`,
+  captures: { 1: { name: S.chartKey }, 2: { name: S.colon }, 3: value },
+})
+const chart = [
+  chartEntry("title", { name: S.chartTitle }),
+  chartEntry("stack", { patterns: [{ match: word(["stacked", "grouped", "percent"]), name: S.chartWord }] }),
+  chartEntry("top", { patterns: [{ match: raw`\b\d+\b`, name: S.number }] }),
+  chartEntry("from", { patterns: [{ match: word(["TABLE"]), name: S.languageWord }, { match: NAME, name: S.table }] }),
+  chartEntry("layers", { patterns: [{ match: ",", name: S.comma }, { match: NAME, name: S.chart }] }),
+  chartEntry("x|y|color|where|value|compare", { name: S.formula, patterns: [{ include: "#formula" }] }),
+]
+
 const fenced = [
   fence("ts", [{ include: "source.ts" }], "meta.embedded.block.typescript"),
+  fence("chart", chart, "meta.embedded.block.chart.cells", CHART_KINDS.join("|")),
   fence(
     "cells",
     [
@@ -452,7 +473,7 @@ const fenced = [
     "meta.embedded.block.cells",
     "runs",
   ),
-  fence(raw`[A-Za-z0-9_+-]*`, [], "meta.embedded.block"),
+  fence(raw`[A-Za-z0-9_+-]*`, [], "meta.embedded.block", raw`[A-Za-z0-9_+-]+`),
 ]
 
 const prelude = {
@@ -512,6 +533,11 @@ const prelude = {
           ],
         },
       },
+    },
+    {
+      comment: "A chart another one reads: its name, then its ```chart fence on the same line.",
+      match: raw`^[ \t]*(${NAME})[ \t]*(=)(?=[ \t]*\x60{3,}chart(?:[ \t]|$))`,
+      captures: { 1: { name: S.chart }, 2: { name: S.assign } },
     },
     {
       comment: "A table written inline, or a packed copy of an import's: its name, then its fence on the same line.",
