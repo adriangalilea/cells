@@ -134,6 +134,21 @@ mod tests {
         assert_eq!(doc.describe(&doc.problems()[0]), "row 2, to: \"rnet\" is no key of accounts");
         // Read alone, the reference is unchecked.
         assert!(crate::read(money).unwrap().problems().is_empty());
+        // A formula reading the import computes where it is reached; alone, what the file
+        // stores stands, never null and never stale, and a write leaves it as stored.
+        files.insert("books/accounts.cells".to_owned(), "account:text!,limit:EUR\nrent,1000\n".to_owned());
+        let spent = "---\nimport accounts from \"../accounts.cells\"\n---\nto:accounts.account,amount:EUR,left:EUR=accounts[to].limit - amount\nrent,950,40.00=\n";
+        let reached = read_with(spent, &mut Files::new(&files, "books/home/money.cells"), 1).unwrap();
+        assert_eq!(reached.value(0, 2), crate::Value::Decimal(crate::Decimal { mantissa: 5000, scale: 2 }));
+        assert_eq!(reached.problems()[0].kind(), crate::Kind::Stale);
+        let mut alone = crate::read(spent).unwrap();
+        assert_eq!(alone.value(0, 2), crate::Value::Decimal(crate::Decimal { mantissa: 4000, scale: 2 }));
+        let p = alone.problems()[0];
+        assert_eq!((p.kind(), p.kind().severity()), (crate::Kind::Unreached, crate::Severity::Note));
+        assert_eq!(alone.why(&p), "from ../accounts.cells, not reachable: the value the file stores stands");
+        alone.set_cell(0, 1, "900").unwrap();
+        alone.store_unstored();
+        assert_eq!(alone.write(), spent.replace("950", "900"));
         files.insert("loop.cells".to_owned(), "---\nimport me from \"./loop.cells\"\n---\na\n".to_owned());
         let looped = read_with(files["loop.cells"].clone(), &mut Files::new(&files, "loop.cells"), 1).unwrap();
         assert_eq!(looped.broken().iter().map(|e| e.at).collect::<Vec<_>>(), [crate::At::PreludeLine(1)]);

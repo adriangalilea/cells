@@ -220,6 +220,12 @@ pub enum Why {
     /// A computed cell that stores another value than its formula gives (SPEC.md,
     /// Reading): its value is what the formula gives, its stored text kept as written.
     Stale,
+    /// A computed cell whose formula reads a table the prelude's tables hold at `table`, an
+    /// import not reached (SPEC.md, Reading): its value is what the file stores, never
+    /// computed again until the import is reached.
+    Unreached {
+        table: u32,
+    },
 }
 
 /// What a problem is: the suite's kinds.
@@ -236,10 +242,13 @@ pub enum Kind {
     Reference,
     /// A computed cell storing another value than its formula gives.
     Stale,
+    /// A computed cell whose formula reads an import not reached: its stored value stands.
+    Unreached,
 }
 
 /// How much a problem weighs, the same in every reader (the command line, the language
-/// server, an app): what is wrong, or what is not there yet.
+/// server, an app): what is wrong, what is not there yet, or what a reader says of a value
+/// that is right as far as it can tell.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum Severity {
     /// A value that is wrong: it breaks its type, repeats a key, names no row, or its
@@ -248,6 +257,9 @@ pub enum Severity {
     /// Something absent or behind: a value not written, a stored value its formula has
     /// moved past, a plain row of another width.
     Warning,
+    /// Nothing wrong: a stored value standing for a formula whose inputs this reader cannot
+    /// reach. Said, never failed on.
+    Note,
 }
 
 impl Kind {
@@ -255,6 +267,7 @@ impl Kind {
         match self {
             Kind::Type | Kind::Key | Kind::Formula | Kind::Reference => Severity::Error,
             Kind::Missing | Kind::Stale | Kind::Ragged => Severity::Warning,
+            Kind::Unreached => Severity::Note,
         }
     }
 
@@ -267,6 +280,7 @@ impl Kind {
             Kind::Formula => "formula",
             Kind::Reference => "reference",
             Kind::Stale => "stale",
+            Kind::Unreached => "unreached",
         }
     }
 }
@@ -280,6 +294,7 @@ impl Why {
             Why::Formula | Why::Computed => Kind::Formula,
             Why::Absent | Why::Ambiguous => Kind::Reference,
             Why::Stale => Kind::Stale,
+            Why::Unreached { .. } => Kind::Unreached,
             _ => Kind::Type,
         }
     }

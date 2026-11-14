@@ -81,15 +81,18 @@ pub fn diagnostics(file: &File, allowed: &Allowed) -> Vec<Diagnostic> {
                 None => column.clone(),
             };
             let mut d = error(lines.range(shifted(s, base)), format!("{place}: {}", doc.why(p)));
-            // what is not there yet warns; what is wrong is an error
-            if p.kind().severity() == cells::Severity::Warning {
-                d.severity = Some(DiagnosticSeverity::WARNING);
-            }
+            // what is wrong is an error, what is not there yet warns, a value standing for an
+            // import not reached is said
+            d.severity = Some(match p.kind().severity() {
+                cells::Severity::Error => DiagnosticSeverity::ERROR,
+                cells::Severity::Warning => DiagnosticSeverity::WARNING,
+                cells::Severity::Note => DiagnosticSeverity::INFORMATION,
+            });
             out.push(d);
         }
     };
     problems(doc, 0, None, &mut out);
-    for t in doc.tables().iter().filter(|t| t.own) {
+    for t in doc.tables().iter().filter(|t| t.own()) {
         if let Some((d, base)) = inline(file, &t.name) {
             problems(&d, base, Some(&t.name), &mut out);
         }

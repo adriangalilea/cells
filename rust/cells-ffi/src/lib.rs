@@ -453,12 +453,7 @@ pub unsafe extern "C" fn cells_header_cell(
 /// # Safety
 /// `root` and `home` point at `root_len` and `home_len` bytes of UTF-8.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn cells_served_whole(
-    root: *const c_char,
-    root_len: usize,
-    home: *const c_char,
-    home_len: usize,
-) -> bool {
+pub unsafe extern "C" fn cells_served_whole(root: *const c_char, root_len: usize, home: *const c_char, home_len: usize) -> bool {
     // SAFETY: the caller's promise.
     let (root, home) = unsafe { (text_of(root, root_len), text_of(home, home_len)) };
     cells::folder::served_whole(root, home)
@@ -567,6 +562,20 @@ pub enum CellsKind {
     CellsKindReference = 5,
     /// A computed cell storing another value than its formula gives.
     CellsKindStale = 6,
+    /// A computed cell whose formula reads an import not reached: its stored value stands.
+    CellsKindUnreached = 7,
+}
+
+/// How much a problem weighs: `cells::Kind::severity`, the one rule every reader shows.
+#[repr(C)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum CellsSeverity {
+    /// What is wrong.
+    CellsSeverityError = 0,
+    /// What is absent or behind.
+    CellsSeverityWarning = 1,
+    /// Nothing wrong: a stored value standing for inputs this reader cannot reach.
+    CellsSeverityNote = 2,
 }
 
 /// A cell that breaks its type, by place.
@@ -575,9 +584,7 @@ pub struct CellsProblem {
     pub row: u32,
     pub column: u32,
     pub kind: CellsKind,
-    /// What is absent or behind (a warning), not what is wrong (an error):
-    /// `cells::Kind::severity`, the one rule every reader shows.
-    pub warning: bool,
+    pub severity: CellsSeverity,
 }
 
 /// How many problems, by row then column.
@@ -606,8 +613,14 @@ pub unsafe extern "C" fn cells_problem(d: *mut CellsDoc, i: usize) -> CellsProbl
         cells::Kind::Formula => CellsKind::CellsKindFormula,
         cells::Kind::Reference => CellsKind::CellsKindReference,
         cells::Kind::Stale => CellsKind::CellsKindStale,
+        cells::Kind::Unreached => CellsKind::CellsKindUnreached,
     };
-    CellsProblem { row: p.row, column: p.column, kind, warning: p.kind().severity() == cells::Severity::Warning }
+    let severity = match p.kind().severity() {
+        cells::Severity::Error => CellsSeverity::CellsSeverityError,
+        cells::Severity::Warning => CellsSeverity::CellsSeverityWarning,
+        cells::Severity::Note => CellsSeverity::CellsSeverityNote,
+    };
+    CellsProblem { row: p.row, column: p.column, kind, severity }
 }
 
 /// Where a file's grammar breaks, the rest read (`cells::Doc::broken`): the place, and

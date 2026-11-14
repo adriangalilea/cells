@@ -1,0 +1,5 @@
+---
+import rates from "./nowhere.cells"
+---
+vendor:text!,amount:EUR,rate:num=rates[vendor].rate,eur:EUR=amount * rate
+bank,20,1.08=,21.60=

@@ -150,7 +150,7 @@ impl Folder {
 /// Where the table `name` that `file`'s prelude names lives.
 pub fn home(file: &File, name: &str) -> Option<Home> {
     let t = file.doc.tables().iter().find(|t| t.name == name)?;
-    if t.own {
+    if t.own() {
         return Some(Home::Inline(file.path.clone(), name.to_owned()));
     }
     file.doc.statements().iter().find_map(|s| match s {
@@ -168,7 +168,7 @@ pub fn home(file: &File, name: &str) -> Option<Home> {
 
 /// A table `file`'s prelude writes, `name`: its doc and where its text starts.
 pub fn inline(file: &File, name: &str) -> Option<(Arc<Doc>, u32)> {
-    let doc = file.doc.tables().iter().find(|t| t.own && t.name == name)?.doc.clone()?;
+    let doc = file.doc.tables().iter().find(|t| t.own() && t.name == name)?.doc.clone()?;
     let base = file.doc.statements().iter().find_map(|s| match s {
         Statement::Table { name: n, body, .. } if n == name => Some(body.start),
         Statement::Run { name: n, stored: Some(body), .. } if n == name => Some(body.start),

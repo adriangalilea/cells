@@ -32,7 +32,7 @@ pub const NEVER: &[&str] = &[
 ];
 
 /// How a folder is read and what the exit codes mean, for every command.
-pub const ABOUT: &str = "A folder means every `.cells` file under it, hidden folders (`.git`, the engine's `.cells`) left out. Exit 0 when nothing is found (or every run succeeds), 1 when something is (or a run fails, or a query read files with problems: its answer is printed, and how many problems on stderr), 2 when the command cannot run (a path that does not exist, a file that cannot be read, a wrong argument, tables whose columns clash, a query DuckDB refuses).";
+pub const ABOUT: &str = "A folder means every `.cells` file under it, hidden folders (`.git`, the engine's `.cells`) left out. Exit 0 when nothing is found (or every run succeeds, or `check` found notes alone: a stored value standing for an import not reached), 1 when something is (or a run fails, or a query read files with problems: its answer is printed, and how many problems on stderr), 2 when the command cannot run (a path that does not exist, a file that cannot be read, a wrong argument, tables whose columns clash, a query DuckDB refuses).";
 
 /// The repository, where the documents `DOCS` names live.
 const REPO: &str = "https://github.com/adriangalilea/cells/blob/main";

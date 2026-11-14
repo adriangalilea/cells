@@ -327,8 +327,7 @@ pub unsafe extern "C" fn cells_meta(h: *mut Handle) -> *const u8 {
     let doc = &h.doc;
     h.problems.clear();
     for p in doc.problems() {
-        let warning = p.kind().severity() == cells::Severity::Warning;
-        h.problems.extend([p.row, p.column, p.kind() as u32, warning as u32]);
+        h.problems.extend([p.row, p.column, p.kind() as u32, p.kind().severity() as u32]);
     }
     let mut s = String::with_capacity(512);
     let _ = write!(s, "{{\"rows\":{},\"newline\":", doc.rows());

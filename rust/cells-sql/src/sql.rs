@@ -286,7 +286,7 @@ fn read(paths: &[String]) -> Result<(Vec<Table>, usize, usize), String> {
                 queue.push(lexical(&path.parent().unwrap_or(Path::new(".")).join(from)));
             }
         }
-        let own: Vec<_> = doc.tables().iter().filter(|t| t.own).collect();
+        let own: Vec<_> = doc.tables().iter().filter(|t| t.own()).collect();
         let found = doc.broken().len()
             + doc.problems().len()
             + own.iter().map(|t| t.doc.as_ref().expect("a table of the file's own is read").problems().len()).sum::<usize>();

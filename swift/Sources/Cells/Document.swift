@@ -112,6 +112,9 @@ extension Cells {
       /// A computed cell storing another value than its formula gives: its value is
       /// the formula's; `fixStale()` or `keepStale(row:column:)` resolves it.
       case stale
+      /// A computed cell whose formula reads an import not reached: its value is what
+      /// the file stores, never computed again until the import is reached. A note.
+      case unreached
       /// A row longer than its header, on its last cell (its fields past the header
       /// kept), or a plain file's row shorter, on the first cell it lacks. The cell
       /// keeps its value.
@@ -136,7 +139,7 @@ extension Cells {
     /// whole and a plain file's header problems.
     public let span: Range<Int>?
     /// How much it weighs, the engine's one rule (`cells::Kind::severity`): what is
-    /// wrong, or what is absent or behind. A broken grammar is wrong.
+    /// wrong, what is absent or behind, or a note. A broken grammar is wrong.
     public var severity: Severity = .error
 
     public var description: String { said }
@@ -145,9 +148,10 @@ extension Cells {
   /// What a problem is: wrong (a value breaking its type, a key repeated, a reference
   /// to no row, a formula that does not compute, a broken grammar), or a warning (a
   /// value not written yet, a stored value its formula has moved past, a ragged row, a
-  /// plain header's name).
+  /// plain header's name), or a note (a stored value standing for an import not reached,
+  /// a packed copy read in its source's place): nothing wrong, said so a person knows why.
   public enum Severity: Sendable, Hashable {
-    case error, warning
+    case error, warning, note
   }
 
   /// A value read from a cell by its column's type. A time, an instant, a choice and

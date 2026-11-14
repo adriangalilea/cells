@@ -252,9 +252,33 @@ pub struct Table {
     pub doc: Option<Arc<Doc>>,
     /// Its prelude line.
     pub line: u32,
-    /// Written in this file (inline, or by a script), not imported: its problems are this
-    /// file's.
-    pub own: bool,
+    /// Where it is read from: this file, or the file an import names.
+    pub held: Held,
+}
+
+/// Where a table the prelude names is read from.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum Held {
+    /// Written in this file (inline, or by a script): its problems are this file's.
+    Own,
+    /// Another file's, by the import's path or URL as written: read there, or, when `doc`
+    /// is none, not reached.
+    Import { from: String },
+}
+
+impl Table {
+    /// Written in this file, not imported.
+    pub fn own(&self) -> bool {
+        self.held == Held::Own
+    }
+
+    /// Where an imported table comes from, as its import writes it.
+    pub fn from(&self) -> Option<&str> {
+        match &self.held {
+            Held::Own => None,
+            Held::Import { from } => Some(from),
+        }
+    }
 }
 
 /// A table a script fills (`name = run …`): its schedule, its code, and where the
@@ -948,11 +972,12 @@ fn settle_prelude(
                     }
                 };
                 imported.push((import, doc.clone()));
+                let held = || Held::Import { from: from.clone() };
                 if let Some(name) = default {
                     if taken(named, tables, name) {
                         fail(format!("the name {name} is taken"));
                     } else {
-                        tables.push(Table { name: name.clone(), exported: false, doc: doc.clone(), line: s.line(), own: false });
+                        tables.push(Table { name: name.clone(), exported: false, doc: doc.clone(), line: s.line(), held: held() });
                     }
                 }
                 for name in names {
@@ -965,7 +990,7 @@ fn settle_prelude(
                         if name.as_bytes()[0].is_ascii_uppercase() {
                             named.push(NamedType::new(name.clone(), Type::plain(Base::Text)));
                         } else {
-                            tables.push(Table { name: name.clone(), exported: false, doc: None, line: s.line(), own: false });
+                            tables.push(Table { name: name.clone(), exported: false, doc: None, line: s.line(), held: held() });
                         }
                         continue;
                     };
@@ -974,7 +999,7 @@ fn settle_prelude(
                         // import's line, since that is where this file takes them
                         named.push(imported_type(t, s.line()));
                     } else if let Some(t) = d.tables.iter().find(|t| t.exported && &t.name == name) {
-                        tables.push(Table { name: name.clone(), exported: false, doc: t.doc.clone(), line: s.line(), own: false });
+                        tables.push(Table { name: name.clone(), exported: false, doc: t.doc.clone(), line: s.line(), held: held() });
                     } else {
                         let all = d.exports();
                         let shown = if all.is_empty() { "nothing".to_owned() } else { all.join(", ") };
@@ -988,7 +1013,7 @@ fn settle_prelude(
                     continue;
                 }
                 let doc = inline(source, name, body, imports, named, tables, broken);
-                tables.push(Table { name: name.clone(), exported: *exported, doc: Some(Arc::new(doc)), line: s.line(), own: true });
+                tables.push(Table { name: name.clone(), exported: *exported, doc: Some(Arc::new(doc)), line: s.line(), held: Held::Own });
             }
             Statement::Run { name, exported, schedule, code, stored, runs, .. } => {
                 if taken(named, tables, name) {
@@ -1012,7 +1037,7 @@ fn settle_prelude(
                 }
                 let after = runs.as_ref().unwrap_or(stored).end;
                 let after = after + source[after..].find('\n').map_or(source.len() - after, |n| n + 1);
-                tables.push(Table { name: name.clone(), exported: *exported, doc: Some(Arc::new(doc)), line: s.line(), own: true });
+                tables.push(Table { name: name.clone(), exported: *exported, doc: Some(Arc::new(doc)), line: s.line(), held: Held::Own });
                 scripts.push(Script {
                     name: name.clone(),
                     line: s.line(),
@@ -1891,6 +1916,14 @@ impl Doc {
                 let gives = gave.map_or("nothing", |g| g.as_str());
                 let gives = if gives.is_empty() { "nothing" } else { gives };
                 return format!("the formula gives {gives}, the file stores {stored}");
+            }
+            Why::Unreached { table } => {
+                let from = self.tables[table as usize].from().expect("a table not reached is an import");
+                let raw = self.text(p.row as usize, p.column as usize);
+                return match read::split(raw.as_bytes()) {
+                    Some(at) if at > 0 => format!("from {from}, not reachable: the value the file stores stands"),
+                    _ => format!("from {from}, not reachable, and the file stores no value for it"),
+                };
             }
             Why::Absent => format!("is no key of {}", tables()),
             Why::Ambiguous => format!("is a key of more than one of {}, so it names no one row", tables()),
@@ -3452,7 +3485,7 @@ impl Doc {
     /// Every computed cell computed again, each column holding one decoded with what its
     /// cells gave, and every reference checked against its tables.
     fn recompute(&mut self) {
-        self.problems.retain(|p| !matches!(p.why, Why::Formula | Why::Absent | Why::Ambiguous | Why::Stale));
+        self.problems.retain(|p| !matches!(p.why, Why::Formula | Why::Absent | Why::Ambiguous | Why::Stale | Why::Unreached { .. }));
         self.unwell.clear();
         self.gave.clear();
         if self.computes() {
@@ -3489,6 +3522,28 @@ impl Doc {
         }
         let mut memo: Vec<Vec<Slot>> =
             self.columns.iter().map(|c| if c.origin.is_empty() { Vec::new() } else { alloc::vec![Slot::Pending; rows] }).collect();
+        // A computed cell reading an import not reached is its stored value, never computed
+        // (SPEC.md, Reading): the import it reads, and that value, which every formula
+        // reading the cell reads.
+        let mut unreached: BTreeMap<(u32, u32), (usize, String)> = BTreeMap::new();
+        for (k, c) in self.columns.iter().enumerate() {
+            let column = self.formulas[k].as_ref().and_then(|ir| unreached_in(ir, &self.tables));
+            for r in 0..c.origin.len() {
+                let table = match c.origin[r] {
+                    Origin::Written => None,
+                    Origin::Formula => column,
+                    Origin::Cell => cells[&(r as u32, k as u32)].as_ref().ok().and_then(|ir| unreached_in(ir, &self.tables)),
+                };
+                let Some(table) = table else { continue };
+                let raw = self.text(r, k);
+                let stored = read::split(raw.as_bytes()).map_or("", |at| &raw[..at]).to_owned();
+                let mut plain = Vec::new();
+                read::unescaped(stored.as_bytes(), &mut plain);
+                let value = decode_one(c, core::str::from_utf8(&plain).unwrap()).map_or(V::Null, |one| value_v(&one, 0));
+                memo[k][r] = Slot::Done(value);
+                unreached.insert((r as u32, k as u32), (table, stored));
+            }
+        }
         let mut eval = Eval {
             columns: &self.columns,
             tables: &self.tables,
@@ -3534,13 +3589,22 @@ impl Doc {
             if self.columns[k].origin.is_empty() {
                 continue;
             }
-            let given = render(&self.columns[k], &out);
+            let mut given = render(&self.columns[k], &out);
+            for (r, text) in given.iter_mut() {
+                if let Some((_, stored)) = unreached.get(&(*r as u32, k as u32)) {
+                    text.clone_from(stored);
+                }
+            }
             self.rebuild(k, &given);
             for (r, text) in given {
-                if self.problems.iter().any(|p| p.row == r as u32 && p.column == k as u32) {
-                    self.gave.insert((r as u32, k as u32), text.clone());
+                let at = (r as u32, k as u32);
+                if unreached.contains_key(&at) {
+                    continue;
                 }
-                rendered.insert((r as u32, k as u32), text);
+                if self.problems.iter().any(|p| p.row == at.0 && p.column == at.1) {
+                    self.gave.insert(at, text.clone());
+                }
+                rendered.insert(at, text);
             }
         }
         for ((r, k), why) in cells.iter().filter_map(|(at, c)| c.as_ref().err().map(|w| (at, w))) {
@@ -3566,6 +3630,11 @@ impl Doc {
         for &(r, k) in self.unwell.keys() {
             self.problems.retain(|p| !(p.row == r && p.column == k));
             self.problems.push(Problem { row: r, column: k, why: Why::Formula });
+        }
+        for (&(r, k), &(table, _)) in &unreached {
+            if !self.problems.iter().any(|p| p.order() == (r, k)) {
+                self.problems.push(Problem { row: r, column: k, why: Why::Unreached { table: table as u32 } });
+            }
         }
         self.find_stale(&rendered);
         self.rendered = rendered;
@@ -3858,6 +3927,24 @@ fn slots(ir: &Ir) -> usize {
         Ir::Bin(_, a, b) => slots(a).max(slots(b)),
         Ir::Case(arms, o) => arms.iter().map(|(w, t)| slots(w).max(slots(t))).max().unwrap_or(0).max(slots(o)),
         Ir::Call(_, args) => args.iter().map(slots).max().unwrap_or(0),
+    }
+}
+
+/// The first of the prelude's tables an `Ir` reads that is an import not reached: by key,
+/// through a reference, or whole in an aggregate.
+fn unreached_in(ir: &Ir, tables: &[Table]) -> Option<usize> {
+    let gone = |t: &expr::Table| t.filter(|&t| tables[t].doc.is_none());
+    match ir {
+        Ir::Const(_) | Ir::Col(_) | Ir::At(..) | Ir::Span(..) => None,
+        Ir::Follow(a, targets) => targets.iter().find_map(|(t, ..)| gone(t)).or_else(|| unreached_in(a, tables)),
+        Ir::Agg(_, t, a, _) => gone(t).or_else(|| unreached_in(a, tables)),
+        Ir::Window(_, a, order, _) => unreached_in(a, tables).or_else(|| order.iter().find_map(|(k, _)| unreached_in(k, tables))),
+        Ir::Neg(a) | Ir::Not(a) | Ir::IsNull(a, _) => unreached_in(a, tables),
+        Ir::Bin(_, a, b) => unreached_in(a, tables).or_else(|| unreached_in(b, tables)),
+        Ir::Case(arms, o) => {
+            arms.iter().find_map(|(w, t)| unreached_in(w, tables).or_else(|| unreached_in(t, tables))).or_else(|| unreached_in(o, tables))
+        }
+        Ir::Call(_, args) => args.iter().find_map(|a| unreached_in(a, tables)),
     }
 }
 

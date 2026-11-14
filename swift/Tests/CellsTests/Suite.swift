@@ -441,7 +441,7 @@ private func read(_ doc: Cells.Document, _ want: [String: Any]) -> [String] {
     }
     let kinds: [Cells.Problem.Kind: String] = [
         .type: "type", .missing: "missing", .key: "key", .ragged: "ragged",
-        .formula: "formula", .reference: "reference", .stale: "stale",
+        .formula: "formula", .reference: "reference", .stale: "stale", .unreached: "unreached",
     ]
     // A span as the suite writes it, `[start, length]` in bytes.
     let spelled = { (s: Range<Int>?) in s.map { "[\($0.lowerBound), \($0.count)]" } ?? "none" }

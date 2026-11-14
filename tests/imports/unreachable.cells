@@ -3,5 +3,7 @@ import vendors from "./nowhere.cells"
 import { Region } from "./nowhere.cells"
 import rates from "https://rates.example/eurusd.cells" with { sha256: "9c1e7f0a5d" }
 ---
-vendor:vendors.vendor,region:Region,amount:EUR,rate:num=rates[vendor].rate
-fuel-stop,north,10,
+vendor:vendors.vendor,region:Region,amount:EUR,rate:num=rates[vendor].rate,eur:EUR=amount * rate
+fuel-stop,north,10,,
+bank,south,20,1.08=,21.60=
+cafe,north,5,0.5=rates['cafe'].rate,2.50=

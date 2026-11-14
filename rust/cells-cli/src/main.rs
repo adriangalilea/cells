@@ -19,9 +19,12 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 
 use cells_disk::{Disk, files};
 
-/// What one file says: its lines of output, or the reason it could not be read.
+/// What one file says: its lines of output, or the reason it could not be read. A file
+/// whose only lines are notes (a stored value standing for an import not reached) says
+/// them and fails nothing.
 enum Said {
     Clean,
+    Noted(Vec<String>),
     Found(Vec<String>),
 }
 
@@ -35,12 +38,20 @@ fn check(path: &Path, threads: usize) -> Result<Said, String> {
     // Where its grammar breaks first, then its own tables, in the prelude's order, then its
     // rows.
     let mut lines: Vec<String> = doc.broken().iter().map(|e| format!("{shown} {e}")).collect();
-    for t in doc.tables().iter().filter(|t| t.own) {
+    let mut fails = !lines.is_empty();
+    let noted = |p: &cells::Problem| p.kind().severity() == cells::Severity::Note;
+    for t in doc.tables().iter().filter(|t| t.own()) {
         let d = t.doc.as_ref().expect("a table of the file's own is read");
+        fails |= d.problems().iter().any(|p| !noted(p));
         lines.extend(d.problems().iter().map(|p| format!("{shown} {} {}", t.name, d.describe(p))));
     }
+    fails |= doc.problems().iter().any(|p| !noted(p));
     lines.extend(doc.problems().iter().map(|p| format!("{shown} {}", doc.describe(p))));
-    if lines.is_empty() { Ok(Said::Clean) } else { Ok(Said::Found(lines)) }
+    Ok(match (lines.is_empty(), fails) {
+        (true, _) => Said::Clean,
+        (false, false) => Said::Noted(lines),
+        (false, true) => Said::Found(lines),
+    })
 }
 
 /// The file written with every stale cell given its formula's value and every computed
@@ -148,6 +159,7 @@ fn run(paths: &[String], each: impl Fn(&Path, usize) -> Result<Said, String> + S
                 return ExitCode::from(2);
             }
             Ok(Said::Clean) => {}
+            Ok(Said::Noted(lines)) => lines.iter().for_each(|l| println!("{l}")),
             Ok(Said::Found(lines)) => {
                 found = true;
                 for l in lines {

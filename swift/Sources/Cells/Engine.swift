@@ -219,6 +219,7 @@ final class Engine: @unchecked Sendable {
                 case CellsKindFormula: .formula
                 case CellsKindReference: .reference
                 case CellsKindStale: .stale
+                case CellsKindUnreached: .unreached
                 default:
                     preconditionFailure(
                         "Cells: the core names a problem kind \(p.kind.rawValue) this binding does not know"
@@ -233,7 +234,7 @@ final class Engine: @unchecked Sendable {
                     at: .cell(row: Int(p.row), column: Int(p.column)), kind: kind,
                     message: string(cells_problem_why(d, i)), said: string(cells_describe(d, i)),
                     span: Int(spans[i].start)..<Int(spans[i].start + spans[i].len),
-                    severity: p.warning ? .warning : .error))
+                    severity: severity(p.severity)))
         }
         let sep = cells_dialect(d)
         let layout = Cells.Layout(
@@ -244,6 +245,17 @@ final class Engine: @unchecked Sendable {
             columns: columns, names: names, inferred: inferred,
             problems: problems, places: places, placed: placed, rows: cells_rows(d),
             layout: layout, statements: sep == 0 ? statements(d) : [])
+    }
+
+    /// A problem's weight as the core says it.
+    static func severity(_ s: CellsSeverity) -> Cells.Severity {
+        switch s {
+        case CellsSeverityError: .error
+        case CellsSeverityWarning: .warning
+        case CellsSeverityNote: .note
+        default:
+            preconditionFailure("Cells: the core names a severity \(s.rawValue) this binding does not know")
+        }
     }
 
     static func part(_ d: OpaquePointer, _ of: CellsOf, _ i: Int, _ part: CellsPart, word: Int = 0)

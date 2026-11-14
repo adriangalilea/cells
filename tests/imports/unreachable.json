@@ -4,10 +4,17 @@
     { "name": "vendor", "type": "vendors.vendor" },
     { "name": "region", "type": "Region" },
     { "name": "amount", "type": "EUR" },
-    { "name": "rate", "type": "num", "formula": "rates[vendor].rate" }
+    { "name": "rate", "type": "num", "formula": "rates[vendor].rate" },
+    { "name": "eur", "type": "EUR", "formula": "amount * rate" }
   ],
   "rows": [
-    { "vendor": { "ref": "fuel-stop" }, "region": { "text": "north" }, "amount": { "money": "10", "currency": "EUR" }, "rate": { "from": "formula" } }
+    { "vendor": { "ref": "fuel-stop" }, "region": { "text": "north" }, "amount": { "money": "10", "currency": "EUR" }, "rate": { "from": "formula" }, "eur": { "from": "formula" } },
+    { "vendor": { "ref": "bank" }, "region": { "text": "south" }, "amount": { "money": "20", "currency": "EUR" }, "rate": { "num": "1.08", "from": "formula" }, "eur": { "money": "21.60", "currency": "EUR", "from": "formula" } },
+    { "vendor": { "ref": "cafe" }, "region": { "text": "north" }, "amount": { "money": "5", "currency": "EUR" }, "rate": { "num": "0.5", "from": "cell" }, "eur": { "money": "2.50", "currency": "EUR", "from": "formula" } }
   ],
-  "problems": []
+  "problems": [
+    { "row": 0, "column": "rate", "kind": "unreached", "span": [288, 0] },
+    { "row": 1, "column": "rate", "kind": "unreached", "span": [304, 5] },
+    { "row": 2, "column": "rate", "kind": "unreached", "span": [330, 22] }
+  ]
 }
