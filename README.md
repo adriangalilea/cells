@@ -102,9 +102,13 @@ import accounts from "./accounts.cells"
 
 eurusd = run every day at 18:00 in Europe/Madrid
 ```ts
+// the European Central Bank's reference rates through frankfurter.dev: free, no key
 export default async function ({ last }) {
-  const res = await fetch(`https://api.exchange.example/usdeur?since=${last.date}`)
-  return (await res.json()).map(d => ({ date: d.day, rate: String(d.close) }))
+  const since = last?.date ?? "2026-11-01"
+  const res = await fetch(`https://api.frankfurter.dev/v1/${since}..?from=USD&to=EUR`)
+  if (!res.ok) throw new Error(`frankfurter.dev answered ${res.status}`)
+  const { rates } = await res.json()
+  return Object.entries(rates).map(([date, r]) => ({ date, rate: String(r.EUR) }))
 }
 ```
 ```cells
