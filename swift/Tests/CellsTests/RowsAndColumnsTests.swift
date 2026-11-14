@@ -135,7 +135,7 @@ import Testing
     #expect(doc.problems.map(\.kind) == [.stale])
     #expect(
         doc.problems.first?.description
-            == "row 1, total: the formula gives 90.00, the file stores 84.20")
+            == "row 1, total: the formula gives 90.00, the cell stores 84.20")
     guard case .failure(let stale) = doc.value(row: 0, column: 3) else {
         Issue.record("a stale cell has no value")
         return

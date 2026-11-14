@@ -2220,7 +2220,9 @@ impl Doc {
                 let stored = read::split(raw.as_bytes()).map_or(&raw[..], |at| &raw[..at]);
                 let gives = gave.map_or("nothing", |g| g.as_str());
                 let gives = if gives.is_empty() { "nothing" } else { gives };
-                return format!("the formula gives {gives}, the file stores {stored}");
+                // the cell's text as the reader holds it, an editor's unsaved buffer included:
+                // never "the file", which reads as the disk
+                return format!("the formula gives {gives}, the cell stores {stored}");
             }
             Why::Unstored => {
                 let gives = gave.expect("an unstored cell's value, kept as found");

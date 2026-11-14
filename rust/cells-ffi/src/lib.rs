@@ -2277,7 +2277,7 @@ mod tests {
             let d = cells_read(src.as_ptr(), src.len(), 1, &mut f);
             assert_eq!(cells_problem_count(d), 1);
             assert_eq!(cells_problem(d, 0).kind, CellsKind::CellsKindStale);
-            assert_eq!(text(cells_describe(d, 0)), "row 1, total: the formula gives 90.00, the file stores 84.20");
+            assert_eq!(text(cells_describe(d, 0)), "row 1, total: the formula gives 90.00, the cell stores 84.20");
             let kept = cells_clone(d);
             cells_fix_stale(d);
             assert_eq!(text(cells_write(d)), format!("{head}fuel,90.00,1,90.00=\nmaps,4.00,2,8.00=\n"));

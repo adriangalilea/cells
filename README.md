@@ -63,7 +63,7 @@ item: text!,cost: EUR>=0,qty: int>=1,total: EUR = cost * qty,paid: yes/no,on: da
 fuel,90.00,1,84.20=,yes,2026-08-14
 ```
 
-The stored total is stale, and the reader says so with both numbers: `row 1, total: the formula gives 90.00, the file stores 84.20`. It is never overwritten unasked: `cells fix`, or saving through the language server, stores the new value.
+The stored total is stale, and the reader says so with both numbers: `row 1, total: the formula gives 90.00, the cell stores 84.20`. It is never overwritten unasked: `cells fix`, or saving through the language server, stores the new value.
 
 ### A cell's own formula, and rows above
 
@@ -183,7 +183,7 @@ The prelude, between two `---` lines, names types (`type Kind = …`), imports o
 ## Reading and writing
 
 - **A broken cell opens and says why**, never coerced: `row 3, cost: "8x.50" is not a number`. Its text is kept, its value null, so the tool that can fix it can show it. A duplicate key reports both rows, a reference to no row says so (`"bar" is no key of accounts`), and so does a formula that does not compute. A broken grammar takes out only what it breaks, and the file opens with its table: a header cell typed halfway (`to: accounts.a`) is a column of text, named as broken, every other column typed. A control character (a NUL, an ESC, a C1 from a bank's export) breaks its cell in any column, named by its code point, `U+0000`, since it shows nothing, and no writer writes one.
-- **Written back byte for byte** but for what changed: the line endings, the quoting, the header's spelling and the prelude as they were read. A write stores every computed value its change reaches, in one pass; a value typed over its `=` or left behind by a plain editor is a problem saying both numbers (`the formula gives 90.00, the file stores 84.20`), never overwritten unasked, and `cells fix` or a client's fix resolves it.
+- **Written back byte for byte** but for what changed: the line endings, the quoting, the header's spelling and the prelude as they were read. A write stores every computed value its change reaches, in one pass; a value typed over its `=` or left behind by a plain editor is a problem saying both numbers (`the formula gives 90.00, the cell stores 84.20`), never overwritten unasked, and `cells fix` or a client's fix resolves it.
 - **Merged by git without conflicts on what is computed**: `cells merge`, git's merge driver, merges what was written and computes the rest again.
 - **Records quote as RFC 4180** (a field holding `,`, `"` or a line break is quoted, `""` inside), because it is the right rule for cells.
 - **Opening never runs anything.** A script runs when asked (`cells run`), and a file opens with the rows its last run stored. A script runs only at a version its person allowed after reading it (`cells allow`, an editor's fix, Cells.app), so a file from anyone never runs a program unread.
