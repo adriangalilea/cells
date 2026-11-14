@@ -5,7 +5,7 @@
 // has streamed in. (lib/cells is ui's: the same engine with its bytes embedded, which
 // ui's table codec imports; the site streams its own copy, lib/engine, instead.)
 
-import type { Column, Problem, Value } from "@/lib/engine/cells.ts"
+import type { Column, Problem, Tinted, Value } from "@/lib/engine/cells.ts"
 import type { StoryFile } from "@/lib/story"
 
 /** The engine, as `loadEngine()` gives it. */
@@ -20,6 +20,16 @@ export interface ViewColumn {
   formula?: string
   key: boolean
   inferred: boolean
+  /** A choice's words, in the order its type names them. */
+  choices?: string[]
+}
+
+/** How a cell looks, as the engine's looks say (a choice's word in its tint, a value as a
+ *  look draws it): `drawn`, the words shown in place of its text; `tint`, a tint's name, a
+ *  `#rrggbb`, or a scale's point between two. */
+export interface ViewFace {
+  drawn?: string
+  tint?: Tinted
 }
 
 /** A cell as a view draws it: its value as text, where it came from, and its problem. */
@@ -35,6 +45,9 @@ export interface ViewTable {
   rows: ViewCell[][]
   /** Each value by column name, for a step that asks questions of it. */
   values: Record<string, Value[]>
+  /** Each cell's face, by column name, for the columns the engine's looks draw: null for a
+   *  cell drawn as its text. */
+  faces: Record<string, (ViewFace | null)[]>
   /** Each cell's problem, weighed as the engine weighs it (`severity`: `error` wrong,
    *  `warning` absent or behind). */
   problems: { row: number; at: number; column: string; kind: Problem["kind"]; severity: Problem["severity"]; why: string; reason: string }[]
@@ -73,7 +86,19 @@ export function readFiles(engine: Engine, files: readonly StoryFile[]): ViewTabl
         ...(c.formula ? { formula: c.formula } : {}),
         key: c.type.includes("!"),
         inferred: c.inferred,
+        ...(c.choices ? { choices: c.choices } : {}),
       }),
+    )
+    const looks = r.doc.looks()
+    const faces: Record<string, (ViewFace | null)[]> = Object.fromEntries(
+      Object.entries(looks.columns).map(([at, c]) => [
+        r.columns[Number(at)]?.name as string,
+        c.drawn.map((drawn, row) => {
+          const tint = c.tint[row] ?? null
+          if (drawn === "" && tint === null) return null
+          return { ...(drawn === "" ? {} : { drawn }), ...(tint === null ? {} : { tint }) }
+        }),
+      ]),
     )
     const rows: ViewCell[][] = []
     const values: Record<string, Value[]> = Object.fromEntries(r.columns.map((c) => [c.name, []]))
@@ -87,7 +112,7 @@ export function readFiles(engine: Engine, files: readonly StoryFile[]): ViewTabl
       )
     const problems = r.problems.map((p) => ({ row: p.row, at: p.at, column: p.column, kind: p.kind, severity: p.severity, why: p.why, reason: p.reason }))
     const broken = r.broken.map((b) => ({ at: b.at, why: b.why, ...(b.span ? { span: b.span } : {}) }))
-    return { columns, rows, values, problems, broken }
+    return { columns, rows, values, faces, problems, broken }
   } finally {
     r.doc.free()
   }

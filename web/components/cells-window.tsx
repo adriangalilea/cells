@@ -6,7 +6,13 @@
 
 import * as React from "react"
 import { AppWindow } from "@/components/ui/app-window"
-import { Table, type TableColumn, type TableProblem } from "@/components/ui/table"
+import { Table, type TableColumn, type TableFace, type TableProblem } from "@/components/ui/table"
+import type { Tinted } from "@/lib/engine/cells.ts"
+
+/** A tint as a CSS colour: one of the ten names in the tokens' colour for it, a `#rrggbb`
+ *  as the file gives it, a scale's point mixed between its two ends. */
+const tintOf = (t: Tinted): string =>
+  typeof t === "string" ? (t.startsWith("#") ? t : `var(--tint-${t})`) : `color-mix(in oklab, ${tintOf(t.to)} ${t.at / 10}%, ${tintOf(t.from)})`
 import { useEngine } from "@/components/use-engine"
 import { readFiles, type ViewCell, type ViewTable } from "@/lib/view"
 import { useCodeColours } from "@/components/ui/use-code-colours"
@@ -116,6 +122,15 @@ export function CellsTable({
   const at = scene?.cursor ? read.columns.findIndex((c) => c.name === scene.cursor?.column) : -1
   if (scene?.cursor && at < 0) throw new Error(`cells-window: no column ${scene.cursor.column} for the hand`)
   const tableScene = scene ? { cursor: scene.cursor ? { row: String(scene.cursor.row), column: String(at) } : null, draft: scene.draft } : undefined
+  // The engine's looks: a cell's words in place of its text, its tint a colour.
+  const face = React.useCallback(
+    (r: Row, column: string): TableFace | undefined => {
+      const f = read.faces[read.columns[Number(column)]?.name ?? ""]?.[Number(r.id)]
+      if (!f) return undefined
+      return { ...(f.drawn ? { drawn: f.drawn } : {}), ...(f.tint ? { tint: tintOf(f.tint) } : {}) }
+    },
+    [read],
+  )
   const problems = React.useMemo(() => {
     const m = new Map<string, TableProblem>()
     for (const p of read.problems) m.set(`${p.row}:${p.at}`, { why: p.reason, severity: p.severity })
@@ -130,7 +145,9 @@ export function CellsTable({
         tint: inkOf(k),
         text: (r) => r.cells[k]?.shown ?? "",
         kind: r0Numeric(read.rows, k) ? "number" : "text",
-        render: (r) => {
+        // a choice is the table's badge, each word in its tint as the app draws it
+        ...(c.choices ? { options: c.choices } : {}),
+        render: read.faces[c.name] ? undefined : (r) => {
           const cell = r.cells[k]
           if (!cell) return null
           const computed = cell.origin !== "written"
@@ -168,6 +185,7 @@ export function CellsTable({
         columns={columns}
         label={label}
         problem={(r, column) => problems.get(`${r.id}:${column}`)}
+        face={face}
         density="compact"
         lines="rows"
         interactive={false}
