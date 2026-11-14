@@ -30,6 +30,23 @@ extension Cells {
             /// as its fence's label (empty when read from its entries), its entries as
             /// written. What it draws is the core's (`Document.charts`, `summary`).
             case chart(name: String?, kind: String, entries: String)
+            /// `packed accounts = ```cells`, `packed type Kind = …`, `packed look Kind: …`:
+            /// a copy of what the import from `from` names, never the file's own to edit
+            /// (SPEC.md, Packed imports). `copy` is its rows (a table), its type as written
+            /// (a type) or its rules joined by `, ` (a look).
+            case packed(name: String, copied: Copied, from: String, packing: Packing?, copy: String)
+        }
+
+        /// What a packed copy copies.
+        public enum Copied: String, Sendable, Equatable {
+            case table, type, look
+        }
+
+        /// How a packed copy stands to its source: the same as it (`current`), not what it
+        /// holds now and so never read (`stale`, `cells pack` refreshes it), or read in its
+        /// place, the source not reached (`standing`).
+        public enum Packing: String, Sendable, Equatable {
+            case current, stale, standing
         }
 
         /// Its place among the statements.
@@ -53,9 +70,25 @@ extension Cells {
             case .type(let n, _), .table(let n, _), .run(let n, _, _, _, _), .column(let n, _): n
             case .import(let n, _, _, _): n
             case .chart(let n, _, _): n
-            case .look: nil
+            case .look, .packed: nil
             }
         }
+
+        /// Whether it is a packed copy: shown as one, read-only, never edited here.
+        public var isCopy: Bool {
+            if case .packed = kind { return true }
+            return false
+        }
+    }
+
+    /// Which packed copies a text holds (`Document.packed`).
+    public enum Pack: Sendable, Equatable {
+        /// Every import's whose source is reached: `cells pack`, a self-contained copy.
+        case all
+        /// Those of imports `with { pack: "auto" }`: what every write writes.
+        case auto
+        /// None: every copy taken out.
+        case remove
     }
 
     /// A one-line statement, written by the engine as a writer writes it.
@@ -110,6 +143,21 @@ extension Cells.Document {
         }!
     }
 
+    /// The file's text with its imports packed as `how` says, the engine's one call for it
+    /// (`cells pack`, `--out` for `.all`): each import's whose source is reached written
+    /// into the prelude as a packed copy, so the text reads whole where its imports cannot
+    /// be reached. A copy of a source not reached is kept as it is.
+    public func packed(_ how: Cells.Pack) -> String {
+        precondition(typed, "Cells: a plain file has no prelude")
+        let pack =
+            switch how {
+            case .all: CellsPackAll
+            case .auto: CellsPackAuto
+            case .remove: CellsPackRemove
+            }
+        return engine.with { d in string(cells_packed(d, pack)) }!
+    }
+
     /// A one-line statement as the engine writes it.
     public func written(_ line: Cells.Line) -> String {
         let (kind, exported, name, said) =
@@ -161,6 +209,15 @@ extension Engine {
                     .chart(
                         name: { $0.isEmpty ? nil : $0 }(part(CellsStatementName)),
                         kind: part(CellsStatementSpelled), entries: part(CellsStatementRows))
+                case CellsStatementPacked:
+                    {
+                        let copied = Cells.Statement.Copied(rawValue: part(CellsStatementCopied))!
+                        return .packed(
+                            name: part(CellsStatementName), copied: copied,
+                            from: part(CellsStatementFrom),
+                            packing: Cells.Statement.Packing(rawValue: part(CellsStatementPacking)),
+                            copy: part(copied == .table ? CellsStatementRows : CellsStatementSpelled))
+                    }()
                 default:
                     preconditionFailure(
                         "Cells: the core names a statement kind \(s.kind.rawValue) this binding does not know"

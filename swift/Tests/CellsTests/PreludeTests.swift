@@ -82,3 +82,21 @@ let money = """
     let bare = Cells.Document(reading: "a:int\n1\n")
     #expect(bare.text(.add("type A = int")) == "---\ntype A = int\n---\na:int\n1\n")
 }
+
+@Test func aPackedCopyIsReadInItsSourcesPlace() throws {
+    let money = "---\nimport accounts from \"accounts.cells\"\n---\nto:accounts.account\ncoffee\n"
+    let doc = Cells.Document(
+        reading: money, at: "money.cells", files: ["accounts.cells": "account:text!\ncoffee\n"])
+    let packed = doc.packed(.all)
+    #expect(packed.contains("packed accounts = ```cells\naccount: text!\ncoffee\n```\n"))
+    let alone = Cells.Document(reading: packed)
+    guard case .packed(let name, let copied, let from, let packing, let copy) = alone.statements[1].kind
+    else {
+        Issue.record("no packed statement: \(alone.statements)")
+        return
+    }
+    #expect(name == "accounts" && copied == .table && from == "accounts.cells")
+    #expect(packing == .standing && copy == "account: text!\ncoffee\n")
+    #expect(alone.statements[1].isCopy && alone.problems.isEmpty)
+    #expect(alone.packed(.remove) == money)
+}
