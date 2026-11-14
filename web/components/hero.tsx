@@ -2,8 +2,8 @@
 
 // THE HERO: a desk at night (ui's desk), a MacBook and a Studio Display beside it, each at
 // its real width, one file on both. The MacBook shows spending.cells in Cells, its table
-// and its chart view; the display is a terminal where `cells chart spending.cells 1 4
-// --watch` is typed and takes the screen. Small edits in the app, a note, an amount, a row
+// and its chart view; the display is a terminal where `cells chart spending.cells 1
+// --watch` is typed and its one chart takes the screen. Small edits in the app, a note, an amount, a row
 // added and deleted, each put back so the loop ends where it began, and both screens redraw
 // at every one (lib/hero, ui's table-session; the terminal's screens the real program's,
 // lib/hero-screens). The table shows its end, where the row is added. One clock: `Playback` plays it
@@ -26,7 +26,7 @@ import { StudioDisplayFrame } from "@/components/ui/device-frame"
 import { Macos } from "@/components/ui/macos"
 import { Playback, Playhead, usePlayhead } from "@/components/ui/playback"
 import { useEngine } from "@/components/use-engine"
-import { hero, SPENDING_PATH, SPENDING_TEXT, STAGE, TYPED_MS, WATCH_COMMAND, WATCHED_CHARTS } from "@/lib/hero"
+import { APP_CHARTS, hero, SPENDING_PATH, SPENDING_TEXT, STAGE, TYPED_MS, WATCH_COMMAND } from "@/lib/hero"
 import { type Art, LID_MS, sceneClock, type Timeline } from "@/lib/macos-session"
 import { PRODUCT } from "@/lib/product"
 import { sceneOf, tableFrameAt } from "@/lib/table-session"
@@ -53,13 +53,14 @@ const useHero = () => hero(useEngine())
 
 /** The site's cold edge light: the accent of every terminal and editor on the page. */
 export const ACCENT = "#7fdcf0"
-/** Where each stands on the desk (ui desk), in centimetres: the MacBook near, in front and
- *  to the left, so the app reads; the display behind it to the right, its screen clear of
- *  the laptop; the eye a little over the desk. */
+/** Where each stands on the desk (ui desk), in centimetres: the MacBook to the left and
+ *  the display to the right, the display twice as far as the laptop it is twice as wide
+ *  as, so both screens read at one size; the eye low over the desk, so both stand on one
+ *  line, the farther foot only a little higher, as a photo of a desk shows it. */
 const DESK = {
-  eye: 8,
-  macbook: { x: -16, distance: 45 },
-  display: { x: 36, distance: 150 },
+  eye: 3,
+  macbook: { x: -20, distance: 45 },
+  display: { x: 40, distance: 90 },
 } as const
 
 /** The Cells window on the MacBook's stage (lib/hero `STAGE`), the one that flies. */
@@ -91,14 +92,14 @@ function SpendingWindow({ width, height }: { width: number; height: number }) {
   return (
     <div style={{ width, height: `calc(var(--stage-h, ${height}px) * ${width / WINDOW_W})` }}>
       <div style={{ width: WINDOW_W, height: `var(--stage-h, ${height}px)`, transform: `scale(${width / WINDOW_W})`, transformOrigin: "0 0" }}>
-        <CellsWindow name={SPENDING_PATH} text={SPENDING_TEXT} prelude={false} end charts={WATCHED_CHARTS} className="h-full" />
+        <CellsWindow name={SPENDING_PATH} text={SPENDING_TEXT} prelude={false} end charts={APP_CHARTS} className="h-full" />
       </div>
     </div>
   )
 }
 
 /** What the hero shows, said: for assistive tech, the same on the desk and stacked. */
-const ALT = `A MacBook and a Studio Display on a desk at night. On the MacBook, ${SPENDING_PATH} is open in ${PRODUCT.name}, six months of spending by category beside its charts; on the display, ${WATCH_COMMAND} is typed into a terminal and draws the same charts full screen. In ${PRODUCT.name} a note is filled in, an amount nudged, a coffee added at the end of October and deleted again, and each edit put back; both screens redraw the charts at every one.`
+const ALT = `A MacBook and a Studio Display on a desk at night. On the MacBook, ${SPENDING_PATH} is open in ${PRODUCT.name}, six months of spending by category beside its charts; on the display, ${WATCH_COMMAND} is typed into a terminal and draws spending by category full screen. In ${PRODUCT.name} a note is filled in, an amount nudged, a coffee added at the end of October and deleted again, and each edit put back; both screens redraw the charts at every one.`
 
 /** The landing's width on the page. */
 const LANDING_W = 640
@@ -136,7 +137,7 @@ function Scene({ lid }: { lid: number }) {
                 className="absolute"
                 style={{ top: TOP, left: INSET, width: WINDOW_W, height: WINDOW_H, visibility: lid > 0 ? "hidden" : undefined }}
               >
-                <CellsWindow name={SPENDING_PATH} text={f.text} scene={f.scene} prelude={false} end charts={WATCHED_CHARTS} className="h-full" />
+                <CellsWindow name={SPENDING_PATH} text={f.text} scene={f.scene} prelude={false} end charts={APP_CHARTS} className="h-full" />
               </div>
             </Macos>
           </Playhead>

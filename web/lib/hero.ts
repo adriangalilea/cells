@@ -1,8 +1,8 @@
 // THE HERO, as data: two screens on one desk, one file. spending.cells, six months of a
 // household's spending, its four charts and the month's budgets declared in its prelude,
 // is open in Cells on a MacBook, its table and its chart view side by side; on a Studio
-// Display beside it, a terminal, where `cells chart spending.cells 1 4 --watch` is typed
-// and draws the file full screen, again each time it changes. Then small edits in the app,
+// Display beside it, a terminal, where `cells chart spending.cells 1 --watch` is typed
+// and draws its first chart full screen, again each time it changes. Then small edits in the app,
 // a note filled in, an amount nudged, a coffee added at the end of October, each put back
 // so the loop ends on the file it began with, and both screens redraw at every one. One
 // clock (ui's table-session, every commit the engine's, `playable`), so a player, a
@@ -21,9 +21,12 @@ import { type Engine, writeCell } from "@/lib/view"
 
 export const SPENDING_PATH = `spending${PRODUCT.extension}`
 
-/** The charts the terminal holds and the app's chart view shows: the first the file
- *  declares and the last. */
-export const WATCHED_CHARTS = [1, 4] as const
+/** The charts the app's chart view shows beside its table: the first the file declares
+ *  and the last. */
+export const APP_CHARTS = [1, 4] as const
+/** The one chart the terminal holds full screen, so it reads from across the desk: the
+ *  first, whose stacks the loop's edits move. */
+export const WATCHED_CHARTS = [1] as const
 export const WATCH_COMMAND = `${PRODUCT.cli} chart ${SPENDING_PATH} ${WATCHED_CHARTS.join(" ")} --watch`
 
 /** The Cells window on the MacBook's stage (960 by 600, ui macos): 36 from the top (under
@@ -36,10 +39,10 @@ export const STAGE = { inset: INSET, top: TOP, window: { width: 960 - 2 * INSET,
  *  fills it. */
 export const DISPLAY = { width: 960, height: 540 } as const
 
-/** The terminals the frames are drawn for: the display's, its columns many enough for a
- *  wide chart and its rows the ones its screen holds at the type that fits them; and a
- *  phone's, where the terminal stands alone under the app, at `cells chart`'s own width. */
-const DISPLAY_COLS = 120
+/** The terminals the frames are drawn for: the display's, `cells chart`'s own width, so
+ *  its type is large enough to read from across the desk, and its rows the ones its screen
+ *  holds at that type; and a phone's, where the terminal stands alone under the app. */
+const DISPLAY_COLS = 80
 export const SCREENS_AT = {
   display: { cols: DISPLAY_COLS, rows: screenRows(DISPLAY_COLS, DISPLAY.width, DISPLAY.height, BAR_EM) },
   phone: { cols: 80, rows: 44 },

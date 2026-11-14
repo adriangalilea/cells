@@ -1,6 +1,6 @@
 "use client"
 
-// THE HERO'S TERMINAL: `cells chart spending.cells 1 4 --watch` typed at the prompt, then
+// THE HERO'S TERMINAL: `cells chart spending.cells 1 --watch` typed at the prompt, then
 // the screen the real program drew for the file as it stands, at the terminal's size
 // (lib/hero-screens, `pnpm charts`). ui's terminal window with the screen as its program
 // (`children`): each cell of the program's screen in its place, a glyph the page's mono
@@ -123,7 +123,7 @@ export function ChartTerminal({
   return (
     <div className={`[container-type:inline-size] ${className ?? ""}`} style={style}>
       <Terminal
-        alt={`A terminal running ${WATCH_COMMAND}: spending by category and spent against budget, by month, drawn again each time the file changes.`}
+        alt={`A terminal running ${WATCH_COMMAND}: spending by category, by month, drawn again each time the file changes.`}
         accent={accent}
         size={`calc(100cqw / ${wideOf(size.cols)})`}
         className="h-full"
