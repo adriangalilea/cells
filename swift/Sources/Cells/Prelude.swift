@@ -12,8 +12,10 @@ extension Cells {
             /// `type Money = EUR>=0`: the type as written after its `=`.
             case type(name: String, spelled: String)
             /// `import accounts from "accounts.cells"` (`name`), or `import { Kind, rates }
-            /// from "…"` (`names`); its `sha256` when pinned.
-            case `import`(name: String?, names: [String], from: String, sha256: String?)
+            /// from "…"` (`names`); its `sha256` when pinned; `autoPacked` when it keeps its
+            /// copy written, `with { pack: "auto" }`.
+            case `import`(
+                name: String?, names: [String], from: String, sha256: String?, autoPacked: Bool)
             /// `fees = ```cells`: a table written inline, its rows as written.
             case table(name: String, rows: String)
             /// `rates = run every day at 18:00 in Europe/Madrid`: its schedule as written, its
@@ -68,7 +70,7 @@ extension Cells {
         public var name: String? {
             switch kind {
             case .type(let n, _), .table(let n, _), .run(let n, _, _, _, _), .column(let n, _): n
-            case .import(let n, _, _, _): n
+            case .import(let n, _, _, _, _): n
             case .chart(let n, _, _): n
             case .look, .packed: nil
             }
@@ -81,7 +83,7 @@ extension Cells {
         }
     }
 
-    /// Which packed copies a text holds (`Document.packed`).
+    /// Which packed copies a text holds (`PreludeEdit.pack`).
     public enum Pack: Sendable, Equatable {
         /// Every import's whose source is reached: `cells pack`, a self-contained copy.
         case all
@@ -89,6 +91,9 @@ extension Cells {
         case auto
         /// None: every copy taken out.
         case remove
+        /// Only this import's, where its source is reached: one import packed in place,
+        /// every other copy as it is.
+        case `import`(Statement)
     }
 
     /// A one-line statement, written by the engine as a writer writes it.
@@ -113,6 +118,13 @@ extension Cells {
         case replace(Range<Int>, with: String)
         /// `text` written after the last statement, a prelude opened for it if none is.
         case add(String)
+        /// The imports' copies written as the engine packs them (SPEC.md, Packed imports):
+        /// `cells pack` for `.all`, the self-contained file `cells pack --out` writes. A
+        /// copy of a source not reached is kept as it is.
+        case pack(Pack)
+        /// An import keeping its copy written (`with { pack: "auto" }` on it, its copy
+        /// written fresh) or no longer (the attribute taken out, the copy left as it is).
+        case keepPacked(Statement, Bool)
 
         /// The statement taken out.
         public static func remove(_ s: Statement) -> PreludeEdit { .replace(s.lines, with: "") }
@@ -129,12 +141,24 @@ extension Cells.Document {
     public func text(_ edit: Cells.PreludeEdit) -> String {
         precondition(typed, "Cells: a plain file has no prelude")
         // the engine's lines are 1-based inside the fences, 0 for "after the last"
-        let (from, to, text): (UInt32, UInt32, String) =
-            switch edit {
-            case .replace(let lines, let text):
-                (UInt32(lines.lowerBound + 1), UInt32(lines.upperBound + 1), text)
-            case .add(let text): (0, 0, text)
-            }
+        let (from, to, text): (UInt32, UInt32, String)
+        switch edit {
+        case .replace(let lines, let t):
+            (from, to, text) = (UInt32(lines.lowerBound + 1), UInt32(lines.upperBound + 1), t)
+        case .add(let t): (from, to, text) = (0, 0, t)
+        case .pack(let how):
+            let (pack, statement) =
+                switch how {
+                case .all: (CellsPackAll, 0)
+                case .auto: (CellsPackAuto, 0)
+                case .remove: (CellsPackRemove, 0)
+                case .import(let s): (CellsPackImport, Self.imported(s))
+                }
+            return engine.with { d in string(cells_packed(d, pack, statement)) }!
+        case .keepPacked(let s, let keep):
+            let i = Self.imported(s)
+            return engine.with { d in string(cells_packing_kept(d, i, keep)) }!
+        }
         precondition(!text.contains("\r"), "Cells: a prelude edit's lines are joined by \\n")
         return engine.with { d in
             lending([text]) { s in
@@ -143,19 +167,10 @@ extension Cells.Document {
         }!
     }
 
-    /// The file's text with its imports packed as `how` says, the engine's one call for it
-    /// (`cells pack`, `--out` for `.all`): each import's whose source is reached written
-    /// into the prelude as a packed copy, so the text reads whole where its imports cannot
-    /// be reached. A copy of a source not reached is kept as it is.
-    public func packed(_ how: Cells.Pack) -> String {
-        precondition(typed, "Cells: a plain file has no prelude")
-        let pack =
-            switch how {
-            case .all: CellsPackAll
-            case .auto: CellsPackAuto
-            case .remove: CellsPackRemove
-            }
-        return engine.with { d in string(cells_packed(d, pack)) }!
+    /// An import's place among the statements, for the engine's calls on it.
+    private static func imported(_ s: Cells.Statement) -> Int {
+        guard case .import = s.kind else { preconditionFailure("Cells: \(s.kind) is no import") }
+        return s.id
     }
 
     /// A one-line statement as the engine writes it.
@@ -193,7 +208,8 @@ extension Engine {
                         name: s.words == 0 ? part(CellsStatementName) : nil,
                         names: (0..<s.words).map { part(CellsStatementWord, $0) },
                         from: part(CellsStatementFrom),
-                        sha256: { $0.isEmpty ? nil : $0 }(part(CellsStatementHash)))
+                        sha256: { $0.isEmpty ? nil : $0 }(part(CellsStatementHash)),
+                        autoPacked: part(CellsStatementPack) == "auto")
                 case CellsStatementTable:
                     .table(name: part(CellsStatementName), rows: part(CellsStatementRows))
                 case CellsStatementRun:
@@ -216,7 +232,8 @@ extension Engine {
                             name: part(CellsStatementName), copied: copied,
                             from: part(CellsStatementFrom),
                             packing: Cells.Statement.Packing(rawValue: part(CellsStatementPacking)),
-                            copy: part(copied == .table ? CellsStatementRows : CellsStatementSpelled))
+                            copy: part(
+                                copied == .table ? CellsStatementRows : CellsStatementSpelled))
                     }()
                 default:
                     preconditionFailure(

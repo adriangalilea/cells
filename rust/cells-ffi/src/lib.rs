@@ -432,23 +432,41 @@ pub enum CellsPack {
     CellsPackAuto = 1,
     /// None: every copy taken out.
     CellsPackRemove = 2,
+    /// Only those of the import that is statement `statement`: one import packed in place.
+    CellsPackImport = 3,
 }
 
 /// The doc's text with its imports packed as `how` says (`cells::Doc::packed`, SPEC.md,
-/// Packed imports): the one call `cells pack` and an app's self-contained copy make. A copy
-/// of a source not reached is kept as it is.
+/// Packed imports): the one call `cells pack`, an app's packing and a self-contained copy
+/// make. `statement` is the import's for `CellsPackImport`, unread otherwise. A copy of a
+/// source not reached is kept as it is.
 ///
 /// # Safety
-/// `d` is a live doc.
+/// `d` is a live Cells doc; for `CellsPackImport`, `statement` is one of its imports.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn cells_packed(d: *mut CellsDoc, how: CellsPack) -> CellsStr {
+pub unsafe extern "C" fn cells_packed(d: *mut CellsDoc, how: CellsPack, statement: usize) -> CellsStr {
     // SAFETY: the caller's promise.
     let d = unsafe { doc(d) };
     d.out = d.doc.packed(match how {
         CellsPack::CellsPackAll => cells::Pack::All,
         CellsPack::CellsPackAuto => cells::Pack::Auto,
         CellsPack::CellsPackRemove => cells::Pack::Remove,
+        CellsPack::CellsPackImport => cells::Pack::Import(statement),
     });
+    CellsStr::of(&d.out)
+}
+
+/// The doc's text with the import that is statement `statement` keeping its copy written
+/// (`keep`: `with { pack: "auto" }` on it, its copy written fresh) or no longer (the
+/// attribute taken out, the copy left as it is): `cells::Doc::packing_kept`.
+///
+/// # Safety
+/// `d` is a live Cells doc; `statement` is one of its imports.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn cells_packing_kept(d: *mut CellsDoc, statement: usize, keep: bool) -> CellsStr {
+    // SAFETY: the caller's promise.
+    let d = unsafe { doc(d) };
+    d.out = d.doc.packing_kept(statement, keep);
     CellsStr::of(&d.out)
 }
 
@@ -1490,6 +1508,8 @@ pub enum CellsStatementPart {
     /// holds another), `standing` (read in place of a source not reached); empty for a
     /// copy that does not read.
     CellsStatementPacking = 11,
+    /// An import's `pack`: `auto` when its copy is kept written, empty otherwise.
+    CellsStatementPack = 12,
 }
 
 /// How many statements the prelude holds that read.
@@ -1571,6 +1591,9 @@ pub unsafe extern "C" fn cells_statement_part(d: *mut CellsDoc, i: usize, part: 
         (P::CellsStatementWord, S::Import { names, .. }) => names[word].clone(),
         (P::CellsStatementHash, S::Import { with, .. }) => {
             with.iter().find(|(k, _)| k == "sha256").map(|(_, v)| v.clone()).unwrap_or_default()
+        }
+        (P::CellsStatementPack, S::Import { with, .. }) => {
+            with.iter().find(|(k, _)| k == "pack").map(|(_, v)| v.clone()).unwrap_or_default()
         }
         (P::CellsStatementSchedule, S::Run { schedule, .. }) => schedule.spelled.clone(),
         (P::CellsStatementLanguage, S::Run { code, .. }) => code.lang.clone(),

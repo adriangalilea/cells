@@ -320,6 +320,9 @@ pub enum Pack {
     Auto,
     /// None: every copy taken out (`cells pack --remove`).
     Remove,
+    /// Only those of the import that is statement `i`, where its source is reached: one
+    /// import packed in place, every other copy as it is.
+    Import(usize),
 }
 
 /// A table a script fills (`name = run …`): its schedule, its code, and where the
@@ -1831,6 +1834,7 @@ impl Doc {
                 Pack::All => source,
                 Pack::Auto => source.filter(|_| auto),
                 Pack::Remove => None,
+                Pack::Import(k) => source.filter(|_| k == i),
             };
             if fresh.is_none() && how != Pack::Remove {
                 continue;
@@ -1892,6 +1896,30 @@ impl Doc {
         // once; past what a reader reads, it screams rather than writing a file nobody opens
         assert!(out.len() < u32::MAX as usize, "packing its imports takes this file past 4 GiB, the most a reader reads");
         out
+    }
+
+    /// The file's text with the import that is statement `i` keeping its copy written
+    /// (`keep`: `pack: "auto"` on it, its copies written fresh as every write writes them
+    /// while its source is reached) or no longer (the attribute taken out, its copies left
+    /// as they are, for `cells pack` to refresh). Its other attributes and a comment after it
+    /// as written, every other byte as `write` gives it.
+    pub fn packing_kept(&self, i: usize, keep: bool) -> String {
+        assert!(matches!(self.dialect, Dialect::Cells), "a plain file has no imports");
+        let Statement::Import { line, default, names, from, with } = &self.statements[i] else {
+            panic!("statement {i} is no import: {:?}", self.statements[i])
+        };
+        let mut with: Vec<(String, String)> = with.iter().filter(|(k, _)| k != "pack").cloned().collect();
+        if keep {
+            with.push(("pack".to_owned(), "auto".to_owned()));
+        }
+        // packing writes below its import alone, so the import's line stands where it stood
+        let text = if keep { self.packed(Pack::Import(i)) } else { self.write() };
+        let (a, b) = prelude_line(&text, *line);
+        let content = &text[a..b - ending(&text[a..b]).len()];
+        let said = prelude::uncomment(content).trim_end();
+        let lead = &said[..said.len() - said.trim_start().len()];
+        let written = prelude::import_line(default.as_deref(), names, from, &with);
+        format!("{}{lead}{written}{}", &text[..a], &text[a + said.len()..])
     }
 
     /// The scripts that fill tables, in the prelude's order.

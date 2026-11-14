@@ -1,8 +1,8 @@
 //! `cells pack`: every import of a file written into its prelude as a packed copy, so the
 //! file reads whole where its imports cannot be reached (SPEC.md, Packed imports): in place,
 //! or as a self-contained copy elsewhere (`--out`), or every copy taken out (`--remove`).
-//! The text is the engine's (`Doc::packed`), the same call Cells.app's Self-contained Copy
-//! makes.
+//! The text is the engine's (`Doc::packed`), the same call Cells.app's Pack Imports and its
+//! self-contained export make.
 
 use std::fs;
 use std::path::Path;

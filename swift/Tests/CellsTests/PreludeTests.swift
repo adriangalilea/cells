@@ -69,7 +69,9 @@ let money = """
     #expect(added.statements.count == 4)
     #expect(
         added.statements[3].kind
-            == .import(name: "accounts", names: [], from: "accounts.cells", sha256: nil))
+            == .import(
+                name: "accounts", names: [], from: "accounts.cells", sha256: nil, autoPacked: false)
+    )
     let removed = Cells.Document(reading: added.text(.remove(added.statements[1])))
     #expect(removed.statements.map(\.name) == ["Money", "vat", "accounts"])
     let retyped = Cells.Document(
@@ -87,10 +89,13 @@ let money = """
     let money = "---\nimport accounts from \"accounts.cells\"\n---\nto:accounts.account\ncoffee\n"
     let doc = Cells.Document(
         reading: money, at: "money.cells", files: ["accounts.cells": "account:text!\ncoffee\n"])
-    let packed = doc.packed(.all)
+    let packed = doc.text(.pack(.all))
     #expect(packed.contains("packed accounts = ```cells\naccount: text!\ncoffee\n```\n"))
+    #expect(doc.text(.pack(.import(doc.statements[0]))) == packed)
     let alone = Cells.Document(reading: packed)
-    guard case .packed(let name, let copied, let from, let packing, let copy) = alone.statements[1].kind
+    guard
+        case .packed(let name, let copied, let from, let packing, let copy) = alone.statements[1]
+            .kind
     else {
         Issue.record("no packed statement: \(alone.statements)")
         return
@@ -98,5 +103,26 @@ let money = """
     #expect(name == "accounts" && copied == .table && from == "accounts.cells")
     #expect(packing == .standing && copy == "account: text!\ncoffee\n")
     #expect(alone.statements[1].isCopy && alone.problems.isEmpty)
-    #expect(alone.packed(.remove) == money)
+    #expect(alone.text(.pack(.remove)) == money)
+}
+
+@Test func anImportKeepsItsCopyWhenAsked() throws {
+    let money = "---\nimport accounts from \"accounts.cells\"\n---\nto:accounts.account\ncoffee\n"
+    let files = ["accounts.cells": "account:text!\ncoffee\n"]
+    let doc = Cells.Document(reading: money, at: "money.cells", files: files)
+    let kept = Cells.Document(
+        reading: doc.text(.keepPacked(doc.statements[0], true)), at: "money.cells", files: files)
+    guard case .import(_, _, _, _, let auto) = kept.statements[0].kind,
+        case .packed(_, _, _, let packing, _) = kept.statements[1].kind
+    else {
+        Issue.record("no import kept packed: \(kept.statements)")
+        return
+    }
+    #expect(auto && packing == .current)
+    #expect(
+        kept.text.hasPrefix(
+            "---\nimport accounts from \"accounts.cells\" with { pack: \"auto\" }\n"))
+    let released = Cells.Document(reading: kept.text(.keepPacked(kept.statements[0], false)))
+    #expect(
+        released.text == kept.text.replacingOccurrences(of: " with { pack: \"auto\" }", with: ""))
 }

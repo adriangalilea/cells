@@ -296,4 +296,46 @@ mod tests {
         assert!(packed.contains("packed accounts = ```cells"));
         assert!(!packed.contains("packed type Money"));
     }
+
+    #[test]
+    fn one_import_packs_alone_and_keeps_its_copy_when_asked() {
+        use crate::{Pack, Packing};
+        let files = books();
+        let doc = read_with(SPENT, &mut at(&files), 1).unwrap();
+        let all = doc.packed(Pack::All);
+        // the second import alone: the first has no copy, the second the one `cells pack` writes
+        let second = doc.packed(Pack::Import(1));
+        assert!(!second.contains("packed accounts") && second.contains("packed fees = ```cells"), "{second}");
+        assert_eq!(read_with(second.as_str(), &mut at(&files), 1).unwrap().packed(Pack::All), all);
+        // a stale copy packed again, the other one left stale as it is
+        let mut moved = files.clone();
+        moved.insert("books/accounts.cells".to_owned(), files["books/accounts.cells"].replace("1000", "1200"));
+        moved.insert("books/rates.cells".to_owned(), files["books/rates.cells"].replace("cost,1.5", "cost,2.5"));
+        let stale = read_with(all.as_str(), &mut at(&moved), 1).unwrap();
+        assert!(stale.copies().iter().any(|c| c.packing == Packing::Stale && c.name == "accounts"));
+        let fresh = read_with(stale.packed(Pack::Import(0)).as_str(), &mut at(&moved), 1).unwrap();
+        let packing = |name: &str| fresh.copies().iter().find(|c| c.name == name).unwrap().packing;
+        assert_eq!((packing("accounts"), packing("fees")), (Packing::Current, Packing::Stale));
+        // kept: `pack: "auto"` on the import, a comment after it kept, its copy written at once
+        let commented = SPENT.replace("\"../accounts.cells\"\n", "\"../accounts.cells\" // the books\n");
+        let doc = read_with(commented.as_str(), &mut at(&files), 1).unwrap();
+        let kept = doc.packing_kept(0, true);
+        assert!(
+            kept.starts_with(
+                "---\nimport accounts from \"../accounts.cells\" with { pack: \"auto\" } // the books\npacked accounts = ```cells\n"
+            ),
+            "{kept}"
+        );
+        assert!(!kept.contains("packed fees"), "only the import asked for is packed");
+        let again = read_with(kept.as_str(), &mut at(&files), 1).unwrap();
+        assert!(again.broken().is_empty(), "{:?}", again.broken());
+        assert_eq!(again.packed(Pack::Auto), kept, "kept is what every write writes");
+        assert_eq!(again.packing_kept(0, true), kept);
+        // no longer kept: the attribute out, a pin beside it and the copy left as they are
+        let released = again.packing_kept(0, false);
+        assert_eq!(released, kept.replace(" with { pack: \"auto\" }", ""));
+        let pinned = kept.replace("with { pack: \"auto\" }", "with { rev: \"a1b2\", pack: \"auto\" }");
+        let pinned = crate::read(pinned.as_str()).unwrap();
+        assert!(pinned.packing_kept(0, false).contains("\"../accounts.cells\" with { rev: \"a1b2\" } // the books\n"));
+    }
 }
