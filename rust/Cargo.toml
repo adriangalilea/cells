@@ -9,6 +9,15 @@ license = "MIT"
 repository = "https://github.com/adriangalilea/cells"
 rust-version = "1.89"
 
+# A development build: a panic names its file and line, which is all the debug info is
+# read for. Full debug info cost 9 GB of target/ on a Mac, where it stays in every object
+# file beside its binary (unpacked), and most of it was DuckDB's C++ compiled with it.
+[profile.dev]
+debug = "line-tables-only"
+
+[profile.dev.package."*"]
+debug = false
+
 [profile.release]
 codegen-units = 1
 lto = "fat"
