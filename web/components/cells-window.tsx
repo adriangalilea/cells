@@ -7,7 +7,8 @@
 import * as React from "react"
 import { AppWindow } from "@/components/ui/app-window"
 import { Table, type TableColumn, type TableFace, type TableProblem } from "@/components/ui/table"
-import type { Tinted } from "@/lib/engine/cells.ts"
+import { ChartView } from "@/components/chart-view"
+import type { ChartSummary, Tinted } from "@/lib/engine/cells.ts"
 
 /** A tint as a CSS colour: one of the ten names in the tokens' colour for it, a `#rrggbb`
  *  as the file gives it, a scale's point mixed between its two ends. */
@@ -99,6 +100,7 @@ export function CellsTable({
   label,
   light,
   scene,
+  end = false,
   className,
 }: {
   name: string
@@ -109,6 +111,9 @@ export function CellsTable({
   /** A hand in the window (ui's table-session `sceneOf`): its cursor, a data row and a
    *  column by name, and what it is typing. */
   scene?: CellsScene | null
+  /** The table scrolled to its last row, kept there as rows come and go: where a file
+   *  that grows at its end is read. */
+  end?: boolean
   className?: string
 }) {
   const read = useRead(name, text, others)
@@ -121,6 +126,20 @@ export function CellsTable({
   )
   const at = scene?.cursor ? read.columns.findIndex((c) => c.name === scene.cursor?.column) : -1
   if (scene?.cursor && at < 0) throw new Error(`cells-window: no column ${scene.cursor.column} for the hand`)
+  const root = React.useRef<HTMLDivElement>(null)
+  // At the end: the last row in sight whenever the rows change, and as the box changes size.
+  React.useLayoutEffect(() => {
+    if (!end) return
+    const scroller = root.current?.querySelector<HTMLElement>("[data-slot=table-scroller]")
+    if (!scroller) throw new Error("cells-window: the table has no scroller to keep at its end")
+    const follow = () => {
+      scroller.scrollTop = scroller.scrollHeight
+    }
+    follow()
+    const observer = new ResizeObserver(follow)
+    observer.observe(scroller)
+    return () => observer.disconnect()
+  }, [end, rows.length])
   const tableScene = scene ? { cursor: scene.cursor ? { row: String(scene.cursor.row), column: String(at) } : null, draft: scene.draft } : undefined
   // The engine's looks: a cell's words in place of its text, its tint a colour.
   const face = React.useCallback(
@@ -173,7 +192,6 @@ export function CellsTable({
   const marked = light?.row !== undefined && problems.has(`${light.row}:${k}`)
   const lit = light && !marked ? { column: String(k), row: light.row === undefined ? undefined : String(light.row) } : undefined
   // The lit column kept in sight when the table is wider than its box.
-  const root = React.useRef<HTMLDivElement>(null)
   React.useLayoutEffect(() => {
     if (lit) revealX(root.current?.querySelector<HTMLElement>(`[data-slot=table-cell][data-column="${lit.column}"]`) ?? null)
   }, [lit?.column, lit?.row, lit])
@@ -213,6 +231,23 @@ export function FileName({ name }: { name: string }) {
   )
 }
 
+const NO_CHARTS: readonly number[] = []
+
+/** The summaries of the file's charts numbered `charts` (1, the first it declares), as
+ *  the file stands; none asked, none. A number the file has no chart for screams. */
+function useSummaries(name: string, text: string, others: { name: string; text: string }[], charts: readonly number[] = NO_CHARTS): ChartSummary[] {
+  const engine = useEngine()
+  return React.useMemo(() => {
+    if (!charts.length) return []
+    const r = engine.read(text, { at: name, files: Object.fromEntries(others.map((o) => [o.name, o.text])) })
+    try {
+      return charts.map((n) => r.doc.summary(n - 1))
+    } finally {
+      r.doc.free()
+    }
+  }, [engine, name, text, others, charts])
+}
+
 /** The app's window: a title bar with the file's name, the table under it, and a strip of
  *  a fixed height at its foot with the file's problems (their count and the engine's own
  *  words), so a problem appearing or going never moves anything. */
@@ -223,12 +258,19 @@ export function CellsWindow({
   light,
   scene,
   prelude = true,
+  end = false,
+  charts,
   className,
 }: {
   name: string
   text: string
   /** Its prelude's panel along its foot, as the app opens it; false, the table alone. */
   prelude?: boolean
+  /** The table kept at its last row (`CellsTable`'s `end`). */
+  end?: boolean
+  /** The app's chart view beside the table, these of the file's charts (1, the first it
+   *  declares), one above the other, each drawn from the engine's summary as it stands. */
+  charts?: readonly number[]
   /** The files it imports, as they stand. */
   others?: { name: string; text: string }[]
   /** A column or a cell lit, the rest dimmed. */
@@ -238,6 +280,7 @@ export function CellsWindow({
   className?: string
 }) {
   const now = useRead(name, text, others)
+  const summaries = useSummaries(name, text, others, charts)
   // A break in the grammar first (it names its column), then the cells' problems.
   const said = [...now.broken.map((b) => b.why), ...now.problems.map((p) => p.why)]
   // The count in the tone of the worst: a break or a wrong value, else only what is absent.
@@ -254,9 +297,18 @@ export function CellsWindow({
       className={cn("rounded-[10px] [--ag-table-ground:var(--ag-app-window-ground)]", className)}
     >
       <div className="flex h-full flex-col">
-        <div className="min-h-0 flex-1 overflow-hidden">
-          {/* The table's own type size: its columns are counted in its characters. */}
-          <CellsTable name={name} text={text} others={others} label={name} light={light} scene={scene} className="h-full text-[11px]" />
+        <div className="flex min-h-0 flex-1">
+          <div className="min-h-0 min-w-0 flex-1 overflow-hidden">
+            {/* The table's own type size: its columns are counted in its characters. */}
+            <CellsTable name={name} text={text} others={others} label={name} light={light} scene={scene} end={end} className="h-full text-[11px]" />
+          </div>
+          {summaries.length > 0 && (
+            <div data-slot="cells-window-charts" aria-label="charts" className="flex w-[52%] shrink-0 flex-col justify-around gap-2 border-l border-white/8 px-4 py-3">
+              {summaries.map((s, i) => (
+                <ChartView key={i} summary={s} className="min-h-0 w-full" />
+              ))}
+            </div>
+          )}
         </div>
         {prelude && <Prelude text={text} />}
         <div
