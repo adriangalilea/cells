@@ -2,13 +2,12 @@
 
 // A CHART AS THE APP'S CHART VIEW DRAWS IT, from the engine's summary of it (the wasm's
 // `doc.summary`, the one `cells chart` and Cells.app draw from): its title, its legend
-// (each series named in its shade with its kind's mark), its scale (lib/chart-scale, the
-// engine's rule), gridlines at each step, its marks (stacked bars, a line, layers on one
+// (each series named in its shade with its kind's mark), its scale (the summary's, the
+// one every view draws), gridlines at each step, its marks (stacked bars, a line, layers on one
 // plot) and its places named under them. An SVG on the window's dark ground, sized by
 // its box.
 
 import { CELLS_COLUMNS } from "@/lib/cells-code"
-import { chartScale } from "@/lib/chart-scale"
 import type { ChartSummary, Shade } from "@/lib/engine/cells.ts"
 
 /** A series' shade as the dark window draws it: a tint in the tokens' colour, a hex as
@@ -39,8 +38,9 @@ const PLOT = { top: 52, bottom: H - 22, left: 44, right: W - 8 }
 export function ChartView({ summary, className }: { summary: ChartSummary; className?: string }) {
   const parts = summary.layers.length ? summary.layers : [summary]
   const places = parts[0]?.places ?? []
-  const { lo, hi, step } = chartScale(summary)
-  const y = (v: number) => PLOT.bottom - ((v - lo) / (hi - lo || 1)) * (PLOT.bottom - PLOT.top)
+  if (!summary.scale) throw new Error(`chart view: ${summary.title} is a ${summary.kind} drawn alone, on no scale`)
+  const { lo, hi, step } = summary.scale
+  const y = (v: number) => PLOT.bottom - ((v - lo) / (hi - lo)) * (PLOT.bottom - PLOT.top)
   const band = (PLOT.right - PLOT.left) / Math.max(1, places.length)
   const mid = (i: number) => PLOT.left + band * (i + 0.5)
   const ticks: number[] = []

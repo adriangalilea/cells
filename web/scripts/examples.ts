@@ -6,7 +6,6 @@
 
 import { createHash } from "node:crypto"
 import { readFiles as readWith } from "@/lib/view"
-import { chartScale } from "@/lib/chart-scale"
 import { hero, SPENDING_PATH, SPENDING_SHOWN, SPENDING_TEXT, WATCHED_CHARTS } from "@/lib/hero"
 import { SCREENS } from "@/lib/hero-screens"
 import { loadEngine } from "@/lib/engine-module"
@@ -105,7 +104,12 @@ for (const act of STORY) {
       if (r.broken.length) fail("hero", r.broken.map((b) => b.why).join("; "))
       const charts = r.doc.charts()
       if (JSON.stringify(charts.map((c) => c.title)) !== JSON.stringify(titles)) fail("hero", `the file declares ${JSON.stringify(charts.map((c) => c.title))}`)
-      return { problems: r.problems.map((p) => p.why), scales: WATCHED_CHARTS.map((n) => chartScale(r.doc.summary(n - 1))) }
+      return { problems: r.problems.map((p) => p.why), scales: WATCHED_CHARTS.map((n) => {
+          const s = r.doc.summary(n - 1).scale
+          if (!s) throw new Error(`hero: chart ${n} is drawn on no scale`)
+          return s
+        }),
+      }
     } finally {
       r.doc.free()
     }
@@ -140,6 +144,12 @@ for (const act of STORY) {
       fail("hero", `the ${at} terminal's frames were drawn from other texts than the hero writes: pnpm charts`)
     const firstAxis = axis((size.frames[0] as (typeof size.frames)[number]).rows)
     if (firstAxis.length < 4) fail("hero", `the ${at} terminal's first frame shows no scale`)
+    // the terminal labels the engine's steps, the app's, never steps of its own: each
+    // label a step of a chart's scale, and every scale's ends labelled
+    const labelled = firstAxis.flatMap((l) => /^\d+: (\d+)/.exec(l)?.[1] ?? []).map(Number)
+    const onScale = (v: number) => first.scales.some((s) => v >= s.lo && v <= s.hi && Number.isInteger((v - s.lo) / s.step))
+    if (!labelled.every(onScale)) fail("hero", `the ${at} terminal labels ${labelled.join(", ")}, not all steps of ${first.scales.map((s) => `${s.lo}..${s.hi} by ${s.step}`).join(", ")}`)
+    if (!first.scales.every((s) => labelled.includes(s.lo) && labelled.includes(s.hi))) fail("hero", `the ${at} terminal's scale is not the engine's: ${labelled.join(", ")}`)
     for (const [k, f] of size.frames.entries())
       if (JSON.stringify(axis(f.rows)) !== JSON.stringify(firstAxis)) fail("hero", `the ${at} terminal's frame ${k + 1} moves a scale`)
   }

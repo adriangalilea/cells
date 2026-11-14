@@ -4,13 +4,15 @@
 // and length inside the cell's text, `span`): that span is used and the cell's edges only
 // place it. Framework-free.
 
+import type { Severity } from "@/lib/engine/cells.ts"
+
 export interface ProblemAt {
   row: number
   at: number
   /** The column's name: a message on its own line says which cell it is about. */
   column: string
   reason: string
-  severity: "error" | "warning"
+  severity: Severity
   /** The characters that broke, inside the cell's text, when the engine says them. */
   span?: { start: number; length: number }
 }
@@ -22,7 +24,7 @@ export interface Placed {
   to: number
   message: string
   /** What it weighs, the engine's: a break of the grammar is always an error. */
-  severity: "error" | "warning"
+  severity: Severity
 }
 
 /** The fence a prelude line opens, its backticks; `null` when it opens none. */

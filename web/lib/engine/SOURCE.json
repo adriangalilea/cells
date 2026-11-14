@@ -1,8 +1,8 @@
 {
-  "copied": "2026-11-14T02:12:48.453Z",
+  "copied": "2026-11-14T03:24:04.453Z",
   "files": {
-    "lib/engine/cells.ts": "rust/cells-wasm/js/cells.ts sha256:e2956b30371e2450",
-    "public/cells.wasm": "rust/cells-wasm/js/cells.wasm sha256:c67b0e9fe404fd28",
-    "lib/engine/cells.tmLanguage.json": "syntaxes/cells.tmLanguage.json sha256:ff0f20ddedf583ff"
+    "lib/engine/cells.ts": "rust/cells-wasm/js/cells.ts sha256:ad41ad609ae3014f",
+    "public/cells.wasm": "rust/cells-wasm/js/cells.wasm sha256:358ca39a74d66183",
+    "lib/engine/cells.tmLanguage.json": "syntaxes/cells.tmLanguage.json sha256:bf5a47ae68aebb8b"
   }
 }

@@ -152,7 +152,8 @@ export function CellsTable({
   )
   const problems = React.useMemo(() => {
     const m = new Map<string, TableProblem>()
-    for (const p of read.problems) m.set(`${p.row}:${p.at}`, { why: p.reason, severity: p.severity })
+    // a note leaves its cell clean, as the app's table does: it is said, never marked
+    for (const p of read.problems) if (p.severity !== "note") m.set(`${p.row}:${p.at}`, { why: p.reason, severity: p.severity })
     return m
   }, [read])
   const columns = React.useMemo<TableColumn<Row>[]>(

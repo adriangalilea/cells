@@ -188,6 +188,13 @@ export type ChartKind = "bars" | "line" | "area" | "steps" | "points" | "heat" |
  *  its number, the reader's palette in turn), or the quiet gray of `other` and the blank. */
 export type Shade = { tint: string } | { hex: string } | { column: number } | { quiet: true }
 
+/** A chart's scale: its ends, whole steps, and its step, 1, 2 or 5 times a power of ten. */
+export interface ChartScale {
+  lo: number
+  hi: number
+  step: number
+}
+
 /** What a chart draws, read from the rows as they are now: its places along its axis, its
  *  series and each one's shade, each place's value of each series as an exact decimal. */
 export interface ChartSummary {
@@ -203,6 +210,9 @@ export interface ChartSummary {
   values: (string | null)[][]
   /** The measure's currency, when it is money. */
   unit: string | null
+  /** What its values are drawn on, the same in every view: `lo` to `hi` in whole steps of
+   *  `step`, every layer's; null for a figure or a heat drawn alone (SPEC.md, Charts). */
+  scale: ChartScale | null
   /** Rows `where` held for that had no place or no value, of the rows read. */
   skipped: number
   rows: number
@@ -438,12 +448,14 @@ export interface Problem {
   /** `ragged`: a row longer than its header (in a plain file, shorter too); `formula`: a cell's
    *  own formula that does not compute; `reference`: a key no table it names holds, or
    *  two do; `stale`: a computed cell storing another value than its formula gives (its
-   *  value the formula's; `fixStale` or `keepStale` resolve it). */
-  kind: "type" | "missing" | "key" | "ragged" | "formula" | "reference" | "stale"
+   *  value the formula's; `fixStale` or `keepStale` resolve it); `unreached`: a computed
+   *  cell whose formula reads an import not reached, its stored value standing. */
+  kind: "type" | "missing" | "key" | "ragged" | "formula" | "reference" | "stale" | "unreached"
   /** How much it weighs, the same in every reader (`Kind::severity`): `error`, a value
    *  that is wrong (its type broken, a key repeated, a reference to no row, a formula
    *  that does not compute); `warning`, something absent or behind (a value not written,
-   *  a stale value, a ragged row). */
+   *  a stale value, a ragged row); `note`, nothing wrong (a stored value standing for an
+   *  import not reached). */
   severity: Severity
   /** The cell's text as written. */
   readonly text: string
@@ -458,9 +470,11 @@ export interface Problem {
   readonly span: Span
 }
 
-/** What a problem weighs: what is wrong, or what is not there yet. A break of the grammar
- *  is always an error. */
-export type Severity = "error" | "warning"
+/** What a problem weighs: what is wrong, what is not there yet, or a note of what this
+ *  reader cannot reach. A break of the grammar is always an error. */
+export type Severity = "error" | "warning" | "note"
+
+const SEVERITIES = ["error", "warning", "note"] as const
 
 /** Where a file's grammar breaks, the rest read. */
 export interface Broken {
@@ -485,7 +499,7 @@ export interface Naming {
   readonly reason: string
 }
 
-const KINDS = ["type", "missing", "key", "ragged", "formula", "reference", "stale"] as const
+const KINDS = ["type", "missing", "key", "ragged", "formula", "reference", "stale", "unreached"] as const
 const live = new FinalizationRegistry<number>((h) => x.cells_drop(h))
 
 /** A file read, held by the module. */
@@ -621,7 +635,7 @@ export class Doc {
         at,
         column: (this.columns[at] as Column).name,
         kind: KINDS[p[4 * k + 2] as number] as Problem["kind"],
-        severity: p[4 * k + 3] === 1 ? "warning" : "error",
+        severity: SEVERITIES[p[4 * k + 3] as number] as Severity,
         get text() {
           return (doc.columns[at] as Column).text(row)
         },

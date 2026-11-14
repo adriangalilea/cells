@@ -25,7 +25,8 @@ export function cellsDiagnose(engine: Engine): CodeDiagnose {
     return [...placeBroken(text, read.broken), ...placeProblems(text, read.problems)].map((p) => ({
       from: at(p.line, p.from),
       to: at(p.line, p.to),
-      severity: p.severity,
+      // a note is information, as `cells lsp` says it
+      severity: p.severity === "note" ? ("info" as const) : p.severity,
       message: p.message,
       source: "cells",
     }))
