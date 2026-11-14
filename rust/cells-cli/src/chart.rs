@@ -257,8 +257,14 @@ pub fn run(args: &[String]) -> Result<(), String> {
         let area = Rect::new(0, 0, width, height);
         let mut buf = Buffer::empty(area);
         let mut borders = Borders::new(area);
-        let card =
-            draw(s, area, &mut buf, &mut borders, asked.tier, Foot { said: vec![Span::raw(format!(" {} ", counted(s)))], keys: None });
+        let card = draw(
+            s,
+            area,
+            &mut buf,
+            &mut borders,
+            asked.tier,
+            Foot { said: vec![Span::raw(format!(" {} ", counted(s)))], keys: Vec::new() },
+        );
         buf.resize(Rect::new(0, 0, width, card.height));
         print(&buf, &borders, asked.tier, &mut out).map_err(|e| e.to_string())?;
     }
@@ -274,9 +280,9 @@ fn terminal_width() -> u16 {
 }
 
 /// The charts held on the alternate screen, drawn again when the file changes or the
-/// terminal is resized, a status line along the foot: the file, how long ago it was read,
-/// the rows charted, and the keys. `q`, Esc or Ctrl+C leaves; a file that does not read
-/// keeps the charts it last drew, why in the status line.
+/// terminal is resized, the last card's foot saying the file, how long ago it was read and
+/// the rows charted, and apart from them the keys. `q`, Esc or Ctrl+C leaves; a file that
+/// does not read keeps the charts it last drew, why in the foot.
 fn watch(asked: &Asked, summaries: &dyn Fn(&Path) -> Result<(Vec<(String, Kind)>, Vec<Summary>), String>) -> Result<(), String> {
     use ratatui::crossterm::event::{self, Event, KeyCode, KeyModifiers};
     use std::time::Instant;
@@ -310,9 +316,13 @@ fn watch(asked: &Asked, summaries: &dyn Fn(&Path) -> Result<(Vec<(String, Kind)>
                         said.push(Span::styled(format!(" · {why}"), Style::default().fg(Color::Red)));
                     }
                     said.push(Span::raw(" "));
-                    Foot { said, keys: Some(" q · esc · ctrl+c leave ") }
+                    let key = Style::default().fg(Color::Gray);
+                    Foot {
+                        said,
+                        keys: vec![Span::raw(" "), Span::styled("q", key), Span::raw("/"), Span::styled("esc", key), Span::raw(" leave ")],
+                    }
                 } else {
-                    Foot { said: vec![Span::raw(format!(" {} ", counted(s)))], keys: None }
+                    Foot { said: vec![Span::raw(format!(" {} ", counted(s)))], keys: Vec::new() }
                 };
                 draw(s, Rect::new(area.x, area.y + h * i as u16, area.width, h), f.buffer_mut(), &mut borders, asked.tier, foot);
             }
@@ -360,11 +370,28 @@ fn watch(asked: &Asked, summaries: &dyn Fn(&Path) -> Result<(Vec<(String, Kind)>
     result
 }
 
-/// What a card's bottom edge says: what was read, at its leading end, and the keys at its
-/// trailing end when the card answers them.
+/// What a card's foot says, in two segments as the head holds its title: what was read at
+/// its leading end, and the keys at its trailing end when the card answers them (none, for
+/// a card printed and left).
 pub struct Foot {
     said: Vec<Span<'static>>,
-    keys: Option<&'static str>,
+    keys: Vec<Span<'static>>,
+}
+
+/// The fewest cells of edge between the foot's two segments, so they read as two.
+const APART: usize = 3;
+
+impl Foot {
+    /// Its segments in `room` cells: the keys only where both fit `APART`; they go first,
+    /// since what was read is the card's and the keys are the terminal's habit.
+    fn segments(self, room: u16) -> (ratatui::text::Line<'static>, Option<ratatui::text::Line<'static>>) {
+        use ratatui::text::Line as Words;
+        let quiet = Style::default().fg(Color::DarkGray);
+        let said = Words::from(self.said).style(quiet);
+        let keys = Words::from(self.keys).style(quiet).right_aligned();
+        let fits = keys.width() > 0 && said.width() + APART + keys.width() <= room as usize;
+        (said, fits.then_some(keys))
+    }
 }
 
 /// The rows a chart read, and those it left out.
@@ -392,7 +419,7 @@ pub struct Card {
 pub fn draw(s: &Summary, area: Rect, buf: &mut Buffer, borders: &mut Borders, tier: Tier, foot: Foot) -> Card {
     use ratatui::text::Line as Words;
     use ratatui::widgets::{Block, BorderType};
-    let quiet = Style::default().fg(Color::DarkGray);
+    let (said, keys) = foot.segments(area.width.saturating_sub(2));
     if let Some(edges) = tier.edges {
         let title = Style::default().fg(Color::White).add_modifier(Modifier::BOLD);
         buf.set_stringn(area.x + 2, area.y, &s.title, area.width.saturating_sub(4) as usize, title);
@@ -401,10 +428,10 @@ pub fn draw(s: &Summary, area: Rect, buf: &mut Buffer, borders: &mut Borders, ti
         let room = Rect::new(area.x + 2, area.y + 1, area.width.saturating_sub(4), area.height.saturating_sub(3));
         let (end, plot) = if room.height < 6 || room.width < 20 { (room.y, None) } else { marks(s, room, buf, borders, tier) };
         let held = Rect::new(area.x, area.y, area.width, (end + 2 - area.y).min(area.height));
-        let said = Rect::new(area.x + 1, held.bottom() - 1, area.width.saturating_sub(2), 1);
-        Words::from(foot.said).style(quiet).render(said, buf);
-        if let Some(keys) = foot.keys {
-            Words::from(keys).style(quiet).right_aligned().render(said, buf);
+        let row = Rect::new(area.x + 1, held.bottom() - 1, area.width.saturating_sub(2), 1);
+        said.render(row, buf);
+        if let Some(keys) = keys {
+            keys.render(row, buf);
         }
         frame(held, borders, tier, edges);
         return Card { height: held.height, plot };
@@ -413,9 +440,9 @@ pub fn draw(s: &Summary, area: Rect, buf: &mut Buffer, borders: &mut Borders, ti
         .border_type(if tier.glyphs == Glyphs::Ascii { BorderType::Plain } else { BorderType::Rounded })
         .border_style(Style::default().fg(edge_color(tier)))
         .title(Words::from(format!(" {} ", s.title)).style(Style::default().fg(Color::White).add_modifier(Modifier::BOLD)))
-        .title_bottom(Words::from(foot.said).style(quiet));
-    if let Some(keys) = foot.keys {
-        card = card.title_bottom(Words::from(keys).style(quiet).right_aligned());
+        .title_bottom(said);
+    if let Some(keys) = keys {
+        card = card.title_bottom(keys);
     }
     let inner = card.inner(area);
     // a cell of room inside the card's edge, on every side
@@ -455,32 +482,19 @@ fn frame(card: Rect, borders: &mut Borders, tier: Tier, edges: Edges) {
 /// returned, and the plot where there is one.
 fn marks(s: &Summary, area: Rect, buf: &mut Buffer, borders: &mut Borders, tier: Tier) -> (u16, Option<Rect>) {
     let parts: Vec<&Summary> = if s.layers.is_empty() { vec![s] } else { s.layers.iter().collect() };
-    // the legend, once there is more than one series
-    let series: Vec<(String, Shade)> =
-        parts.iter().flat_map(|p| p.series.iter().map(|(n, sh)| (if n.is_empty() { p.title.clone() } else { n.clone() }, *sh))).collect();
-    let mut y0 = area.y;
-    if series.len() > 1 {
-        let mut x = area.x;
-        for (name, shade) in &series {
-            let mark = if tier.glyphs == Glyphs::Ascii { "* " } else { "● " };
-            buf.set_string(x, y0, mark, Style::default().fg(color(*shade, tier)));
-            buf.set_string(x + 2, y0, name, Style::default().fg(Color::Gray));
-            x += name.chars().count() as u16 + 5;
-            if x >= area.right() {
-                break;
-            }
-        }
-        // and a line of room between the legend and the chart
-        y0 += 2;
-    }
+    let y0 = legend(&parts, area, buf, tier);
     let body = Rect::new(area.x, y0, area.width, area.bottom().saturating_sub(y0));
     if s.kind == Kind::Figure && s.layers.is_empty() {
         return (figure(s, body, buf, tier), None);
     }
+    if s.kind == Kind::Heat && s.layers.is_empty() {
+        return heat(s, body, buf, tier);
+    }
     let edged = tier.edges.is_some();
     let num = |v: &Option<String>| v.as_deref().and_then(|t| t.parse::<f64>().ok());
-    // the scale: from zero (or below it) to the most, stacked where bars stack
-    let stacked = |p: &Summary| p.kind == Kind::Bars && p.stack == Stack::Stacked;
+    // the scale: from zero (or below it) to the most, stacked where bars stack; a heat as a
+    // layer is its stacked bars, as the app draws it
+    let stacked = |p: &Summary| (p.kind == Kind::Bars && p.stack == Stack::Stacked) || p.kind == Kind::Heat;
     let (mut lo, mut hi) = (0.0f64, 0.0f64);
     for p in &parts {
         for row in &p.values {
@@ -527,8 +541,7 @@ fn marks(s: &Summary, area: Rect, buf: &mut Buffer, borders: &mut Borders, tier:
     }
     for part in &parts {
         match part.kind {
-            Kind::Bars => bars(part, plot, buf, tier, &scale, stacked(part)),
-            Kind::Heat => heat(part, plot, buf, tier),
+            Kind::Bars | Kind::Heat => bars(part, plot, buf, tier, &scale, stacked(part)),
             _ => lines(part, plot, buf, tier, &scale),
         }
     }
@@ -564,21 +577,80 @@ fn marks(s: &Summary, area: Rect, buf: &mut Buffer, borders: &mut Borders, tier:
             }
         }
     }
-    // each place named under its mark's middle, as many as fit with a space between; with
-    // edges right under the axis
-    let under = plot.bottom() + if edged { 0 } else { 1 };
-    let names: Vec<String> = place_names(&parts[0].places, parts[0].axis);
+    (named_under(parts[0], plot, buf, tier), Some(plot))
+}
+
+/// Each place of `s` named under its mark's middle, as many as fit with a space between;
+/// with edges right under the axis. The row past them is returned.
+fn named_under(s: &Summary, plot: Rect, buf: &mut Buffer, tier: Tier) -> u16 {
+    let under = plot.bottom() + if tier.edges.is_some() { 0 } else { 1 };
+    let names: Vec<String> = place_names(&s.places, s.axis);
     let mut free = plot.x;
     for (i, name) in names.iter().enumerate() {
         let w = name.chars().count() as u16;
         let (x0, bw) = slot(plot, names.len(), i);
         let at = (x0 + bw / 2).saturating_sub(w / 2).max(plot.x);
         if at >= free && at + w <= plot.right() {
-            buf.set_string(at, under, name, quiet);
+            buf.set_string(at, under, name, Style::default().fg(Color::DarkGray));
             free = at + w + 2;
         }
     }
-    (under + 1, Some(plot))
+    under + 1
+}
+
+/// The legend, once a plot has more than one series: each series' mark and name in its
+/// colour, as many to a line as fit, a name too long for a line of its own cut short; a
+/// heat drawn alone has none, its series being its rows. The row the plot starts on is
+/// returned, a row of room below the legend.
+fn legend(parts: &[&Summary], area: Rect, buf: &mut Buffer, tier: Tier) -> u16 {
+    if let [only] = parts
+        && only.kind == Kind::Heat
+    {
+        return area.y;
+    }
+    let series: Vec<(Kind, &str, Shade)> = parts
+        .iter()
+        .flat_map(|p| p.series.iter().map(move |(n, sh)| (p.kind, if n.is_empty() { p.title.as_str() } else { n.as_str() }, *sh)))
+        .collect();
+    if series.len() < 2 {
+        return area.y;
+    }
+    let (mut x, mut y) = (area.x, area.y);
+    for (kind, name, shade) in series {
+        let wide = (name.chars().count() + 2) as u16;
+        if x > area.x && x + APART as u16 + wide > area.right() {
+            (x, y) = (area.x, y + 1);
+        } else if x > area.x {
+            x += APART as u16;
+        }
+        let style = Style::default().fg(color(shade, tier));
+        buf.set_string(x, y, swatch(kind, tier.glyphs), style);
+        let room = area.right().saturating_sub(x + 2) as usize;
+        let name: String = if name.chars().count() > room {
+            name.chars().take(room.saturating_sub(1)).chain([if tier.glyphs == Glyphs::Ascii { '~' } else { '…' }]).collect()
+        } else {
+            name.to_owned()
+        };
+        buf.set_string(x + 2, y, &name, style);
+        x += 2 + name.chars().count() as u16;
+    }
+    y + 2
+}
+
+/// A series' mark in the legend: what its kind draws, in a cell.
+fn swatch(kind: Kind, glyphs: Glyphs) -> &'static str {
+    match (kind, glyphs == Glyphs::Ascii) {
+        (Kind::Bars | Kind::Heat | Kind::Figure, false) => "█",
+        (Kind::Bars | Kind::Heat | Kind::Figure, true) => "#",
+        (Kind::Area, false) => "▄",
+        (Kind::Area, true) => "=",
+        (Kind::Line, false) => "─",
+        (Kind::Line, true) => "-",
+        (Kind::Steps, false) => "┘",
+        (Kind::Steps, true) => "_",
+        (Kind::Points, false) => "•",
+        (Kind::Points, true) => "*",
+    }
 }
 
 /// Where a value stands on a plot of `rows` rows, in eighths of a row from its foot: `lo`
@@ -804,14 +876,26 @@ fn lines(s: &Summary, plot: Rect, buf: &mut Buffer, tier: Tier, scale: &Scale) {
         .render(plot, buf);
 }
 
-/// A cell a pair of places, its depth the value: shades of one tint.
-fn heat(s: &Summary, plot: Rect, buf: &mut Buffer, tier: Tier) {
+/// A cell a pair of places, its depth the value: shades of one tint, each row (a series)
+/// named at its left as a scale's labels stand, each place under its column. The row past
+/// the names is returned, and the grid.
+fn heat(s: &Summary, body: Rect, buf: &mut Buffer, tier: Tier) -> (u16, Option<Rect>) {
     let all: Vec<f64> = s.values.iter().flatten().filter_map(|v| v.as_deref().and_then(|t| t.parse::<f64>().ok())).collect();
     let (lo, hi) = all.iter().fold((f64::MAX, f64::MIN), |(a, b), v| (a.min(*v), b.max(*v)));
     let tint = s.series.first().map_or(Shade::Quiet, |x| x.1);
     let cols = s.places.len().max(1) as u16;
     let rows = s.series.len().max(1) as u16;
-    let (cw, ch) = ((plot.width / cols).max(1), (plot.height / rows).max(1));
+    let left = s.series.iter().map(|(n, _)| n.chars().count()).max().unwrap_or(0) as u16 + 2;
+    let room = body.height.saturating_sub(if tier.edges.is_some() { 1 } else { 2 });
+    let (cw, ch) = ((body.width.saturating_sub(left) / cols).max(1), (room / rows).clamp(1, 3));
+    let plot = Rect::new(body.x + left, body.y, cw * cols, ch * rows);
+    if plot.width < 4 {
+        return (body.y, None);
+    }
+    for (k, (name, _)) in s.series.iter().enumerate() {
+        let w = name.chars().count() as u16;
+        buf.set_string(plot.x - 2 - w, plot.y + k as u16 * ch + (ch - 1) / 2, name, Style::default().fg(Color::DarkGray));
+    }
     let shades = if tier.glyphs == Glyphs::Ascii { [".", ":", "*", "#"] } else { ["░", "▒", "▓", "█"] };
     for (p, row) in s.values.iter().enumerate() {
         for (k, v) in row.iter().enumerate() {
@@ -827,6 +911,7 @@ fn heat(s: &Summary, plot: Rect, buf: &mut Buffer, tier: Tier) {
             }
         }
     }
+    (named_under(s, plot, buf, tier), Some(plot))
 }
 
 /// One number, its change from the place before, and its run as a sparkline.
@@ -1144,7 +1229,7 @@ mod tests {
         let area = Rect::new(0, 0, 80, 21);
         let mut buf = Buffer::empty(area);
         let mut borders = Borders::new(area);
-        let card = draw(s, area, &mut buf, &mut borders, tier, Foot { said: vec![Span::raw(" 4 rows ")], keys: None });
+        let card = draw(s, area, &mut buf, &mut borders, tier, Foot { said: vec![Span::raw(" 4 rows ")], keys: Vec::new() });
         buf.resize(Rect::new(0, 0, 80, card.height));
         let mut out = Vec::new();
         print(&buf, &borders, tier, &mut out).expect("a Vec takes every byte");
@@ -1308,5 +1393,102 @@ mod tests {
         assert_eq!(Edges::answered(b"\x1bP1+bcell-border;ok;1;half,center\x1b\\\x1b[?62c"), None);
         assert!(da1_ends(b"\x1bP1+bcell-border;ok;1;pen\x1b\\\x1b[?62;22c"));
         assert!(!da1_ends(b"\x1bP1+bcell-border;ok;1;pen\x1b\\\x1b[?62;2"));
+    }
+
+    /// A card `width` columns wide with `foot`, and its cells.
+    fn card(s: &Summary, tier: Tier, width: u16, foot: Foot) -> (Card, Buffer) {
+        let area = Rect::new(0, 0, width, 21);
+        let mut buf = Buffer::empty(area);
+        let card = draw(s, area, &mut buf, &mut Borders::new(area), tier, foot);
+        (card, buf)
+    }
+
+    fn row(buf: &Buffer, y: u16) -> String {
+        (buf.area.left()..buf.area.right()).map(|x| buf[(x, y)].symbol()).collect()
+    }
+
+    /// `--watch`'s foot: what was read at its leading end, the keys at its trailing end at
+    /// least `APART` cells after it, the keys gone where both do not fit; in both tiers.
+    #[test]
+    fn the_keys_are_a_segment_of_their_own() {
+        let s = summary("bars-by-month", 1);
+        let foot = || Foot {
+            said: vec![Span::raw(" bars-by-month.cells · read 39s ago · 4 rows ")],
+            keys: vec![Span::raw(" "), Span::raw("q"), Span::raw("/"), Span::raw("esc"), Span::raw(" leave ")],
+        };
+        for tier in [FINE, EDGED] {
+            let (c, buf) = card(&s, tier, 80, foot());
+            let line = row(&buf, c.height - 1);
+            let (said, keys) = (line.find("4 rows").expect("what was read") + 6, line.find("q/esc").expect("the keys"));
+            assert!(line[said..keys].chars().count() > APART, "{tier:?}: the segments run on: {line:?}");
+            assert!(line.trim_end_matches(['╯', '─', ' ']).ends_with("leave"), "{tier:?}: the keys end the foot: {line:?}");
+            let (c, buf) = card(&s, tier, 50, foot());
+            let line = row(&buf, c.height - 1);
+            assert!(line.contains("4 rows") && !line.contains("q/esc"), "{tier:?}: at 50 the keys go first: {line:?}");
+        }
+        // printed and left, no keys
+        let (c, buf) = card(&s, FINE, 80, Foot { said: vec![Span::raw(" 4 rows ")], keys: Vec::new() });
+        assert!(!row(&buf, c.height - 1).contains("leave"));
+    }
+
+    /// A chart of several series names each in its colour, its kind's mark before it, every
+    /// name inside the card at any width and in both tiers; one series, or a heat's rows,
+    /// none.
+    #[test]
+    fn every_series_is_named_in_its_colour() {
+        let cases = [
+            ("stack-modes", 1),
+            ("stack-modes", 2),
+            ("color-of-text-in-file-order", 1),
+            ("from-an-inline-table", 1),
+            ("layers-by-name", 3),
+            ("color-tinted-and-unworn", 1),
+            ("split-of-a-choice-past-the-tints", 1),
+        ];
+        for (case, n) in cases {
+            let s = summary(case, n);
+            let parts: Vec<&Summary> = if s.layers.is_empty() { vec![&s] } else { s.layers.iter().collect() };
+            for tier in [FINE, EDGED] {
+                for width in [80, 50, 30] {
+                    let (_, buf) = card(&s, tier, width, Foot { said: Vec::new(), keys: Vec::new() });
+                    let inner = 2..width - 2;
+                    for p in &parts {
+                        for (name, shade) in &p.series {
+                            let name = if name.is_empty() { p.title.as_str() } else { name.as_str() };
+                            let fg = color(*shade, tier);
+                            let mark = swatch(p.kind, tier.glyphs);
+                            let shown = (1..10).any(|y| {
+                                let line = row(&buf, y);
+                                let cut: String = name.chars().take(width as usize - 12).collect();
+                                line.find(&cut).is_some_and(|at| {
+                                    let x = line[..at].chars().count() as u16;
+                                    inner.contains(&(x - 2))
+                                        && buf[(x - 2, y)].symbol() == mark
+                                        && buf[(x - 2, y)].fg == fg
+                                        && buf[(x, y)].fg == fg
+                                })
+                            });
+                            assert!(shown, "{case} {n} at {width} ({tier:?}): {name} is not named in its colour");
+                        }
+                    }
+                }
+            }
+        }
+        for (case, n) in [("bars-by-month", 1), ("line-area-and-steps", 3), ("heat", 1)] {
+            for tier in [FINE, EDGED] {
+                let (_, buf) = card(&summary(case, n), tier, 80, Foot { said: Vec::new(), keys: Vec::new() });
+                for y in 1..4 {
+                    let line = row(&buf, y);
+                    let first = line.trim_start_matches(['│', ' ']);
+                    assert!(
+                        !["█ ", "─ ", "┘ ", "• ", "▄ "].iter().any(|m| first.starts_with(m)),
+                        "{case} ({tier:?}) has a legend: {line:?}"
+                    );
+                }
+            }
+        }
+        // a heat's rows named at their left
+        let (_, buf) = card(&summary("heat", 1), FINE, 80, Foot { said: Vec::new(), keys: Vec::new() });
+        assert!((0..21).any(|y| row(&buf, y).trim_start_matches(['│', ' ']).starts_with("14 ")), "the heat's rows are not named");
     }
 }

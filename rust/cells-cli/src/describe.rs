@@ -128,7 +128,7 @@ pub const COMMANDS: &[Command] = &[
     },
     Command {
         usage: "cells chart <file> [n …] [--watch] [--svg] [--glyphs fine|blocks|ascii] [--colors true|256|16] [--edges on|off]",
-        says: "Its charts listed, or charts n drawn in the terminal (`--watch`: held, drawn again as the file changes; `--svg`: as SVG); chart 0 is the one a file with none is drawn from. A terminal that answers the cell border protocol gets the frame, gridlines and axis as lines on the cells' edges, costing no row or column (`--edges on|off` says so instead of asking).",
+        says: "Its charts listed, or charts n drawn in the terminal (`--watch`: held, drawn again as the file changes, `q` or Esc leaving; `--svg`: as SVG); chart 0 is the one a file with none is drawn from. A chart of several series names each above its plot, in its colour and with its mark. A terminal that answers the cell border protocol gets the frame, gridlines and axis as lines on the cells' edges, costing no row or column (`--edges on|off` says so instead of asking).",
     },
     Command {
         usage: "cells sql <file|folder>... <query>",
