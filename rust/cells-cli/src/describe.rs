@@ -155,7 +155,7 @@ pub const COMMANDS: &[Command] = &[
     },
     Command {
         usage: "cells editors status",
-        says: "Each editor's standing, a line each, `<editor> <state>`: `absent`, `available` (on this machine, not set up), `current`, `older` or `failed <why>`; what Cells.app's Settings shows.",
+        says: "Each editor's standing, a line each, `<editor> <state>`: `absent`, `available` (on this machine, not set up), `current`, `older`, `uninstalled` (Zed's extension written, not yet installed in Zed) or `failed <why>`; what Cells.app's Settings shows.",
     },
     Command {
         usage: "cells editors update",

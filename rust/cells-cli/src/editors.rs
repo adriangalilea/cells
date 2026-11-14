@@ -118,13 +118,15 @@ pub fn update() -> (Vec<String>, bool) {
 /// a host to show (Cells.app's Settings) without reading prose: `absent` (the editor is not on
 /// this machine and nothing was set up for it), `available` (it is, not set up), `current`,
 /// `older` (set up from another version: `update` brings it, Zed's `install` and a Rebuild),
-/// or `failed <why>`.
+/// `uninstalled` (Zed's extension written, Zed not yet installing it: Install Dev Extension in
+/// its window), or `failed <why>`.
 pub fn status() -> Vec<String> {
     EDITORS
         .iter()
         .map(|editor| {
             let state = match set_up(editor).and_then(|s| if s { current(editor).map(Some) } else { Ok(None) }) {
                 Err(why) => format!("failed {why}"),
+                Ok(Some(_)) if *editor == "zed" && !zed_takes_ours() => "uninstalled".to_owned(),
                 Ok(Some(true)) => "current".to_owned(),
                 Ok(Some(false)) => "older".to_owned(),
                 Ok(None) if present(editor) => "available".to_owned(),
@@ -133,6 +135,14 @@ pub fn status() -> Vec<String> {
             format!("{editor} {state}")
         })
         .collect()
+}
+
+/// Whether Zed installs the extension `install` writes: its `installed/cells` a link to it.
+fn zed_takes_ours() -> bool {
+    match (zed_installed(), zed_extension()) {
+        (Ok(installed), Ok(ours)) => fs::read_link(installed.join("cells")).is_ok_and(|to| to == ours),
+        _ => false,
+    }
 }
 
 /// Whether `editor` is on this machine: its command on PATH, or for Zed its app.
