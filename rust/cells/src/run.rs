@@ -194,6 +194,7 @@ pub fn landed(
     at: Instant,
     read: &mut dyn FnMut(&str) -> Result<Doc, String>,
 ) -> Result<(String, Ran), String> {
+    let laid = text;
     let doc = read(text)?;
     let script = doc.scripts().iter().find(|s| s.name == name).ok_or_else(|| format!("no script {name}"))?.clone();
     let nl = doc.newline().to_owned();
@@ -229,5 +230,37 @@ pub fn landed(
     let again = read(&base)?;
     let s = again.scripts().iter().find(|s| s.name == name).expect("the script, still").clone();
     let text = replaced(&base, s.runs.as_ref(), s.after, "```cells runs", &runs_text(runs.as_ref(), &rows, run, at, word, &error, &nl));
+    // A file laid out as `cells fmt` lays it out (every Cells writer's, an app's) stays so: the
+    // rows a run writes are aligned with the rest, never tight under a padded header.
+    let text = if crate::layout::formatted(laid, true) == laid { crate::layout::formatted(&text, true) } else { text };
     Ok((text, Ran { run, outcome }))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use alloc::string::ToString;
+
+    const TIGHT: &str = "---\nrates = run every day at 18:00 in UTC\n```ts\nexport default async () => []\n```\n```cells\ndate:date!,rate:num>0\n2026-11-03,0.9287\n```\n---\ndate:date,usd:USD>0,eur:EUR=usd * rates[date].rate\n2026-11-03,180.00,167.17=\n";
+
+    fn ran(text: &str) -> String {
+        let returned = vec![r#"{"date":"2026-11-04","rate":"0.88755"}"#.to_string()];
+        let at = parse_datetime(b"2026-11-14T11:00:00Z").unwrap();
+        let mut read = |t: &str| crate::read(t).map_err(|e| e.to_string());
+        let (text, ran) = landed(text, "rates", Ok(returned), at, &mut read).unwrap();
+        assert_eq!(ran.outcome, Ok((1, 0)));
+        text
+    }
+
+    #[test]
+    fn a_run_keeps_the_layout_the_file_is_in() {
+        // a file laid out as `cells fmt` lays it out: the rows the run writes aligned too
+        let aligned = crate::layout::formatted(TIGHT, true);
+        let after = ran(&aligned);
+        assert_eq!(crate::layout::formatted(&after, true), after, "{after}");
+        assert!(after.contains("2026-11-04,     0.88755,"), "{after}");
+        // a tight file stays tight
+        let after = ran(TIGHT);
+        assert!(after.contains("\n2026-11-04,0.88755,1\n"), "{after}");
+    }
 }
