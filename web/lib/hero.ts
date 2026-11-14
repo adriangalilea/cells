@@ -113,6 +113,14 @@ date: date,category: Category,note: text?,amount: EUR
 2026-10-30,groceries,market,77.45
 `
 
+/** The file as the page shows it under the story: its prelude whole, its header and its
+ *  first rows, where its charts are seen declared. */
+export const SPENDING_SHOWN = (() => {
+  const lines = SPENDING_TEXT.split("\n")
+  const header = lines.indexOf("---", 1) + 1
+  return `${lines.slice(0, header + 4).join("\n")}\n`
+})()
+
 /** The dinner: its row (a data row, from 0), what it holds, and what the hand types. */
 export const DINNER = { row: 4, was: "96.00", typo: "960.00" } as const
 

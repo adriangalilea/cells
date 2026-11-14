@@ -10,7 +10,7 @@ import { Code as Block } from "@/components/ui/code"
 import { Glass } from "@/components/ui/material-glass"
 import { PRODUCT } from "@/lib/product"
 import { ONE_FILE, PROOFS } from "@/lib/proofs"
-import { DINNER, SPENDING_PATH, WATCH_COMMAND } from "@/lib/hero"
+import { DINNER, SPENDING_PATH, SPENDING_SHOWN, WATCH_COMMAND } from "@/lib/hero"
 
 /** What each neighbour does, honestly, and what a Cells file does instead. */
 const ROWS = [
@@ -247,6 +247,28 @@ export default function Page() {
           <Story />
         </Suspense>
       </div>
+
+      <section aria-label="charts" className="mx-auto mt-48 max-w-3xl px-6">
+        <Eyebrow>Charts</Eyebrow>
+        <h2 className="mt-4 text-balance text-[clamp(2rem,4vw,3.25rem)] leading-[1.05] font-medium tracking-[-0.035em]">
+          The charts at the top are a few lines of the file.
+        </h2>
+        <p className="mt-8 text-[18px] leading-relaxed text-foreground/85">
+          <Spelled>{SPENDING_PATH}</Spelled> declares them in its prelude. A chart is a fence of entries: what runs along,{" "}
+          <Spelled>x</Spelled>, and what is measured, <Spelled>y</Spelled>, written as formulas over the columns, and{" "}
+          <Spelled>color</Spelled> to split it by one. A chart of <Spelled>layers</Spelled> draws two others on one plot.
+        </p>
+        <p className="mt-5 text-[17px] leading-relaxed text-muted-foreground">
+          {PRODUCT.name}.app draws them, <Spelled>{PRODUCT.cli} chart</Spelled> draws them in a terminal, and{" "}
+          <Spelled>{PRODUCT.cli} chart --svg</Spelled> writes them as SVG.{" "}
+          <a href="/docs/spec/the-prelude#charts" className="underline decoration-border underline-offset-4 hover:text-foreground">
+            Charts, in the docs
+          </a>
+        </p>
+        <Block filename={SPENDING_PATH} className="mt-10">
+          {SPENDING_SHOWN}
+        </Block>
+      </section>
 
       <section className="mx-auto mt-48 max-w-3xl px-6">
         <Eyebrow>The price</Eyebrow>

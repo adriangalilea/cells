@@ -6,7 +6,7 @@
 
 import { createHash } from "node:crypto"
 import { readFiles as readWith } from "@/lib/view"
-import { DINNER, hero, SPENDING_PATH, WATCHED_CHARTS } from "@/lib/hero"
+import { DINNER, hero, SPENDING_PATH, SPENDING_SHOWN, WATCHED_CHARTS } from "@/lib/hero"
 import { SCREENS } from "@/lib/hero-screens"
 import { loadEngine } from "@/lib/engine-module"
 import { codeTimeline } from "@/lib/code-session"
@@ -110,6 +110,8 @@ for (const act of STORY) {
       r.doc.free()
     }
   }
+  // the file as the charts section shows it reads whole, its four charts declared
+  may(SPENDING_SHOWN)
   const found = may(scene.checkpoints.found)
   const typo = may(scene.checkpoints.typo)
   const fixed = may(scene.checkpoints.fixed)
