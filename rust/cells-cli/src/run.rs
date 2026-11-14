@@ -10,13 +10,11 @@ use std::path::Path;
 use cells_daemon::Engine;
 use cells_daemon::log::Outcome;
 
-use cells_disk::Disk;
-
 /// What each script's run did, a line each, and whether every one succeeded.
 pub fn run(path: &Path, only: Option<&str>) -> Result<(Vec<String>, bool), String> {
     let file = fs::canonicalize(path).map_err(|e| format!("{}: {e}", path.display()))?;
     let bytes = fs::read(&file).map_err(|e| format!("{}: {e}", file.display()))?;
-    let doc = cells::read_with(bytes, &mut Disk::new(&file), 1).map_err(|e| format!("{} {e}", path.display()))?;
+    let doc = cells_disk::read(&file, bytes, 1).map_err(|e| format!("{} {e}", path.display()))?;
     let names: Vec<String> = doc.scripts().iter().map(|s| s.name.clone()).filter(|n| only.is_none_or(|o| o == n)).collect();
     if names.is_empty() {
         return Err(match only {

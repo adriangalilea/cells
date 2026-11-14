@@ -8,7 +8,6 @@ use std::fs;
 use std::path::Path;
 
 use cells::{Pack, Packing, Statement};
-use cells_disk::Disk;
 
 /// What `cells pack`'s arguments say: whether it removes, where it writes, the file.
 pub fn args(args: &[String]) -> Option<(bool, Option<&str>, &str)> {
@@ -34,7 +33,7 @@ pub fn args(args: &[String]) -> Option<(bool, Option<&str>, &str)> {
 pub fn pack(path: &Path, remove: bool, out: Option<&Path>) -> Result<(Vec<String>, bool), String> {
     let shown = path.display();
     let bytes = fs::read(path).map_err(|e| format!("{shown}: {e}"))?;
-    let doc = cells::read_with(bytes.clone(), &mut Disk::new(path), 1).map_err(|e| format!("{shown} {e}"))?;
+    let doc = cells_disk::read(path, bytes.clone(), 1).map_err(|e| format!("{shown} {e}"))?;
     let text = doc.packed(if remove { Pack::Remove } else { Pack::All });
     let mut said = Vec::new();
     let mut whole = true;

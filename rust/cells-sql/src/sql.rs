@@ -20,8 +20,6 @@ use cells::value::{self, Instant};
 use cells::{Base, Data, Decimal, Dialect, Doc, Separator, Statement};
 use libduckdb_sys as ffi;
 
-use cells_disk::Disk;
-
 /// The column every table is given: the path of the file a row is read from.
 const FILE: &str = "file";
 
@@ -275,7 +273,7 @@ fn read(paths: &[String]) -> Result<(Vec<Table>, usize, usize), String> {
         }
         let bytes = fs::read(&path).map_err(|e| format!("{}: {e}", path.display()))?;
         let shown = path.display().to_string();
-        let doc = cells::read_with(bytes, &mut Disk::new(&path), threads).map_err(|e| format!("{shown} {e}"))?;
+        let doc = cells_disk::read(&path, bytes, threads).map_err(|e| format!("{shown} {e}"))?;
         // Imports through git's history or from a URL are read for the file importing them,
         // never as tables: a table is a file on the disk as it is now.
         for s in doc.statements() {

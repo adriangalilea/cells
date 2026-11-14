@@ -381,7 +381,7 @@ mod tests {
     #[test]
     fn an_import_name() {
         let text = "---\nimport accounts from \"./accounts.cells\"\n---\nto:accounts.account\nbank\n";
-        let doc = crate::read_with(text, &mut Accounts, 1).unwrap();
+        let doc = crate::read_with("money.cells", text, &mut Accounts, 1).unwrap();
         let at = text.find("accounts from").unwrap() + 1;
         let h = hover(&doc, text, at, |_: &[&str]| None::<Arc<Doc>>).unwrap();
         assert_eq!(h.text(), "table accounts: 1 rows, account, kind");

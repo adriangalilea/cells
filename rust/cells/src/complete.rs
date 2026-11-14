@@ -632,7 +632,7 @@ mod tests {
             "---\nimport kinds from \"./kinds.cells\"\n---\naccount:text!,kind:kinds.kind\nbank,assets\n".to_owned(),
         );
         let text = "---\nimport accounts from \"./accounts.cells\"\n---\nto:accounts.account,s:text=to.kind.\nbank,x=\n";
-        let doc = crate::read_with(text, &mut crate::files::Files::new(&files, "money.cells"), 1).unwrap();
+        let doc = crate::read_with("money.cells", text, &mut crate::files::Files::new(&files, "money.cells"), 1).unwrap();
         let held = |path: &[&str]| {
             let (first, rest) = path.split_first()?;
             let mut t = doc.tables().iter().find(|t| t.name == *first)?.doc.clone()?;

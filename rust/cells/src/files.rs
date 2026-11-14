@@ -94,8 +94,8 @@ impl Imports for Files<'_> {
             self.cycle = Some(why.clone());
             return Err(why);
         }
-        let mut inner = Files { files: self.files, at: key, stack: chain, cycle: None, reached: Vec::new() };
-        let doc = read_with(text.as_bytes().to_vec(), &mut inner, 1);
+        let mut inner = Files { files: self.files, at: key.clone(), stack: chain, cycle: None, reached: Vec::new() };
+        let doc = read_with(&key, text.as_bytes().to_vec(), &mut inner, 1);
         self.reached.append(&mut inner.reached);
         let doc = doc.map_err(|e| format!("{e}"))?;
         if let Some(why) = inner.cycle {
@@ -129,7 +129,7 @@ mod tests {
             "---\nimport accounts from \"../accounts.cells\"\n---\namount:EUR,to:accounts.account\n950,rent\n9,rnet\n".to_owned(),
         );
         let money = files["books/home/money.cells"].clone();
-        let doc = read_with(money.clone(), &mut Files::new(&files, "books/home/money.cells"), 1).unwrap();
+        let doc = read_with(MONEY, money.clone(), &mut Files::new(&files, "books/home/money.cells"), 1).unwrap();
         assert_eq!(doc.problems().len(), 1);
         assert_eq!(doc.describe(&doc.problems()[0]), "row 2, to: \"rnet\" is no key of accounts");
         // Read alone, the reference is unchecked.
@@ -138,7 +138,7 @@ mod tests {
         // stores stands, never null and never stale, and a write leaves it as stored.
         files.insert("books/accounts.cells".to_owned(), "account:text!,limit:EUR\nrent,1000\n".to_owned());
         let spent = "---\nimport accounts from \"../accounts.cells\"\n---\nto:accounts.account,amount:EUR,left:EUR=accounts[to].limit - amount\nrent,950,40.00=\n";
-        let reached = read_with(spent, &mut Files::new(&files, "books/home/money.cells"), 1).unwrap();
+        let reached = read_with(MONEY, spent, &mut Files::new(&files, "books/home/money.cells"), 1).unwrap();
         assert_eq!(reached.value(0, 2), crate::Value::Decimal(crate::Decimal { mantissa: 5000, scale: 2 }));
         assert_eq!(reached.problems()[0].kind(), crate::Kind::Stale);
         let mut alone = crate::read(spent).unwrap();
@@ -151,7 +151,7 @@ mod tests {
         alone.store_unstored();
         assert_eq!(alone.write(), spent.replace("950", "900"));
         files.insert("loop.cells".to_owned(), "---\nimport me from \"./loop.cells\"\n---\na\n".to_owned());
-        let looped = read_with(files["loop.cells"].clone(), &mut Files::new(&files, "loop.cells"), 1).unwrap();
+        let looped = read_with("loop.cells", files["loop.cells"].clone(), &mut Files::new(&files, "loop.cells"), 1).unwrap();
         assert_eq!(looped.broken().iter().map(|e| e.at).collect::<Vec<_>>(), [crate::At::PreludeLine(1)]);
     }
 
@@ -170,15 +170,17 @@ mod tests {
 
     const SPENT: &str = "---\nimport accounts from \"../accounts.cells\"\nimport { Money, Kind, fees } from \"../rates.cells\"\n---\nto:accounts.account,kind:Kind,amount:Money,left:EUR=accounts[to].limit - amount,fee:pct=fees[kind].pct\nrent,cost,950,50.00=,1.5=\n";
 
+    const MONEY: &str = "books/home/money.cells";
+
     fn at<'a>(files: &'a BTreeMap<String, String>) -> Files<'a> {
-        Files::new(files, "books/home/money.cells")
+        Files::new(files, MONEY)
     }
 
     #[test]
     fn packed_copies_stand_in_for_what_is_not_reached() {
         use crate::{Pack, Packing};
         let files = books();
-        let doc = read_with(SPENT, &mut at(&files), 1).unwrap();
+        let doc = read_with(MONEY, SPENT, &mut at(&files), 1).unwrap();
         assert!(doc.copies().is_empty() && doc.problems().is_empty(), "{:?}", doc.problems());
         let packed = doc.packed(Pack::All);
         assert_eq!(
@@ -186,7 +188,7 @@ mod tests {
             "---\nimport accounts from \"../accounts.cells\"\npacked accounts = ```cells\naccount: text!,kind: assets|expenses,limit: EUR,half: EUR\nrent,expenses,1000,500.00\nbank,assets,0,0.00\n```\nimport { Money, Kind, fees } from \"../rates.cells\"\npacked type Money = EUR>=0\npacked look Money: grouped\npacked type Kind = income#green|cost#red\npacked fees = ```cells\nkind: income#green|cost#red!,pct: pct\ncost,1.5\n```\n---\nto:accounts.account,kind:Kind,amount:Money,left:EUR=accounts[to].limit - amount,fee:pct=fees[kind].pct\nrent,cost,950,50.00=,1.5=\n"
         );
         // reached, every copy is what packing gives, and packing again changes nothing
-        let again = read_with(packed.as_str(), &mut at(&files), 1).unwrap();
+        let again = read_with(MONEY, packed.as_str(), &mut at(&files), 1).unwrap();
         assert!(again.broken().is_empty(), "{:?}", again.broken());
         assert!(again.copies().iter().all(|c| c.packing == Packing::Current), "{:?}", again.copies());
         assert_eq!(again.copies().len(), 5);
@@ -208,7 +210,7 @@ mod tests {
         // a source that changed leaves its copy stale, never read
         let mut moved = files.clone();
         moved.insert("books/accounts.cells".to_owned(), files["books/accounts.cells"].replace("1000", "1200"));
-        let stale = read_with(packed.as_str(), &mut at(&moved), 1).unwrap();
+        let stale = read_with(MONEY, packed.as_str(), &mut at(&moved), 1).unwrap();
         assert_eq!(stale.copies()[0].packing, Packing::Stale);
         assert_eq!(stale.problems()[0].kind(), crate::Kind::Stale, "the source is the truth: 1200 - 950");
         assert_eq!(stale.packed(Pack::All), packed.replace("rent,expenses,1000,500.00", "rent,expenses,1200,600.00"));
@@ -223,7 +225,7 @@ mod tests {
         for k in 1..=10 {
             let text = format!("---\nimport f from \"./f{}.cells\"\n---\nkey:text!,v:int=f[key].v + 1\nk,{}=\n", k - 1, k + 1);
             let path = format!("f{k}.cells");
-            let packed = read_with(text.as_str(), &mut Files::new(&files, &path), 1).unwrap().packed(Pack::All);
+            let packed = read_with(&path, text.as_str(), &mut Files::new(&files, &path), 1).unwrap().packed(Pack::All);
             files.insert(path, packed);
         }
         for k in 1..=10 {
@@ -245,7 +247,7 @@ mod tests {
         files.insert("c.cells".to_owned(), "note:text\nx\n".to_owned());
         let copy = "---\nimport b from \"./b.cells\"\npacked b = ```cells\nnote: text\n\"import c from \"\"./c.cells\"\"\"\n---\n```\n---\nnote:text\ny\n";
         let mut at = Files::new(&files, "c.cells");
-        let doc = read_with(copy, &mut at, 1).unwrap();
+        let doc = read_with("c.cells", copy, &mut at, 1).unwrap();
         assert_eq!(at.reached, ["b.cells"], "the import line followed, the copy's rows never");
         assert!(at.cycle.is_none() && doc.broken().is_empty(), "{:?}", doc.broken());
         let rows = doc.tables()[0].doc.as_ref().unwrap();
@@ -254,7 +256,7 @@ mod tests {
         let mut files = BTreeMap::new();
         files.insert("a.cells".to_owned(), "---\nimport b from \"./b.cells\"\n---\nkey:text!\nx\n".to_owned());
         files.insert("b.cells".to_owned(), "---\nimport a from \"./a.cells\"\n---\nkey:text!\ny\n".to_owned());
-        let a = read_with(files["a.cells"].as_str(), &mut Files::new(&files, "a.cells"), 1).unwrap();
+        let a = read_with("a.cells", files["a.cells"].as_str(), &mut Files::new(&files, "a.cells"), 1).unwrap();
         assert!(!a.broken().is_empty());
         assert_eq!(a.packed(Pack::All), files["a.cells"]);
     }
@@ -270,11 +272,11 @@ mod tests {
         );
         let mut files = BTreeMap::new();
         files.insert(url.to_owned(), bytes.to_owned());
-        let packed = read_with(text.as_str(), &mut Files::new(&files, "m.cells"), 1).unwrap().packed(Pack::Auto);
+        let packed = read_with("m.cells", text.as_str(), &mut Files::new(&files, "m.cells"), 1).unwrap().packed(Pack::Auto);
         assert!(packed.contains("packed rates = ```cells\nkey: text!,v: int\nk,1\n```"));
         // bytes that are not the pinned ones are refused: the copy stands and nothing is written
         files.insert(url.to_owned(), "key:text!,v:int\nk,2\n".to_owned());
-        let moved = read_with(packed.as_str(), &mut Files::new(&files, "m.cells"), 1).unwrap();
+        let moved = read_with("m.cells", packed.as_str(), &mut Files::new(&files, "m.cells"), 1).unwrap();
         assert_eq!(moved.copies()[0].packing, Packing::Standing);
         assert_eq!(moved.packed(Pack::Auto), packed);
     }
@@ -291,7 +293,7 @@ mod tests {
         assert!(crate::read("---\nimport x from \"./x.cells\" with { pack: \"always\" }\n---\na\n").unwrap().broken().len() == 1);
         // auto packs only the imports that ask, and always while their source is reached
         let auto = SPENT.replace("\"../accounts.cells\"", "\"../accounts.cells\" with { pack: \"auto\" }");
-        let doc = read_with(auto.as_str(), &mut at(&files), 1).unwrap();
+        let doc = read_with(MONEY, auto.as_str(), &mut at(&files), 1).unwrap();
         let packed = doc.packed(Pack::Auto);
         assert!(packed.contains("packed accounts = ```cells"));
         assert!(!packed.contains("packed type Money"));
@@ -301,24 +303,24 @@ mod tests {
     fn one_import_packs_alone_and_keeps_its_copy_when_asked() {
         use crate::{Pack, Packing};
         let files = books();
-        let doc = read_with(SPENT, &mut at(&files), 1).unwrap();
+        let doc = read_with(MONEY, SPENT, &mut at(&files), 1).unwrap();
         let all = doc.packed(Pack::All);
         // the second import alone: the first has no copy, the second the one `cells pack` writes
         let second = doc.packed(Pack::Import(1));
         assert!(!second.contains("packed accounts") && second.contains("packed fees = ```cells"), "{second}");
-        assert_eq!(read_with(second.as_str(), &mut at(&files), 1).unwrap().packed(Pack::All), all);
+        assert_eq!(read_with(MONEY, second.as_str(), &mut at(&files), 1).unwrap().packed(Pack::All), all);
         // a stale copy packed again, the other one left stale as it is
         let mut moved = files.clone();
         moved.insert("books/accounts.cells".to_owned(), files["books/accounts.cells"].replace("1000", "1200"));
         moved.insert("books/rates.cells".to_owned(), files["books/rates.cells"].replace("cost,1.5", "cost,2.5"));
-        let stale = read_with(all.as_str(), &mut at(&moved), 1).unwrap();
+        let stale = read_with(MONEY, all.as_str(), &mut at(&moved), 1).unwrap();
         assert!(stale.copies().iter().any(|c| c.packing == Packing::Stale && c.name == "accounts"));
-        let fresh = read_with(stale.packed(Pack::Import(0)).as_str(), &mut at(&moved), 1).unwrap();
+        let fresh = read_with(MONEY, stale.packed(Pack::Import(0)).as_str(), &mut at(&moved), 1).unwrap();
         let packing = |name: &str| fresh.copies().iter().find(|c| c.name == name).unwrap().packing;
         assert_eq!((packing("accounts"), packing("fees")), (Packing::Current, Packing::Stale));
         // kept: `pack: "auto"` on the import, a comment after it kept, its copy written at once
         let commented = SPENT.replace("\"../accounts.cells\"\n", "\"../accounts.cells\" // the books\n");
-        let doc = read_with(commented.as_str(), &mut at(&files), 1).unwrap();
+        let doc = read_with(MONEY, commented.as_str(), &mut at(&files), 1).unwrap();
         let kept = doc.packing_kept(0, true);
         assert!(
             kept.starts_with(
@@ -327,7 +329,7 @@ mod tests {
             "{kept}"
         );
         assert!(!kept.contains("packed fees"), "only the import asked for is packed");
-        let again = read_with(kept.as_str(), &mut at(&files), 1).unwrap();
+        let again = read_with(MONEY, kept.as_str(), &mut at(&files), 1).unwrap();
         assert!(again.broken().is_empty(), "{:?}", again.broken());
         assert_eq!(again.packed(Pack::Auto), kept, "kept is what every write writes");
         assert_eq!(again.packing_kept(0, true), kept);

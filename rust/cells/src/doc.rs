@@ -623,14 +623,17 @@ pub fn read_as(source: impl Into<Vec<u8>>, dialect: Dialect, threads: usize) -> 
     read_on(source.into(), dialect, threads)
 }
 
-/// `read` with its imports followed by `imports`, on up to `threads` threads (1 starts
-/// none): what it takes from another file read there, its references checked and its
-/// formulas computed against it. A file whose imports cannot be reached reads as `read`
-/// reads it.
-pub fn read_with(source: impl Into<Vec<u8>>, imports: &mut dyn Imports, threads: usize) -> Result<Doc, Error> {
+/// The file at `path` read in the dialect its name says (`dialect`), on up to `threads`
+/// threads (1 starts none), a Cells file's imports followed by `imports`: what it takes
+/// from another file read there, its references checked and its formulas computed against
+/// it. A file whose imports cannot be reached reads as `read` reads it. Every reader that
+/// holds a path reads through here, so no two of them read one file two ways.
+pub fn read_with(path: &str, source: impl Into<Vec<u8>>, imports: &mut dyn Imports, threads: usize) -> Result<Doc, Error> {
     #[cfg(not(feature = "std"))]
     assert_eq!(threads, 1, "threads need the std feature");
-    read_in(source.into(), Dialect::Cells, threads, imports, None)
+    let bytes = source.into();
+    let dialect = crate::format::dialect(path, &bytes);
+    read_in(bytes, dialect, threads, imports, None)
 }
 
 fn read_on(bytes: Vec<u8>, dialect: Dialect, threads: usize) -> Result<Doc, Error> {
@@ -4970,7 +4973,7 @@ mod tests {
         let accounts = "account:text!\nbank\nrent\nfood\n";
         let money = "---\nimport accounts from \"./accounts.cells\"\ntype Kind = in|out\n---\nto:accounts.account,kind:Kind,paid:yes/no,note:text\nrent,in,yes,x\n";
         let held = BTreeMap::from([("accounts.cells".to_owned(), accounts.to_owned())]);
-        let doc = read_with(money, &mut crate::files::Files::new(&held, "money.cells"), 1).unwrap();
+        let doc = read_with("money.cells", money, &mut crate::files::Files::new(&held, "money.cells"), 1).unwrap();
         assert_eq!(doc.offers(0), ["bank", "rent", "food"]);
         assert_eq!(doc.offers(1), ["in", "out"]);
         assert_eq!(doc.offers(2), ["yes", "no"]);

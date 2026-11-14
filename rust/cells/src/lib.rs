@@ -57,7 +57,7 @@ pub use doc::{
     Alone, At, Column, ColumnAt, Copied, Doc, Error, Held, Import, Imports, Naming, Origin, Pack, Packing, Place, Row, Script, Span, Table,
     compose, read, read_as, read_with,
 };
-pub use format::{Dialect, Separator, detect};
+pub use format::{Dialect, Separator, detect, dialect};
 pub use identity::{Change, Refused, RowAt, Version};
 pub use look::{Locale, Look, Rule, Tint, Tinted};
 pub use prelude::{Fenced, Schedule, Statement, Trigger};

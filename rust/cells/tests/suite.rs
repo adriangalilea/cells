@@ -627,13 +627,11 @@ fn conformance() {
         let ext = path.extension().unwrap().to_string_lossy();
         let edit = PathBuf::from(format!("{}.edit.json", stem.display()));
         let mut fails = Vec::new();
-        let plain = ext != "cells";
-        let dialect = if plain { Dialect::Plain(cells::detect(&bytes)) } else { Dialect::Cells };
         let at = path.strip_prefix(&root).unwrap().to_string_lossy().into_owned();
-        let read = match plain {
-            true => cells::read_as(bytes.clone(), dialect, 1),
-            false => cells::read_with(bytes.clone(), &mut cells::files::Files::new(&files, &at), 1),
-        };
+        let dialect = cells::dialect(&at, &bytes);
+        let plain = dialect != Dialect::Cells;
+        assert_eq!(plain, ext != "cells", "{at}: the suite's plain files are those not named .cells");
+        let read = cells::read_with(&at, bytes.clone(), &mut cells::files::Files::new(&files, &at), 1);
         if edit.exists() {
             let out = fs::read(format!("{}.out.{ext}", stem.display())).unwrap();
             match read {

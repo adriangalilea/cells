@@ -12,8 +12,6 @@ use std::fs;
 use std::path::Path;
 use std::process::Command;
 
-use cells_disk::Disk;
-
 /// How the merge ended: clean, or with conflicts left marked in `ours`.
 pub enum Merged {
     Clean,
@@ -24,7 +22,7 @@ pub enum Merged {
 pub fn merge(base: &Path, ours: &Path, theirs: &Path) -> Result<Merged, String> {
     let bare = |p: &Path| -> Result<String, String> {
         let bytes = fs::read(p).map_err(|e| format!("{}: {e}", p.display()))?;
-        let doc = cells::read_with(bytes, &mut Disk::new(p), 1).map_err(|e| format!("{} {e}", p.display()))?;
+        let doc = cells_disk::read(p, bytes, 1).map_err(|e| format!("{} {e}", p.display()))?;
         Ok(doc.without_stored())
     };
     let dir = std::env::temp_dir().join(format!("cells-merge-{}", std::process::id()));
@@ -55,7 +53,7 @@ pub fn merge(base: &Path, ours: &Path, theirs: &Path) -> Result<Merged, String> 
         fs::write(ours, merged).map_err(|e| format!("{}: {e}", ours.display()))?;
         return Ok(Merged::Conflicts(conflicts));
     }
-    let mut doc = cells::read_with(merged.into_bytes(), &mut Disk::new(ours), 1).map_err(|e| format!("{} {e}", ours.display()))?;
+    let mut doc = cells_disk::read(ours, merged.into_bytes(), 1).map_err(|e| format!("{} {e}", ours.display()))?;
     doc.store_unstored();
     fs::write(ours, doc.write()).map_err(|e| format!("{}: {e}", ours.display()))?;
     Ok(Merged::Clean)

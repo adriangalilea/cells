@@ -134,7 +134,7 @@ A column's fields move with it whole: a short row's missing fields are written b
 
 ## Plain files
 
-`plain/` holds what a reader reads when a file is not a Cells file: a `.csv`, a `.tsv`, plain text. Its cases are `.csv`, `.tsv` or `.txt` files, each with a `.json` of the same shape as a case that reads, or with an `.edit.json` and its output, `<name>.out.csv` (the case's own extension). An implementation reads them with the separator it finds in the first lines (the one splitting each into as many fields as the first, the most fields winning, a tie to the comma, then the tab, the semicolon, the pipe) and the plain reading:
+`plain/` holds what a reader reads when a file is not a Cells file: a `.csv`, a `.tsv`, plain text. Its cases are `.csv`, `.tsv` or `.txt` files, each with a `.json` of the same shape as a case that reads, or with an `.edit.json` and its output, `<name>.out.csv` (the case's own extension). An implementation reads them as their names say (SPEC.md, The file: a file not named `.cells` is plain), a `.tsv` separated by tabs, any other with the separator it finds in the first lines (the one splitting each into as many fields as the first, the most fields winning, a tie to the comma, then the tab, the semicolon, the pipe), and the plain reading:
 
 - the header's cells are the columns' names, whatever they hold (`cost:EUR` is a name), so every column is inferred; no prelude is read (a first line `---` is the header);
 - nothing is refused but bytes that are not UTF-8: a quote out of RFC 4180's places is text (`5" long`), a quoted field's text runs on after its closing quote to the separator (`"ab"c` is `abc`), a quote never closed runs to the end of the file, and a lone `\r` ends a line;

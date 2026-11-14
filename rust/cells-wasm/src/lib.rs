@@ -172,7 +172,8 @@ impl<'a> Strings<'a> {
     }
 }
 
-/// Reads the file as `cells_read` does, its imports followed through the files the page
+/// Reads the file in the dialect its own path says (`cells::dialect`: a `.cells` file as
+/// `cells_read` does, any other plain), its imports followed through the files the page
 /// holds: a list (room from `cells_alloc(files_cap)`, which this call takes) of the file's
 /// own path, then each file's path and its text. An import of a file the list does not
 /// hold reads as unreachable.
@@ -194,7 +195,7 @@ pub unsafe extern "C" fn cells_read_with(
     let list = Strings { bytes: &list, at: 0 }.list();
     let (at, rest) = list.split_first().expect("the list opens with the file's own path");
     let held: std::collections::BTreeMap<String, String> = rest.chunks(2).map(|p| (p[0].to_owned(), p[1].to_owned())).collect();
-    handled(cells::read_with(bytes, &mut cells::files::Files::new(&held, at), 1))
+    handled(cells::read_with(at, bytes, &mut cells::files::Files::new(&held, at), 1))
 }
 
 /// The file with exactly the columns the page wrote (room from `cells_alloc(cap)`, `len`

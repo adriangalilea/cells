@@ -531,9 +531,8 @@ mod tests {
 
     #[test]
     fn a_plain_file_is_never_given_ids() {
-        let read_plain = &mut |t: &str| -> Result<Doc, String> {
-            crate::read_as(t, crate::Dialect::Plain(crate::Separator::Comma), 1).map_err(|e| e.why)
-        };
+        let read_plain =
+            &mut |t: &str| -> Result<Doc, String> { crate::read_with("money.csv", t, &mut crate::Alone, 1).map_err(|e| e.why) };
         let csv = "item,cost\nfuel,84.20\nferry,50.00\n";
         let ops =
             [Op::Set { row: RowAt::Line("fuel,84.20".into()), column: "cost".into(), was: Some("84.20".into()), text: "90.00".into() }];

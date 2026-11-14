@@ -199,7 +199,7 @@ fn an_auto_packed_chain_settles_in_one_pass_and_its_writes_heard_again_log_nothi
     for (p, from) in [("b", "a"), ("c", "b")] {
         let path = format!("/w/{p}.cells");
         let text = importer(from);
-        let doc = cells::read_with(text.as_str(), &mut cells::files::Files::new(&held, &path), 1).unwrap();
+        let doc = cells::read_with(&path, text.as_str(), &mut cells::files::Files::new(&held, &path), 1).unwrap();
         held.insert(path, doc.packed(cells::Pack::All));
     }
     let sim = Sim::default();
@@ -766,6 +766,86 @@ fn a_version_on_disk_not_yet_heard_is_heard_before_an_intent_applies() {
     let log = d.world().log();
     let kinds: Vec<&str> = log.iter().map(|l| l.split("\"kind\":\"").nth(1).unwrap().split('"').next().unwrap()).collect();
     assert_eq!(&kinds[..2], ["external", "edit"], "the save it found, then the edit over it: {log:#?}");
+}
+
+/// Books kept as plain files, each note holding what would read as a formula in a `.cells`
+/// file: an `=` with arithmetic either side of it, `×`, `€`, `→`, a note that opens with `=`,
+/// a quoted field holding the separator. Each with the row the test edits, its separator.
+const PLAIN: [(&str, &str, char); 3] = [
+    (
+        "/w/money.csv",
+        "date,amount,notes\n2026-04-30,50.18,\"prorrateado (17 de 30 días → 50,18 = 88,56 × 17/30), 88,56 €\"\n2026-05-31,88.56,tarifa plana = 88.56 € (80 + MEI)\n2026-06-30,11.12,=SUM(B2:B3)\n",
+        ',',
+    ),
+    (
+        "/w/gastos.csv",
+        "fecha;importe;notas\r\n2026-04-30;50,18;\"tarifa; prorrateada → 50,18 = 88,56 × 17/30 €\"\r\n2026-05-31;88,56;total = 88,56 € (80 + MEI)\r\n2026-06-30;11,12;=SUMA(B2:B3)\r\n",
+        ';',
+    ),
+    (
+        "/w/money.tsv",
+        "date\tamount\tnotes\n2026-04-30\t50.18\tprorrateado → 50,18 = 88,56 × 17/30, \"88,56 €\"\n2026-05-31\t88.56\ttarifa plana = 88.56 € (80 + MEI)\n2026-06-30\t11.12\t=SUM(B2:B3)\n",
+        '\t',
+    ),
+];
+
+#[test]
+fn a_plain_file_is_read_plain_and_an_intent_changes_its_one_cell_alone() {
+    let sim = Sim::default();
+    for (path, text, _) in PLAIN {
+        sim.put(path, text);
+    }
+    let mut d = served(sim, "/w");
+    for (k, (path, text, sep)) in PLAIN.into_iter().enumerate() {
+        let doc = d.folder().doc(path).unwrap_or_else(|| panic!("{path} is read"));
+        assert_eq!(doc.dialect(), cells::Dialect::Plain(cells::Separator::of(sep as u8).unwrap()), "{path}");
+        assert!(doc.problems().is_empty(), "{path}: {:?}", doc.problems().iter().map(|p| doc.describe(p)).collect::<Vec<_>>());
+        let written = |c: &cells::Column| c.formula.is_none() && (0..doc.rows()).all(|r| c.origin(r) == cells::Origin::Written);
+        assert!(doc.columns().iter().all(written), "{path}: a plain file has no formula");
+        // every note read whole, as its text
+        let notes: Vec<String> = (0..doc.rows()).map(|r| doc.text(r, 2).into_owned()).collect();
+        assert!(notes[0].contains("= 88,56 × 17/30") && notes[0].contains('€') && notes[0].contains('→'), "{path}: {notes:?}");
+        assert!(notes[1].contains("= 88") && notes[2].starts_with('='), "{path}: {notes:?}");
+        // the amount of the second row set: every other byte as it was
+        let (amount, notes) = (doc.columns()[1].name.clone(), doc.columns()[2].name.clone());
+        let line = text.lines().nth(2).unwrap().trim_end_matches('\r');
+        let (was, now) = if sep == ';' { ("88,56", "90,00") } else { ("88.56", "90.00") };
+        let set = crate::log::Op::Set { row: crate::log::Row::Line(line.into()), column: amount, was: Some(was.into()), text: now.into() };
+        let id = ["a1b2c3d4", "a1b2c3d5", "a1b2c3d6"][k];
+        let file = PathBuf::from(path);
+        let applied = ask(&mut d, "Cells Dev", ToEngine::Intent { id: id.into(), file, against: hash(text), ops: vec![set] });
+        assert!(matches!(applied, FromEngine::Applied { ref assigned, .. } if assigned.is_empty()), "{path}: {applied:?}");
+        let edited = line.replacen(&format!("{sep}{was}{sep}"), &format!("{sep}{now}{sep}"), 1);
+        assert_eq!(d.world().get(path), text.replacen(line, &edited, 1), "{path}: one cell changed, no id, no '=");
+        // a note set to text that holds `=` and the separator is written as its value, quoted
+        let row = edited.clone();
+        let note = crate::log::Op::Set { row: crate::log::Row::Line(row), column: notes, was: None, text: format!("a = b{sep} c") };
+        let before = d.world().get(path);
+        let id = ["b1b2c3d4", "b1b2c3d5", "b1b2c3d6"][k];
+        let file = PathBuf::from(path);
+        let applied = ask(&mut d, "Cells Dev", ToEngine::Intent { id: id.into(), file, against: hash(&before), ops: vec![note] });
+        assert!(matches!(applied, FromEngine::Applied { .. }), "{path}: {applied:?}");
+        let noted = edited.rsplit_once(sep).unwrap().0.to_owned() + &format!("{sep}\"a = b{sep} c\"");
+        assert_eq!(d.world().get(path), before.replacen(&edited, &noted, 1), "{path}");
+    }
+}
+
+#[test]
+fn a_cells_file_importing_a_csv_reads_it_plain() {
+    let sim = Sim::default();
+    let (csv, text, _) = PLAIN[0];
+    sim.put(csv, text);
+    let book = "---\nimport money from \"./money.csv\"\n---\nwhat:text!,total:EUR\nq2,149.86=SUM(money.amount)\n";
+    sim.put("/w/book.cells", book);
+    let d = served(sim, "/w");
+    let doc = d.folder().doc("/w/book.cells").unwrap();
+    assert!(doc.problems().is_empty(), "{:?}", doc.problems().iter().map(|p| doc.describe(p)).collect::<Vec<_>>());
+    let imported = doc.imported()[0].1.as_deref().expect("the csv is reached");
+    assert!(matches!(imported.dialect(), cells::Dialect::Plain(_)));
+    assert!(imported.text(0, 2).contains("= 88,56 × 17/30"));
+    // the `.cells` file's own `=` is still a formula, computed over the csv's amounts
+    assert_eq!(doc.columns()[1].origin(0), cells::Origin::Cell);
+    assert_eq!(doc.text(0, 1), "149.86=SUM(money.amount)");
 }
 
 #[test]

@@ -172,6 +172,66 @@ fn pack_a_file_to_send_alone() {
     fs::remove_dir_all(&alone).unwrap();
 }
 
+/// A plain file (a `.csv`, a `.tsv`) is read as one by every command: a note holding `=`,
+/// `×`, `€`, `→` or opening with `=` is text, shown whole, and no command rewrites a byte
+/// of it. A `.cells` file's `=` is still a formula.
+#[test]
+fn a_plain_file_s_cells_are_text_for_every_command() {
+    let dir = std::env::temp_dir().join(format!("cells-cli-plain-{}", std::process::id()));
+    fs::create_dir_all(&dir).unwrap();
+    let notes = ["prorrateado (17 de 30 días → 50,18 = 88,56 × 17/30), 88,56 €", "tarifa plana = 88,56 € (80 + MEI)", "=SUM(B2:B3)"];
+    let files = [
+        (
+            "money.csv",
+            format!(
+                "date,amount,notes\n2026-04-30,50.18,\"{}\"\n2026-05-31,88.56,{}\n2026-06-30,11.12,{}\n",
+                notes[0], "\"tarifa plana = 88,56 € (80 + MEI)\"", notes[2]
+            ),
+        ),
+        (
+            "gastos.csv",
+            format!(
+                "fecha;importe;notas\r\n2026-04-30;50,18;{}\r\n2026-05-31;88,56;{}\r\n2026-06-30;11,12;{}\r\n",
+                notes[0], notes[1], notes[2]
+            ),
+        ),
+        (
+            "money.tsv",
+            format!(
+                "date\tamount\tnotes\n2026-04-30\t50.18\t{}\n2026-05-31\t88.56\t{}\n2026-06-30\t11.12\t{}\n",
+                notes[0], notes[1], notes[2]
+            ),
+        ),
+    ];
+    let cells = env!("CARGO_BIN_EXE_cells");
+    let run = |args: &[&str]| Command::new(cells).args(args).output().unwrap();
+    for (name, text) in &files {
+        let path = dir.join(name);
+        fs::write(&path, text).unwrap();
+        let p = path.to_str().unwrap();
+        let check = run(&["check", p]);
+        assert_eq!((check.status.code(), String::from_utf8(check.stdout).unwrap()), (Some(0), String::new()), "{name}");
+        let show = String::from_utf8(run(&["show", p]).stdout).unwrap();
+        let shown: Vec<&str> = show.lines().skip(1).map(|l| l.rsplit('\t').next().unwrap()).collect();
+        assert_eq!(shown, notes, "{name}: every note whole");
+        // nothing a command writes changes the file
+        assert_eq!(run(&["fix", p]).status.code(), Some(0));
+        let fmt = run(&["fmt", p]);
+        assert_eq!(String::from_utf8(fmt.stdout).unwrap(), format!("{p}: a plain file, left as written: its spaces are its cells'\n"));
+        assert_eq!(run(&["fmt", "--check", p]).status.code(), Some(0));
+        assert_eq!(String::from_utf8(run(&["diff", p]).stdout).unwrap(), *text, "{name}: textconv is the file");
+        assert_eq!(&fs::read_to_string(&path).unwrap(), text, "{name}: every byte as it was");
+    }
+    // the same `=` in a `.cells` file is a formula
+    let book = dir.join("book.cells");
+    fs::write(&book, "a:num,b:num\n1,5=a * 2\n").unwrap();
+    let check = run(&["check", book.to_str().unwrap()]);
+    assert_eq!(check.status.code(), Some(1));
+    assert!(String::from_utf8(check.stdout).unwrap().contains("the formula gives 2"));
+    assert_eq!(String::from_utf8(run(&["show", book.to_str().unwrap()]).stdout).unwrap(), "a\tb\n1\t2\n");
+    fs::remove_dir_all(&dir).unwrap();
+}
+
 /// `cells sql` is `cells-sql`'s (its own tests are there): handed over with its arguments,
 /// its exit its own.
 #[test]

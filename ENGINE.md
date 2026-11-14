@@ -34,6 +34,8 @@ The language server is a client: it asks for the folder the editor names and eac
 - **Queries are DuckDB's** over the cached columns, with nothing copied: SQL, and SQL/PGQ for the graph.
 - **Clients subscribe.** A query a client keeps (a chart, a table) is answered again when a file it reads changes: charts and tables are live. A subscriber too slow to keep up is told it lagged and reads again, never queued without bound.
 
+- **A file is read as its name says** (SPEC.md, The file): the engine serves `.cells`, `.csv` and `.tsv` files and reads each, and every file an import names, through the core's one rule (`cells::dialect`, which `cells::read_with` asks), the same rule the command line, the language server and the app's binding read by. A CSV is a plain file there as everywhere: its cells text, `=` included, never a formula the engine computes or stores, and an intent applied to it reads and writes it as one, with its own separator, every byte it does not change as it was.
+
 What is built: changes are heard through the system's file watcher (`notify`, FSEvents on a Mac), a batch read once the disk has been quiet for 30 ms (delayed 500 ms at most while writes keep coming), and each changed file read again whole. The cache, tail reads, snapshots, queries and subscriptions are not built.
 
 ### Writing

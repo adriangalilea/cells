@@ -116,14 +116,22 @@ impl Imports for Disk {
         pinned(&bytes, &i.with)?;
         let mut stack = self.stack.clone();
         stack.push(fs::canonicalize(&self.at).unwrap_or(self.at.clone()));
+        // a URL's file is named by the URL, a local one by its path
+        let named = if is_url(&i.from) { i.from.clone() } else { path.to_string_lossy().into_owned() };
         let mut inner = Disk { at: path, stack, cycle: None, open: Arc::clone(&self.open) };
-        let doc = cells::read_with(bytes, &mut inner, 1).map_err(|e| e.to_string())?;
+        let doc = cells::read_with(&named, bytes, &mut inner, 1).map_err(|e| e.to_string())?;
         if let Some(why) = inner.cycle {
             self.cycle = Some(why.clone());
             return Err(why);
         }
         Ok(Some(doc))
     }
+}
+
+/// The file at `path`, its bytes `bytes`, read in the dialect its name says
+/// (`cells::dialect`: a `.csv` plain, never formulas), its imports followed from the disk.
+pub fn read(path: &Path, bytes: Vec<u8>, threads: usize) -> Result<Doc, cells::Error> {
+    cells::read_with(&path.to_string_lossy(), bytes, &mut Disk::new(path), threads)
 }
 
 /// Every `.cells` file a path names, sorted: the file itself, or every one under a folder,

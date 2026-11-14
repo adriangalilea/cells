@@ -1,6 +1,6 @@
 //! What a file is: a `.cells` file read by the format's own law, or any other delimited text (a
 //! `.csv`, a `.tsv`, plain text) read as the files people hold are, its separator found in
-//! its first lines.
+//! its first lines; which of the two, from its name (`dialect`).
 
 use crate::scan::Records;
 
@@ -78,6 +78,29 @@ impl Dialect {
     }
 }
 
+/// The dialect the file at `path` is read and written in, its bytes `bytes`: the one rule
+/// every reader holding a path follows (SPEC.md, The file), so no two readers of a file read
+/// it two ways. A `.cells` file is Cells. Every other name is plain text, since naming a
+/// file `.cells` is what makes it one: a `.tsv` separated by tabs whatever its first line
+/// holds, any other (a `.csv`, a `.txt`, a name with no extension) by the separator its
+/// first lines agree on (`detect`). So a CSV is never read as formulas, whatever it is
+/// named. The extension is matched in any case (`MONEY.CELLS`), a URL's taken from its path.
+pub fn dialect(path: &str, bytes: &[u8]) -> Dialect {
+    let path = match crate::files::is_url(path) {
+        true => path.split(['?', '#']).next().unwrap_or(path),
+        false => path,
+    };
+    let name = path.rsplit(['/', '\\']).next().unwrap_or(path);
+    let extension = name.rsplit_once('.').map_or("", |(_, e)| e);
+    if extension.eq_ignore_ascii_case("cells") {
+        Dialect::Cells
+    } else if extension.eq_ignore_ascii_case("tsv") {
+        Dialect::Plain(Separator::Tab)
+    } else {
+        Dialect::Plain(detect(bytes))
+    }
+}
+
 /// The separator a text's first lines agree on: the one splitting each of them (outside
 /// quotes) into as many fields as the first, the most fields winning, a tie settled in
 /// `Separator::ALL`'s order. The first line alone would mislead: a Cells header's choices
@@ -133,6 +156,22 @@ pub fn detect(bytes: &[u8]) -> Separator {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_file_s_name_says_its_dialect() {
+        assert_eq!(dialect("books/money.cells", b"a,b\n"), Dialect::Cells);
+        assert_eq!(dialect("/w/MONEY.Cells", b"a,b\n"), Dialect::Cells);
+        assert_eq!(dialect("money.csv", b"item;cost\nfuel;84,20\n"), Dialect::Plain(Separator::Semicolon));
+        assert_eq!(dialect("/w/MONEY.CSV", b"item,cost\n"), Dialect::Plain(Separator::Comma));
+        // a tsv is tabs even when its one column holds commas
+        assert_eq!(dialect("notes.tsv", b"note\na, b, c\n"), Dialect::Plain(Separator::Tab));
+        assert_eq!(dialect("pipe.txt", b"a|b\n1|2\n"), Dialect::Plain(Separator::Pipe));
+        assert_eq!(dialect("https://example.com/rates.csv?raw=1", b"a;b\n1;2\n"), Dialect::Plain(Separator::Semicolon));
+        assert_eq!(dialect("https://example.com/vat.cells?v=2", b"a,b\n"), Dialect::Cells);
+        // a folder's name is no extension, and a name without one is no Cells file
+        assert_eq!(dialect("books.cells/notes", b"a,b\n"), Dialect::Plain(Separator::Comma));
+        assert_eq!(dialect("notes", b"a=1,b\n"), Dialect::Plain(Separator::Comma));
+    }
 
     #[test]
     fn the_lines_agree() {

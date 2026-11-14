@@ -152,8 +152,9 @@ fn doc_or_fail(read: Result<Doc, cells::Error>, failure: *mut CellsFailure) -> *
     }
 }
 
-/// Reads the file as `cells_read` does, its imports followed through the files the caller
-/// holds: `count` paths, each with its text, by the path an import names read from `at`,
+/// Reads the file at `at` in the dialect its name says (`cells::dialect`: a `.cells` file
+/// as `cells_read` does, any other plain), its imports followed through the files the
+/// caller holds: `count` paths, each with its text, by the path an import names read from `at`,
 /// the file's own path (`books/home/money.cells` importing `../accounts.cells` finds
 /// `books/accounts.cells`). An import of a file not held reads as unreachable.
 ///
@@ -181,10 +182,11 @@ pub unsafe extern "C" fn cells_read_with(
             }
         })
         .collect();
-    doc_or_fail(cells::read_with(src, &mut cells::files::Files::new(&held, at), threads.max(1)), failure)
+    doc_or_fail(cells::read_with(at, src, &mut cells::files::Files::new(&held, at), threads.max(1)), failure)
 }
 
-/// Reads the file at `path`, its bytes given, its imports followed from the disk: a path
+/// Reads the file at `path`, its bytes given, in the dialect its name says
+/// (`cells::dialect`), its imports followed from the disk: a path
 /// read from the importing file's folder as it is now. A URL, or a file at a revision,
 /// reads as unreachable: the command line fetches and reads git, an app does neither.
 ///
@@ -200,7 +202,7 @@ pub unsafe extern "C" fn cells_read_at(
 ) -> *mut CellsDoc {
     // SAFETY: the caller's promise.
     let (src, path) = unsafe { (owned(bytes, len), text_of(path.ptr, path.len)) };
-    doc_or_fail(cells::read_with(src, &mut Disk::new(std::path::Path::new(path)), threads.max(1)), failure)
+    doc_or_fail(cells::read_with(path, src, &mut Disk::new(std::path::Path::new(path)), threads.max(1)), failure)
 }
 
 /// The imports of the file at `at`, read from its folder.
@@ -230,8 +232,9 @@ impl cells::Imports for Disk {
         let Ok(bytes) = std::fs::read(&path) else { return Ok(None) };
         let mut stack = self.stack.clone();
         stack.push(self.at.clone());
+        let named = path.to_string_lossy().into_owned();
         let mut inner = Disk { at: path, stack };
-        cells::read_with(bytes, &mut inner, 1).map(Some).map_err(|e| format!("{e}"))
+        cells::read_with(&named, bytes, &mut inner, 1).map(Some).map_err(|e| format!("{e}"))
     }
 }
 

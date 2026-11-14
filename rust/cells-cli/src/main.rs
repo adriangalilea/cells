@@ -18,7 +18,7 @@ use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
-use cells_disk::{Disk, files};
+use cells_disk::files;
 
 /// What one file says: its lines of output, or the reason it could not be read. A file
 /// whose only lines are notes (a stored value standing for an import not reached) says
@@ -32,7 +32,7 @@ enum Said {
 fn check(path: &Path, threads: usize) -> Result<Said, String> {
     let bytes = fs::read(path).map_err(|e| format!("{}: {e}", path.display()))?;
     let shown = path.display();
-    let doc = match cells::read_with(bytes, &mut Disk::new(path), threads) {
+    let doc = match cells_disk::read(path, bytes, threads) {
         Ok(doc) => doc,
         Err(e) => return Ok(Said::Found(vec![format!("{shown} {e}")])),
     };
@@ -73,7 +73,7 @@ fn check(path: &Path, threads: usize) -> Result<Said, String> {
 fn fix(path: &Path, threads: usize) -> Result<Said, String> {
     let bytes = fs::read(path).map_err(|e| format!("{}: {e}", path.display()))?;
     let shown = path.display();
-    let mut doc = cells::read_with(bytes.clone(), &mut Disk::new(path), threads).map_err(|e| format!("{shown} {e}"))?;
+    let mut doc = cells_disk::read(path, bytes.clone(), threads).map_err(|e| format!("{shown} {e}"))?;
     let stale = doc.problems().iter().filter(|p| p.kind() == cells::Kind::Stale).count();
     doc.fix_stale();
     doc.store_unstored();
@@ -87,12 +87,17 @@ fn fix(path: &Path, threads: usize) -> Result<Said, String> {
 
 /// The file as the format's standard lays it out (`cells::layout::formatted`): written
 /// when it is not, or with `check` only said. A file the engine refuses (bytes that are
-/// not UTF-8) is said, never written.
+/// not UTF-8) is said, never written; a plain file (a `.csv`) is said and left as it is,
+/// since a space in it is its cell's, never padding.
 fn fmt(path: &Path, threads: usize, align: bool, check: bool) -> Result<Said, String> {
     let bytes = fs::read(path).map_err(|e| format!("{}: {e}", path.display()))?;
     let shown = path.display();
-    if let Err(e) = cells::read_with(bytes.clone(), &mut Disk::new(path), threads) {
-        return Ok(Said::Found(vec![format!("{shown} {e}")]));
+    match cells_disk::read(path, bytes.clone(), threads) {
+        Err(e) => return Ok(Said::Found(vec![format!("{shown} {e}")])),
+        Ok(doc) if doc.dialect() != cells::Dialect::Cells => {
+            return Ok(Said::Noted(vec![format!("{shown}: a plain file, left as written: its spaces are its cells'")]));
+        }
+        Ok(_) => {}
     }
     let text = String::from_utf8(bytes).expect("a file the engine reads is UTF-8");
     let formatted = cells::layout::formatted(&text, align);
@@ -234,10 +239,13 @@ fn main() -> ExitCode {
                 ExitCode::from(2)
             }
         },
-        // git's textconv: the file with its padding taken out, so a diff shows values.
+        // git's textconv: a Cells file with its padding taken out, so a diff shows values; a
+        // plain file as it is, its spaces its cells'.
         Some("diff") if args.len() == 2 => match fs::read(&args[1]) {
             Ok(bytes) => {
+                let plain = cells::dialect(&args[1], &bytes) != cells::Dialect::Cells;
                 match String::from_utf8(bytes) {
+                    Ok(text) if plain => print!("{text}"),
                     Ok(text) => print!("{}", cells::layout::formatted(&text, false)),
                     Err(e) => {
                         use std::io::Write;
@@ -325,7 +333,7 @@ fn main() -> ExitCode {
             let path = Path::new(&args[1]);
             let shown = fs::read(path)
                 .map_err(|e| format!("{}: {e}", path.display()))
-                .and_then(|b| cells::read_with(b, &mut Disk::new(path), 1).map_err(|e| format!("{} {e}", path.display())));
+                .and_then(|b| cells_disk::read(path, b, 1).map_err(|e| format!("{} {e}", path.display())));
             match shown {
                 Ok(doc) => {
                     print!("{}", doc.shown());

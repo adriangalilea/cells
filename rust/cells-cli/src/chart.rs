@@ -15,7 +15,6 @@ use std::path::{Path, PathBuf};
 use std::time::{Duration, SystemTime};
 
 use cells::chart::{Kind, Shade, Stack, Summary};
-use cells_disk::Disk;
 use ratatui::buffer::Buffer;
 use ratatui::layout::Rect;
 use ratatui::style::{Color, Modifier, Style};
@@ -200,7 +199,7 @@ pub fn run(args: &[String]) -> Result<(), String> {
     }
     let summaries = |path: &Path| -> Result<(Vec<(String, Kind)>, Vec<Summary>), String> {
         let bytes = fs::read(path).map_err(|e| format!("{}: {e}", path.display()))?;
-        let doc = cells::read_with(bytes, &mut Disk::new(path), 1).map_err(|e| format!("{} {e}", path.display()))?;
+        let doc = cells_disk::read(path, bytes, 1).map_err(|e| format!("{} {e}", path.display()))?;
         // chart 0 is the one a file with none is drawn from
         let listed: Vec<(String, Kind)> = match doc.charts() {
             [] => doc.inferred_chart().map(|c| (c.title.clone(), c.kind)).into_iter().collect(),
@@ -273,7 +272,7 @@ pub fn run(args: &[String]) -> Result<(), String> {
 }
 
 fn has_charts(path: &Path) -> bool {
-    fs::read(path).ok().and_then(|b| cells::read_with(b, &mut Disk::new(path), 1).ok()).is_some_and(|d| !d.charts().is_empty())
+    fs::read(path).ok().and_then(|b| cells_disk::read(path, b, 1).ok()).is_some_and(|d| !d.charts().is_empty())
 }
 
 fn terminal_width() -> u16 {
@@ -1242,7 +1241,7 @@ mod tests {
     fn summary(case: &str, n: usize) -> Summary {
         let path = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../tests/charts").join(format!("{case}.cells"));
         let bytes = fs::read(&path).expect("the case is in the suite");
-        let doc = cells::read_with(bytes, &mut Disk::new(&path), 1).expect("the case reads");
+        let doc = cells_disk::read(&path, bytes, 1).expect("the case reads");
         doc.summary(&doc.charts()[n - 1])
     }
 

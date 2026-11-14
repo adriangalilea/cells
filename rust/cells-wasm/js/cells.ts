@@ -721,8 +721,9 @@ export interface Files {
   files: Record<string, string>
 }
 
-/** A `.cells` file's text (or its bytes), read; its imports followed through `files` when
- *  given, else read alone (what it imports unchecked). */
+/** A file's text (or its bytes), read; with `files`, in the dialect its path `at` says (a
+ *  `.cells` file as Cells, any other plain, the engine's one rule) and its imports followed
+ *  through them, else as a `.cells` file read alone (what it imports unchecked). */
 export function read(input: string | Uint8Array, files?: Files): Read {
   if (!files) return readAs(input, "cells")
   const [p, len, cap] = put(input)

@@ -11,8 +11,6 @@ use std::path::Path;
 use cells_daemon::Engine;
 use cells_daemon::allowed::{Allowed, version};
 
-use cells_disk::Disk;
-
 /// What was allowed and what was not, a line each.
 pub fn allow(path: &Path, only: Option<&str>) -> Result<Vec<String>, String> {
     if !std::io::stdin().is_terminal() {
@@ -20,7 +18,7 @@ pub fn allow(path: &Path, only: Option<&str>) -> Result<Vec<String>, String> {
     }
     let file = fs::canonicalize(path).map_err(|e| format!("{}: {e}", path.display()))?;
     let bytes = fs::read(&file).map_err(|e| format!("{}: {e}", file.display()))?;
-    let doc = cells::read_with(bytes, &mut Disk::new(&file), 1).map_err(|e| format!("{} {e}", file.display()))?;
+    let doc = cells_disk::read(&file, bytes, 1).map_err(|e| format!("{} {e}", file.display()))?;
     let allowed = Allowed::read();
     let asked: Vec<&cells::Script> = match only {
         Some(name) => {

@@ -12,7 +12,7 @@ import type { Column, Doc, Value } from "./cells.ts"
 const args = process.argv.slice(2)
 const libAt = args.indexOf("--lib")
 const lib = libAt < 0 ? "./cells.ts" : resolve(args.splice(libAt, 2)[1] as string)
-const { compose, detect, fixStale, read, readAs, reshape, setCell, setType, setValue, CellsError, write, writtenAs } = (await import(
+const { compose, fixStale, read, readAs, reshape, setCell, setType, setValue, CellsError, write, writtenAs } = (await import(
   lib
 )) as typeof import("./cells.ts")
 type CellsError = InstanceType<typeof CellsError>
@@ -295,11 +295,11 @@ for (const path of all) {
   const bytes = new Uint8Array(readFileSync(path))
   const ext = path.slice(path.lastIndexOf("."))
   const stem = path.slice(0, -ext.length)
-  const dialect: Dialect = ext === ".cells" ? "cells" : detect(bytes)
   const fails: string[] = []
   let got: ReturnType<typeof readAs> | CellsError
   try {
-    got = dialect === "cells" ? read(bytes, { at: relative(root, path), files }) : readAs(bytes, dialect)
+    // read as its name says, the engine's rule: a file not named .cells is plain
+    got = read(bytes, { at: relative(root, path), files })
   } catch (e) {
     got = e as CellsError
   }

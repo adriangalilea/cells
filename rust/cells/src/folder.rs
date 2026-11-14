@@ -170,7 +170,7 @@ impl Folder {
     /// version not held yet (what a run would write) read as the folder would read it.
     pub fn read_as(&self, path: &str, text: &str) -> Result<Doc, String> {
         let mut files = Files::new(&self.texts, path);
-        read_with(text.as_bytes().to_vec(), &mut files, 1).map_err(|e| alloc::format!("{e}"))
+        read_with(path, text.as_bytes().to_vec(), &mut files, 1).map_err(|e| alloc::format!("{e}"))
     }
 
     /// Every file held, by path.
@@ -263,7 +263,7 @@ impl Folder {
     fn read(&mut self, path: &str, via: Option<Vec<String>>, out: &mut Outcome) -> bool {
         let text = self.texts[path].clone();
         let mut files = Files::new(&self.texts, path);
-        let read = read_with(text.as_bytes().to_vec(), &mut files, 1);
+        let read = read_with(path, text.as_bytes().to_vec(), &mut files, 1);
         let mut reads = files.reached;
         reads.sort();
         reads.dedup();
@@ -802,34 +802,19 @@ mod tests {
     #[test]
     fn rows_edited_and_added_in_one_save_are_told_apart() {
         let table = |rows: &[&str]| alloc::format!("what:text,amount:EUR\n{}\n", rows.join("\n"));
-        let before = read_with(
-            table(&["rent,900.00", "power,60.00", "water,30.00", "phone,20.00"]).into_bytes(),
-            &mut Files::new(&BTreeMap::new(), "/x"),
-            1,
-        )
-        .unwrap();
-        let after = read_with(
-            table(&["rent,900.00", "power,65.00", "water,30.00", "phone,20.00", "fuel,40.00"]).into_bytes(),
-            &mut Files::new(&BTreeMap::new(), "/x"),
-            1,
-        )
-        .unwrap();
+        let before = doc(&table(&["rent,900.00", "power,60.00", "water,30.00", "phone,20.00"]));
+        let after = doc(&table(&["rent,900.00", "power,65.00", "water,30.00", "phone,20.00", "fuel,40.00"]));
         let e = edited(&before, &after);
         assert_eq!(e.cells, [Cell { row: 2, key: None, column: "amount".into(), was: "60.00".into(), now: "65.00".into() }]);
         assert_eq!((&e.rows_added[..], &e.rows_removed[..]), (&[5][..], &[][..]), "the appended row alone");
-        let moved = read_with(
-            table(&["power,60.00", "rent,900.00", "water,31.00", "phone,20.00"]).into_bytes(),
-            &mut Files::new(&BTreeMap::new(), "/x"),
-            1,
-        )
-        .unwrap();
+        let moved = doc(&table(&["power,60.00", "rent,900.00", "water,31.00", "phone,20.00"]));
         let e = edited(&before, &moved);
         assert_eq!(e.cells.iter().map(|c| (c.row, c.now.as_str())).collect::<Vec<_>>(), [(3, "31.00")], "{e:?}");
         assert_eq!((e.rows_added.len(), e.rows_removed.len()), (1, 1), "a row moved: removed where it was, added where it is");
     }
 
     fn doc(text: &str) -> Doc {
-        read_with(text.as_bytes().to_vec(), &mut Files::new(&BTreeMap::new(), "/x"), 1).unwrap()
+        read_with("/x.cells", text.as_bytes().to_vec(), &mut Files::new(&BTreeMap::new(), "/x.cells"), 1).unwrap()
     }
 
     fn columns(e: &Edited) -> (Vec<(&str, &str)>, Vec<&str>, Vec<&str>) {
