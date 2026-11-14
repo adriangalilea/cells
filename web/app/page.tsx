@@ -90,13 +90,19 @@ const LEVERS: { title: string; says: React.ReactNode; proof?: (typeof PROOFS)[ke
     says: (
       <>
         A broken value named as you type, hover to see how a value is computed, a key completed from another file, a rename
-        followed across the folder. <Spelled>{PRODUCT.cli} lsp</Spelled>, in Helix and Neovim today.
+        followed across the folder. <Spelled>{PRODUCT.cli} lsp</Spelled>, in Helix, Neovim and Zed, each set up by{" "}
+        <Spelled>{PRODUCT.cli} editors install</Spelled>.
       </>
     ),
   },
   {
     title: "Safe to hand to an agent",
-    says: <>An AI edits it like any text file, and the engine names every value it breaks, at its row, before anyone relies on it.</>,
+    says: (
+      <>
+        An AI edits it like any text file, and the engine names every value it breaks, at its row, before anyone relies on it.{" "}
+        <Spelled>{PRODUCT.cli} skill install</Spelled> gives Claude Code and Codex the format and every command.
+      </>
+    ),
   },
   {
     title: "Nothing runs when you open it",
@@ -106,8 +112,8 @@ const LEVERS: { title: string; says: React.ReactNode; proof?: (typeof PROOFS)[ke
 
 /** Where a Cells file opens today, and what comes next. */
 const PLATFORMS: { name: string; now: boolean }[] = [
-  { name: `The command line: ${PRODUCT.cli} check, fmt, merge, lsp`, now: true },
-  { name: "Helix and Neovim, through the language server", now: true },
+  { name: `The command line: ${PRODUCT.cli} check, fmt, merge, sql, chart, lsp`, now: true },
+  { name: "Helix, Neovim and Zed, through the language server", now: true },
   { name: "Cells.app, on the Mac", now: true },
   { name: "Swift, on macOS, iOS and tvOS", now: true },
   { name: "The web: the engine as WebAssembly, what runs on this page", now: true },
@@ -306,7 +312,8 @@ export default function Page() {
           ))}
         </div>
         <p className="mt-16 text-[15px] leading-relaxed text-muted-foreground">
-          Next: <Spelled>{PRODUCT.cli} sql</Spelled>, a folder asked as one database, and charts straight from the types.
+          And <Spelled>{PRODUCT.cli} sql</Spelled> asks a folder as one database: DuckDB&apos;s SQL over every file and its imports, every
+          column its exact type.
         </p>
       </section>
 

@@ -295,7 +295,7 @@ taxi,dan,18.40
       view: "text",
       doc: "/docs/editors",
       lead: "Your editor knows it too",
-      rest: `\`${PRODUCT.cli} lsp\` names a broken value as you type, completes a key from the other file, and stores every computed value when you save. Helix and Neovim today.`,
+      rest: `\`${PRODUCT.cli} lsp\` names a broken value as you type, completes a key from the other file, and stores every computed value when you save. Helix, Neovim and Zed today.`,
       edits: [{ after: "dinner,", remove: 5, insert: "carla" }],
       light: { column: "paid", row: 2 },
       expect: { problems: [] },
