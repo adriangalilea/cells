@@ -415,6 +415,15 @@ mod tests {
         );
     }
 
+    /// A chart's fence holds its entries, named or not: nothing in it is a table's, so a
+    /// comma in a formula is the formula's and the entries stay as written.
+    #[test]
+    fn a_chart_fence_is_written_as_read() {
+        let src = "---\n```chart bars\nx:     DATE_TRUNC('month', date)\ny:     SUM(amount)\n```\nspent = ```chart line\ntitle: Spent, by month\nx:     DATE_TRUNC('month', date)\nwhere: COALESCE(kind, 'x') = 'x'\n```\n---\ndate: date, amount: EUR\n2026-05-01, 1.00\n";
+        assert_eq!(formatted(src, true), src);
+        assert_eq!(layout(src, None), (Vec::new(), Vec::new()));
+    }
+
     #[test]
     fn declarations_line_up_their_types_and_their_equals() {
         let src = "---\ntype Money = EUR>=0\nitem:text!   // the key\ncost : Money\ntotal:Money=cost * qty\n\"price, net\": EUR?\n---\nitem,cost,total,\"price, net\"\nfuel,1,1=,\n";

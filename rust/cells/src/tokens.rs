@@ -455,10 +455,8 @@ fn statement(
     }
     // A fence of the script's or of what the engine stored under it.
     if b[i..e].starts_with(b"```") {
-        let ticks = b[i..e].iter().take_while(|&&c| c == b'`').count();
         out.push(i, e, Kind::Fence, NONE);
-        let lang = core::str::from_utf8(&b[i + ticks..e]).unwrap_or("").trim_matches([' ', '\t']);
-        return Some((ticks, lang.starts_with("cells")));
+        return Some(fence(&b[i..e]));
     }
     // The comment: `//` outside single and double quotes.
     let said_end = s + crate::prelude::uncomment(&source[s..e]).len();
@@ -510,15 +508,19 @@ fn statement(
             out.push(i, word, Kind::Keyword, NONE);
             import(source, word, end, named, tables, out);
         } else if word > i && b.get(after) == Some(&b'=') {
-            // `name = ```cells` or `name = run <schedule>`
+            // `name = ```cells`, `name = ```chart bars` or `name = run <schedule>`
             out.push(i, word, Kind::Name, NONE);
-            tables.push(source[i..word].into());
             out.push(after, after + 1, Kind::Punct, NONE);
             let v = skip(after + 1);
             if b[v..end].starts_with(b"```") {
                 out.push(v, end, Kind::Fence, NONE);
-                opened = Some((b[v..end].iter().take_while(|&&c| c == b'`').count(), true));
+                let (ticks, table) = fence(&b[v..end]);
+                if table {
+                    tables.push(source[i..word].into());
+                }
+                opened = Some((ticks, table));
             } else if b[v..end].starts_with(b"run") {
+                tables.push(source[i..word].into());
                 out.push(v, v + 3, Kind::Keyword, NONE);
                 schedule(source, v + 3, end, out);
             } else {
@@ -544,6 +546,14 @@ fn statement(
     }
     out.push(said_end, e, Kind::Comment, NONE);
     opened
+}
+
+/// A fence's opening, its backticks first: how many backticks close it, and whether what
+/// it holds is a table (`cells`), never a chart's entries or a script's code.
+fn fence(open: &[u8]) -> (usize, bool) {
+    let ticks = open.iter().take_while(|&&c| c == b'`').count();
+    let lang = core::str::from_utf8(&open[ticks..]).unwrap_or("").trim_matches([' ', '\t']);
+    (ticks, lang.split([' ', '\t']).next() == Some("cells"))
 }
 
 /// A column's declaration in `s..e` (SPEC.md, Columns): where its name ends and its `:`
@@ -973,6 +983,18 @@ mod tests {
         assert_eq!(kinds(Kind::CellChoice), ["rent"]);
         assert_eq!(kinds(Kind::Number), ["18:00", "96.75", "3"]);
         assert_eq!(kinds(Kind::CellNumber), ["1.4", "32.25"]);
+        assert!(kinds(Kind::Error).is_empty(), "{t:?}");
+    }
+
+    /// A named fence is read by its language, as an unnamed one is: a chart's entries are
+    /// its code, never a table's header and rows.
+    #[test]
+    fn a_named_chart_is_a_chart() {
+        let src = "---\nspent = ```chart bars\ntitle: Spent\nx:     DATE_TRUNC('month', date)\n```\n```chart\nlayers: spent\n```\n---\ndate:date\n";
+        let t = shown(src);
+        let kinds = |k: Kind| t.iter().filter(|x| x.1 == k).map(|x| x.0.as_str()).collect::<Vec<_>>();
+        assert_eq!(kinds(Kind::Code), ["title: Spent", "x:     DATE_TRUNC('month', date)", "layers: spent"]);
+        assert_eq!(kinds(Kind::Name), ["spent", "date"]);
         assert!(kinds(Kind::Error).is_empty(), "{t:?}");
     }
 
