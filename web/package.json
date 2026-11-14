@@ -13,6 +13,7 @@
     "ui": "bun scripts/ui.ts",
     "examples": "bun scripts/examples.ts",
     "og": "bun scripts/og.ts",
+    "charts": "bun scripts/charts.ts",
     "check": "bun scripts/ui-fresh.ts && tsc --noEmit && bun scripts/examples.ts && bun scripts/docs.ts && bun scripts/og.ts --check",
     "deploy": "next build && wrangler deploy"
   },

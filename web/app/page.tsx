@@ -1,4 +1,5 @@
 import { Fragment, Suspense } from "react"
+import { ChartsScene } from "@/components/charts"
 import { Ground } from "@/components/ground"
 import { Hero, Landing } from "@/components/hero"
 import { Playground } from "@/components/playground"
@@ -10,6 +11,7 @@ import { Code as Block } from "@/components/ui/code"
 import { Glass } from "@/components/ui/material-glass"
 import { PRODUCT } from "@/lib/product"
 import { ONE_FILE, PROOFS } from "@/lib/proofs"
+import { DINNER, SPENDING_PATH, WATCH_COMMAND } from "@/lib/spending"
 
 /** What each neighbour does, honestly, and what a Cells file does instead. */
 const ROWS = [
@@ -235,6 +237,36 @@ export default function Page() {
           <Story />
         </Suspense>
       </div>
+
+      <section aria-label="charts" className="mx-auto mt-48 max-w-6xl px-6">
+        <div className="max-w-3xl">
+          <Eyebrow>Charts</Eyebrow>
+          <h2 className="mt-4 text-balance text-[clamp(2rem,4vw,3.25rem)] leading-[1.05] font-medium tracking-[-0.035em]">
+            The charts live in the file too.
+          </h2>
+          <p className="mt-8 text-[18px] leading-relaxed text-foreground/85">
+            <Spelled>{SPENDING_PATH}</Spelled> holds six months of a household&apos;s spending and, in its prelude, four charts: each
+            month by category, and what was spent against the budget. The app draws them, and so does a terminal:{" "}
+            <Spelled>{WATCH_COMMAND}</Spelled> draws the first and the last, and again each time the file changes.
+          </p>
+          <p className="mt-5 text-[17px] leading-relaxed text-muted-foreground">
+            Here both have the file open. A dinner typed with a zero too many, <Spelled>{DINNER.typo}</Spelled>, puts May over its
+            budget in the terminal the moment the app writes it; typed back to <Spelled>{DINNER.was}</Spelled>, May is under again.
+          </p>
+        </div>
+        <div className="mt-12">
+          <Suspense>
+            <ChartsScene />
+          </Suspense>
+        </div>
+        <p className="mt-6 max-w-3xl text-[15px] leading-relaxed text-muted-foreground">
+          Each series is named in its own colour with its mark. True colour, 256 or 16, braille, blocks or plain ASCII: the
+          chart is drawn in what the terminal holds.{" "}
+          <a href="/docs/spec/the-prelude#charts" className="underline decoration-border underline-offset-4 hover:text-foreground">
+            Charts, in the docs
+          </a>
+        </p>
+      </section>
 
       <section className="mx-auto mt-48 max-w-3xl px-6">
         <Eyebrow>The price</Eyebrow>

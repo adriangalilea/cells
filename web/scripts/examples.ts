@@ -4,7 +4,10 @@
 //
 //   bun scripts/examples.ts
 
+import { createHash } from "node:crypto"
 import { readFiles as readWith } from "@/lib/view"
+import { DINNER, SPENDING_PATH, spending, WATCHED_CHARTS } from "@/lib/spending"
+import { SCREENS } from "@/lib/spending-screens"
 import { loadEngine } from "@/lib/engine-module"
 import { codeTimeline } from "@/lib/code-session"
 import { hero } from "@/lib/hero"
@@ -115,6 +118,49 @@ for (const [name, frame] of Object.entries(HERO.checkpoints)) {
   if (one.broken.length || one.problems.length)
     fail("proof one file", [...one.broken.map((b) => b.why), ...one.problems.map((x) => x.why)].join("; "))
   if (failed === before) console.log(`✓ proofs: the check's line is the engine's, every file shown reads whole`)
+}
+
+// The charts scene: its file reads whole and declares the four charts the page names; the
+// typo puts May's spending over May's budget and the fix takes it back under, as the
+// engine sums them (chart 4's two layers); and every text the scene writes has the
+// terminal's frame drawn from it by `pnpm charts`, in the scene's order.
+{
+  const before = failed
+  const scene = spending(engine)
+  const titles = ["Spending by category", "Spent", "Budget", "Spent against budget"]
+  const may = (text: string) => {
+    const r = engine.read(text, { at: SPENDING_PATH, files: {} })
+    try {
+      if (r.broken.length || r.problems.length) fail("charts", [...r.broken.map((b) => b.why), ...r.problems.map((p) => p.why)].join("; "))
+      const charts = r.doc.charts()
+      if (JSON.stringify(charts.map((c) => c.title)) !== JSON.stringify(titles)) fail("charts", `the file declares ${JSON.stringify(charts.map((c) => c.title))}`)
+      const layers = r.doc.summary(WATCHED_CHARTS[1] - 1).layers
+      const [spent, budget] = layers.map((l) => Number(l.values[l.places.indexOf("2026-05-01")]?.[0]))
+      if (layers.length !== 2 || !Number.isFinite(spent) || !Number.isFinite(budget)) fail("charts", "chart 4 is not May's spent and budget")
+      return { spent: spent as number, budget: budget as number }
+    } finally {
+      r.doc.free()
+    }
+  }
+  const found = may(scene.checkpoints.found)
+  const typo = may(scene.checkpoints.typo)
+  const fixed = may(scene.checkpoints.fixed)
+  if (!(found.spent <= found.budget)) fail("charts", `May is over budget before the typo: ${found.spent} of ${found.budget}`)
+  if (!(typo.spent > typo.budget)) fail("charts", `the typo leaves May under budget: ${typo.spent} of ${typo.budget}`)
+  if (!(fixed.spent <= fixed.budget)) fail("charts", `the fix leaves May over budget: ${fixed.spent} of ${fixed.budget}`)
+  const rows = engine.read(scene.checkpoints.typo, { at: SPENDING_PATH, files: {} })
+  try {
+    const amount = rows.columns.find((c) => c.name === "amount")
+    if (amount?.decimal(DINNER.row) !== DINNER.typo) fail("charts", `the typo's row holds ${amount?.decimal(DINNER.row)}, not ${DINNER.typo}`)
+  } finally {
+    rows.doc.free()
+  }
+  const hash = (text: string) => createHash("sha256").update(text).digest("hex").slice(0, 16)
+  const drawn = SCREENS.frames.map((f) => f.source)
+  const wanted = scene.texts.map(hash)
+  if (JSON.stringify(drawn) !== JSON.stringify(wanted)) fail("charts", `the terminal's frames were drawn from other texts than the scene writes: pnpm charts`)
+  if (failed === before)
+    console.log(`✓ charts: May ${found.spent} of ${found.budget}, ${typo.spent} with the typo, ${fixed.spent} fixed; ${drawn.length} frames, each from its text`)
 }
 
 if (failed) {
