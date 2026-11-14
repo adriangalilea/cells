@@ -12,7 +12,7 @@ export const PRODUCT = {
   tagline: "Programmable data.",
   /** Under the line, and the page's description wherever it is read; on the page its
    *  extension is lit. */
-  subline: "Plain text .cells files: typed, reactive and composable.",
+  subline: "Plain text .cells files: typed, reactive, composable and charted.",
   domain: "cellular.computer",
   repo: "https://github.com/adriangalilea/cells",
 } as const

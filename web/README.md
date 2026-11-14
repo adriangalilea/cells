@@ -5,9 +5,8 @@ The Cells site: the landing, every example read live by the engine (this reposit
 | | |
 |---|---|
 | `lib/story.ts` | every step's words and files, as data |
-| `lib/hero.ts` | the ten seconds on a Mac, as data: the edit, the terminal's session, one clock |
-| `lib/spending.ts` | the charts scene, as data: `spending.cells` open in the app and in `cells chart --watch`, a dinner typed with a zero too many and back |
-| `scripts/charts.ts` | the terminal's frames for it, `lib/spending-screens.ts`: this checkout's `cells chart … --watch` run in a pseudo-terminal of 80 by 44, its screen read after each text the scene writes, never drawn by hand |
+| `lib/hero.ts` | the seconds on a Mac, as data: `spending.cells` open in the app and in `cells chart --watch`, a dinner typed with a zero too many and back, one clock |
+| `scripts/charts.ts` | the hero terminal's frames, `lib/hero-screens.ts`: this checkout's `cells chart … --watch` run in a pseudo-terminal of 80 by 44, its screen read after each text the hero writes, never drawn by hand |
 | `lib/product.ts` | the name, the extension, the command: change them here only |
 | `lib/docs.ts` | the docs: which files, where each lives on the site, SPEC.md cut a page per section, every link resolved at build (a broken one throws) |
 | `scripts/examples.ts` | reads every file through the engine and fails on any claim it does not back |
@@ -17,7 +16,7 @@ The Cells site: the landing, every example read live by the engine (this reposit
 UI=<ui checkout> pnpm ui                  # first, every time: each @ag item as ui main has it
 pnpm install
 pnpm engine                               # the engine and grammar from this repo, after they change
-pnpm charts                               # the charts scene's terminal frames, after cells chart or the scene changes
+pnpm charts                               # the hero terminal's frames, after cells chart or the hero changes
 pnpm dev                                  # :3200; ?still=0.5 holds the hero at a moment
 pnpm check                                # ui's items fresh, types, the story's claims, the docs
 pnpm deploy                               # next build, then wrangler (workers.dev)

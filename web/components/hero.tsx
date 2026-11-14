@@ -1,25 +1,28 @@
 "use client"
 
-// THE HERO: a MacBook at night, someone at work in Cells. Two windows of the app: money,
-// the month's movements, large on the left, and accounts on the right. A movement is
-// typed into a new row, the VAT is there as the amount lands, coffee is flagged as no
-// account, and once accounts has it the flag is gone (lib/hero, ui's table-session). One
-// clock: `Playback` plays it in view and round again; each window draws the session's
-// frame at the hero's moment, the hand (its cursor, what it types) in the one in front.
+// THE HERO: a MacBook at night, someone at work on one file, spending.cells, open twice:
+// in Cells on the left, and on the right in a terminal running `cells chart spending.cells
+// 1 4 --watch`. A dinner is typed into the app with a zero too many and the terminal draws
+// May over its budget; typed back, May is under again (lib/hero, ui's table-session; the
+// terminal's screens the real program's, lib/hero-screens). One clock: `Playback` plays it
+// in view and round again; the app's window draws the session's frame at the hero's
+// moment, the hand (its cursor, what it types) in it, and the terminal the screen drawn
+// for the file that frame holds.
 //
-// As the reader scrolls past it, the money window lifts out of the screen toward them
-// and lands as the page's first block (`Landing`), in one move, while the lid folds shut
+// As the reader scrolls past it, the Cells window lifts out of the screen toward them and
+// lands as the page's first block (`Landing`), in one move, while the lid folds shut
 // behind it (the Mac's own lid, its timeline's last step, driven by the scroll). Reduced
-// motion: the Mac shut and the window already in place. A phone stacks the windows and
+// motion: the Mac shut and the window already in place. A phone stacks the two windows and
 // nothing flies.
 
 import * as React from "react"
 import { createPortal } from "react-dom"
 import { CellsWindow } from "@/components/cells-window"
+import { ChartTerminal } from "@/components/chart-terminal"
 import { Macos } from "@/components/ui/macos"
 import { Playback, Playhead, usePlayhead } from "@/components/ui/playback"
 import { useEngine } from "@/components/use-engine"
-import { hero } from "@/lib/hero"
+import { DINNER, hero, SPENDING_PATH, WATCH_COMMAND } from "@/lib/hero"
 import { type Art, LID_MS, sceneClock, type Timeline } from "@/lib/macos-session"
 import { PRODUCT } from "@/lib/product"
 import { sceneOf, tableFrameAt } from "@/lib/table-session"
@@ -47,45 +50,45 @@ const useHero = () => hero(useEngine())
 export const ACCENT = "#7fdcf0"
 /** The windows on the Mac's stage (960 by 600, ui macos): 36 from the top (under the menu
  *  bar), 12 from the foot and the sides, 12 between them, the screen split in two halves of
- *  the full height. The money window, the one that flies, on the left; accounts on the
- *  right. */
+ *  the full height. The Cells window, the one that flies, on the left; the terminal on the
+ *  right, as tall as its screen. */
 const INSET = 12
 const TOP = 36
 const WINDOW_W = (960 - 3 * INSET) / 2
 const WINDOW_H = 600 - TOP - INSET
-const SIDE = { left: INSET + WINDOW_W + INSET, width: WINDOW_W, height: WINDOW_H }
+const SIDE = { left: INSET + WINDOW_W + INSET, width: WINDOW_W }
 
-/** Every window's file and the hand at the hero's instant. */
+/** The file, the hand and the terminal's screen at the hero's instant. */
 function useFrame(ms: number) {
   const h = useHero()
   const f = tableFrameAt(h.timeline, Math.min(ms, h.timeline.total))
-  const file = (path: string) => ({ name: path, text: f.texts[path] as string })
-  return {
-    money: file(h.money),
-    accounts: file(h.accounts),
-    scene: (path: string) => sceneOf(f, path),
-  }
+  const text = f.texts[SPENDING_PATH] as string
+  const screen = h.texts.indexOf(text)
+  if (screen < 0) throw new Error("hero: a frame holds a text the hero never writes")
+  return { text, screen, scene: sceneOf(f, SPENDING_PATH) }
 }
 
-/** The money window's height on the page, at its stage width: shorter than the Mac's half
- *  of the screen, as tall as its rows, its prelude and some air. */
-const LANDED_H = 340
+/** The Cells window's height on the page, at its stage width: shorter than the Mac's half
+ *  of the screen, as tall as some rows, its prelude and some air. */
+const LANDED_H = 360
 
-/** The money window as the page keeps it once the hand is done: the window that leaves
+/** The Cells window as the page keeps it once the hand is done: the window that leaves
  *  the Mac, at its stage width and `height` (its stage height while it flies, from the
  *  Mac's to the page's, is `--stage-h`), scaled to `width` as a whole, so the flight is a
  *  move, a scale and the window's own height easing to the page's. */
-function MoneyWindow({ width, height }: { width: number; height: number }) {
+function SpendingWindow({ width, height }: { width: number; height: number }) {
   const h = useHero()
-  const end = h.checkpoints.fixed
   return (
     <div style={{ width, height: `calc(var(--stage-h, ${height}px) * ${width / WINDOW_W})` }}>
       <div style={{ width: WINDOW_W, height: `var(--stage-h, ${height}px)`, transform: `scale(${width / WINDOW_W})`, transformOrigin: "0 0" }}>
-        <CellsWindow name={h.money} text={end.money} others={[{ name: h.accounts, text: end.accounts }]} className="h-full" />
+        <CellsWindow name={SPENDING_PATH} text={h.checkpoints.fixed} className="h-full" />
       </div>
     </div>
   )
 }
+
+/** What the hero shows, said: for assistive tech, the same on the Mac and stacked. */
+const ALT = `A MacBook at night: ${SPENDING_PATH} open in ${PRODUCT.name} on the left, six months of spending by category, and on the right a terminal running ${WATCH_COMMAND}, charting spending by category and spent against budget by month. A dinner of ${DINNER.was} is typed as ${DINNER.typo} in ${PRODUCT.name}, and the terminal redraws May over its budget; typed back, May is under again.`
 
 /** The landing's width on the page: the window a little larger than on the Mac. */
 const LANDING_W = 520
@@ -99,7 +102,7 @@ export function Landing() {
     // Before it knows the width (the server's HTML) a phone collapses it rather than
     // `display: none`.
     <div data-hero-landing className="overflow-hidden rounded-[10px] max-md:invisible max-md:h-0" style={{ width: LANDING_W }}>
-      <MoneyWindow width={LANDING_W} height={LANDED_H} />
+      <SpendingWindow width={LANDING_W} height={LANDED_H} />
     </div>
   )
 }
@@ -111,14 +114,7 @@ function Scene({ lid }: { lid: number }) {
   const macMs = SHUT_FROM + lid * LID_MS
   return (
     <Playhead progress={macMs / MAC_CLOCK.total}>
-      <Macos
-        timeline={MAC}
-        art={NO_ART}
-        device="macbook"
-        captions={false}
-        front={PRODUCT.name}
-        alt={`A MacBook at night, two ${PRODUCT.name} windows open: ${h.money} and ${h.accounts}. A movement of 3.80 is typed into a new row and its VAT appears; it is paid to coffee, which ${h.accounts} does not have, and the cell is flagged; coffee is added in ${h.accounts}, and the flag in ${h.money} is gone.`}
-      >
+      <Macos timeline={MAC} art={NO_ART} device="macbook" captions={false} front={PRODUCT.name} alt={ALT}>
         {/* Night over the desktop picture: the windows are the brightest thing. */}
         <div aria-hidden className="absolute inset-0 bg-[radial-gradient(120%_90%_at_70%_100%,rgb(8_12_20/0.2),rgb(4_6_10/0.6))]" />
         {/* Gone from the screen while it flies (useDeparture): one window, never two. */}
@@ -127,30 +123,34 @@ function Scene({ lid }: { lid: number }) {
           className="absolute"
           style={{ top: TOP, left: INSET, width: WINDOW_W, height: WINDOW_H, visibility: lid > 0 ? "hidden" : undefined }}
         >
-          <CellsWindow name={f.money.name} text={f.money.text} others={[f.accounts]} scene={f.scene(h.money)} className="h-full" />
+          <CellsWindow name={SPENDING_PATH} text={f.text} scene={f.scene} className="h-full" />
         </div>
-        <div className="absolute" style={{ top: TOP, left: SIDE.left, width: SIDE.width, height: SIDE.height }}>
-          <CellsWindow name={f.accounts.name} text={f.accounts.text} scene={f.scene(h.accounts)} className="h-full" />
-        </div>
+        <ChartTerminal index={f.screen} accent={ACCENT} className="absolute" style={{ top: TOP, left: SIDE.left, width: SIDE.width }} />
       </Macos>
     </Playhead>
   )
 }
 
+/** The Cells window on a phone: its height, and the scale it is drawn at. */
+const PHONE_H = 420
+const PHONE_SCALE = 0.8
+
 /** The same moments on a phone's width, where a Mac's screen would be too small to read:
- *  no machine, the windows stacked, the same clock. */
+ *  no machine, the two windows stacked, the same clock. */
 function Stacked() {
   const h = useHero()
   const ms = usePlayhead(undefined).at * h.total
   const f = useFrame(ms)
   return (
-    <div
-      role="img"
-      aria-label={`Two ${PRODUCT.name} windows: a movement typed into ${h.money}, its VAT computed, coffee flagged as no account until ${h.accounts} has it.`}
-      className="space-y-3"
-    >
-      <CellsWindow name={f.money.name} text={f.money.text} others={[f.accounts]} scene={f.scene(h.money)} className="h-[200px]" />
-      <CellsWindow name={f.accounts.name} text={f.accounts.text} scene={f.scene(h.accounts)} className="h-[170px]" />
+    <div role="img" aria-label={ALT} className="space-y-3">
+      {/* At a phone's width the table drawn a little smaller, so its four columns, the
+          amount the hand types into among them, all fit. */}
+      <div style={{ height: PHONE_H * PHONE_SCALE }}>
+        <div style={{ width: `${100 / PHONE_SCALE}%`, height: PHONE_H, transform: `scale(${PHONE_SCALE})`, transformOrigin: "0 0" }}>
+          <CellsWindow name={SPENDING_PATH} text={f.text} scene={f.scene} className="h-full" />
+        </div>
+      </div>
+      <ChartTerminal index={f.screen} accent={ACCENT} />
     </div>
   )
 }
@@ -195,7 +195,7 @@ export function Hero() {
           // Hidden by visibility, never display: laid out while it waits, so its table has
           // measured its columns before it is first seen.
           <div ref={flight} aria-hidden className="pointer-events-none fixed top-0 left-0 z-30 origin-top-left rounded-[10px] will-change-transform" style={{ visibility: "hidden" }}>
-            <MoneyWindow width={WINDOW_W} height={WINDOW_H} />
+            <SpendingWindow width={WINDOW_W} height={WINDOW_H} />
           </div>,
           document.body,
         )}

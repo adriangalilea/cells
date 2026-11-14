@@ -1,23 +1,16 @@
 "use client"
 
-// THE CHARTS SCENE: one file open in the app and charted in a terminal beside it
-// (lib/spending). The hand types a dinner into the app's window; each cell it writes is
-// the file the terminal's `cells chart … --watch` reads again, and the terminal shows the
-// screen the real program drew for that file (lib/spending-screens, `pnpm charts`). One
-// clock, ui's playback, in view and round again. The terminal is ui's window with the
-// screen as its program (`children`): each cell of the program's screen in its place, a
-// glyph the page's mono face may lack held to one cell's width so no column moves.
+// THE HERO'S TERMINAL: `cells chart spending.cells 1 4 --watch` as the real program drew
+// it for the file as it stands (lib/hero-screens, `pnpm charts`). ui's terminal window
+// with the screen as its program (`children`): each cell of the program's screen in its
+// place, a glyph the page's mono face may lack held to one cell's width so no column
+// moves, and the type a share of the box's width, so its 80 columns always fit it.
 
-import * as React from "react"
-import { CellsWindow } from "@/components/cells-window"
-import { ACCENT } from "@/components/hero"
-import { Playback, usePlayhead } from "@/components/ui/playback"
+import type * as React from "react"
 import { Terminal, useTerminalPalette } from "@/components/ui/terminal"
-import { useEngine } from "@/components/use-engine"
-import { SPENDING_PATH, type Spending, spending, WATCH_COMMAND } from "@/lib/spending"
-import { type ScreenColor, type ScreenFrames, SCREEN } from "@/lib/spending-screen"
-import { SCREENS } from "@/lib/spending-screens"
-import { sceneOf, tableFrameAt } from "@/lib/table-session"
+import { type ScreenColor, type ScreenFrames, SCREEN } from "@/lib/chart-screen"
+import { WATCH_COMMAND } from "@/lib/hero"
+import { SCREENS } from "@/lib/hero-screens"
 import { ansiColor } from "@/lib/terminal-session"
 
 /** A screen colour as the page draws it: the named sixteen and the palette in the site's
@@ -91,36 +84,30 @@ function Screen({ frame }: { frame: ScreenFrames["frames"][number] }) {
   )
 }
 
-/** The moment drawn: the app's window on the file as its last write left it, the hand in
- *  it, and the terminal's screen for that file. */
-function Moment({ scene }: { scene: Spending }) {
-  const ms = Math.min(usePlayhead(undefined).at * scene.total, scene.timeline.total)
-  const f = tableFrameAt(scene.timeline, ms)
-  const text = f.texts[SPENDING_PATH] as string
-  const frame = SCREENS.frames[scene.texts.indexOf(text)]
-  if (!frame) throw new Error("charts: the scene writes a text no screen was drawn from: pnpm charts")
+/** The terminal holding the charts of the hero's `index`th text (lib/hero `texts`, in the
+ *  order the screens were drawn from them), in a box of any width. */
+export function ChartTerminal({
+  index,
+  accent,
+  className,
+  style,
+}: {
+  index: number
+  accent: string
+  className?: string
+  style?: React.CSSProperties
+}) {
+  const frame = SCREENS.frames[index]
+  if (!frame) throw new Error("chart-terminal: the hero writes a text no screen was drawn from: pnpm charts")
   return (
-    <div className="grid items-start gap-4 lg:grid-cols-[minmax(0,0.75fr)_minmax(0,1fr)]">
-      <CellsWindow name={SPENDING_PATH} text={text} scene={sceneOf(f, SPENDING_PATH)} className="h-[min(36rem,80svh)]" />
-      {/* the type a share of the column's width: the screen's 80 columns always fit it */}
-      <div className="[container-type:inline-size]">
-        <Terminal
-          alt={`A terminal running ${WATCH_COMMAND}: spending by category and spent against budget, by month, drawn again each time the file changes.`}
-          accent={ACCENT}
-          size={`calc(100cqw / ${SCREEN.cols * 0.6 + 4})`}
-        >
-          <Screen frame={frame} />
-        </Terminal>
-      </div>
+    <div className={`[container-type:inline-size] ${className ?? ""}`} style={style}>
+      <Terminal
+        alt={`A terminal running ${WATCH_COMMAND}: spending by category and spent against budget, by month, drawn again each time the file changes.`}
+        accent={accent}
+        size={`calc(100cqw / ${SCREEN.cols * 0.6 + 4})`}
+      >
+        <Screen frame={frame} />
+      </Terminal>
     </div>
-  )
-}
-
-export function ChartsScene() {
-  const scene = spending(useEngine())
-  return (
-    <Playback playable={{ duration: scene.total, chapters: scene.timeline.playable.chapters }} playing>
-      <Moment scene={scene} />
-    </Playback>
   )
 }

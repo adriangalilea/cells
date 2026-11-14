@@ -1,5 +1,4 @@
 import { Fragment, Suspense } from "react"
-import { ChartsScene } from "@/components/charts"
 import { Ground } from "@/components/ground"
 import { Hero, Landing } from "@/components/hero"
 import { Playground } from "@/components/playground"
@@ -11,7 +10,7 @@ import { Code as Block } from "@/components/ui/code"
 import { Glass } from "@/components/ui/material-glass"
 import { PRODUCT } from "@/lib/product"
 import { ONE_FILE, PROOFS } from "@/lib/proofs"
-import { DINNER, SPENDING_PATH, WATCH_COMMAND } from "@/lib/spending"
+import { DINNER, SPENDING_PATH, WATCH_COMMAND } from "@/lib/hero"
 
 /** What each neighbour does, honestly, and what a Cells file does instead. */
 const ROWS = [
@@ -161,7 +160,7 @@ export default function Page() {
 
       {/* The hero's stage sticks while its extra height scrolls by: over it the lid shuts,
           and the file's text leaves the screen for the block below (components/hero). */}
-      <section data-hero-section className="relative md:-mt-[4.5rem] md:h-[170svh]">
+      <section data-hero-section className="relative pb-20 md:-mt-[4.5rem] md:pb-0 md:h-[170svh]">
         <div className="relative isolate flex flex-col items-center gap-8 px-4 pt-6 md:sticky md:top-0 md:h-svh md:justify-center md:gap-10 md:pt-16">
           <div className="max-w-3xl text-center">
             <h1 className="text-balance text-[clamp(2.25rem,4.6vw,3.75rem)] leading-[1.03] font-medium tracking-[-0.04em] text-foreground">
@@ -180,7 +179,7 @@ export default function Page() {
               )}
             </p>
           </div>
-          <div className="relative w-[min(72rem,94vw,calc((100svh-17rem)*1.6))]">
+          <div className="relative w-[min(72rem,94vw,calc((100svh-19rem)*1.6))]">
             {/* A soft rim of light behind the machine, neutral: a product shot at night. */}
             <div aria-hidden className="absolute inset-x-[14%] top-[4%] bottom-[22%] -z-10 rounded-[40%] bg-white/5 blur-[80px] dark:bg-white/6" />
             {/* The engine streams in; the server's HTML of the hero and the story stays on
@@ -188,6 +187,11 @@ export default function Page() {
             <Suspense>
               <Hero />
             </Suspense>
+            {/* What the screen shows, said once under it: the one file, twice. */}
+            <p className="mx-auto mt-4 max-w-[70ch] text-center text-pretty text-[14px] leading-relaxed text-muted-foreground">
+              <Spelled>{SPENDING_PATH}</Spelled> in {PRODUCT.name}, and charted beside it by <Spelled>{WATCH_COMMAND}</Spelled>. A dinner
+              typed as <Spelled>{DINNER.typo}</Spelled> redraws both charts with May over its budget; typed back, May is under again.
+            </p>
           </div>
         </div>
       </section>
@@ -201,7 +205,7 @@ export default function Page() {
         </Suspense>
         <Beat
           name="A spreadsheet."
-          good="Type a number and every total follows. You can see into it and play with it."
+          good="Type a number and every total and chart follows. You can see into it and play with it."
           but="But its formulas point at B7, and its file opens in one app."
         />
       </section>
@@ -243,36 +247,6 @@ export default function Page() {
           <Story />
         </Suspense>
       </div>
-
-      <section aria-label="charts" className="mx-auto mt-48 max-w-6xl px-6">
-        <div className="max-w-3xl">
-          <Eyebrow>Charts</Eyebrow>
-          <h2 className="mt-4 text-balance text-[clamp(2rem,4vw,3.25rem)] leading-[1.05] font-medium tracking-[-0.035em]">
-            The charts live in the file too.
-          </h2>
-          <p className="mt-8 text-[18px] leading-relaxed text-foreground/85">
-            <Spelled>{SPENDING_PATH}</Spelled> holds six months of a household&apos;s spending and, in its prelude, four charts: each
-            month by category, and what was spent against the budget. The app draws them, and so does a terminal:{" "}
-            <Spelled>{WATCH_COMMAND}</Spelled> draws the first and the last, and again each time the file changes.
-          </p>
-          <p className="mt-5 text-[17px] leading-relaxed text-muted-foreground">
-            Here both have the file open. A dinner typed with a zero too many, <Spelled>{DINNER.typo}</Spelled>, puts May over its
-            budget in the terminal the moment the app writes it; typed back to <Spelled>{DINNER.was}</Spelled>, May is under again.
-          </p>
-        </div>
-        <div className="mt-12">
-          <Suspense>
-            <ChartsScene />
-          </Suspense>
-        </div>
-        <p className="mt-6 max-w-3xl text-[15px] leading-relaxed text-muted-foreground">
-          Each series is named in its own colour with its mark. True colour, 256 or 16, braille, blocks or plain ASCII: the
-          chart is drawn in what the terminal holds.{" "}
-          <a href="/docs/spec/the-prelude#charts" className="underline decoration-border underline-offset-4 hover:text-foreground">
-            Charts, in the docs
-          </a>
-        </p>
-      </section>
 
       <section className="mx-auto mt-48 max-w-3xl px-6">
         <Eyebrow>The price</Eyebrow>
