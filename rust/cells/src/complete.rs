@@ -357,6 +357,12 @@ fn tinting(before: &str) -> bool {
     before.ends_with('#') || before.trim_end_matches([' ', '\t']).strip_suffix("tint").is_some_and(|b| b.ends_with([' ', '\t']))
 }
 
+/// How far the word the caret stands in runs on past it, in `rest` (the text after the
+/// caret): a completion is written over the whole word, so `tex|t` taking `text` is `text`.
+fn word_end(rest: &str) -> usize {
+    rest.find(|c: char| !ident(c)).unwrap_or(rest.len())
+}
+
 /// Whether a type's name may begin after `typed`, the type written before the word at
 /// the place: at its start, or after a space, `|`, `<` or `(`. After a mark (`text?`,
 /// `id!`), a bound or a quote none does.
@@ -390,7 +396,7 @@ fn formula<D: Deref<Target = Doc>, H: Fn(&[&str]) -> Option<D>>(reach: &Reach<'_
     let here = at - f.base as usize;
     let src = &f.src[..here];
     let start = src.rfind(|c: char| !ident(c)).map_or(0, |i| i + 1);
-    let (from, to) = (f.base + start as u32, f.base + here as u32);
+    let (from, to) = (f.base + start as u32, f.base + (here + word_end(&f.src[here..])) as u32);
     let columns = |d: &Doc, detail: &str| -> Vec<Completion> {
         d.columns()
             .iter()
@@ -496,7 +502,7 @@ fn prelude<D: Deref<Target = Doc>, H: Fn(&[&str]) -> Option<D>>(reach: &Reach<'_
     }
     let line = &text[line_start..at];
     let start = line.rfind(|c: char| !ident(c)).map_or(0, |i| i + 1);
-    let (from, to) = ((line_start + start) as u32, at as u32);
+    let (from, to) = ((line_start + start) as u32, (at + word_end(&text[at..])) as u32);
     let before = line[..start].trim();
     let word = |w: &str, detail: &str| item(w.to_owned(), CompletionKind::Keyword, detail.to_owned(), from, to);
     if before.is_empty() {
@@ -702,6 +708,18 @@ mod tests {
         let text = "---\nx__completing: te\n---\nnote\nx\n";
         let at = text.find(": te").unwrap() + 4;
         assert!(labels(text, at).iter().any(|l| l == "text"));
+        // the caret inside a word: what is taken is written over the whole word, in a
+        // declaration's type as in a formula
+        let whole = |text: &str, at: usize, word: &str| {
+            let doc = crate::read(text).unwrap();
+            let found = complete(&doc, text, at, |_: &[&str]| None::<Arc<Doc>>);
+            let c = found.iter().find(|c| c.label == word).unwrap_or_else(|| panic!("{word} in {found:?}"));
+            assert_eq!(&text[c.from as usize..c.to as usize], word, "the whole word under the caret");
+        };
+        let text = "---\nx__completing: text\n---\nnote\nx\n";
+        whole(text, text.find("text\n").unwrap() + 3, "text");
+        let text = "---\ntotal: num = cost\n---\ncost:num,total\n2,2\n";
+        whole(text, text.find("cost\n").unwrap() + 2, "cost");
         let text = "---\nwho: people.id|t\n---\nwho\nx\n";
         let at = text.find("|t").unwrap() + 2;
         assert!(labels(text, at).iter().any(|l| l == "text"));
