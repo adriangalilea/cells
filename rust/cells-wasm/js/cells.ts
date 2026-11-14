@@ -456,13 +456,14 @@ export interface Problem {
    *  own formula that does not compute; `reference`: a key no table it names holds, or
    *  two do; `stale`: a computed cell storing another value than its formula gives (its
    *  value the formula's; `fixStale` or `keepStale` resolve it); `unreached`: a computed
-   *  cell whose formula reads an import not reached, its stored value standing. */
-  kind: "type" | "missing" | "key" | "ragged" | "formula" | "reference" | "stale" | "unreached"
+   *  cell whose formula reads an import not reached, its stored value standing; `unstored`:
+   *  a computed cell whose formula gives a value the file does not store yet. */
+  kind: "type" | "missing" | "key" | "ragged" | "formula" | "reference" | "stale" | "unreached" | "unstored"
   /** How much it weighs, the same in every reader (`Kind::severity`): `error`, a value
    *  that is wrong (its type broken, a key repeated, a reference to no row, a formula
    *  that does not compute); `warning`, something absent or behind (a value not written,
    *  a stale value, a ragged row); `note`, nothing wrong (a stored value standing for an
-   *  import not reached). */
+   *  import not reached, a computed value not stored yet). */
   severity: Severity
   /** The cell's text as written. */
   readonly text: string
@@ -506,7 +507,7 @@ export interface Naming {
   readonly reason: string
 }
 
-const KINDS = ["type", "missing", "key", "ragged", "formula", "reference", "stale", "unreached"] as const
+const KINDS = ["type", "missing", "key", "ragged", "formula", "reference", "stale", "unreached", "unstored"] as const
 const live = new FinalizationRegistry<number>((h) => x.cells_drop(h))
 
 /** A file read, held by the module. */

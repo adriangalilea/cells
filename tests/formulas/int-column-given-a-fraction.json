@@ -10,6 +10,7 @@
     { "box": { "text": "second" }, "items": { "int": "10" }, "people": { "int": "4" }, "each": { "from": "formula" } }
   ],
   "problems": [
+    { "row": 0, "column": "each", "kind": "unstored", "span": [65, 0] },
     { "row": 1, "column": "each", "kind": "type", "span": [78, 0] }
   ]
 }

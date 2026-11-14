@@ -11,6 +11,9 @@
     { "item": { "text": "boots" }, "paid": { "money": "60.00", "currency": "EUR" }, "refund": { "money": "90.00", "currency": "EUR" }, "net": { "from": "formula" }, "units": { "int": "15", "from": "formula" } }
   ],
   "problems": [
-    { "row": 1, "column": "net", "kind": "type", "span": [112, 0] }
+    { "row": 0, "column": "net", "kind": "unstored", "span": [92, 0] },
+    { "row": 0, "column": "units", "kind": "unstored", "span": [93, 0] },
+    { "row": 1, "column": "net", "kind": "type", "span": [112, 0] },
+    { "row": 1, "column": "units", "kind": "unstored", "span": [113, 0] }
   ]
 }

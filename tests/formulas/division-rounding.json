@@ -11,5 +11,10 @@
     { "dinner": { "text": "third" }, "bill": { "int": "10" }, "people": { "int": "4" }, "share": { "num": "2.5", "from": "formula" } },
     { "dinner": { "text": "fourth" }, "bill": { "int": "-7" }, "people": { "int": "3" }, "share": { "num": "-2.33333333333333", "from": "formula" } }
   ],
-  "problems": []
+  "problems": [
+    { "row": 0, "column": "share", "kind": "unstored", "span": [66, 0] },
+    { "row": 1, "column": "share", "kind": "unstored", "span": [78, 0] },
+    { "row": 2, "column": "share", "kind": "unstored", "span": [90, 0] },
+    { "row": 3, "column": "share", "kind": "unstored", "span": [103, 0] }
+  ]
 }

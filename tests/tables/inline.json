@@ -12,6 +12,11 @@
     { "date": { "date": "2026-11-05" }, "amount": { "money": "10.00", "currency": "EUR" }, "kind": { "ref": "cash" }, "fee": { "from": "formula" }, "card_rate": { "pct": "1.4", "from": "formula" } }
   ],
   "problems": [
-    { "row": 2, "column": "kind", "kind": "reference", "span": [244, 4] }
+    { "row": 0, "column": "fee", "kind": "unstored", "span": [197, 0] },
+    { "row": 0, "column": "card_rate", "kind": "unstored", "span": [198, 0] },
+    { "row": 1, "column": "fee", "kind": "unstored", "span": [225, 0] },
+    { "row": 1, "column": "card_rate", "kind": "unstored", "span": [226, 0] },
+    { "row": 2, "column": "kind", "kind": "reference", "span": [244, 4] },
+    { "row": 2, "column": "card_rate", "kind": "unstored", "span": [250, 0] }
   ]
 }

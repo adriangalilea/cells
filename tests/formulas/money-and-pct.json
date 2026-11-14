@@ -10,5 +10,9 @@
     { "item": { "text": "book" }, "amount": { "money": "18.40", "currency": "EUR" }, "rate": { "pct": "10" }, "vat": { "money": "1.67", "currency": "EUR", "from": "formula" } },
     { "item": { "text": "fee" }, "amount": { "money": "950.00", "currency": "EUR" }, "rate": { "pct": "0" }, "vat": { "money": "0", "currency": "EUR", "from": "formula" } }
   ],
-  "problems": []
+  "problems": [
+    { "row": 0, "column": "vat", "kind": "unstored", "span": [82, 0] },
+    { "row": 1, "column": "vat", "kind": "unstored", "span": [97, 0] },
+    { "row": 2, "column": "vat", "kind": "unstored", "span": [112, 0] }
+  ]
 }

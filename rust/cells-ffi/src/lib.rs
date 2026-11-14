@@ -594,6 +594,8 @@ pub enum CellsKind {
     CellsKindStale = 6,
     /// A computed cell whose formula reads an import not reached: its stored value stands.
     CellsKindUnreached = 7,
+    /// A computed cell whose formula gives a value the file does not store yet.
+    CellsKindUnstored = 8,
 }
 
 /// How much a problem weighs: `cells::Kind::severity`, the one rule every reader shows.
@@ -604,7 +606,8 @@ pub enum CellsSeverity {
     CellsSeverityError = 0,
     /// What is absent or behind.
     CellsSeverityWarning = 1,
-    /// Nothing wrong: a stored value standing for inputs this reader cannot reach.
+    /// Nothing wrong: a stored value standing for inputs this reader cannot reach, or a
+    /// computed value not stored yet.
     CellsSeverityNote = 2,
 }
 
@@ -644,6 +647,7 @@ pub unsafe extern "C" fn cells_problem(d: *mut CellsDoc, i: usize) -> CellsProbl
         cells::Kind::Reference => CellsKind::CellsKindReference,
         cells::Kind::Stale => CellsKind::CellsKindStale,
         cells::Kind::Unreached => CellsKind::CellsKindUnreached,
+        cells::Kind::Unstored => CellsKind::CellsKindUnstored,
     };
     let severity = match p.kind().severity() {
         cells::Severity::Error => CellsSeverity::CellsSeverityError,

@@ -169,7 +169,8 @@ let budget = """
   )
   #expect(doc.names["Price"]?.base == .money(currency: "EUR"))
   #expect(doc.columns[1].type?.base == .named("Price", .money(currency: "EUR")))
-  #expect(doc.problems.count == 1, "\(doc.problems)")
+  // the broken cost, and the total its formula gives that the file does not store yet
+  #expect(doc.problems.map(\.kind) == [.unstored, .type], "\(doc.problems)")
   #expect(doc.columns[3].formula == "cost * qty")
   #expect(
     doc.value(row: 0, column: 3)

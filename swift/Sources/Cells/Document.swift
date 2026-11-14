@@ -115,6 +115,9 @@ extension Cells {
       /// A computed cell whose formula reads an import not reached: its value is what
       /// the file stores, never computed again until the import is reached. A note.
       case unreached
+      /// A computed cell its formula gives a value that the file does not store yet (a
+      /// blank field, a lone `=`): it reads the same, and the next write stores it. A note.
+      case unstored
       /// A row longer than its header, on its last cell (its fields past the header
       /// kept), or a plain file's row shorter, on the first cell it lacks. The cell
       /// keeps its value.

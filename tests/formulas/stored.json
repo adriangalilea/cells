@@ -12,5 +12,8 @@
     { "item": { "text": "tent" }, "cost": { "money": "10.00", "currency": "EUR" }, "qty": { "int": "1" }, "total": { "money": "10.00", "currency": "EUR", "from": "formula" } },
     { "item": { "text": "invoice 42" }, "cost": { "money": "80.00", "currency": "EUR" }, "qty": { "int": "1" }, "total": { "money": "79.99", "currency": "EUR" } }
   ],
-  "problems": []
+  "problems": [
+    { "row": 2, "column": "total", "kind": "unstored", "span": [103, 0] },
+    { "row": 3, "column": "total", "kind": "unstored", "span": [117, 1] }
+  ]
 }

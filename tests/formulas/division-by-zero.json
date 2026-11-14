@@ -9,5 +9,7 @@
     { "dinner": { "text": "first" }, "bill": { "money": "30.00", "currency": "EUR" }, "people": { "int": "0" }, "share": { "from": "formula" } },
     { "dinner": { "text": "second" }, "bill": { "money": "30.00", "currency": "EUR" }, "people": { "int": "4" }, "share": { "money": "7.5", "currency": "EUR", "from": "formula" } }
   ],
-  "problems": []
+  "problems": [
+    { "row": 1, "column": "share", "kind": "unstored", "span": [86, 0] }
+  ]
 }

@@ -11,5 +11,15 @@
     { "item": { "text": "maps" }, "cost": { "money": "12.35", "currency": "EUR" }, "share": { "num": "0.0303775673348912", "from": "formula" }, "running": { "num": "0.2374861640634612", "from": "formula" }, "total": { "num": "1.0000000000000002", "from": "formula" } },
     { "item": { "text": "tent" }, "cost": { "money": "310.00", "currency": "EUR" }, "share": { "num": "0.762513835936539", "from": "formula" }, "running": { "num": "1.0000000000000002", "from": "formula" }, "total": { "num": "1.0000000000000002", "from": "formula" } }
   ],
-  "problems": []
+  "problems": [
+    { "row": 0, "column": "share", "kind": "unstored", "span": [110, 0] },
+    { "row": 0, "column": "running", "kind": "unstored", "span": [111, 0] },
+    { "row": 0, "column": "total", "kind": "unstored", "span": [112, 0] },
+    { "row": 1, "column": "share", "kind": "unstored", "span": [124, 0] },
+    { "row": 1, "column": "running", "kind": "unstored", "span": [125, 0] },
+    { "row": 1, "column": "total", "kind": "unstored", "span": [126, 0] },
+    { "row": 2, "column": "share", "kind": "unstored", "span": [139, 0] },
+    { "row": 2, "column": "running", "kind": "unstored", "span": [140, 0] },
+    { "row": 2, "column": "total", "kind": "unstored", "span": [141, 0] }
+  ]
 }

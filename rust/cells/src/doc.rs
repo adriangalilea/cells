@@ -2222,6 +2222,10 @@ impl Doc {
                 let gives = if gives.is_empty() { "nothing" } else { gives };
                 return format!("the formula gives {gives}, the file stores {stored}");
             }
+            Why::Unstored => {
+                let gives = gave.expect("an unstored cell's value, kept as found");
+                return format!("not stored yet: the formula gives {gives}, the next write stores it");
+            }
             Why::Unreached { table } => {
                 let from = self.tables[table as usize].from().expect("a table not reached is an import");
                 let raw = self.text(p.row as usize, p.column as usize);
@@ -3836,7 +3840,8 @@ impl Doc {
     /// Every computed cell computed again, each column holding one decoded with what its
     /// cells gave, and every reference checked against its tables.
     fn recompute(&mut self) {
-        self.problems.retain(|p| !matches!(p.why, Why::Formula | Why::Absent | Why::Ambiguous | Why::Stale | Why::Unreached { .. }));
+        self.problems
+            .retain(|p| !matches!(p.why, Why::Formula | Why::Absent | Why::Ambiguous | Why::Stale | Why::Unstored | Why::Unreached { .. }));
         self.unwell.clear();
         self.gave.clear();
         if self.computes() {
@@ -4129,7 +4134,7 @@ impl Doc {
     /// one problem a cell; what is stored left of a formula that does not compute is the
     /// formula's problem, never this.
     fn find_stale(&mut self, rendered: &BTreeMap<(u32, u32), String>) {
-        let mut stale = Vec::new();
+        let mut found = Vec::new();
         for (k, c) in self.columns.iter().enumerate() {
             if c.origin.is_empty() || (c.formula.is_some() && self.formulas[k].is_none()) {
                 continue;
@@ -4140,24 +4145,32 @@ impl Doc {
                     continue;
                 }
                 let raw = self.text(r, k);
-                let Some(split) = read::split(raw.as_bytes()) else { continue };
-                if split == 0 {
-                    continue;
-                }
-                let mut plain = Vec::new();
-                read::unescaped(raw[..split].as_bytes(), &mut plain);
-                let stored = core::str::from_utf8(&plain).unwrap();
-                let was = decode_one(c, stored).map_or(V::Null, |one| value_v(&one, 0));
-                if was.canonical() != value_v(c, r).canonical() {
-                    stale.push(at);
+                let gives = value_v(c, r);
+                match read::split(raw.as_bytes()) {
+                    // a blank field, a lone `=` or `=formula`: nothing stored, which is
+                    // something to say only where the formula gives a value
+                    None | Some(0) => {
+                        if gives != V::Null {
+                            found.push((at, Why::Unstored));
+                        }
+                    }
+                    Some(split) => {
+                        let mut plain = Vec::new();
+                        read::unescaped(raw[..split].as_bytes(), &mut plain);
+                        let stored = core::str::from_utf8(&plain).unwrap();
+                        let was = decode_one(c, stored).map_or(V::Null, |one| value_v(&one, 0));
+                        if was.canonical() != gives.canonical() {
+                            found.push((at, Why::Stale));
+                        }
+                    }
                 }
             }
         }
-        for at in stale {
+        for (at, why) in found {
             if let Some(g) = rendered.get(&at) {
                 self.gave.insert(at, g.clone());
             }
-            self.problems.push(Problem { row: at.0, column: at.1, why: Why::Stale });
+            self.problems.push(Problem { row: at.0, column: at.1, why });
         }
     }
 

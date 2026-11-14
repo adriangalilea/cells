@@ -8,5 +8,8 @@
     { "jar": { "text": "first" }, "grains": { "num": "12345678901234567890123456789012345" }, "half": { "num": "6172839450617283945061728394506172", "from": "formula" } },
     { "jar": { "text": "second" }, "grains": { "num": "12345678901234567890123456789012347" }, "half": { "num": "6172839450617283945061728394506174", "from": "formula" } }
   ],
-  "problems": []
+  "problems": [
+    { "row": 0, "column": "half", "kind": "unstored", "span": [82, 0] },
+    { "row": 1, "column": "half", "kind": "unstored", "span": [126, 0] }
+  ]
 }

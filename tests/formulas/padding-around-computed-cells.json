@@ -9,5 +9,7 @@
     { "item": { "text": "maps" }, "cost": { "money": "12.00", "currency": "EUR" }, "total": { "money": "24.00", "currency": "EUR", "from": "formula" } },
     { "item": { "text": "split" }, "cost": { "money": "32.25", "currency": "EUR", "from": "cell" }, "total": { "money": "64.50", "currency": "EUR", "from": "formula" } }
   ],
-  "problems": []
+  "problems": [
+    { "row": 1, "column": "total", "kind": "unstored", "span": [75, 1] }
+  ]
 }

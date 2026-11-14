@@ -49,7 +49,7 @@ const TAGS = new Set([
   "choice",
   "ref",
 ])
-const KINDS = ["type", "missing", "key", "ragged", "formula", "reference", "stale", "unreached"]
+const KINDS = ["type", "missing", "key", "ragged", "formula", "reference", "stale", "unreached", "unstored"]
 const FROM = ["formula", "cell"]
 const AT = /^(the file|the header|the prelude|column [1-9]\d*|prelude line [1-9]\d*|row [1-9]\d*)$/
 const DECIMAL = /^-?(0|[1-9]\d*)(\.\d+)?$/
@@ -237,7 +237,8 @@ function readsCase(path: string, j: { [k: string]: Json }, plain: boolean) {
     const v = isObject(cell) && Object.keys(cell).every((k) => k === "from") ? null : cell
     if (p.kind === "key" && v === null) fault(path, `${what} is a duplicate key on a null value`)
     if (p.kind === "reference" && v === null) fault(path, `${what} is a reference to no row on a null value`)
-    if (!["key", "ragged", "reference", "stale", "unreached"].includes(p.kind) && v !== null) fault(path, `${what} is ${p.kind}, but the value is not null`)
+    if (!["key", "ragged", "reference", "stale", "unreached", "unstored"].includes(p.kind) && v !== null) fault(path, `${what} is ${p.kind}, but the value is not null`)
+    if (p.kind === "unstored" && (v === null || v.from === undefined)) fault(path, `${what} is unstored, but its value is no formula's`)
     if (p.kind === "stale" && (v === null || v.from === undefined)) fault(path, `${what} is stale, but its value is no formula's`)
     if (p.kind === "unreached" && (!isObject(cell) || cell.from === undefined)) fault(path, `${what} is unreached, but the cell is not computed`)
   })

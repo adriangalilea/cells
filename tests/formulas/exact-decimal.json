@@ -9,5 +9,10 @@
     { "deposit": { "num": "0.1" }, "fee": { "num": "0.2" }, "both": { "num": "0.3", "from": "formula" }, "thrice": { "num": "0.6", "from": "formula" } },
     { "deposit": { "num": "0.7" }, "fee": { "num": "1.10" }, "both": { "num": "1.8", "from": "formula" }, "thrice": { "num": "3.3", "from": "formula" } }
   ],
-  "problems": []
+  "problems": [
+    { "row": 0, "column": "both", "kind": "unstored", "span": [70, 0] },
+    { "row": 0, "column": "thrice", "kind": "unstored", "span": [71, 0] },
+    { "row": 1, "column": "both", "kind": "unstored", "span": [81, 0] },
+    { "row": 1, "column": "thrice", "kind": "unstored", "span": [82, 0] }
+  ]
 }

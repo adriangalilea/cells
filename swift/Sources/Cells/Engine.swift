@@ -25,8 +25,8 @@ final class Engine: @unchecked Sendable {
         let inferred: [Int: Cells.ColumnType]
         let problems: [Cells.Problem]
         /// `row << 32 | column` of each cell problem that leaves the cell no value (a
-        /// ragged row's does not), in order, for a cell's lookup, and its index in
-        /// `problems`.
+        /// ragged row's does not, nor a note: a stored value standing, one not stored
+        /// yet), in order, for a cell's lookup, and its index in `problems`.
         let places: [UInt64]
         let placed: [Int]
         let rows: Int
@@ -220,12 +220,13 @@ final class Engine: @unchecked Sendable {
                 case CellsKindReference: .reference
                 case CellsKindStale: .stale
                 case CellsKindUnreached: .unreached
+                case CellsKindUnstored: .unstored
                 default:
                     preconditionFailure(
                         "Cells: the core names a problem kind \(p.kind.rawValue) this binding does not know"
                     )
                 }
-            if kind != .ragged {
+            if kind != .ragged, p.severity != CellsSeverityNote {
                 places.append(UInt64(p.row) << 32 | UInt64(p.column))
                 placed.append(problems.count)
             }

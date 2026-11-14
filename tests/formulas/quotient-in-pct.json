@@ -9,5 +9,9 @@
     { "item": { "text": "maps" }, "cost": { "money": "12.35", "currency": "EUR" }, "share": { "pct": "3.03775673348912", "from": "formula" } },
     { "item": { "text": "tent" }, "cost": { "money": "310.00", "currency": "EUR" }, "share": { "pct": "76.2513835936539", "from": "formula" } }
   ],
-  "problems": []
+  "problems": [
+    { "row": 0, "column": "share", "kind": "unstored", "span": [63, 0] },
+    { "row": 1, "column": "share", "kind": "unstored", "span": [75, 0] },
+    { "row": 2, "column": "share", "kind": "unstored", "span": [88, 0] }
+  ]
 }

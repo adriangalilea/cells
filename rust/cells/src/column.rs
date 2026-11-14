@@ -220,6 +220,10 @@ pub enum Why {
     /// A computed cell that stores another value than its formula gives (SPEC.md,
     /// Reading): its value is what the formula gives, its stored text kept as written.
     Stale,
+    /// A computed cell that stores nothing yet (a blank field, a lone `=`, `=formula`) where
+    /// its formula gives a value (SPEC.md, Reading): it reads the same, and the next write
+    /// stores it.
+    Unstored,
     /// A computed cell whose formula reads a table the prelude's tables hold at `table`, an
     /// import not reached (SPEC.md, Reading): its value is what the file stores, never
     /// computed again until the import is reached.
@@ -244,6 +248,8 @@ pub enum Kind {
     Stale,
     /// A computed cell whose formula reads an import not reached: its stored value stands.
     Unreached,
+    /// A computed cell its formula gives a value that the file does not store yet.
+    Unstored,
 }
 
 /// How much a problem weighs, the same in every reader (the command line, the language
@@ -258,7 +264,7 @@ pub enum Severity {
     /// moved past, a plain row of another width.
     Warning,
     /// Nothing wrong: a stored value standing for a formula whose inputs this reader cannot
-    /// reach. Said, never failed on.
+    /// reach, or a computed value the file does not hold yet. Said, never failed on.
     Note,
 }
 
@@ -267,7 +273,7 @@ impl Kind {
         match self {
             Kind::Type | Kind::Key | Kind::Formula | Kind::Reference => Severity::Error,
             Kind::Missing | Kind::Stale | Kind::Ragged => Severity::Warning,
-            Kind::Unreached => Severity::Note,
+            Kind::Unreached | Kind::Unstored => Severity::Note,
         }
     }
 
@@ -281,6 +287,7 @@ impl Kind {
             Kind::Reference => "reference",
             Kind::Stale => "stale",
             Kind::Unreached => "unreached",
+            Kind::Unstored => "unstored",
         }
     }
 }
@@ -294,6 +301,7 @@ impl Why {
             Why::Formula | Why::Computed => Kind::Formula,
             Why::Absent | Why::Ambiguous => Kind::Reference,
             Why::Stale => Kind::Stale,
+            Why::Unstored => Kind::Unstored,
             Why::Unreached { .. } => Kind::Unreached,
             _ => Kind::Type,
         }

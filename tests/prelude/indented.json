@@ -9,5 +9,7 @@
   "rows": [
     { "band": { "text": "The Lanterns" }, "stage": { "choice": "main" }, "minutes": { "int": "90" }, "hours": { "num": "1.5", "from": "formula" } }
   ],
-  "problems": []
+  "problems": [
+    { "row": 0, "column": "hours", "kind": "unstored", "span": [138, 0] }
+  ]
 }

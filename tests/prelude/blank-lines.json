@@ -9,5 +9,7 @@
   "rows": [
     { "title": { "text": "Salt and Sky" }, "shelf": { "choice": "A" }, "copies": { "int": "2" }, "double": { "num": "4", "from": "formula" } }
   ],
-  "problems": []
+  "problems": [
+    { "row": 0, "column": "double", "kind": "unstored", "span": [127, 0] }
+  ]
 }

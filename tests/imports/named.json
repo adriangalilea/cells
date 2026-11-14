@@ -8,5 +8,7 @@
   "rows": [
     { "amount": { "money": "120.00", "currency": "EUR" }, "kind": { "ref": "card" }, "rate": { "pct": "1.4", "from": "formula" } }
   ],
-  "problems": []
+  "problems": [
+    { "row": 0, "column": "rate", "kind": "unstored", "span": [116, 0] }
+  ]
 }

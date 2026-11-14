@@ -9,5 +9,8 @@
     { "seed": { "text": "basil" }, "packets": { "int": "3" }, "grams": { "num": "1.5" }, "weight": { "num": "4.5", "from": "formula" } },
     { "seed": { "text": "fennel" }, "packets": { "int": "4" }, "grams": { "num": "0.25" }, "weight": { "num": "1", "from": "formula" } }
   ],
-  "problems": []
+  "problems": [
+    { "row": 0, "column": "weight", "kind": "unstored", "span": [58, 0] },
+    { "row": 1, "column": "weight", "kind": "unstored", "span": [73, 0] }
+  ]
 }

@@ -11,5 +11,10 @@
     { "item": { "text": "tickets" }, "cost": { "money": "4.50", "currency": "EUR" }, "qty": { "int": "3" }, "fee": { "money": "1.25", "currency": "EUR" }, "total": { "money": "14.75", "currency": "EUR", "from": "formula" }, "subtotal": { "money": "13.5", "currency": "EUR", "from": "formula" } },
     { "item": { "text": "maps" }, "cost": { "money": "2.75", "currency": "EUR" }, "qty": { "int": "4" }, "fee": { "money": "0", "currency": "EUR" }, "total": { "money": "11", "currency": "EUR", "from": "formula" }, "subtotal": { "money": "11", "currency": "EUR", "from": "formula" } }
   ],
-  "problems": []
+  "problems": [
+    { "row": 0, "column": "total", "kind": "unstored", "span": [104, 0] },
+    { "row": 0, "column": "subtotal", "kind": "unstored", "span": [105, 0] },
+    { "row": 1, "column": "total", "kind": "unstored", "span": [120, 0] },
+    { "row": 1, "column": "subtotal", "kind": "unstored", "span": [121, 0] }
+  ]
 }

@@ -11,5 +11,8 @@
     { "night": { "text": "first" }, "venue": { "choice": "club" }, "price": { "money": "12.50", "currency": "EUR" }, "tickets": { "int": "3" }, "fee": { "money": "37.5", "currency": "EUR", "from": "formula" } },
     { "night": { "text": "second" }, "venue": { "choice": "park" }, "price": { "money": "4.50", "currency": "EUR" }, "tickets": { "int": "10" }, "fee": { "money": "45", "currency": "EUR", "from": "formula" } }
   ],
-  "problems": []
+  "problems": [
+    { "row": 0, "column": "fee", "kind": "unstored", "span": [249, 0] },
+    { "row": 1, "column": "fee", "kind": "unstored", "span": [270, 0] }
+  ]
 }

@@ -10,6 +10,7 @@
     { "item": { "text": "tickets" }, "cost": { "money": "12.50", "currency": "EUR" }, "qty": { "int": "3" }, "total": { "money": "37.50", "currency": "EUR", "from": "formula" } }
   ],
   "problems": [
-    { "row": 0, "column": "qty", "kind": "type", "span": [59, 3] }
+    { "row": 0, "column": "qty", "kind": "type", "span": [59, 3] },
+    { "row": 1, "column": "total", "kind": "unstored", "span": [80, 0] }
   ]
 }

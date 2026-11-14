@@ -10,5 +10,15 @@
     { "amount": { "num": "64.30" }, "third": { "money": "21.43", "currency": "EUR", "from": "formula" }, "vat": { "money": "11.16", "currency": "EUR", "from": "formula" }, "gold": { "money": "21.4333333333333", "currency": "XAU", "from": "formula" } },
     { "amount": { "num": "2" }, "third": { "money": "0.67", "currency": "EUR", "from": "formula" }, "vat": { "money": "0.35", "currency": "EUR", "from": "formula" }, "gold": { "money": "0.666666666666667", "currency": "XAU", "from": "formula" } }
   ],
-  "problems": []
+  "problems": [
+    { "row": 0, "column": "third", "kind": "unstored", "span": [97, 0] },
+    { "row": 0, "column": "vat", "kind": "unstored", "span": [98, 0] },
+    { "row": 0, "column": "gold", "kind": "unstored", "span": [99, 0] },
+    { "row": 1, "column": "third", "kind": "unstored", "span": [106, 0] },
+    { "row": 1, "column": "vat", "kind": "unstored", "span": [107, 0] },
+    { "row": 1, "column": "gold", "kind": "unstored", "span": [108, 0] },
+    { "row": 2, "column": "third", "kind": "unstored", "span": [111, 0] },
+    { "row": 2, "column": "vat", "kind": "unstored", "span": [112, 0] },
+    { "row": 2, "column": "gold", "kind": "unstored", "span": [113, 0] }
+  ]
 }

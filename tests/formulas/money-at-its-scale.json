@@ -13,5 +13,26 @@
     { "amount": { "num": "1234.5" }, "eur": { "money": "1234.50", "currency": "EUR", "from": "formula" }, "jpy": { "money": "1234", "currency": "JPY", "from": "formula" }, "kwd": { "money": "1234.500", "currency": "KWD", "from": "formula" }, "gold": { "money": "1234.5", "currency": "XAU", "from": "formula" }, "share": { "num": "411.5", "from": "formula" } },
     { "amount": { "num": "1.23456" }, "eur": { "money": "1.23", "currency": "EUR", "from": "formula" }, "jpy": { "money": "1", "currency": "JPY", "from": "formula" }, "kwd": { "money": "1.235", "currency": "KWD", "from": "formula" }, "gold": { "money": "1.23456", "currency": "XAU", "from": "formula" }, "share": { "num": "0.41152", "from": "formula" } }
   ],
-  "problems": []
+  "problems": [
+    { "row": 0, "column": "eur", "kind": "unstored", "span": [99, 0] },
+    { "row": 0, "column": "jpy", "kind": "unstored", "span": [100, 0] },
+    { "row": 0, "column": "kwd", "kind": "unstored", "span": [101, 0] },
+    { "row": 0, "column": "gold", "kind": "unstored", "span": [102, 0] },
+    { "row": 0, "column": "share", "kind": "unstored", "span": [103, 0] },
+    { "row": 1, "column": "eur", "kind": "unstored", "span": [110, 0] },
+    { "row": 1, "column": "jpy", "kind": "unstored", "span": [111, 0] },
+    { "row": 1, "column": "kwd", "kind": "unstored", "span": [112, 0] },
+    { "row": 1, "column": "gold", "kind": "unstored", "span": [113, 0] },
+    { "row": 1, "column": "share", "kind": "unstored", "span": [114, 0] },
+    { "row": 2, "column": "eur", "kind": "unstored", "span": [122, 0] },
+    { "row": 2, "column": "jpy", "kind": "unstored", "span": [123, 0] },
+    { "row": 2, "column": "kwd", "kind": "unstored", "span": [124, 0] },
+    { "row": 2, "column": "gold", "kind": "unstored", "span": [125, 0] },
+    { "row": 2, "column": "share", "kind": "unstored", "span": [126, 0] },
+    { "row": 3, "column": "eur", "kind": "unstored", "span": [135, 0] },
+    { "row": 3, "column": "jpy", "kind": "unstored", "span": [136, 0] },
+    { "row": 3, "column": "kwd", "kind": "unstored", "span": [137, 0] },
+    { "row": 3, "column": "gold", "kind": "unstored", "span": [138, 0] },
+    { "row": 3, "column": "share", "kind": "unstored", "span": [139, 0] }
+  ]
 }

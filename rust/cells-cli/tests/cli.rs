@@ -72,7 +72,13 @@ fn imports_formulas_and_a_script() {
     let shown = money.display().to_string();
 
     let check = Command::new(cells).arg("check").arg(&money).output().unwrap();
-    assert_eq!(String::from_utf8(check.stdout).unwrap(), format!("{shown} row 2, to: \"bar\" is no key of accounts\n"));
+    assert_eq!(
+        String::from_utf8(check.stdout).unwrap(),
+        format!(
+            "{shown} row 1, eur: not stored yet: the formula gives 25.00, the next write stores it\n\
+             {shown} row 2, to: \"bar\" is no key of accounts\n"
+        )
+    );
 
     // A script runs only at a version its person allowed: not yet, so the engine does not run
     // it. The engine and its approvals are this test's own (`HOME` a folder of its own, short

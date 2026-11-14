@@ -10,5 +10,7 @@
   "rows": [
     { "item": { "text": "fuel" }, "kind": { "choice": "travel" }, "cost": { "money": "84.20", "currency": "EUR" }, "qty": { "int": "2" }, "total": { "money": "168.4", "currency": "EUR", "from": "formula" } }
   ],
-  "problems": []
+  "problems": [
+    { "row": 0, "column": "total", "kind": "unstored", "span": [157, 0] }
+  ]
 }
