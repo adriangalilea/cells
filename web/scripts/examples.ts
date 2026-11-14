@@ -6,7 +6,8 @@
 
 import { createHash } from "node:crypto"
 import { readFiles as readWith } from "@/lib/view"
-import { DINNER, hero, SPENDING_PATH, SPENDING_SHOWN, WATCHED_CHARTS } from "@/lib/hero"
+import { chartScale } from "@/lib/chart-scale"
+import { hero, SPENDING_PATH, SPENDING_SHOWN, SPENDING_TEXT, WATCHED_CHARTS } from "@/lib/hero"
 import { SCREENS } from "@/lib/hero-screens"
 import { loadEngine } from "@/lib/engine-module"
 import { codeTimeline } from "@/lib/code-session"
@@ -85,52 +86,67 @@ for (const act of STORY) {
 }
 
 // The hero: its file reads whole at every moment and declares the four charts the page
-// names; every category is drawn in its tint, as the app's window shows it; the typo puts
-// May's spending over May's budget and the fix takes it back under, as the engine sums
-// them (chart 4's two layers); and every text the hero writes has the terminal's frame
-// drawn from it by `pnpm charts`, in the hero's order.
+// names; every category is drawn in its tint, as the app's window shows it; the loop ends
+// on the file it began with; a moment's only problems are the new row's cells not typed
+// yet; neither chart's scale moves at any moment, as the app's chart view draws it from
+// the engine's summaries and as the terminal drew it (every frame's axis labels and places
+// the first's, at every size); and every text the hero writes has its frame, drawn from
+// it by `pnpm charts`, in the hero's order.
 {
   const before = failed
-  const scene = HERO
-  const window = readFiles([{ name: SPENDING_PATH, text: scene.checkpoints.found }])
+  const window = readFiles([{ name: SPENDING_PATH, text: SPENDING_TEXT }])
   const tints = window.faces.category ?? []
   if (tints.length !== window.rows.length || tints.some((f) => !f?.tint)) fail("hero", "a category is drawn with no tint")
   const titles = ["Spending by category", "Spent", "Budget", "Spent against budget"]
-  const may = (text: string) => {
+  /** A text's problems, and the scales of the charts the hero shows. */
+  const moment = (text: string) => {
     const r = engine.read(text, { at: SPENDING_PATH, files: {} })
     try {
-      if (r.broken.length || r.problems.length) fail("hero", [...r.broken.map((b) => b.why), ...r.problems.map((p) => p.why)].join("; "))
+      if (r.broken.length) fail("hero", r.broken.map((b) => b.why).join("; "))
       const charts = r.doc.charts()
       if (JSON.stringify(charts.map((c) => c.title)) !== JSON.stringify(titles)) fail("hero", `the file declares ${JSON.stringify(charts.map((c) => c.title))}`)
-      const layers = r.doc.summary(WATCHED_CHARTS[1] - 1).layers
-      const [spent, budget] = layers.map((l) => Number(l.values[l.places.indexOf("2026-05-01")]?.[0]))
-      if (layers.length !== 2 || !Number.isFinite(spent) || !Number.isFinite(budget)) fail("hero", "chart 4 is not May's spent and budget")
-      return { spent: spent as number, budget: budget as number }
+      return { problems: r.problems.map((p) => p.why), scales: WATCHED_CHARTS.map((n) => chartScale(r.doc.summary(n - 1))) }
     } finally {
       r.doc.free()
     }
   }
   // the file as the charts section shows it reads whole, its four charts declared
-  may(SPENDING_SHOWN)
-  const found = may(scene.checkpoints.found)
-  const typo = may(scene.checkpoints.typo)
-  const fixed = may(scene.checkpoints.fixed)
-  if (!(found.spent <= found.budget)) fail("hero", `May is over budget before the typo: ${found.spent} of ${found.budget}`)
-  if (!(typo.spent > typo.budget)) fail("hero", `the typo leaves May under budget: ${typo.spent} of ${typo.budget}`)
-  if (!(fixed.spent <= fixed.budget)) fail("hero", `the fix leaves May over budget: ${fixed.spent} of ${fixed.budget}`)
-  const rows = engine.read(scene.checkpoints.typo, { at: SPENDING_PATH, files: {} })
-  try {
-    const amount = rows.columns.find((c) => c.name === "amount")
-    if (amount?.decimal(DINNER.row) !== DINNER.typo) fail("hero", `the typo's row holds ${amount?.decimal(DINNER.row)}, not ${DINNER.typo}`)
-  } finally {
-    rows.doc.free()
+  if (moment(SPENDING_SHOWN).problems.length) fail("hero", "the file as the charts section shows it has problems")
+  const first = moment(SPENDING_TEXT)
+  if (first.problems.length) fail("hero", `the file as found has problems: ${first.problems.join("; ")}`)
+  if (HERO.states.at(-1) !== SPENDING_TEXT) fail("hero", "the loop does not end on the file it began with")
+  // the row typed after the last, as a problem names it (rows from 1)
+  const newRow = window.rows.length + 1
+  for (const [k, text] of HERO.states.entries()) {
+    const m = moment(text)
+    const stray = m.problems.filter((p) => !p.startsWith(`row ${newRow}, `))
+    if (stray.length) fail("hero", `edit ${k + 1} leaves ${stray.join("; ")}`)
+    if (JSON.stringify(m.scales) !== JSON.stringify(first.scales))
+      fail("hero", `edit ${k + 1} moves a chart's scale: ${JSON.stringify(m.scales)}, first ${JSON.stringify(first.scales)}`)
   }
   const hash = (text: string) => createHash("sha256").update(text).digest("hex").slice(0, 16)
-  const drawn = SCREENS.frames.map((f) => f.source)
-  const wanted = scene.texts.map(hash)
-  if (JSON.stringify(drawn) !== JSON.stringify(wanted)) fail("hero", `the terminal's frames were drawn from other texts than the scene writes: pnpm charts`)
+  const wanted = HERO.texts.map(hash)
+  /** What of a frame tells its scale: each gridline's label by its row, and the places'
+   *  lines. */
+  const axis = (rows: [string, number][][]) =>
+    rows.flatMap((runs, r) => {
+      const line = runs.map(([t]) => t).join("")
+      const label = /^│\s+(\d+(?: [A-Z]{3})?)\s+─/.exec(line)?.[1]
+      if (label) return [`${r}: ${label}`]
+      return /May 26/.test(line) ? [`${r}: ${line.trim()}`] : []
+    })
+  for (const [at, size] of Object.entries(SCREENS.sizes)) {
+    if (JSON.stringify(size.frames.map((f) => f.source)) !== JSON.stringify(wanted))
+      fail("hero", `the ${at} terminal's frames were drawn from other texts than the hero writes: pnpm charts`)
+    const firstAxis = axis((size.frames[0] as (typeof size.frames)[number]).rows)
+    if (firstAxis.length < 4) fail("hero", `the ${at} terminal's first frame shows no scale`)
+    for (const [k, f] of size.frames.entries())
+      if (JSON.stringify(axis(f.rows)) !== JSON.stringify(firstAxis)) fail("hero", `the ${at} terminal's frame ${k + 1} moves a scale`)
+  }
   if (failed === before)
-    console.log(`✓ hero: May ${found.spent} of ${found.budget}, ${typo.spent} with the typo, ${fixed.spent} fixed; ${drawn.length} frames, each from its text`)
+    console.log(
+      `✓ hero: ${HERO.states.length} edits, the loop back on the file as found, every scale the first's (${first.scales.map((s) => `${s.lo}..${s.hi} by ${s.step}`).join(", ")}) in the app and in ${Object.keys(SCREENS.sizes).length} terminals, ${wanted.length} frames each from its text`,
+    )
 }
 
 if (failed) {

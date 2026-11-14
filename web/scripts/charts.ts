@@ -10,15 +10,15 @@
 // frame drawn from it.
 //
 //   bun scripts/charts.ts                write them
-//   CELLS=<a cells binary> bun scripts/charts.ts
+//   CELLS=<a cells binary> CELLS_AT=<the commit it was built from> bun scripts/charts.ts
 
 import { createHash } from "node:crypto"
-import { mkdtempSync, writeFileSync } from "node:fs"
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
-import type { ScreenColor, ScreenStyle } from "@/lib/chart-screen"
+import type { ScreenColor, ScreenFrame, ScreenFrames, ScreenSize, ScreenStyle } from "@/lib/chart-screen"
 import { loadEngine } from "@/lib/engine-module"
-import { hero, SCREEN, SPENDING_PATH, WATCH_COMMAND } from "@/lib/hero"
+import { hero, SCREENS_AT, type ScreenAt, SPENDING_PATH, WATCH_COMMAND } from "@/lib/hero"
 
 const repo = join(import.meta.dir, "../..")
 
@@ -122,39 +122,63 @@ function screenOf(bytes: string, cols: number, rows: number): Cell[][] | null {
 const engine = await loadEngine()
 const scene = hero(engine)
 const cells = cellsBinary()
-const dir = mkdtempSync(join(tmpdir(), "cells-charts-"))
-const file = join(dir, SPENDING_PATH)
-writeFileSync(file, scene.texts[0] as string)
-
-let bytes = ""
-let heard = Date.now()
-const decoder = new TextDecoder()
-const terminal = new Bun.Terminal({
-  cols: SCREEN.cols,
-  rows: SCREEN.rows,
-  name: "xterm-256color",
-  data(_t, data) {
-    bytes += decoder.decode(data, { stream: true })
-    heard = Date.now()
-  },
-})
 const [program, ...args] = WATCH_COMMAND.split(" ")
 if (program !== "cells") throw new Error(`charts: the hero's command is ${program}'s, not cells'`)
 const env = { ...process.env, TERM: "xterm-256color", COLORTERM: "truecolor" }
-const proc = Bun.spawn([cells, ...args], { cwd: dir, env, terminal })
 
-/** The screen once the program has drawn and been still for a while, its foot saying the
- *  file was read now. */
-async function settled(since: number): Promise<Cell[][]> {
-  const deadline = Date.now() + 8000
-  for (;;) {
-    await Bun.sleep(100)
-    if (Date.now() > deadline) throw new Error("charts: the program drew nothing new within 8s")
-    if (heard <= since || Date.now() - heard < 300) continue
-    const grid = screenOf(bytes, SCREEN.cols, SCREEN.rows)
-    if (!grid) continue
-    const text = grid.map((row) => row.map((x) => x.ch).join("")).join("\n")
-    if (text.includes(`${SPENDING_PATH} · read now`)) return grid
+/** Every text of the hero as the program draws it in a terminal of `size`: one run, the
+ *  file written with each text in turn, the screen read once it has settled. The program
+ *  is ended however the capture ends, never left running. */
+async function capture(size: ScreenSize): Promise<ScreenFrame[]> {
+  const dir = mkdtempSync(join(tmpdir(), "cells-charts-"))
+  const file = join(dir, SPENDING_PATH)
+  writeFileSync(file, scene.texts[0] as string)
+  let bytes = ""
+  let heard = Date.now()
+  const decoder = new TextDecoder()
+  const terminal = new Bun.Terminal({
+    cols: size.cols,
+    rows: size.rows,
+    name: "xterm-256color",
+    data(_t, data) {
+      bytes += decoder.decode(data, { stream: true })
+      heard = Date.now()
+    },
+  })
+  const proc = Bun.spawn([cells, ...args], { cwd: dir, env, terminal })
+  /** The screen once the program has drawn and been still for a while, its foot saying
+   *  the file was read now. */
+  const settled = async (since: number): Promise<Cell[][]> => {
+    const deadline = Date.now() + 8000
+    for (;;) {
+      await Bun.sleep(100)
+      if (Date.now() > deadline) throw new Error("charts: the program drew nothing new within 8s")
+      if (heard <= since || Date.now() - heard < 300) continue
+      const grid = screenOf(bytes, size.cols, size.rows)
+      if (!grid) continue
+      const text = grid.map((row) => row.map((x) => x.ch).join("")).join("\n")
+      if (text.includes(`${SPENDING_PATH} · read now`)) return grid
+    }
+  }
+  try {
+    const frames: ScreenFrame[] = []
+    let since = 0
+    for (const [i, text] of scene.texts.entries()) {
+      if (i > 0) {
+        since = Date.now()
+        writeFileSync(file, text)
+      }
+      const grid = await settled(since)
+      frames.push({ source: hash(text), rows: grid.map(runsOf) })
+      console.log(`✓ ${size.cols}x${size.rows} frame ${i + 1} of ${scene.texts.length}: ${hash(text)}`)
+    }
+    terminal.write("q")
+    await proc.exited
+    return frames
+  } finally {
+    proc.kill()
+    terminal.close()
+    rmSync(dir, { recursive: true, force: true })
   }
 }
 
@@ -175,27 +199,15 @@ const runsOf = (row: Cell[]): [string, number][] => {
 }
 
 const hash = (text: string) => createHash("sha256").update(text).digest("hex").slice(0, 16)
-const frames: { source: string; rows: [string, number][][] }[] = []
-let since = 0
-for (const [i, text] of scene.texts.entries()) {
-  if (i > 0) {
-    since = Date.now()
-    writeFileSync(file, text)
-  }
-  const grid = await settled(since)
-  frames.push({ source: hash(text), rows: grid.map(runsOf) })
-  console.log(`✓ frame ${i + 1} of ${scene.texts.length}: ${hash(text)}`)
-}
-terminal.write("q")
-await proc.exited
-terminal.close()
+const sizes = {} as ScreenFrames<ScreenAt>["sizes"]
+for (const [at, size] of Object.entries(SCREENS_AT) as [ScreenAt, ScreenSize][]) sizes[at] = { ...size, frames: await capture(size) }
 
-const at = Bun.spawnSync(["git", "rev-parse", "--short=12", "HEAD"], { cwd: repo }).stdout.toString().trim()
+const at = process.env.CELLS_AT ?? Bun.spawnSync(["git", "rev-parse", "--short=12", "HEAD"], { cwd: repo }).stdout.toString().trim()
 const out = join(import.meta.dir, "../lib/hero-screens.ts")
 writeFileSync(
   out,
-  `// Generated by scripts/charts.ts (pnpm charts) from \`${WATCH_COMMAND}\`, cells at ${at}, in a terminal of ${SCREEN.cols} by ${SCREEN.rows}: never edited here.\n` +
-    `import type { ScreenFrames } from "@/lib/chart-screen"\n\n` +
-    `export const SCREENS: ScreenFrames = ${JSON.stringify({ styles, frames })}\n`,
+  `// Generated by scripts/charts.ts (pnpm charts) from \`${WATCH_COMMAND}\`, cells at ${at}, at each terminal size of lib/hero SCREENS_AT: never edited here.\n` +
+    `import type { ScreenFrames } from "@/lib/chart-screen"\nimport type { ScreenAt } from "@/lib/hero"\n\n` +
+    `export const SCREENS: ScreenFrames<ScreenAt> = ${JSON.stringify({ styles, sizes })}\n`,
 )
-console.log(`✓ ${frames.length} frames → lib/hero-screens.ts`)
+console.log(`✓ ${Object.keys(sizes).join(", ")} → lib/hero-screens.ts`)

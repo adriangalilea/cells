@@ -1,15 +1,16 @@
 "use client"
 
-// THE HERO'S TERMINAL: `cells chart spending.cells 1 4 --watch` as the real program drew
-// it for the file as it stands (lib/hero-screens, `pnpm charts`). ui's terminal window
-// with the screen as its program (`children`): each cell of the program's screen in its
-// place, a glyph the page's mono face may lack held to one cell's width so no column
-// moves, and the type a share of the box's width, so its 80 columns always fit it.
+// THE HERO'S TERMINAL: `cells chart spending.cells 1 4 --watch` typed at the prompt, then
+// the screen the real program drew for the file as it stands, at the terminal's size
+// (lib/hero-screens, `pnpm charts`). ui's terminal window with the screen as its program
+// (`children`): each cell of the program's screen in its place, a glyph the page's mono
+// face may lack held to one cell's width so no column moves, and the type a share of the
+// box's width, so the size's columns always fit it.
 
 import type * as React from "react"
 import { Terminal, useTerminalPalette } from "@/components/ui/terminal"
-import { type ScreenColor, type ScreenFrames, SCREEN_EM } from "@/lib/chart-screen"
-import { WATCH_COMMAND } from "@/lib/hero"
+import { type ScreenColor, type ScreenFrame, SCREEN_EM, wideOf } from "@/lib/chart-screen"
+import { type ScreenAt, WATCH_COMMAND } from "@/lib/hero"
 import { SCREENS } from "@/lib/hero-screens"
 import { ansiColor } from "@/lib/terminal-session"
 
@@ -60,8 +61,21 @@ function Glyphs({ text, ink, ground }: { text: string; ink: string; ground: stri
   return parts
 }
 
+/** The prompt, the command typed `typed` characters into, the cursor after it: the shell
+ *  before the program takes the screen. */
+function Prompt({ typed }: { typed: number }) {
+  const palette = useTerminalPalette()
+  return (
+    <div aria-hidden style={{ lineHeight: PITCH, paddingBlock: `${SCREEN_EM.pad}em`, whiteSpace: "pre" }}>
+      <span style={{ color: palette.prompt }}>$ </span>
+      <span style={{ color: palette.command }}>{WATCH_COMMAND.slice(0, typed)}</span>
+      <span style={{ color: palette.dot }}>█</span>
+    </div>
+  )
+}
+
 /** One frame of the program's screen. */
-function Screen({ frame }: { frame: ScreenFrames["frames"][number] }) {
+function Screen({ frame }: { frame: ScreenFrame }) {
   const palette = useTerminalPalette()
   return (
     <div aria-hidden style={{ lineHeight: PITCH, paddingBlock: `${SCREEN_EM.pad}em`, whiteSpace: "pre" }}>
@@ -84,30 +98,37 @@ function Screen({ frame }: { frame: ScreenFrames["frames"][number] }) {
   )
 }
 
-/** The terminal holding the charts of the hero's `index`th text (lib/hero `texts`, in the
- *  order the screens were drawn from them), in a box of any width. */
+/** The terminal at a size of lib/hero `SCREENS_AT`: the command being typed (`typed`, its
+ *  characters so far), or once it runs, the charts of the hero's `index`th text (lib/hero
+ *  `texts`, in the order the screens were drawn from them), in a box of any width, the
+ *  type the share of it that fits the size's columns. */
 export function ChartTerminal({
+  at,
   index,
+  typed,
   accent,
   className,
   style,
 }: {
+  at: ScreenAt
   index: number
+  typed: number | null
   accent: string
   className?: string
   style?: React.CSSProperties
 }) {
-  const frame = SCREENS.frames[index]
+  const size = SCREENS.sizes[at]
+  const frame = size.frames[index]
   if (!frame) throw new Error("chart-terminal: the hero writes a text no screen was drawn from: pnpm charts")
   return (
     <div className={`[container-type:inline-size] ${className ?? ""}`} style={style}>
       <Terminal
         alt={`A terminal running ${WATCH_COMMAND}: spending by category and spent against budget, by month, drawn again each time the file changes.`}
         accent={accent}
-        size={`calc(100cqw / ${SCREEN_EM.wide})`}
+        size={`calc(100cqw / ${wideOf(size.cols)})`}
         className="h-full"
       >
-        <Screen frame={frame} />
+        {typed === null ? <Screen frame={frame} /> : <Prompt typed={typed} />}
       </Terminal>
     </div>
   )

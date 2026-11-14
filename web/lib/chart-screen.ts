@@ -12,33 +12,44 @@ export interface ScreenStyle {
   dim?: true
 }
 
-export interface ScreenFrames {
-  /** Every style a run wears, by its place. */
-  styles: ScreenStyle[]
-  /** A frame per text of the scene, in its order: the first 16 hex digits of the text's
-   *  sha256, and its rows, each `[text, style]` runs. */
-  frames: { source: string; rows: [string, number][][] }[]
+/** A screen's size, in a terminal's cells. */
+export interface ScreenSize {
+  cols: number
+  rows: number
 }
 
-/** The screen's columns: the width `cells chart` falls back to. */
-export const SCREEN_COLS = 80
+/** One frame: the first 16 hex digits of the sha256 of the text it was drawn from, and its
+ *  rows, each `[text, style]` runs. */
+export interface ScreenFrame {
+  source: string
+  rows: [string, number][][]
+}
+
+export interface ScreenFrames<Size extends string = string> {
+  /** Every style a run wears, by its place. */
+  styles: ScreenStyle[]
+  /** For each terminal size, a frame per text of the scene, in its order. */
+  sizes: Record<Size, ScreenSize & { frames: ScreenFrame[] }>
+}
 
 /** How the page sets a screen, in em of the terminal's type: a character's advance (Geist
- *  Mono's), the screen's width with the window's insets either side, a row's pitch (where a
- *  block meets the block under it, so a bar is one bar), and the room above and below the
- *  rows. */
+ *  Mono's), the window's insets either side of the columns, a row's pitch (where a block
+ *  meets the block under it, so a bar is one bar), and the room above and below the rows. */
 export const SCREEN_EM = {
   advance: 0.6,
-  wide: SCREEN_COLS * 0.6 + 4,
+  insets: 4,
   pitch: 1.18,
   pad: 0.6,
 } as const
 
-/** The rows a terminal window `width` by `height` (px) shows at the type that fits its
+/** A screen's width in em of its type: its columns and the window's insets. */
+export const wideOf = (cols: number) => cols * SCREEN_EM.advance + SCREEN_EM.insets
+
+/** The rows a terminal window `width` by `height` (px) shows at the type that fits `cols`
  *  columns to its width: its height less its bar, its hairlines and the room around the
  *  rows, in rows, whole. */
-export function screenRows(width: number, height: number, barEm: number): number {
-  const type = width / SCREEN_EM.wide
+export function screenRows(cols: number, width: number, height: number, barEm: number): number {
+  const type = width / wideOf(cols)
   const hairlines = 2
   return Math.floor(((height - hairlines) / type - barEm - 2 * SCREEN_EM.pad) / SCREEN_EM.pitch)
 }

@@ -1,44 +1,57 @@
-// THE HERO, as data: someone at work on a Mac, one file open twice. spending.cells, six
-// months of a household's spending, its four charts and the month's budgets declared in its
-// prelude, is open in Cells on the left, and charted in a terminal on the right by `cells
-// chart spending.cells 1 4 --watch`, which draws the file again each time it changes. A
-// dinner is typed into the app with a zero too many, and the terminal draws May over its
-// budget, in both charts; typed again as it was, May is back under. One clock (ui's
-// table-session, every commit the engine's, `playable`), so a player, a playback and a
-// fixed progress draw the same frames: the app's window draws the file at the moment, the
-// terminal the screen the real `cells chart` drew for that file (lib/hero-screens, made by
-// `pnpm charts` from these texts, never drawn by hand). The Cells window is the one that
-// leaves the screen for the page (components/hero). scripts/examples.ts asserts what it
-// claims.
+// THE HERO, as data: two screens on one desk, one file. spending.cells, six months of a
+// household's spending, its four charts and the month's budgets declared in its prelude,
+// is open in Cells on a MacBook, its table and its chart view side by side; on a Studio
+// Display beside it, a terminal, where `cells chart spending.cells 1 4 --watch` is typed
+// and draws the file full screen, again each time it changes. Then small edits in the app,
+// a note filled in, an amount nudged, a coffee added at the end of October, each put back
+// so the loop ends on the file it began with, and both screens redraw at every one. One
+// clock (ui's table-session, every commit the engine's, `playable`), so a player, a
+// playback and a fixed progress draw the same frames: the app draws the file at the
+// moment, the terminal the screen the real `cells chart` drew for that file at its size
+// (lib/hero-screens, made by `pnpm charts` from these texts, never drawn by hand).
+// scripts/examples.ts asserts what it claims, every chart's scale the same at every moment
+// included.
 
-import { SCREEN_COLS, screenRows } from "@/lib/chart-screen"
+import { screenRows } from "@/lib/chart-screen"
 import type { Playable } from "@/lib/playable"
 import { PRODUCT } from "@/lib/product"
-import { BAR_EM } from "@/lib/terminal-session"
+import { BAR_EM, TYPE_MS } from "@/lib/terminal-session"
 import { type TableFile, type TableStep, type TableTimeline, tableFrameAt, tableTimeline } from "@/lib/table-session"
 import { type Engine, writeCell } from "@/lib/view"
 
 export const SPENDING_PATH = `spending${PRODUCT.extension}`
 
-/** The charts the terminal holds: the first the file declares and the last. */
+/** The charts the terminal holds and the app's chart view shows: the first the file
+ *  declares and the last. */
 export const WATCHED_CHARTS = [1, 4] as const
 export const WATCH_COMMAND = `${PRODUCT.cli} chart ${SPENDING_PATH} ${WATCHED_CHARTS.join(" ")} --watch`
 
-/** The windows on the Mac's stage (960 by 600, ui macos): 36 from the top (under the menu
- *  bar), 12 from the foot and the sides, 12 between them, the screen split in two halves of
- *  the full height. The Cells window on the left, the terminal on the right, each `window`
- *  wide and tall: one top, one foot. */
+/** The Cells window on the MacBook's stage (960 by 600, ui macos): 36 from the top (under
+ *  the menu bar), 12 from the foot and the sides. */
 const INSET = 12
 const TOP = 36
-const WINDOW = { width: (960 - 3 * INSET) / 2, height: 600 - TOP - INSET }
-export const STAGE = { inset: INSET, top: TOP, window: WINDOW, side: INSET + WINDOW.width + INSET } as const
+export const STAGE = { inset: INSET, top: TOP, window: { width: 960 - 2 * INSET, height: 600 - TOP - INSET } } as const
 
-/** The terminal the frames are drawn in: its columns, and the rows that fill the hero's
- *  terminal window, at the type that fits those columns to its width. */
-export const SCREEN = { cols: SCREEN_COLS, rows: screenRows(WINDOW.width, WINDOW.height, BAR_EM) } as const
+/** The Studio Display's screen, in the same design pixels (960 wide, 16:9): the terminal
+ *  fills it. */
+export const DISPLAY = { width: 960, height: 540 } as const
 
-/** The file: its types and its charts first in the prelude, where the app's prelude panel
- *  shows them, then the budgets the last chart reads. */
+/** The terminals the frames are drawn for: the display's, its columns many enough for a
+ *  wide chart and its rows the ones its screen holds at the type that fits them; and a
+ *  phone's, where the terminal stands alone under the app, at `cells chart`'s own width. */
+const DISPLAY_COLS = 140
+export const SCREENS_AT = {
+  display: { cols: DISPLAY_COLS, rows: screenRows(DISPLAY_COLS, DISPLAY.width, DISPLAY.height, BAR_EM) },
+  phone: { cols: 80, rows: 44 },
+} as const
+export type ScreenAt = keyof typeof SCREENS_AT
+
+/** The command typed at the terminal's prompt, ms: a key at the terminal's pace, then a
+ *  beat before Enter. */
+export const TYPED_MS = WATCH_COMMAND.length * TYPE_MS + 400
+
+/** The file: its types and its charts first in its prelude, then the budgets the last
+ *  chart reads. */
 export const SPENDING_TEXT = `---
 type Category = rent#blue|groceries#green|transport#orange|dining#red|fun#purple
 
@@ -121,32 +134,67 @@ export const SPENDING_SHOWN = (() => {
   return `${lines.slice(0, header + 4).join("\n")}\n`
 })()
 
-/** The dinner: its row (a data row, from 0), what it holds, and what the hand types. */
-export const DINNER = { row: 4, was: "96.00", typo: "960.00" } as const
+/** The month's small edits, in data rows from 0: a note filled in, an amount nudged, a
+ *  coffee added at the end; then the coffee deleted, the amount and the note put back, so
+ *  the loop ends on the file it began with. Small enough that no chart's scale moves
+ *  (scripts/examples.ts checks every frame's axis against the first). */
+const TAPAS = { row: 27, note: "tapas" } as const
+const FRIENDS = { row: 32, was: "112.50", now: "118.50" } as const
+const NEW_ROW = 35
+export const COFFEE = { date: "2026-10-31", category: "dining", note: "coffee", amount: "3.80" } as const
 
-/** The windows as they are found, ms, before the hand moves: a beat to see both. */
-const OPENING = 1200
-/** The redrawn charts looked at before the cell is chosen again. */
-const READ_MS = 2600
+/** The command typed and the charts drawn, then a beat to see both screens, ms, before
+ *  the hand moves. */
+const OPENING = TYPED_MS + 1600
+/** Between one edit and the next, ms: the redrawn charts looked at. */
+const BEAT = 1800
+/** Between the cells of the new row, ms. */
+const NEXT_CELL = 350
 /** The last frame held before the loop starts again. */
-const HOLD_MS = 2400
+const HOLD_MS = 1600
 
-const STEPS: TableStep[] = [
-  { kind: "select", row: DINNER.row, column: "amount", delay: OPENING },
-  { kind: "type", text: DINNER.typo },
-  { kind: "select", row: DINNER.row, column: "amount", delay: READ_MS },
-  { kind: "type", text: DINNER.was },
+/** The edits up to the coffee's last cell: the file they leave is the one the deletion
+ *  starts from. */
+const ADDING: TableStep[] = [
+  { kind: "select", row: TAPAS.row, column: "note", delay: OPENING },
+  { kind: "type", text: TAPAS.note },
+  { kind: "select", row: FRIENDS.row, column: "amount", delay: BEAT },
+  { kind: "type", text: FRIENDS.now },
+  { kind: "select", row: NEW_ROW, column: "date", delay: BEAT },
+  { kind: "type", text: COFFEE.date },
+  { kind: "select", row: NEW_ROW, column: "category", delay: NEXT_CELL },
+  { kind: "type", text: COFFEE.category },
+  { kind: "select", row: NEW_ROW, column: "note", delay: NEXT_CELL },
+  { kind: "type", text: COFFEE.note },
+  { kind: "select", row: NEW_ROW, column: "amount", delay: NEXT_CELL },
+  { kind: "type", text: COFFEE.amount },
 ]
+
+/** The coffee's row deleted: the file without its last line, as the app writes a row
+ *  deleted; then the amount and the note put back. */
+const putBack = (withCoffee: string): TableStep[] => {
+  const lines = withCoffee.split("\n")
+  const last = lines.length - 2
+  if (!lines[last]?.startsWith(COFFEE.date)) throw new Error("hero: the coffee is not the file's last row")
+  return [
+    { kind: "written", path: SPENDING_PATH, text: [...lines.slice(0, last), ""].join("\n"), delay: BEAT + 600 },
+    { kind: "select", row: FRIENDS.row, column: "amount", delay: BEAT },
+    { kind: "type", text: FRIENDS.was },
+    { kind: "select", row: TAPAS.row, column: "note", delay: BEAT },
+    { kind: "type", text: "" },
+  ]
+}
 
 export interface Hero {
   timeline: TableTimeline
   /** The whole loop, ms: the hand's session, then the last frame held. */
   total: number
   playable: Playable
-  /** Every text the file has on the clock, in order, each once: the terminal's frames. */
+  /** Every text the file has on the clock, in order, each once: the terminal's frames. The
+   *  first is the file as found, and the clock ends on it again. */
   texts: string[]
-  /** The file as found, with the typo, and typed back: what scripts/examples.ts asserts. */
-  checkpoints: Record<"found" | "typo" | "fixed", string>
+  /** The file as each edit leaves it, in order: what scripts/examples.ts reads. */
+  states: string[]
 }
 
 const made = new WeakMap<Engine, Hero>()
@@ -156,15 +204,19 @@ export function hero(engine: Engine): Hero {
   const had = made.get(engine)
   if (had) return had
   const files: TableFile[] = [{ path: SPENDING_PATH, text: SPENDING_TEXT }]
-  const timeline = tableTimeline(files, STEPS, (file, cell, value, others) => writeCell(engine, file, cell, value, others))
-  const after = (step: number) => tableFrameAt(timeline, (timeline.plans[step]?.end as number) + 1).texts[SPENDING_PATH] as string
-  const committed = timeline.plans.flatMap((p) => (p.texts ? [p.texts[SPENDING_PATH] as string] : []))
+  const write = (file: TableFile, cell: { row: number; column: string }, value: string, others: readonly TableFile[]) =>
+    writeCell(engine, file, cell, value, others)
+  const adding = tableTimeline(files, ADDING, write)
+  const withCoffee = tableFrameAt(adding, adding.total).texts[SPENDING_PATH] as string
+  const timeline = tableTimeline(files, [...ADDING, ...putBack(withCoffee)], write)
+  const states = timeline.plans.flatMap((p) => (p.texts ? [p.texts[SPENDING_PATH] as string] : []))
+  if (states.at(-1) !== SPENDING_TEXT) throw new Error("hero: the loop does not end on the file it began with")
   const h: Hero = {
     timeline,
     total: timeline.total + HOLD_MS,
     playable: { duration: timeline.total + HOLD_MS, chapters: timeline.playable.chapters },
-    texts: [...new Set([SPENDING_TEXT, ...committed])],
-    checkpoints: { found: SPENDING_TEXT, typo: after(1), fixed: after(3) },
+    texts: [...new Set([SPENDING_TEXT, ...states])],
+    states,
   }
   made.set(engine, h)
   return h

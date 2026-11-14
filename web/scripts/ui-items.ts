@@ -9,6 +9,8 @@ export const UI_ITEMS = [
   "code",
   "code-session",
   "command",
+  "desk",
+  "device-frame",
   "macos",
   "macos-session",
   "markdown",
