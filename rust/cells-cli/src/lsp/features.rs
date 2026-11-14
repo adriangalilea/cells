@@ -92,6 +92,23 @@ pub fn diagnostics(file: &File, allowed: &Allowed) -> Vec<Diagnostic> {
         }
     };
     problems(doc, 0, None, &mut out);
+    // a packed copy is another file's: one that is not what its source holds (edited here,
+    // or its source changed) warns, one read in its source's place is said
+    for c in doc.copies() {
+        let (severity, message) = match c.packing {
+            cells::Packing::Current => continue,
+            cells::Packing::Stale => (
+                DiagnosticSeverity::WARNING,
+                format!("packed {}: not what {} holds now. A copy is never edited here: edit {}, then cells pack", c.name, c.from, c.from),
+            ),
+            cells::Packing::Standing => {
+                (DiagnosticSeverity::INFORMATION, format!("packed {}: a copy, read in place of {}, not reachable", c.name, c.from))
+            }
+        };
+        let mut d = error(statement_line(file, c.line), message);
+        d.severity = Some(severity);
+        out.push(d);
+    }
     for t in doc.tables().iter().filter(|t| t.own()) {
         if let Some((d, base)) = inline(file, &t.name) {
             problems(&d, base, Some(&t.name), &mut out);
@@ -99,7 +116,7 @@ pub fn diagnostics(file: &File, allowed: &Allowed) -> Vec<Diagnostic> {
     }
     for s in doc.scripts().iter().filter(|s| !allowed.allows(&file.path, s)) {
         let mut d = error(
-            script_line(file, s),
+            statement_line(file, s.line),
             format!("{} does not run: not allowed on this Mac as it is written. Read its code, then allow it from its fix.", s.name),
         );
         d.severity = Some(DiagnosticSeverity::WARNING);
@@ -108,9 +125,9 @@ pub fn diagnostics(file: &File, allowed: &Allowed) -> Vec<Diagnostic> {
     out
 }
 
-/// A script's statement line, whole: where its warning and its fix stand.
-fn script_line(file: &File, script: &cells::Script) -> Range {
-    let n = script.line;
+/// A statement's first line, whole: where a script's warning and its fix stand, and a
+/// packed copy's.
+fn statement_line(file: &File, n: u32) -> Range {
     let len = file.text.lines().nth(n as usize).map_or(0, |l| l.encode_utf16().count() as u32);
     Range {
         start: tower_lsp::lsp_types::Position { line: n, character: 0 },
@@ -270,7 +287,8 @@ pub fn formatted(file: &File, saved: Option<&File>, align: bool) -> Option<TextE
         Some(saved) => doc.stored_since(&saved.doc),
         None => doc.store_unstored(),
     }
-    let text = cells::layout::formatted(&doc.write(), align);
+    // a copy kept with `pack: "auto"` written fresh, as every write writes it
+    let text = cells::layout::formatted(&doc.packed(cells::Pack::Auto), align);
     (text != file.text).then(|| whole(file, &Lines::new(&file.text), text))
 }
 
@@ -312,7 +330,7 @@ pub fn actions(folder: &Folder, file: &File, range: Range, allowed: &Allowed) ->
         .collect();
     // a script not allowed, allowed at the version shown: no edit, the engine keeps it
     for s in file.doc.scripts().iter().filter(|s| !allowed.allows(&file.path, s)) {
-        let at = script_line(file, s);
+        let at = statement_line(file, s.line);
         if at.start.line < range.start.line || at.start.line > range.end.line {
             continue;
         }

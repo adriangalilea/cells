@@ -188,6 +188,42 @@ fn its_own_writes_heard_again_change_nothing() {
 }
 
 #[test]
+fn an_auto_packed_chain_settles_in_one_pass_and_its_writes_heard_again_log_nothing() {
+    // b packs a, c packs b, each `pack: "auto"`, each packed as `cells pack` leaves it
+    let a = "key:text!,v:EUR\nk,1.00\n";
+    let importer = |from: &str| {
+        format!("---\nimport {from} from \"./{from}.cells\" with {{ pack: \"auto\" }}\n---\nkey:text!,v:EUR={from}[key].v\nk,1.00=\n")
+    };
+    let mut held = BTreeMap::new();
+    held.insert("/w/a.cells".to_owned(), a.to_owned());
+    for (p, from) in [("b", "a"), ("c", "b")] {
+        let path = format!("/w/{p}.cells");
+        let text = importer(from);
+        let doc = cells::read_with(text.as_str(), &mut cells::files::Files::new(&held, &path), 1).unwrap();
+        held.insert(path, doc.packed(cells::Pack::All));
+    }
+    let sim = Sim::default();
+    for (p, t) in &held {
+        sim.put(p, t);
+    }
+    let mut d = served(sim, "/w");
+    assert!(d.world().log().is_empty(), "a folder of current copies writes nothing");
+    d.world().put("/w/a.cells", "key:text!,v:EUR\nk,2.00\n");
+    heard(&mut d, &["/w/a.cells"]);
+    let kinds = |log: &[String]| -> Vec<String> {
+        log.iter().map(|l| l.split("\"kind\":\"").nth(1).unwrap().split('"').next().unwrap().to_owned()).collect()
+    };
+    let log = d.world().log();
+    assert_eq!(kinds(&log), ["external", "store", "store"], "{log:#?}");
+    assert!(log[1].contains("\"path\":\"b.cells\"") && log[2].contains("\"path\":\"c.cells\""), "{log:#?}");
+    assert!(d.world().get("/w/c.cells").contains("packed b = ```cells\nkey: text!,v: EUR\nk,2.00\n```"));
+    // its own writes heard again, and the source heard again unchanged: nothing
+    heard(&mut d, &["/w/a.cells", "/w/b.cells", "/w/c.cells"]);
+    heard(&mut d, &["/w/a.cells", "/w/b.cells", "/w/c.cells"]);
+    assert_eq!(d.world().log().len(), 3, "{:#?}", d.world().log());
+}
+
+#[test]
 fn a_file_changed_since_it_was_read_is_never_written_over() {
     let mut d = daemon();
     d.world().put(Q4, &MONEY.replace("cost,180.00,180.00=", "cost,200.00,180.00="));

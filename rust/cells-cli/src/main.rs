@@ -8,6 +8,7 @@ mod editors;
 mod history;
 mod lsp;
 mod merge;
+mod pack;
 mod pin;
 mod run;
 mod skill;
@@ -39,6 +40,19 @@ fn check(path: &Path, threads: usize) -> Result<Said, String> {
     // rows.
     let mut lines: Vec<String> = doc.broken().iter().map(|e| format!("{shown} {e}")).collect();
     let mut fails = !lines.is_empty();
+    // Its packed copies: one its source has moved past fails, one read in its source's
+    // place is a note.
+    for c in doc.copies() {
+        let place = format!("{shown} prelude line {}: packed {}", c.line, c.name);
+        match c.packing {
+            cells::Packing::Current => {}
+            cells::Packing::Stale => {
+                fails = true;
+                lines.push(format!("{place} is not what {} holds now: cells pack refreshes it", c.from));
+            }
+            cells::Packing::Standing => lines.push(format!("{place} is read in place of {}, not reachable", c.from)),
+        }
+    }
     let noted = |p: &cells::Problem| p.kind().severity() == cells::Severity::Note;
     for t in doc.tables().iter().filter(|t| t.own()) {
         let d = t.doc.as_ref().expect("a table of the file's own is read");
@@ -63,7 +77,7 @@ fn fix(path: &Path, threads: usize) -> Result<Said, String> {
     let stale = doc.problems().iter().filter(|p| p.kind() == cells::Kind::Stale).count();
     doc.fix_stale();
     doc.store_unstored();
-    let text = doc.write();
+    let text = doc.packed(cells::Pack::Auto);
     if text.as_bytes() == bytes {
         return Ok(Said::Clean);
     }
@@ -265,6 +279,22 @@ fn main() -> ExitCode {
             }
             ExitCode::SUCCESS
         }
+        Some("pack") => match pack::args(&args[1..]) {
+            Some((remove, out, file)) => match pack::pack(Path::new(file), remove, out.map(Path::new)) {
+                Ok((said, whole)) => {
+                    said.iter().for_each(|l| println!("{l}"));
+                    if whole { ExitCode::SUCCESS } else { ExitCode::from(1) }
+                }
+                Err(e) => {
+                    eprintln!("cells: {e}");
+                    ExitCode::from(2)
+                }
+            },
+            None => {
+                eprintln!("{}", describe::usage());
+                ExitCode::from(2)
+            }
+        },
         Some("editors") if args.len() == 3 && args[1] == "install" => match editors::install(&args[2]) {
             Ok(said) => {
                 said.iter().for_each(|l| println!("{l}"));

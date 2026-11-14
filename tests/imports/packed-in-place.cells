@@ -1,0 +1,11 @@
+---
+import { Rate, fees } from "./nowhere.cells"
+packed type Rate = pct>=0
+packed fees = ```cells
+kind: text!,pct: pct
+card,1.4
+```
+---
+amount:EUR,kind:fees.kind,rate:Rate=fees[kind].pct
+120.00,card,1.4=
+9.00,crad,

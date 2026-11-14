@@ -121,6 +121,50 @@ fn imports_formulas_and_a_script() {
     fs::remove_dir_all(&dir).unwrap();
 }
 
+/// `cells pack` writes every import into the file, `--out` elsewhere, `--remove` takes them
+/// out; the file sent alone reads from its copies, and `check` says so without failing.
+#[test]
+fn pack_a_file_to_send_alone() {
+    let dir = std::env::temp_dir().join(format!("cells-pack-{}", std::process::id()));
+    let alone = std::env::temp_dir().join(format!("cells-pack-alone-{}", std::process::id()));
+    fs::create_dir_all(dir.join("home")).unwrap();
+    fs::create_dir_all(&alone).unwrap();
+    fs::write(dir.join("accounts.cells"), "account:text!,limit:EUR\nrent,1000\n").unwrap();
+    let money = "---\nimport accounts from \"../accounts.cells\"\n---\nto:accounts.account,left:EUR=accounts[to].limit\nrent,1000.00=\n";
+    let file = dir.join("home/money.cells");
+    fs::write(&file, money).unwrap();
+    let cells = env!("CARGO_BIN_EXE_cells");
+    let run = |args: &[&str]| Command::new(cells).args(args).output().unwrap();
+    let path = file.to_str().unwrap();
+
+    let sent = alone.join("money.cells");
+    let out = run(&["pack", "--out", sent.to_str().unwrap(), path]);
+    assert_eq!(out.status.code(), Some(0), "{}", String::from_utf8_lossy(&out.stderr));
+    assert_eq!(fs::read_to_string(&file).unwrap(), money, "--out leaves the file untouched");
+    let packed = fs::read_to_string(&sent).unwrap();
+    assert!(packed.contains("packed accounts = ```cells\naccount: text!,limit: EUR\nrent,1000\n```\n"), "{packed}");
+    // alone, its copy reads in place: a note, never a failure
+    let check = run(&["check", sent.to_str().unwrap()]);
+    assert_eq!(check.status.code(), Some(0));
+    let said = String::from_utf8(check.stdout).unwrap();
+    assert!(said.contains("packed accounts is read in place of ../accounts.cells, not reachable"), "{said}");
+    // packing it there again keeps the copy; packing in place, then removing, is the file
+    assert_eq!(run(&["pack", sent.to_str().unwrap()]).status.code(), Some(0));
+    assert_eq!(fs::read_to_string(&sent).unwrap(), packed);
+    assert_eq!(run(&["pack", path]).status.code(), Some(0));
+    assert_eq!(fs::read_to_string(&file).unwrap(), packed);
+    // a source that changed leaves the copy stale, which fails a check
+    fs::write(dir.join("accounts.cells"), "account:text!,limit:EUR\nrent,1200\n").unwrap();
+    assert_eq!(run(&["check", path]).status.code(), Some(1));
+    assert_eq!(run(&["pack", "--remove", path]).status.code(), Some(0));
+    assert_eq!(fs::read_to_string(&file).unwrap(), money);
+    // an import neither reached nor packed cannot be packed
+    fs::write(alone.join("bare.cells"), money).unwrap();
+    assert_eq!(run(&["pack", alone.join("bare.cells").to_str().unwrap()]).status.code(), Some(1));
+    fs::remove_dir_all(&dir).unwrap();
+    fs::remove_dir_all(&alone).unwrap();
+}
+
 /// `cells sql` is `cells-sql`'s (its own tests are there): handed over with its arguments,
 /// its exit its own.
 #[test]

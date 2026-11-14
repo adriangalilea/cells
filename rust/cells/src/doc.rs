@@ -13,6 +13,7 @@ use crate::column::{self, Bits, BitsBuilder, Building, Data, Decoder, Kind, Prob
 use crate::exact::Exact;
 use crate::expr::{self, Ir, K, V};
 use crate::format::{Dialect, Separator};
+use crate::layout;
 use crate::look::{self, Locale, Look, Rule, Target, Tint, Tinted};
 use crate::prelude::{self, Fenced, Schedule, Statement};
 use crate::read::{self, CellRead, Part, Reading};
@@ -264,6 +265,9 @@ pub enum Held {
     /// Another file's, by the import's path or URL as written: read there, or, when `doc`
     /// is none, not reached.
     Import { from: String },
+    /// Another file's, not reached there: read from its packed copy at prelude line `line`
+    /// (SPEC.md, Packed imports).
+    Copy { from: String, line: u32 },
 }
 
 impl Table {
@@ -276,9 +280,46 @@ impl Table {
     pub fn from(&self) -> Option<&str> {
         match &self.held {
             Held::Own => None,
-            Held::Import { from } => Some(from),
+            Held::Import { from } | Held::Copy { from, .. } => Some(from),
         }
     }
+}
+
+/// A packed copy the prelude holds (`packed accounts = …`, `packed type Kind = …`, `packed
+/// look Kind: …`) and how it stands to its source.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Copied {
+    /// What it copies, as its import names it.
+    pub name: String,
+    /// Its prelude line.
+    pub line: u32,
+    /// Its import's path or URL, as written.
+    pub from: String,
+    pub packing: Packing,
+}
+
+/// How a packed copy stands to its source.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Packing {
+    /// The source is reached and the copy is what packing it gives: nothing to do.
+    Current,
+    /// The source is reached and the copy is not what packing it gives (the source changed,
+    /// or the copy was edited): never read, `cells pack` refreshes it.
+    Stale,
+    /// The source is not reached: the copy is read in its place.
+    Standing,
+}
+
+/// Which packed copies a write writes (`Doc::packed`).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Pack {
+    /// Every import's whose source is reached (`cells pack`, a self-contained copy).
+    All,
+    /// Only those of imports `with { pack: "auto" }` whose source is reached: what every
+    /// write the engine makes writes.
+    Auto,
+    /// None: every copy taken out (`cells pack --remove`).
+    Remove,
 }
 
 /// A table a script fills (`name = run …`): its schedule, its code, and where the
@@ -376,6 +417,8 @@ pub struct Doc {
     /// Every import and what following it gave, so the file read again after an edit reads
     /// them the same.
     imported: Vec<(Import, Option<Arc<Doc>>)>,
+    /// Every packed copy that reads, in the prelude's order.
+    copies: Vec<Copied>,
     columns: Vec<Column>,
     /// Each column's formula, resolved; nothing for one that does not, whose cells are
     /// blank.
@@ -603,7 +646,7 @@ fn read_in(bytes: Vec<u8>, dialect: Dialect, threads: usize, imports: &mut dyn I
         None => (Vec::new(), Vec::new()),
     };
     let Read { body, statements, spans, mut broken } = if plain || above.is_some() { Read::none(bom) } else { read_prelude(&source, bom) };
-    let (scripts, imported) = settle_prelude(&source, &statements, imports, &mut named, &mut tables, &mut broken);
+    let (scripts, imported, copies) = settle_prelude(&source, &statements, imports, &mut named, &mut tables, &mut broken);
     let how = dialect.records();
     let src = source.as_bytes();
     let mut doc = Doc {
@@ -619,6 +662,7 @@ fn read_in(bytes: Vec<u8>, dialect: Dialect, threads: usize, imports: &mut dyn I
         tables,
         scripts,
         imported,
+        copies,
         columns: Vec::new(),
         formulas: Vec::new(),
         broken: Vec::new(),
@@ -896,9 +940,9 @@ fn is_url(from: &str) -> bool {
     from.starts_with("https://") || from.starts_with("http://")
 }
 
-/// What a prelude settles to besides its types and tables: its scripts, and each import
-/// with what following it gave.
-type Settled = (Vec<Script>, Vec<(Import, Option<Arc<Doc>>)>);
+/// What a prelude settles to besides its types and tables: its scripts, each import with
+/// what following it gave, and its packed copies.
+type Settled = (Vec<Script>, Vec<(Import, Option<Arc<Doc>>)>, Vec<Copied>);
 
 /// The prelude's statements settled in order: each type parsed, each import followed,
 /// each table read, every name once. A statement that does not settle is left out, why in
@@ -913,12 +957,44 @@ fn settle_prelude(
 ) -> Settled {
     let mut scripts = Vec::new();
     let mut imported = Vec::new();
+    let mut copies: Vec<Copied> = Vec::new();
     let taken =
         |named: &[NamedType], tables: &[Table], name: &str| named.iter().any(|t| t.name == name) || tables.iter().any(|t| t.name == name);
-    for s in statements {
+    for (i, s) in statements.iter().enumerate() {
         let at = At::PreludeLine(s.line());
         let mut fail = |why: String| broken.push(error(at, why));
+        // the first copy below this statement of `name`, of the kind `kind` names
+        let copy_of = |name: &str, kind: fn(&prelude::Copy) -> bool| {
+            statements[i + 1..].iter().find_map(|t| match t {
+                Statement::Packed { line, name: n, copy } if n == name && kind(copy) => Some((*line, copy)),
+                _ => None,
+            })
+        };
         match s {
+            // A copy is settled at its import, which reads it in place of a source not
+            // reached; here only whether an import above names it, once.
+            Statement::Packed { name, copy, .. } => {
+                let kind = core::mem::discriminant(copy);
+                let twice = statements[..i]
+                    .iter()
+                    .any(|t| matches!(t, Statement::Packed { name: n, copy: c, .. } if n == name && core::mem::discriminant(c) == kind));
+                let typed = !matches!(copy, prelude::Copy::Table(_));
+                let imported = statements[..i].iter().any(|t| match t {
+                    Statement::Import { default, names, .. } => {
+                        (!typed && default.as_deref() == Some(name.as_str())) || names.iter().any(|n| n == name)
+                    }
+                    _ => false,
+                });
+                let capital = name.as_bytes().first().is_some_and(u8::is_ascii_uppercase);
+                if twice {
+                    fail(format!("packed {name} is written twice"));
+                } else if !imported {
+                    fail(format!("packed {name} is a copy of an import, and no import above it names {name}"));
+                } else if typed != capital {
+                    let what = if capital { "a type, copied as packed type" } else { "a table, copied as packed name = ```cells" };
+                    fail(format!("packed {name}: {name} is {what}"));
+                }
+            }
             // A column's declaration names no type or table: the header settles it.
             Statement::Column { .. } => {}
             // A named type's look, given to the type itself, so it holds wherever the type is
@@ -973,38 +1049,102 @@ fn settle_prelude(
                 };
                 imported.push((import, doc.clone()));
                 let held = || Held::Import { from: from.clone() };
+                let copied = |name: &str, line: u32, packing: Packing| Copied { name: name.to_owned(), line, from: from.clone(), packing };
+                let table_copy = |name: &str| copy_of(name, |c| matches!(c, prelude::Copy::Table(_)));
+                // A table: the source's when it is reached, its copy checked against it; the
+                // copy in its place when it is not.
+                let table = |name: &str, reached: Option<Arc<Doc>>, copies: &mut Vec<Copied>, broken: &mut Vec<Error>| match (
+                    reached,
+                    table_copy(name),
+                ) {
+                    (Some(d), Some((line, prelude::Copy::Table(body)))) => {
+                        let same = same_table(&source[body.start..body.end], &table_copy_text(&d));
+                        copies.push(copied(name, line, if same { Packing::Current } else { Packing::Stale }));
+                        Table { name: name.to_owned(), exported: false, doc: Some(d), line: s.line(), held: held() }
+                    }
+                    (None, Some((line, prelude::Copy::Table(body)))) => {
+                        let d = inline(source, name, body, &mut Alone, &[], &[], broken);
+                        copies.push(copied(name, line, Packing::Standing));
+                        let held = Held::Copy { from: from.clone(), line };
+                        Table { name: name.to_owned(), exported: false, doc: Some(Arc::new(d)), line: s.line(), held }
+                    }
+                    (d, _) => Table { name: name.to_owned(), exported: false, doc: d, line: s.line(), held: held() },
+                };
                 if let Some(name) = default {
                     if taken(named, tables, name) {
-                        fail(format!("the name {name} is taken"));
+                        broken.push(error(at, format!("the name {name} is taken")));
                     } else {
-                        tables.push(Table { name: name.clone(), exported: false, doc: doc.clone(), line: s.line(), held: held() });
+                        let t = table(name, doc.clone(), &mut copies, broken);
+                        tables.push(t);
                     }
                 }
                 for name in names {
                     if taken(named, tables, name) {
-                        fail(format!("the name {name} is taken"));
+                        broken.push(error(at, format!("the name {name} is taken")));
                         continue;
                     }
-                    let Some(d) = &doc else {
-                        // Unreachable: a capital names a type, read as unchecked text.
-                        if name.as_bytes()[0].is_ascii_uppercase() {
-                            named.push(NamedType::new(name.clone(), Type::plain(Base::Text)));
-                        } else {
-                            tables.push(Table { name: name.clone(), exported: false, doc: None, line: s.line(), held: held() });
+                    if name.as_bytes()[0].is_ascii_uppercase() {
+                        let type_copy = copy_of(name, |c| matches!(c, prelude::Copy::Type(_)));
+                        let look_copy = copy_of(name, |c| matches!(c, prelude::Copy::Look(_)));
+                        match &doc {
+                            Some(d) => {
+                                let Some(t) = d.exported_type(name) else {
+                                    broken.push(error(at, no_export(from, d, name)));
+                                    continue;
+                                };
+                                if let Some((line, prelude::Copy::Type(spelled))) = type_copy {
+                                    let same = types::parse_type(spelled, &[], &[]).is_ok_and(|c| c.shorthand() == type_copy_text(t, d));
+                                    copies.push(copied(name, line, if same { Packing::Current } else { Packing::Stale }));
+                                }
+                                if let Some((line, prelude::Copy::Look(rules))) = look_copy {
+                                    let same = *rules == look_copy_rules(t);
+                                    copies.push(copied(name, line, if same { Packing::Current } else { Packing::Stale }));
+                                }
+                                // its looks with it (SPEC.md, How a value looks), said here at
+                                // the import's line, since that is where this file takes them
+                                named.push(imported_type(t, s.line()));
+                            }
+                            // Unreachable: its copy in its place, else unchecked text.
+                            None => match type_copy {
+                                Some((line, prelude::Copy::Type(spelled))) => match types::parse_type(spelled, &[], &[]) {
+                                    Ok(ty) => {
+                                        copies.push(copied(name, line, Packing::Standing));
+                                        let mut t = NamedType::new(name.clone(), ty);
+                                        if let Some((look_line, prelude::Copy::Look(rules))) = look_copy {
+                                            copies.push(copied(name, look_line, Packing::Standing));
+                                            for r in rules {
+                                                match look::rule(r).and_then(|rule| applies(&rule, &t.ty.base).map(|()| rule)) {
+                                                    Ok(rule) => t.looks.push(Look { spelled: r.clone(), rule, line: look_line }),
+                                                    Err(why) => {
+                                                        broken.push(error(At::PreludeLine(look_line), format!("look {name}: {why}")))
+                                                    }
+                                                }
+                                            }
+                                        }
+                                        named.push(t);
+                                    }
+                                    Err(why) => {
+                                        broken.push(error(At::PreludeLine(line), format!("packed type {name}: {why}")));
+                                        named.push(NamedType::new(name.clone(), Type::plain(Base::Text)));
+                                    }
+                                },
+                                _ => named.push(NamedType::new(name.clone(), Type::plain(Base::Text))),
+                            },
                         }
                         continue;
-                    };
-                    if let Some(t) = d.exported_type(name) {
-                        // its looks with it (SPEC.md, How a value looks), said here at the
-                        // import's line, since that is where this file takes them
-                        named.push(imported_type(t, s.line()));
-                    } else if let Some(t) = d.tables.iter().find(|t| t.exported && &t.name == name) {
-                        tables.push(Table { name: name.clone(), exported: false, doc: t.doc.clone(), line: s.line(), held: held() });
-                    } else {
-                        let all = d.exports();
-                        let shown = if all.is_empty() { "nothing".to_owned() } else { all.join(", ") };
-                        fail(format!("\"{from}\" exports no \"{name}\" (it exports: {shown})"));
                     }
+                    let reached = match &doc {
+                        None => None,
+                        Some(d) => match d.tables.iter().find(|t| t.exported && &t.name == name) {
+                            Some(t) => t.doc.clone(),
+                            None => {
+                                broken.push(error(at, no_export(from, d, name)));
+                                continue;
+                            }
+                        },
+                    };
+                    let t = table(name, reached, &mut copies, broken);
+                    tables.push(t);
                 }
             }
             Statement::Table { name, exported, body, .. } => {
@@ -1051,7 +1191,77 @@ fn settle_prelude(
             }
         }
     }
-    (scripts, imported)
+    (scripts, imported, copies)
+}
+
+/// A named import's name its source does not export, in words.
+fn no_export(from: &str, d: &Doc, name: &str) -> String {
+    let all = d.exports();
+    let shown = if all.is_empty() { "nothing".to_owned() } else { all.join(", ") };
+    format!("\"{from}\" exports no \"{name}\" (it exports: {shown})")
+}
+
+/// Two tables' texts as one table: the same once their padding is taken out, as `cells
+/// diff` compares them.
+fn same_table(a: &str, b: &str) -> bool {
+    layout::formatted(a, false) == layout::formatted(b, false)
+}
+
+/// A type written whole, for a copy that reads with nothing around it: its named types
+/// spelled out, and a reference written as its key's type, since the table it names is
+/// the source's, never the copy's reader's.
+fn whole_type(ty: &Type, source: &Doc) -> String {
+    let mut t = Type { named: None, ..ty.clone() };
+    if let Base::Ref(targets) = &ty.base {
+        let key = targets.first().and_then(|r| {
+            let d = source.tables.iter().find(|x| x.name == r.table)?.doc.as_deref()?;
+            Some(d.columns.iter().find(|c| c.name == r.column)?.ty.clone())
+        });
+        t = match key {
+            Some(k) => Type { named: None, key: ty.key, optional: ty.optional, inferred: false, ..k },
+            None => Type { key: ty.key, optional: ty.optional, ..Type::plain(Base::Text) },
+        };
+    }
+    t.shorthand()
+}
+
+/// A table as a packed copy holds it: its header, each column `name: type` written whole
+/// and no formula, then every row, each cell its value as the file writes it (a computed
+/// cell's what it stores, or what its formula gives), every line ending in `\n`.
+fn table_copy_text(d: &Doc) -> String {
+    let plain = d.dialect != Dialect::Cells;
+    let header: Vec<String> =
+        d.columns.iter().map(|c| scan::quote(&prelude::header_cell(&c.name, &whole_type(&c.ty, d))).into_owned()).collect();
+    let mut out = header.join(",");
+    out.push('\n');
+    for r in 0..d.rows() {
+        let cells: Vec<String> = (0..d.columns.len())
+            .map(|k| {
+                let raw = d.text(r, k);
+                let text = match d.columns[k].origin(r) {
+                    Origin::Written if plain => escaped(&raw),
+                    Origin::Written => raw.into_owned(),
+                    _ if d.unwell.contains_key(&(r as u32, k as u32)) => String::new(),
+                    _ => d.stored_value(r, k),
+                };
+                scan::quote(&text).into_owned()
+            })
+            .collect();
+        out.push_str(&cells.join(","));
+        out.push('\n');
+    }
+    out
+}
+
+/// A named type as a packed copy holds it: written whole.
+fn type_copy_text(t: &NamedType, source: &Doc) -> String {
+    whole_type(&t.ty, source)
+}
+
+/// A named type's looks as a packed copy holds them: its named types' first, then its own,
+/// each rule as written.
+fn look_copy_rules(t: &NamedType) -> Vec<String> {
+    t.ty.looks().into_iter().chain(t.looks.iter()).map(|l| l.spelled.clone()).collect()
 }
 
 /// A table fenced in the prelude, read with what the prelude named above it. Where its
@@ -1587,6 +1797,101 @@ impl Doc {
     /// The tables the prelude names: written inline, filled by scripts, imported.
     pub fn tables(&self) -> &[Table] {
         &self.tables
+    }
+
+    /// Every import, as written, and what following it gave: nothing for one not reached.
+    pub fn imported(&self) -> &[(Import, Option<Arc<Doc>>)] {
+        &self.imported
+    }
+
+    /// Every packed copy that reads, in the prelude's order, with how it stands to its
+    /// source (SPEC.md, Packed imports).
+    pub fn copies(&self) -> &[Copied] {
+        &self.copies
+    }
+
+    /// The file's text with its packed copies written as `how` says: each import's whose
+    /// source is reached written fresh, right after its import (where its copies stood, when
+    /// it had some), or every copy taken out. A copy of a source not reached is kept as it
+    /// is. Every other byte as `write` gives it.
+    pub fn packed(&self, how: Pack) -> String {
+        let written = self.write();
+        if self.dialect != Dialect::Cells {
+            return written;
+        }
+        let nl = self.newline();
+        let (prelude, rest) = written.split_at(self.body as usize);
+        let bytes = |lines: &core::ops::Range<u32>| (prelude_line(prelude, lines.start).0, prelude_line(prelude, lines.end - 1).1);
+        let mut edits: Vec<(usize, usize, String)> = Vec::new();
+        for (i, s) in self.statements.iter().enumerate() {
+            let Statement::Import { default, names, from, with, .. } = s else { continue };
+            let source = self.imported.iter().find(|(m, _)| &m.from == from && &m.with == with).and_then(|(_, d)| d.as_deref());
+            let auto = with.iter().any(|(k, v)| k == "pack" && v == "auto");
+            let fresh = match how {
+                Pack::All => source,
+                Pack::Auto => source.filter(|_| auto),
+                Pack::Remove => None,
+            };
+            if fresh.is_none() && how != Pack::Remove {
+                continue;
+            }
+            let names_it = |n: &String| default.as_ref() == Some(n) || names.contains(n);
+            let mine: Vec<usize> = (i + 1..self.statements.len())
+                .filter(|&j| matches!(&self.statements[j], Statement::Packed { name, .. } if names_it(name)))
+                .collect();
+            let mut lines: Vec<String> = Vec::new();
+            if let Some(d) = fresh {
+                if let Some(n) = default {
+                    lines.push(prelude::packed_table_lines(n, &table_copy_text(d)));
+                }
+                for n in names {
+                    if n.as_bytes()[0].is_ascii_uppercase() {
+                        let Some(t) = d.exported_type(n) else { continue };
+                        lines.push(prelude::packed_type_line(n, &type_copy_text(t, d)));
+                        let rules = look_copy_rules(t);
+                        if !rules.is_empty() {
+                            lines.push(prelude::packed_look_line(n, &rules));
+                        }
+                    } else if let Some(td) = d.tables.iter().find(|t| t.exported && &t.name == n).and_then(|t| t.doc.as_deref()) {
+                        lines.push(prelude::packed_table_lines(n, &table_copy_text(td)));
+                    }
+                }
+            }
+            // copies that are what packing gives already are left as they are, padding and
+            // all: a refresh that changes nothing writes nothing, so a writer laying them out
+            // (cells fmt) and one packing them never undo each other
+            let current = |j: &usize| self.copies.iter().any(|c| c.line == self.statements[*j].line() && c.packing == Packing::Current);
+            if fresh.is_some() && mine.len() == lines.len() && mine.iter().all(current) {
+                continue;
+            }
+            let text: String = lines.iter().flat_map(|l| l.split('\n')).map(|l| format!("{l}{nl}")).collect();
+            assert!(text.len() < u32::MAX as usize, "the copies of {from} are past 4 GiB, the most a reader reads");
+            match mine.split_first() {
+                Some((&first, others)) => {
+                    let (a, b) = bytes(&self.spans[first]);
+                    edits.push((a, b, text));
+                    for &j in others {
+                        let (a, b) = bytes(&self.spans[j]);
+                        edits.push((a, b, String::new()));
+                    }
+                }
+                None if !text.is_empty() => {
+                    let at = bytes(&self.spans[i]).1;
+                    edits.push((at, at, text));
+                }
+                None => {}
+            }
+        }
+        edits.sort_by_key(|e| core::cmp::Reverse(e.0));
+        let mut out = prelude.to_owned();
+        for (a, b, text) in edits {
+            out.replace_range(a..b, &text);
+        }
+        out.push_str(rest);
+        // a copy is its source's table and no more, so the file grows by what it imports,
+        // once; past what a reader reads, it screams rather than writing a file nobody opens
+        assert!(out.len() < u32::MAX as usize, "packing its imports takes this file past 4 GiB, the most a reader reads");
+        out
     }
 
     /// The scripts that fill tables, in the prelude's order.
@@ -2274,9 +2579,26 @@ impl Doc {
     /// every written cell as written and every computed cell its value as the file stores it
     /// left of its `=` (an amount at its column's scale, `0.00`), never its plain form.
     pub fn shown(&self) -> String {
-        self.written(Dialect::Plain(Separator::Tab), None, |r, k, _| {
-            self.rendered.get(&(r as u32, k as u32)).expect("a computed cell with a value is rendered").clone()
-        })
+        self.written(Dialect::Plain(Separator::Tab), None, |r, k, _| self.stored_value(r, k))
+    }
+
+    /// A computed cell's value as the file stores it left of its `=`: what its formula
+    /// gives, or, for one never computed (its import not reached), what it stores.
+    fn stored_value(&self, row: usize, column: usize) -> String {
+        match self.rendered.get(&(row as u32, column as u32)) {
+            Some(t) => t.clone(),
+            None => {
+                assert!(
+                    matches!(
+                        self.problems.iter().find(|p| p.order() == (row as u32, column as u32)).map(|p| p.why),
+                        Some(Why::Unreached { .. })
+                    ),
+                    "a computed cell with a value is rendered, or stands for an import not reached"
+                );
+                let raw = self.text(row, column);
+                read::split(raw.as_bytes()).map_or("", |at| &raw[..at]).to_owned()
+            }
+        }
     }
 
     /// `written_as`, a computed decimal written as `decimal` gives it (its row, its column,

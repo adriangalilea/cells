@@ -482,7 +482,8 @@ fn statement(
     let mut opened = None;
     if i < end {
         let mut word = ident(i);
-        if &source[i..word] == "export" && word < end && blank(b[word]) {
+        // `export`, or `packed` (a copy of an import, its statement read as the one it copies)
+        if matches!(&source[i..word], "export" | "packed") && word < end && blank(b[word]) {
             out.push(i, word, Kind::Keyword, NONE);
             i = skip(word);
             word = ident(i);
@@ -972,6 +973,16 @@ mod tests {
         assert_eq!(kinds(Kind::CellChoice), ["rent"]);
         assert_eq!(kinds(Kind::Number), ["18:00", "96.75", "3"]);
         assert_eq!(kinds(Kind::CellNumber), ["1.4", "32.25"]);
+        assert!(kinds(Kind::Error).is_empty(), "{t:?}");
+    }
+
+    #[test]
+    fn packed_copies() {
+        let src = "---\nimport { Kind, fees } from \"./r.cells\"\npacked type Kind = income#green|cost\npacked look Kind: grouped\npacked fees = ```cells\nkind:text!\ncard\n```\n---\nkind:Kind\nincome\n";
+        let t = shown(src);
+        let kinds = |k: Kind| t.iter().filter(|x| x.1 == k).map(|x| x.0.as_str()).collect::<Vec<_>>();
+        assert_eq!(kinds(Kind::Keyword)[..4], ["import", "from", "packed", "type"]);
+        assert!(kinds(Kind::Keyword).iter().filter(|k| **k == "packed").count() == 3, "{t:?}");
         assert!(kinds(Kind::Error).is_empty(), "{t:?}");
     }
 

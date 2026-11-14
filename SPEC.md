@@ -185,7 +185,7 @@ The prelude is the work; the header and rows after it are what the file shows, a
 - **A fence** opens with three backticks or more and its language, `` ```cells ``, then optionally one word of lower-case letters, its label (`` ```cells runs ``, `` ```chart bars ``), and closes at the first line that is as many backticks and nothing else, spaces and tabs aside. What it holds is its language's, so a `//` or a `---` inside one is no comment and no end of the prelude's. A fence never closed is an error naming the line it opens on.
 - **A column** is declared with a `:`, `total: Money = cost * qty` ([Columns](#columns)); `total = cost * qty`, with no type, is no statement and an error naming its line.
 - **A chart** is a fence of its own, `` ```chart ``, or named, `actual = ```chart` ([Charts](#charts)).
-- **A statement by its first word**: `type`, `import`, `export` and `look` ([How a value looks](#how-a-value-looks)), each followed by a space, open the statement they name, so a declared column whose name opens with one and a space is quoted (`"look ahead": text`).
+- **A statement by its first word**: `type`, `import`, `export`, `look` ([How a value looks](#how-a-value-looks)) and `packed` ([Packed imports](#packed-imports)), each followed by a space, open the statement they name, so a declared column whose name opens with one and a space is quoted (`"look ahead": text`).
 
 ### Named types
 
@@ -228,7 +228,48 @@ import last_year from "./money.cells" with { rev: "a1b2c3d" }
 - **A file that imports itself**, directly or through others, is an error naming the line.
 - **An import that cannot be reached** (a file not there, a URL not fetched) is no error: the file still reads. A reference into the table it names is unchecked, a computed cell whose formula reads it keeps the value the file stores ([Reading](#reading)), and a type it names (a name with a capital) reads as `text`.
 
+- **`with { pack: "auto" }`** keeps the import's packed copy in the file, refreshed on every write ([Packed imports](#packed-imports)).
+
 Data has no versions to resolve: no ranges, no resolver, no lockfile. Considered: `use path`, a syntax of our own where one exists that every reader and every highlighter knows, whose import attributes (ES2025) are where a pin goes. npm and Cargo pin in a lockfile beside the manifest, the sidecar Cells exists to avoid; Zig keeps a URL and its hash together, as here.
+
+### Packed imports
+
+````cells
+---
+import accounts from "../accounts.cells"
+packed accounts = ```cells
+account: text!,kind: assets|expenses,limit: EUR
+rent,expenses,1000.00
+```
+import { Kind, fees } from "./rates.cells" with { pack: "auto" }
+packed type Kind = income#green|cost#red
+packed look Kind: grouped
+packed fees = ```cells
+kind: income#green|cost#red!,pct: pct
+cost,1.5
+```
+---
+````
+
+A file that imports others reads whole only where they are. **A packed copy** keeps what an import exposes in the file itself, so the file reads the same sent alone: `packed <name> = ```cells` for a table (the default import's, or a table a named import takes), `packed type <Name> = <type>` for a named type, `packed look <Name>: <rules>` for that type's looks. Only what the import exposes is copied: for a default import its table, for a named import the types and tables it names. A copy is the prelude's, never after the header and rows: the body stays pure rows.
+
+- **What a copy holds.** A table's copy is its header and rows, each column `name: type` written whole (a named type spelled out, a reference written as its key's type, since the table it names is the source's, never the reader's) and no formula, each computed cell its value: so it reads with nothing around it. A type's copy is the type written whole; its looks' copy, every rule the type's looks give it, its named types' first. A copy follows its import, below it; a writer writes it right after its import line.
+- **Reading.** While the import's source is reached it is the truth: the copy is checked against it and never read. A copy that is not what packing the source gives now (the source changed, or the copy was edited), compared as `cells diff` compares, without its padding, is `stale`, naming the import, and never silently used. When the source is not reached (the file sent alone, a folder moved, a revision a reader has no history for, an import refused) the copy is read in its place: its types for the header, its table for references and formulas, its looks, so nothing reads as [unreached](#reading). A copy is said as one either way: `cells check` notes a copy read in its source's place and fails on a stale one.
+- **A copy is of an import.** A `packed` statement whose name no import above it names is an error naming its line, and so is one written twice, a type's copy of a table (or a table's of a type), and `export packed`.
+- **Read only.** A copy is its source's, edited there: an edit of it, through an app, the language server or the engine, is refused with the reason (`a copy of ../accounts.cells: edit that file`), and an app shows a copy as one, labelled, wherever it shows the prelude's tables.
+- **Written two ways.** `cells pack <file>` writes every import's copy once, fresh where its source is reached, a copy of a source not reached kept as it is; `cells pack --out <path>` writes the self-contained file there and leaves the file as it was; `cells pack --remove` takes every copy out. **`with { pack: "auto" }`** on an import keeps its copy written: every write a Cells writer makes of the file refreshes it while the source is reached, and a change to the source reaches the copy in every file importing it as it reaches their computed cells ([Writing](#writing)). Without it a copy is only ever written by `cells pack`.
+- **Settled by construction**, so packing never loops and never grows past what is imported:
+  - *Copies never nest.* A copy is its source's table or type written whole, never the source's own copies or imports: a file grows by what it imports directly, once, so a chain of ten files holds one copy each and a diamond copies its two sides, never the file beneath them twice.
+  - *A copy is data.* Its fence holds rows, never a prelude: nothing in it is followed, so no import and no cycle comes back through one.
+  - *A refresh that changes nothing writes nothing.* A copy that is what packing gives already, its padding aside, is left byte for byte, so a writer laying it out (`cells fmt`) and one packing it never undo each other, and a write heard back is no change.
+  - *A refresh rides its write.* One change writes each file it reaches once, in the order their reads need, its copies and its stored cells in the same write.
+  - *A source not reached never writes.* A copy standing in for it is read, never refreshed: a file sent alone and opened is never rewritten for it.
+  - *A URL's copy follows its pin.* It is refreshed only from the pinned bytes, fetched once and kept by their hash; bytes that are not them are refused and the copy kept. A write never fetches, and a copy moves only when `cells pin` moves the pin.
+  - *Two writers converge.* A copy is a function of its source's bytes, so two writers packing one source write the same bytes, and an edit made before a refresh is laid over the refreshed copy (the engine's intents, [ENGINE.md](ENGINE.md)), never back over it.
+  - *A bound screams.* A file past 4 GiB is refused by every reader, so packing that would make one stops, naming the import, never cuts a copy short.
+- **What each costs.** Auto keeps every importer self-contained at all times, at the cost of a copy in each importer, the file's size, and a diff in every importer on every change to the source. Explicit packs only when a file is sent, so the books stay small and their history quiet, and a copy left in them goes stale until packed again. A large table copies whole, every row: auto-packing a large table copies it into each file that imports it, which is what `--out` is for.
+
+Considered: the copy as fences under the import line, as a script's rows are under its `run` (no name written twice, never without its import), which gives a type no place and makes a named import of three things one block of mixed parts; a footer after the rows, which makes the body no longer pure rows; a hash of the source alone, which says the copy is out of date but leaves nothing to read; packing every import always, where a copy in every importer of a shared accounts file is the cost a person should choose.
 
 ### Tables written inline
 
@@ -521,7 +562,7 @@ A result the type breaks (a negative `net` in an `EUR>=0` column, `2.5` in an `i
 A writer round-trips: a file read and written with nothing changed is the same bytes. A changed cell is written in its column's form (its format, its pair's words, a text's `=` as `'=`, quoted only when CSV needs it); everything else is written as it was read, the header's spelling (shorthand or explicit), each line's ending, the byte order mark and the prelude included. A cell set past the end of a short row writes the blank fields before it. A changed field keeps its line aligned when it fits, its padding taking up the difference; one wider pushes its line, and laying the table out again is formatting's ([Formatting](#formatting)).
 
 - **A write stores what it changes.** A writer computes every computed cell its change reaches (the cells whose formulas read what it changed, and theirs in turn) and stores each value left of its `=`, in the column's form; a computed cell stored nowhere yet (a blank field of a computed column, a lone `=`, `=96.75 / 3`) is stored on any write. One pass is all of it: a cycle is refused, so the cells are computed in the order their reads need, each once, and what the pass stores is what a second would. A cell the change does not reach is written as read.
-- **A change reaches every file that reads it.** A formula reading another file's table (an import, followed through every import after it) is reached by a change to that file, however the change was made: an app's edit, an editor's save, a script, git. Every file it reaches is written as its own write, in the order their reads need, so a total in `quarters.cells` follows a cost saved in `q4/money.cells` with nobody opening `quarters.cells`. Only a writer that knew each file before the change knows what it reached ([Reading](#reading)), so this is the engine's, which keeps the folder ([ENGINE.md](ENGINE.md)); a reader holding one file alone stores in that file only.
+- **A change reaches every file that reads it.** A formula reading another file's table (an import, followed through every import after it) is reached by a change to that file, however the change was made: an app's edit, an editor's save, a script, git. Every file it reaches is written as its own write, in the order their reads need, so a total in `quarters.cells` follows a cost saved in `q4/money.cells` with nobody opening `quarters.cells`; a packed copy kept `with { pack: "auto" }` is written fresh in the same write ([Packed imports](#packed-imports)). Only a writer that knew each file before the change knows what it reached ([Reading](#reading)), so this is the engine's, which keeps the folder ([ENGINE.md](ENGINE.md)); a reader holding one file alone stores in that file only.
 - **A stale cell is left as read** by a write that did not cause it ([Reading](#reading)): what a person wrote is never overwritten unasked. A cell a change reached is not one: its stored value is what the formula gave before the change, which nobody chose. It is resolved one of two ways, each one write: store the formula's value (a client's fix, and `cells fix`, for every stale cell of a file at once), or keep the stored value as the row's override, the `=` and its formula dropped.
 - **A write never stores into a written cell**: an override stays as it was written, whatever the formula would give.
 
@@ -632,7 +673,7 @@ $ cells sql ~/books "
 
 ### Undecided
 
-- **The command line beyond `check`, `fix`, `fmt`, `diff`, `merge`, `pin`, `run`, `allow`, `history`, `show`, `sql`, `serve` and `lsp`**: what else a folder-as-database needs (a visualisation of the graph, a rename followed through every file from the shell).
+- **The command line beyond `check`, `fix`, `fmt`, `diff`, `merge`, `pin`, `pack`, `run`, `allow`, `history`, `show`, `sql`, `serve` and `lsp`**: what else a folder-as-database needs (a visualisation of the graph, a rename followed through every file from the shell).
 - **The block's name.** "Prelude" reads well in prose, but to a programmer a prelude is the standard definitions a language loads into every file unasked (Haskell's `Prelude`, Rust's `std::prelude`), where this block is one file's own, explicit declarations. The candidates: frontmatter (the shape everyone knows and searches for; Astro puts code in its own, and calls it "component frontmatter" beside its "component script"; the one risk, a tool reading a `---` at a file's top as YAML, is met only in Markdown), preamble (LaTeX's exact role, imports and definitions before the body, but it needs explaining), or keeping prelude. A rename reaches the spec, the engine's messages, both grammars' names, the language server and ui, so it is made once and whole, with no alias kept, when it is decided.
 - **Words about a column and a title for the table.** A header cell has no room for a description; a column's declaration in the prelude ([Columns](#columns)) is the likely place, its syntax open.
 - **Strictness.** A broken cell and a broken grammar load and are reported ([Reading](#reading)); whether a reader may also be asked to refuse a file is not decided.
@@ -641,7 +682,7 @@ $ cells sql ~/books "
   - **Owners.** A block or a file names who writes it; an edit by anyone else is refused through the engine and found by its hash otherwise. Solves who may write what; does not keep what was known.
   - **Append-only with a hash chain.** `run …, append`: rows never replaced, each with two engine columns, `recorded` and `chain` (the SHA-256 of the previous row's `chain` and the row's bytes, the core's own hash, as the engine's log chains its lines), so "as known on" is the latest row of each key recorded by then, and an edit or a removal breaks every later link. Solves what was known and makes tampering evident; does not stop a whole chain written again from scratch, which stays valid unless each link is signed by a device's key, as ENGINE.md's Later plans for the log.
   - **Transitions as a type.** `phase: pending->post|void`: the values a cell may move to from the one it holds, checked on every write, replacing ACCOUNTING.md's `unique` on `pending` if adopted. Solves an illegal change of state; does not keep history or say who wrote it.
-- **A folder sent as one file.** `cells pack` writing one file whose prelude carries a frozen copy of each file it imports, every reference resolved, for someone who should open one thing.
+- **A folder sent as one file.** A file's own imports pack into it ([Packed imports](#packed-imports)); a folder of files that import one another sent as one file, each of them a table of it, is not decided.
 - **Several values in one cell** (`tags: text[]`, split on `;`): useful (tags on a movement), and where a table starts to stretch; undecided.
 
 ### Brainstorm, not planned

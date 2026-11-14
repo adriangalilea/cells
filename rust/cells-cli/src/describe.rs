@@ -21,12 +21,14 @@ pub const USE_WHEN: &[&str] = &[
     "a question over their rows (`cells sql`, DuckDB's SQL over every file and its imports)",
     "a table's values as plain text (`cells show`) or its charts in a terminal (`cells chart`)",
     "a file whose computed cells are stale after an edit (`cells fix`)",
+    "a file to send alone, the files it imports packed into it (`cells pack`)",
     "an editor set up for the format (`cells editors install`)",
 ];
 
 /// What an agent never does with it.
 pub const NEVER: &[&str] = &[
     "type a computed cell's stored value by hand (a cell ending in `=`, `73.6=`): `cells fix` writes it from the formula",
+    "edit a packed copy (`packed …` in a prelude): it is another file's, edited there and refreshed with `cells pack`",
     "convert a `.cells` file to CSV or rewrite it with another tool: Cells is its own format, and `cells fmt` lays it out",
     "run `cells allow` for the person: allowing a script is their yes, answered in their terminal",
 ];
@@ -66,7 +68,7 @@ A cell is one of four forms: `84.20` written; `84.20=` computed by its column's 
 
 Formulas are SQL's scalar expressions in exact decimal, the language in capitals only (`SUM`, `ROUND`, `CASE WHEN … THEN … ELSE … END`, `TRUE`, `NULL`); a word in lower case is always a column the file names (`cost * qty`; `"price net"` quoted). `to.kind` follows a reference; `fees[kind].pct` is a table's row by its key; `total[-1]` the row before, `SUM(total[FIRST:THIS])` a running sum; `TABLE` the file's own table.
 
-A file may open with a prelude between `---` lines: `import accounts from "./accounts.cells"`, `type Kind = card|transfer` (a named type, capitalised), a column declared as `total: EUR = cost * qty` (the header then names it alone), a table written inline (`fees = ```cells` … ```` ``` ````), a script that fills a table, a `look` (how values are drawn) and charts (```` ```chart bars ````). A `//` starts a comment there.
+A file may open with a prelude between `---` lines: `import accounts from "./accounts.cells"`, `type Kind = card|transfer` (a named type, capitalised), a column declared as `total: EUR = cost * qty` (the header then names it alone), a table written inline (`fees = ```cells` … ```` ``` ````), a script that fills a table, a `look` (how values are drawn) and charts (```` ```chart bars ````). A `//` starts a comment there. A `packed` statement (`packed accounts = ```cells` … ```` ``` ````, `packed type Kind = …`) is a copy of what an import names, read only where the import cannot be reached: never edit one, `cells pack` writes them.
 
 After editing by hand: `cells check` says every problem by row and column, `cells fix` stores the computed values, `cells fmt` lays the file out."#;
 
@@ -114,6 +116,10 @@ pub const COMMANDS: &[Command] = &[
         says: "git's merge driver: what was written merged, what is computed computed again (SPEC.md, Merging).",
     },
     Command { usage: "cells pin <file>...", says: "Every import from a URL pinned by its hash now." },
+    Command {
+        usage: "cells pack [--remove] [--out <path>] <file>",
+        says: "Every import written into the prelude as a packed copy (`packed accounts = ```cells`, `packed type Kind = …`), refreshed from its source, so the file reads whole where its imports cannot be reached; `--out`: a self-contained copy written there, the file untouched; `--remove`: every copy taken out. A copy of a source not reachable is kept; an import with neither exits 1. `with { pack: \"auto\" }` on an import has every write refresh its copy instead.",
+    },
     Command {
         usage: "cells run <file> [script]",
         says: "Its scripts run once by the engine, their rows written under them; a script runs only as its person allowed it, and the engine runs it on its schedule anyway.",

@@ -1,0 +1,5 @@
+---
+packed type Rate = pct>=0
+---
+amount:EUR
+10

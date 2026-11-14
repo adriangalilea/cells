@@ -54,8 +54,8 @@ pub use column::{Bits, Data, Kind, Problem, Severity, Value, Why};
 #[cfg(feature = "std")]
 pub use doc::read_parallel;
 pub use doc::{
-    Alone, At, Column, ColumnAt, Doc, Error, Held, Import, Imports, Naming, Origin, Place, Row, Script, Span, Table, compose, read,
-    read_as, read_with,
+    Alone, At, Column, ColumnAt, Copied, Doc, Error, Held, Import, Imports, Naming, Origin, Pack, Packing, Place, Row, Script, Span, Table,
+    compose, read, read_as, read_with,
 };
 pub use format::{Dialect, Separator, detect};
 pub use identity::{Change, Refused, RowAt, Version};

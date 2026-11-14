@@ -282,7 +282,8 @@ impl Folder {
                     }
                     let mut after = doc.clone();
                     after.stored_since(before);
-                    let written = after.write();
+                    // a copy kept with `pack: "auto"` follows its source as a stored cell does
+                    let written = after.packed(crate::Pack::Auto);
                     if written != text {
                         let against = crate::sha256::hex(text.as_bytes());
                         let stored = stored(doc, &after);
@@ -534,6 +535,7 @@ pub fn edited(before: &Doc, after: &Doc) -> Edited {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use alloc::format;
     use alloc::vec;
 
     const Q4: &str = "/w/q4/money.cells";
@@ -573,6 +575,165 @@ mod tests {
         assert!(edited.rows_added.is_empty() && edited.rows_removed.is_empty());
         assert_eq!(index.text, INDEX.replace("180.00=SUM", "200.00=SUM"));
         assert_eq!(index.against, crate::sha256::hex(INDEX.as_bytes()));
+    }
+
+    #[test]
+    fn a_copy_kept_with_pack_auto_follows_its_source() {
+        let mut f = Folder::default();
+        let accounts = "/w/accounts.cells";
+        seen(&mut f, accounts, "account:text!,limit:EUR\nrent,1000\n");
+        let auto = "---\nimport accounts from \"./accounts.cells\" with { pack: \"auto\" }\npacked accounts = ```cells\naccount: text!,limit: EUR\nrent,1000\n```\n---\nto:accounts.account,left:EUR=accounts[to].limit\nrent,1000.00=\n";
+        let explicit = auto.replace(" with { pack: \"auto\" }", "");
+        seen(&mut f, "/w/auto.cells", auto);
+        seen(&mut f, "/w/explicit.cells", &explicit);
+        let out = changed(&mut f, accounts, "account:text!,limit:EUR\nrent,1200\n");
+        let paths: Vec<&str> = out.writes.iter().map(|w| w.path.as_str()).collect();
+        assert_eq!(paths, ["/w/auto.cells", "/w/explicit.cells"], "both store the new limit");
+        assert_eq!(out.writes[0].text, auto.replace("rent,1000\n", "rent,1200\n").replace("1000.00=", "1200.00="));
+        assert_eq!(out.writes[1].text, explicit.replace("1000.00=", "1200.00="), "a copy without auto is cells pack's alone");
+    }
+
+    /// `change` applied, then every write it decided made, as a host makes them: the paths
+    /// written, in order. Each write heard back is read alone and writes nothing, and the
+    /// same change heard again is nothing: a change settles in one pass.
+    fn settle(f: &mut Folder, change: Change) -> Vec<String> {
+        let again = change.clone();
+        let out = f.apply(change);
+        let paths: Vec<String> = out.writes.iter().map(|w| w.path.clone()).collect();
+        let mut once = paths.clone();
+        once.dedup();
+        assert_eq!(once.len(), paths.len(), "a file written twice by one change: {paths:?}");
+        for w in out.writes {
+            let back = f.apply(Change::Written { path: w.path.clone(), text: w.text.clone() });
+            assert!(back.writes.is_empty(), "{} written back wrote {:?}", w.path, back.writes);
+            // the write heard by the watcher, as the disk now holds it: nothing
+            let heard = f.apply(Change::Changed { path: w.path.clone(), text: w.text });
+            assert!(heard.writes.is_empty() && heard.read.is_empty(), "{} heard again was read", w.path);
+        }
+        if let Change::Changed { path, text } = again {
+            assert!(f.apply(Change::Changed { path, text }).read.is_empty(), "the change heard again is nothing");
+        }
+        paths
+    }
+
+    /// A file importing each of `from` with `pack: "auto"`: a column computed from the
+    /// first, and one from its own row.
+    fn auto(from: &[&str]) -> String {
+        let imports: String = from.iter().map(|f| format!("import {f} from \"./{f}.cells\" with {{ pack: \"auto\" }}\n")).collect();
+        format!("---\n{imports}---\nkey:text!,v:EUR={}[key].v,n:int,t:int=n * 2\nk,1.00=,1,2=\n", from[0])
+    }
+
+    /// The text before a file's header: its prelude, where its copies are.
+    fn prelude_of(t: &str) -> &str {
+        &t[..t.find("---\nkey").unwrap()]
+    }
+
+    /// `path` as `cells pack` leaves it in the folder's view: every copy written.
+    fn packed(f: &Folder, path: &str) -> String {
+        f.read_as(path, f.text(path).unwrap()).unwrap().packed(crate::Pack::All)
+    }
+
+    #[test]
+    fn an_auto_copy_settles_in_one_pass_and_a_laid_out_one_is_left_alone() {
+        let mut f = Folder::default();
+        seen(&mut f, "/w/a.cells", "key:text!,v:EUR\nk,1.00\n");
+        seen(&mut f, "/w/b.cells", &auto(&["a"]));
+        let b = packed(&f, "/w/b.cells");
+        assert_eq!(settle(&mut f, Change::Changed { path: "/w/b.cells".into(), text: b.clone() }), Vec::<String>::new());
+        assert_eq!(settle(&mut f, Change::Changed { path: "/w/a.cells".into(), text: "key:text!,v:EUR\nk,2.00\n".into() }), ["/w/b.cells"]);
+        let b = f.text("/w/b.cells").unwrap();
+        assert!(b.contains("k,2.00\n```") && b.ends_with("k,2.00=,1,2=\n"), "{b}");
+        // the copy laid out by cells fmt is current: an edit of b's own rows leaves it as it is
+        let laid = crate::layout::formatted(b, true);
+        assert_ne!(prelude_of(&laid), prelude_of(b), "the copy laid out");
+        settle(&mut f, Change::Changed { path: "/w/b.cells".into(), text: laid.clone() });
+        let edited = format!("{laid}j,=,5,=\n");
+        let out = f.apply(Change::Changed { path: "/w/b.cells".into(), text: edited.clone() });
+        assert!(out.writes[0].text.ends_with("j,=,5,10=\n"), "its own cells stored");
+        assert_eq!(prelude_of(&out.writes[0].text), prelude_of(&edited), "a current copy is never rewritten");
+    }
+
+    #[test]
+    fn a_chain_and_a_diamond_settle_each_file_written_once_in_order() {
+        let mut f = Folder::default();
+        seen(&mut f, "/w/a.cells", "key:text!,v:EUR\nk,1.00\n");
+        for (p, from) in [("b", vec!["a"]), ("c", vec!["b"])] {
+            let path = format!("/w/{p}.cells");
+            seen(&mut f, &path, &auto(&from));
+            let text = packed(&f, &path);
+            seen(&mut f, &path, &text);
+        }
+        let changed = Change::Changed { path: "/w/a.cells".into(), text: "key:text!,v:EUR\nk,2.00\n".into() };
+        assert_eq!(settle(&mut f, changed), ["/w/b.cells", "/w/c.cells"]);
+        let c = f.text("/w/c.cells").unwrap();
+        assert!(c.contains("packed b = ```cells\nkey: text!,v: EUR,n: int,t: int\nk,2.00,1,2\n```"), "{c}");
+        assert_eq!(c.matches("\npacked ").count(), 1, "c copies b's table, never b's copy of a");
+        // a diamond: d reads b and c, both read a; each file once, d after both
+        let mut f = Folder::default();
+        seen(&mut f, "/w/a.cells", "key:text!,v:EUR\nk,1.00\n");
+        for (p, from) in [("b", vec!["a"]), ("c", vec!["a"]), ("d", vec!["b", "c"])] {
+            let path = format!("/w/{p}.cells");
+            seen(&mut f, &path, &auto(&from));
+            let text = packed(&f, &path);
+            seen(&mut f, &path, &text);
+        }
+        let d = f.text("/w/d.cells").unwrap().to_owned();
+        assert_eq!(d.matches("\npacked ").count(), 2, "d copies what it imports, b and c, never a: {d}");
+        let changed = Change::Changed { path: "/w/a.cells".into(), text: "key:text!,v:EUR\nk,2.00\n".into() };
+        assert_eq!(settle(&mut f, changed), ["/w/b.cells", "/w/c.cells", "/w/d.cells"]);
+        assert_eq!(f.text("/w/d.cells").unwrap().matches("\npacked ").count(), 2);
+    }
+
+    #[test]
+    fn a_copy_standing_for_a_source_not_reached_never_writes() {
+        let mut f = Folder::default();
+        let mut held = Folder::default();
+        seen(&mut held, "/w/a.cells", "key:text!,v:EUR\nk,1.00\n");
+        seen(&mut held, "/w/b.cells", &auto(&["a"]));
+        let sent = packed(&held, "/w/b.cells");
+        // opened where a is not: read, never rewritten
+        let out = seen(&mut f, "/w/b.cells", &sent);
+        assert!(out.writes.is_empty() && out.needs == ["/w/a.cells"], "{out:?}");
+        // a row of its own edited: its cells stored, its copy byte for byte as sent
+        let edited = format!("{sent}j,=,5,=\n");
+        let out = f.apply(Change::Changed { path: "/w/b.cells".into(), text: edited.clone() });
+        assert!(out.writes[0].text.ends_with("j,=,5,10=\n"), "its own cells stored");
+        assert_eq!(prelude_of(&out.writes[0].text), prelude_of(&sent));
+        // and an intent over it leaves the copy as it is too
+        let ops = [crate::intent::Op::Set { row: crate::RowAt::Key("k".into()), column: "n".into(), was: None, text: "4".into() }];
+        let mut read = |t: &str| f.read_as("/w/b.cells", t);
+        let applied = crate::intent::apply(&sent, &ops, false, None, || 7, &mut read).unwrap();
+        assert_eq!(applied.text, sent.replace("k,1.00=,1,2=\n", "k,1.00=,4,8=\n"));
+    }
+
+    #[test]
+    fn two_writers_packing_one_source_write_the_same_bytes() {
+        let make = || {
+            let mut f = Folder::default();
+            seen(&mut f, "/w/a.cells", "key:text!,v:EUR\nk,1.00\n");
+            seen(&mut f, "/w/b.cells", &auto(&["a"]));
+            let b = packed(&f, "/w/b.cells");
+            seen(&mut f, "/w/b.cells", &b);
+            f
+        };
+        let (mut one, mut two) = (make(), make());
+        let change = || Change::Changed { path: "/w/a.cells".into(), text: "key:text!,v:EUR\nk,3.00\n".into() };
+        let (a, b) = (one.apply(change()), two.apply(change()));
+        assert_eq!(a.writes, b.writes, "the copy is a function of the source's bytes");
+        // the other's write, heard here, is this one's own version: nothing more is written
+        one.apply(Change::Written { path: "/w/b.cells".into(), text: a.writes[0].text.clone() });
+        let heard = one.apply(Change::Changed { path: "/w/b.cells".into(), text: b.writes[0].text.clone() });
+        assert!(heard.writes.is_empty() && heard.read.is_empty());
+        // a client's whole text made over the version before the refresh lays its rows over
+        // the refreshed copy, never back over it
+        let before = packed(&make(), "/w/b.cells");
+        let mine = format!("{before}j,=,5,=\n");
+        let now = a.writes[0].text.clone();
+        let mut read = |t: &str| one.read_as("/w/b.cells", t);
+        let ops = [crate::intent::Op::Text { text: mine }];
+        let applied = crate::intent::apply(&now, &ops, true, Some(&before), || 7, &mut read).unwrap();
+        assert_eq!(prelude_of(&applied.text), prelude_of(&now));
+        assert!(applied.text.ends_with("j,=,5,10=\n"), "{}", applied.text);
     }
 
     #[test]

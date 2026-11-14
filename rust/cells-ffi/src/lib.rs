@@ -422,6 +422,36 @@ pub unsafe extern "C" fn cells_formatted(d: *mut CellsDoc, align: bool) -> Cells
     CellsStr::of(&d.out)
 }
 
+/// Which packed copies `cells_packed` writes (`cells::Pack`).
+#[repr(C)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum CellsPack {
+    /// Every import's whose source is reached: `cells pack`, a self-contained copy.
+    CellsPackAll = 0,
+    /// Those of imports `with { pack: "auto" }`: what every write writes.
+    CellsPackAuto = 1,
+    /// None: every copy taken out.
+    CellsPackRemove = 2,
+}
+
+/// The doc's text with its imports packed as `how` says (`cells::Doc::packed`, SPEC.md,
+/// Packed imports): the one call `cells pack` and an app's self-contained copy make. A copy
+/// of a source not reached is kept as it is.
+///
+/// # Safety
+/// `d` is a live doc.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn cells_packed(d: *mut CellsDoc, how: CellsPack) -> CellsStr {
+    // SAFETY: the caller's promise.
+    let d = unsafe { doc(d) };
+    d.out = d.doc.packed(match how {
+        CellsPack::CellsPackAll => cells::Pack::All,
+        CellsPack::CellsPackAuto => cells::Pack::Auto,
+        CellsPack::CellsPackRemove => cells::Pack::Remove,
+    });
+    CellsStr::of(&d.out)
+}
+
 /// A typed header cell as a writer writes it (`cells::prelude::header_cell`): `name` and
 /// what follows its `:` (`EUR=cost * qty`) as `total: EUR = cost * qty`, the form a
 /// declaration has. Unquoted: the table's writer quotes the field. Held in `d`'s buffer,
@@ -1393,6 +1423,12 @@ pub enum CellsStatementKind {
     /// ```` ```chart bars ````, a chart: its fence's lines the statement's rows
     /// (`rows_line`, `rows_end`); what it is, `cells_charts`.
     CellsStatementChart = 6,
+    /// `packed accounts = ```cells`, `packed type Kind = …`, `packed look Kind: …`: a copy
+    /// of what an import names, never the file's own to edit. Its name `CellsStatementName`,
+    /// what it copies `CellsStatementCopied`, its source `CellsStatementFrom`, how it
+    /// stands to it `CellsStatementPacking`; a table's rows `rows_line`, `rows_end`, a type
+    /// `CellsStatementSpelled`, a look's rules `CellsStatementSpelled` joined by `, `.
+    CellsStatementPacked = 7,
 }
 
 /// A prelude statement: what it is and its lines; its words through `cells_statement_part`.
@@ -1444,6 +1480,12 @@ pub enum CellsStatementPart {
     CellsStatementRows = 8,
     /// The statement as written, its lines and comments.
     CellsStatementText = 9,
+    /// What a packed copy copies: `table`, `type` or `look`.
+    CellsStatementCopied = 10,
+    /// How a packed copy stands to its source: `current`, `stale` (never read: its source
+    /// holds another), `standing` (read in place of a source not reached); empty for a
+    /// copy that does not read.
+    CellsStatementPacking = 11,
 }
 
 /// How many statements the prelude holds that read.
@@ -1476,6 +1518,13 @@ pub unsafe extern "C" fn cells_statement(d: *mut CellsDoc, i: usize) -> CellsSta
         S::Column { .. } => (CellsStatementKind::CellsStatementColumn, false, 0, at(None), at(None)),
         S::Look { .. } => (CellsStatementKind::CellsStatementLook, false, 0, at(None), at(None)),
         S::Chart { body, .. } => (CellsStatementKind::CellsStatementChart, false, 0, at(None), at(Some(body))),
+        S::Packed { copy, .. } => {
+            let rows = match copy {
+                cells::prelude::Copy::Table(body) => at(Some(body)),
+                _ => at(None),
+            };
+            (CellsStatementKind::CellsStatementPacked, false, 0, at(None), rows)
+        }
     };
     CellsStatement {
         kind,
@@ -1528,6 +1577,37 @@ pub unsafe extern "C" fn cells_statement_part(d: *mut CellsDoc, i: usize, part: 
         (P::CellsStatementName, S::Chart { name, .. }) => name.clone().unwrap_or_default(),
         (P::CellsStatementSpelled, S::Chart { body, .. }) => body.label.clone(),
         (P::CellsStatementRows, S::Chart { body, .. }) => fenced(body),
+        (P::CellsStatementName, S::Packed { name, .. }) => name.clone(),
+        (P::CellsStatementCopied, S::Packed { copy, .. }) => match copy {
+            cells::prelude::Copy::Table(_) => "table",
+            cells::prelude::Copy::Type(_) => "type",
+            cells::prelude::Copy::Look(_) => "look",
+        }
+        .to_owned(),
+        (P::CellsStatementSpelled, S::Packed { copy: cells::prelude::Copy::Type(spelled), .. }) => spelled.clone(),
+        (P::CellsStatementSpelled, S::Packed { copy: cells::prelude::Copy::Look(rules), .. }) => rules.join(", "),
+        (P::CellsStatementRows, S::Packed { copy: cells::prelude::Copy::Table(body), .. }) => fenced(body),
+        (P::CellsStatementFrom | P::CellsStatementPacking, S::Packed { line, name, .. }) => {
+            let copied = d.doc.copies().iter().find(|c| c.line == *line);
+            match part {
+                P::CellsStatementPacking => copied.map_or("", |c| match c.packing {
+                    cells::Packing::Current => "current",
+                    cells::Packing::Stale => "stale",
+                    cells::Packing::Standing => "standing",
+                }),
+                // the import above that names it, as written
+                _ => d.doc.statements()[..i]
+                    .iter()
+                    .find_map(|t| match t {
+                        S::Import { default, names, from, .. } if default.as_ref() == Some(name) || names.contains(name) => {
+                            Some(from.as_str())
+                        }
+                        _ => None,
+                    })
+                    .unwrap_or(""),
+            }
+            .to_owned()
+        }
         _ => String::new(),
     };
     d.out = text;
@@ -1868,6 +1948,7 @@ pub unsafe extern "C" fn cells_prelude_line(
         }
         CellsStatementKind::CellsStatementTable => panic!("a table is more than one line"),
         CellsStatementKind::CellsStatementChart => panic!("a chart is more than one line"),
+        CellsStatementKind::CellsStatementPacked => panic!("a packed copy is the engine's to write: cells_packed"),
     };
     CellsStr::of(&d.out)
 }

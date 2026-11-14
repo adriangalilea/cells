@@ -255,6 +255,19 @@ fn prelude(doc: &Doc, text: &str, at: usize) -> Option<Hover> {
         return None;
     }
     let (from, len) = (start as u32, w.len() as u32);
+    // a packed copy, by its word or its name: whose copy it is, and how it stands
+    let n = text[..line_start].matches('\n').count() as u32;
+    if let Some(c) = doc.copies().iter().find(|c| c.line == n)
+        && (w == "packed" || w == c.name)
+    {
+        let stands = match c.packing {
+            crate::Packing::Current => "the same as its source: read only where the source cannot be reached",
+            crate::Packing::Stale => "not what its source holds now, so never read: cells pack refreshes it",
+            crate::Packing::Standing => "read in place of its source, which is not reachable",
+        };
+        let pieces = vec![plain("a copy of "), Piece::Code(c.from.clone()), plain(format!(": {stands}. Edit that file, never the copy."))];
+        return Some(Hover { pieces, from, to: from + len });
+    }
     if w == "look" && text[line_start..start].trim().is_empty() {
         let pieces = vec![
             Piece::Code("look".into()),
@@ -343,6 +356,17 @@ mod tests {
         // a column says its looks
         let h = hovered(text, text.find("amount:EUR").unwrap() + 1).unwrap();
         assert!(h.text().ends_with("looks grouped, red when amount < 0"), "{}", h.text());
+    }
+
+    #[test]
+    fn a_packed_copy_says_whose_it_is() {
+        let text = "---\nimport accounts from \"./accounts.cells\"\npacked accounts = ```cells\naccount: text!\nbank\n```\n---\nto:accounts.account\nbank\n";
+        let at = text.find("packed").unwrap() + 1;
+        let h = hovered(text, at).unwrap();
+        assert_eq!(
+            h.text(),
+            "a copy of ./accounts.cells: read in place of its source, which is not reachable. Edit that file, never the copy."
+        );
     }
 
     /// Every import the accounts table.

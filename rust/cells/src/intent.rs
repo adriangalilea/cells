@@ -175,6 +175,8 @@ pub fn apply(
             Op::Text { .. } => unreachable!("a whole text is applied alone, before any op"),
         }
     }
+    // its copies kept with `pack: "auto"` written fresh, as every write the engine makes
+    let text = read(&text).map_err(Refused::Unread)?.packed(crate::Pack::Auto);
     let last = read(&text).map_err(Refused::Unread)?;
     breaks(&first, &last, &touched)?;
     // in the rows' order, as the file holds them
@@ -202,11 +204,12 @@ fn whole(
     if !stale {
         let was = read(now).map_err(Refused::Unread)?;
         let before = ids(&was);
+        let mut is = read(mine).map_err(Refused::Unread)?;
+        copies_kept(&was, &is)?;
         // what its changes compute stored in it, as a write stores what it changes, so the
         // version answered is the file the engine leaves
-        let mut is = read(mine).map_err(Refused::Unread)?;
         is.stored_since(&was);
-        let stored = is.write();
+        let stored = read(&is.write()).map_err(Refused::Unread)?.packed(crate::Pack::Auto);
         let text = given_ids(read(&stored).map_err(Refused::Unread)?, bits, read)?;
         let last = read(&text).map_err(Refused::Unread)?;
         let assigned = match last.identity() {
@@ -263,6 +266,43 @@ fn whole(
         ops.push(Op::Add { cells });
     }
     apply(now, &ops, true, None, bits, read)
+}
+
+/// A whole text that leaves every packed copy as the version it is made over holds it: a
+/// copy is its source's, edited there (SPEC.md, Packed imports), so one changed, added or
+/// taken out here refuses the intent, naming its source.
+fn copies_kept(was: &Doc, is: &Doc) -> Result<(), Refused> {
+    let copies = |d: &Doc| -> Vec<(String, String)> {
+        d.statements()
+            .iter()
+            .enumerate()
+            .filter_map(|(i, s)| match s {
+                crate::Statement::Packed { name, .. } => Some((name.clone(), d.statement_text(i).to_owned())),
+                _ => None,
+            })
+            .collect()
+    };
+    let (before, after) = (copies(was), copies(is));
+    if before == after {
+        return Ok(());
+    }
+    let name = before
+        .iter()
+        .zip(after.iter())
+        .find(|(a, b)| a != b)
+        .map_or_else(|| if before.len() > after.len() { &before[after.len()].0 } else { &after[before.len()].0 }, |(a, _)| &a.0);
+    let from = [was, is]
+        .iter()
+        .find_map(|d| {
+            d.statements().iter().find_map(|s| match s {
+                crate::Statement::Import { default, names, from, .. } if default.as_ref() == Some(name) || names.contains(name) => {
+                    Some(from.clone())
+                }
+                _ => None,
+            })
+        })
+        .unwrap_or_else(|| name.clone());
+    Err(Refused::Op { op: 0, why: format!("a copy of {from}: edit that file (cells pack writes its copies)") })
 }
 
 /// A refusal of the core's in words, the column named.
@@ -452,6 +492,18 @@ mod tests {
         // with another op it is no whole text
         let two = [Op::Text { text: mine.into() }, Op::Add { cells: Vec::new() }];
         assert!(matches!(apply(KEYED, &two, false, None, counter(), &mut read), Err(Refused::Op { op: 0, .. })));
+    }
+
+    #[test]
+    fn an_edit_of_a_packed_copy_is_refused() {
+        let now = "---\nimport accounts from \"./accounts.cells\"\npacked accounts = ```cells\naccount: text!\nrent\n```\n---\nto:accounts.account!\nrent\n";
+        let mine = now.replace("account: text!\nrent\n", "account: text!\nrent\nbank\n");
+        let op = [Op::Text { text: mine }];
+        let Err(Refused::Op { why, .. }) = apply(now, &op, false, None, counter(), &mut read) else { panic!("a copy edited is refused") };
+        assert_eq!(why, "a copy of ./accounts.cells: edit that file (cells pack writes its copies)");
+        // a row of the file's own, beside it, is the file's
+        let rows = [Op::Text { text: format!("{now}rent2\n") }];
+        assert!(apply(now, &rows, false, None, counter(), &mut read).is_ok());
     }
 
     #[test]

@@ -82,6 +82,21 @@ pub enum Statement {
     /// (none when it is to be read from its entries), its entries the fence's lines
     /// (SPEC.md, Charts). Named only when another chart reads it.
     Chart { line: u32, name: Option<String>, body: Fenced },
+    /// `packed accounts = ```cells`, `packed type Kind = …`, `packed look Kind: …`: a copy
+    /// of what an import above names, kept in the file so it reads where the import cannot
+    /// be reached (SPEC.md, Packed imports). Never this file's own: an edit of it is refused.
+    Packed { line: u32, name: String, copy: Copy },
+}
+
+/// What a packed statement copies.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum Copy {
+    /// A table: its header and rows in a ```cells fence, every type written whole.
+    Table(Fenced),
+    /// A named type, written whole: what follows its `=`.
+    Type(String),
+    /// A named type's looks, each rule as written.
+    Look(Vec<String>),
 }
 
 impl Statement {
@@ -93,14 +108,15 @@ impl Statement {
             | Statement::Run { line, .. }
             | Statement::Column { line, .. }
             | Statement::Look { line, .. }
-            | Statement::Chart { line, .. } => *line,
+            | Statement::Chart { line, .. }
+            | Statement::Packed { line, .. } => *line,
         }
     }
 }
 
 /// The words that open a statement: a declared column whose name opens with one and a
 /// space is quoted, so it never reads as that statement.
-const OPENING: [&str; 4] = ["type", "import", "export", "look"];
+const OPENING: [&str; 5] = ["type", "import", "export", "look", "packed"];
 
 /// A column's declaration, `name: type` or `name: type = formula`: its name and what
 /// follows its `:`; none for a statement whose first `:` is not before its first `=` (a
@@ -257,6 +273,7 @@ pub fn parse(source: &str, from: usize) -> Result<Parsed, String> {
         let fences = match s {
             Statement::Table { body, .. } => [Some(body), None],
             Statement::Run { stored, runs, .. } => [stored.as_ref(), runs.as_ref()],
+            Statement::Packed { copy: Copy::Table(body), .. } => [Some(body), None],
             _ => [None, None],
         };
         for f in fences.into_iter().flatten() {
@@ -316,6 +333,25 @@ pub fn import_line(default: Option<&str>, names: &[String], from: &str, with: &[
         line.push_str(&format!(" with {{ {} }}", attrs.join(", ")));
     }
     line
+}
+
+/// A packed copy of a table as a writer writes it: `packed accounts = ```cells`, its text
+/// (lines ending in `\n`), its closing fence, a fence of more backticks than any line of it
+/// opens with. Lines joined by `\n`, no break after the last.
+pub fn packed_table_lines(name: &str, text: &str) -> String {
+    let longest = text.lines().map(|l| l.bytes().take_while(|&b| b == b'`').count()).max().unwrap_or(0);
+    let ticks = "`".repeat(longest.max(2) + 1);
+    format!("packed {name} = {ticks}cells\n{text}{ticks}")
+}
+
+/// A packed copy of a named type as a writer writes it: `packed type Kind = income|cost`.
+pub fn packed_type_line(name: &str, spelled: &str) -> String {
+    format!("packed type {name} = {spelled}")
+}
+
+/// A packed copy of a named type's looks: `packed look Money: grouped, negative red`.
+pub fn packed_look_line(name: &str, rules: &[String]) -> String {
+    format!("packed look {name}: {}", rules.join(", "))
 }
 
 /// A column's declaration as a writer writes it, from what follows its `:` as a header cell
@@ -426,6 +462,40 @@ fn statement(source: &str, lines: &[(usize, &str)], k: &mut usize) -> Result<Opt
         Some(r) => (true, r.trim_start_matches(BLANK)),
         None => (false, said),
     };
+    if let Some(rest) = said.strip_prefix("packed").filter(|r| r.starts_with(BLANK)) {
+        if exported {
+            return fail("a packed copy is of an import, the file's own: export names a type or a table".to_owned());
+        }
+        let rest = rest.trim_start_matches(BLANK);
+        if let Some(t) = rest.strip_prefix("type").filter(|r| r.starts_with(BLANK)) {
+            let t = t.trim_start_matches(BLANK);
+            let (name, after) = ident(t).unwrap_or(("", t));
+            let Some(spelled) = after.trim_start_matches(BLANK).strip_prefix('=').filter(|_| !name.is_empty()) else {
+                return fail("a packed type is `packed type Name = <type>`".to_owned());
+            };
+            let copy = Copy::Type(spelled.trim_matches(BLANK).to_owned());
+            return Ok(Some(Statement::Packed { line: n, name: name.to_owned(), copy }));
+        }
+        if let Some(l) = rest.strip_prefix("look").filter(|r| r.starts_with(BLANK)) {
+            let (target, rules) = crate::look::statement(l.trim_start_matches(BLANK)).map_err(|why| (n, why))?;
+            let crate::look::Target::Name(name) = target else {
+                return fail("a packed look is a named type's: packed look Name: rule, rule".to_owned());
+            };
+            return Ok(Some(Statement::Packed { line: n, name, copy: Copy::Look(rules) }));
+        }
+        let fence = ident(rest).and_then(|(name, after)| {
+            let value = after.trim_start_matches(BLANK).strip_prefix('=')?.trim_matches(BLANK);
+            opening(value).map(|o| (name, o))
+        });
+        let Some((name, (ticks, lang, label))) = fence else {
+            return fail("a packed copy is `packed name = ```cells`, `packed type Name = …` or `packed look Name: …`".to_owned());
+        };
+        let body = fenced(n as usize, ticks, lang, label, k)?;
+        if lang != "cells" || !label.is_empty() {
+            return fail(format!("a packed table is a ```cells fence, not ```{lang}"));
+        }
+        return Ok(Some(Statement::Packed { line: n, name: name.to_owned(), copy: Copy::Table(body) }));
+    }
     if let Some(rest) = said.strip_prefix("type").filter(|r| r.starts_with(BLANK) && !r.trim_start_matches(BLANK).starts_with('=')) {
         let rest = rest.trim_start_matches(BLANK);
         let (name, after) = ident(rest).unwrap_or(("", rest));
@@ -565,8 +635,11 @@ fn import(line: u32, s: &str) -> Result<Statement, (u32, String)> {
             let Some((key, r)) = ident(inner) else { return fail("an attribute is key: \"value\"") };
             let Some(r) = r.trim_start_matches(BLANK).strip_prefix(':') else { return fail("an attribute is key: \"value\"") };
             let (value, r) = string(r.trim_start_matches(BLANK)).ok_or((line, "an attribute's value is quoted".to_owned()))?;
-            if !matches!(key, "sha256" | "rev") {
-                return fail("an import takes sha256 or rev");
+            if !matches!(key, "sha256" | "rev" | "pack") {
+                return fail("an import takes sha256, rev or pack");
+            }
+            if key == "pack" && value != "auto" {
+                return fail("pack is \"auto\": the copy refreshed on every write (without it, cells pack writes copies)");
             }
             if with.iter().any(|(k, _): &(String, String)| k == key) {
                 return Err((line, format!("{key} is said twice")));

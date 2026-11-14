@@ -1,0 +1,15 @@
+{
+  "types": { "Rate": "pct>=0" },
+  "columns": [
+    { "name": "amount", "type": "EUR" },
+    { "name": "kind", "type": "fees.kind" },
+    { "name": "rate", "type": "Rate", "formula": "fees[kind].pct" }
+  ],
+  "rows": [
+    { "amount": { "money": "120.00", "currency": "EUR" }, "kind": { "ref": "card" }, "rate": { "pct": "1.4", "from": "formula" } },
+    { "amount": { "money": "9.00", "currency": "EUR" }, "kind": { "ref": "crad" }, "rate": { "from": "formula" } }
+  ],
+  "problems": [
+    { "row": 1, "column": "kind", "kind": "reference", "span": [209, 4] }
+  ]
+}
