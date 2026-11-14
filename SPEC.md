@@ -241,9 +241,9 @@ packed accounts = ```cells
 account: text!,kind: assets|expenses,limit: EUR
 rent,expenses,1000.00
 ```
-import { Kind, fees } from "./rates.cells" with { pack: "auto" }
-packed type Kind = income#green|cost#red
-packed look Kind: grouped
+import { Money, fees } from "./rates.cells" with { pack: "auto" }
+packed type Money = EUR>=0
+packed look Money: grouped
 packed fees = ```cells
 kind: income#green|cost#red!,pct: pct
 cost,1.5
