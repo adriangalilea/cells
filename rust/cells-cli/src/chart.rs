@@ -482,13 +482,14 @@ fn frame(card: Rect, borders: &mut Borders, tier: Tier, edges: Edges) {
 /// returned, and the plot where there is one.
 fn marks(s: &Summary, area: Rect, buf: &mut Buffer, borders: &mut Borders, tier: Tier) -> (u16, Option<Rect>) {
     let parts: Vec<&Summary> = if s.layers.is_empty() { vec![s] } else { s.layers.iter().collect() };
-    let y0 = legend(&parts, area, buf, tier);
+    let inks = Inks::of(&parts, tier);
+    let y0 = legend(&parts, area, buf, tier, &inks);
     let body = Rect::new(area.x, y0, area.width, area.bottom().saturating_sub(y0));
     if s.kind == Kind::Figure && s.layers.is_empty() {
-        return (figure(s, body, buf, tier), None);
+        return (figure(s, body, buf, tier, &inks), None);
     }
     if s.kind == Kind::Heat && s.layers.is_empty() {
-        return heat(s, body, buf, tier);
+        return heat(s, body, buf, tier, &inks);
     }
     let edged = tier.edges.is_some();
     let num = |v: &Option<String>| v.as_deref().and_then(|t| t.parse::<f64>().ok());
@@ -541,8 +542,8 @@ fn marks(s: &Summary, area: Rect, buf: &mut Buffer, borders: &mut Borders, tier:
     }
     for part in &parts {
         match part.kind {
-            Kind::Bars | Kind::Heat => bars(part, plot, buf, tier, &scale, stacked(part)),
-            _ => lines(part, plot, buf, tier, &scale),
+            Kind::Bars | Kind::Heat => bars(part, plot, buf, tier, &inks, &scale, stacked(part)),
+            _ => lines(part, plot, buf, tier, &inks, &scale),
         }
     }
     if edged {
@@ -602,7 +603,7 @@ fn named_under(s: &Summary, plot: Rect, buf: &mut Buffer, tier: Tier) -> u16 {
 /// colour, as many to a line as fit, a name too long for a line of its own cut short; a
 /// heat drawn alone has none, its series being its rows. The row the plot starts on is
 /// returned, a row of room below the legend.
-fn legend(parts: &[&Summary], area: Rect, buf: &mut Buffer, tier: Tier) -> u16 {
+fn legend(parts: &[&Summary], area: Rect, buf: &mut Buffer, tier: Tier, inks: &Inks) -> u16 {
     if let [only] = parts
         && only.kind == Kind::Heat
     {
@@ -623,7 +624,7 @@ fn legend(parts: &[&Summary], area: Rect, buf: &mut Buffer, tier: Tier) -> u16 {
         } else if x > area.x {
             x += APART as u16;
         }
-        let style = Style::default().fg(color(shade, tier));
+        let style = Style::default().fg(inks.color(shade));
         buf.set_string(x, y, swatch(kind, tier.glyphs), style);
         let room = area.right().saturating_sub(x + 2) as usize;
         let name: String = if name.chars().count() > room {
@@ -746,7 +747,7 @@ fn place_names(places: &[String], axis: &str) -> Vec<String> {
 
 /// Bars in eighths along the value: where two stacked series meet in one cell, the lower
 /// is the glyph's ink and the upper its ground, so a stack has no gap.
-fn bars(s: &Summary, plot: Rect, buf: &mut Buffer, tier: Tier, scale: &Scale, stacked: bool) {
+fn bars(s: &Summary, plot: Rect, buf: &mut Buffer, tier: Tier, inks: &Inks, scale: &Scale, stacked: bool) {
     let eighths = ["", "▁", "▂", "▃", "▄", "▅", "▆", "▇", "█"];
     let units = |v: f64| scale.eighths(v);
     let zero = units(0.0);
@@ -813,10 +814,10 @@ fn bars(s: &Summary, plot: Rect, buf: &mut Buffer, tier: Tier, scale: &Scale, st
                     if let Some(cell) = buf.cell_mut((x + dx, plot.y + r)) {
                         cell.set_symbol(glyph);
                         if fg != usize::MAX {
-                            cell.set_fg(color(s.series[fg].1, tier));
+                            cell.set_fg(inks.color(s.series[fg].1));
                         }
                         if let Some(b) = bg {
-                            cell.set_bg(color(s.series[b].1, tier));
+                            cell.set_bg(inks.color(s.series[b].1));
                         }
                     }
                 }
@@ -826,7 +827,7 @@ fn bars(s: &Summary, plot: Rect, buf: &mut Buffer, tier: Tier, scale: &Scale, st
 }
 
 /// Lines, areas, steps and points on a canvas of the tier's finest marks.
-fn lines(s: &Summary, plot: Rect, buf: &mut Buffer, tier: Tier, scale: &Scale) {
+fn lines(s: &Summary, plot: Rect, buf: &mut Buffer, tier: Tier, inks: &Inks, scale: &Scale) {
     let marker = match tier.glyphs {
         Glyphs::Fine => Marker::Braille,
         Glyphs::Blocks => Marker::HalfBlock,
@@ -839,7 +840,7 @@ fn lines(s: &Summary, plot: Rect, buf: &mut Buffer, tier: Tier, scale: &Scale) {
         .y_bounds(scale.bounds())
         .paint(|ctx| {
             for (k, (_, shade)) in s.series.iter().enumerate() {
-                let c = color(*shade, tier);
+                let c = inks.color(*shade);
                 let pts: Vec<(f64, f64)> = s
                     .values
                     .iter()
@@ -879,7 +880,7 @@ fn lines(s: &Summary, plot: Rect, buf: &mut Buffer, tier: Tier, scale: &Scale) {
 /// A cell a pair of places, its depth the value: shades of one tint, each row (a series)
 /// named at its left as a scale's labels stand, each place under its column. The row past
 /// the names is returned, and the grid.
-fn heat(s: &Summary, body: Rect, buf: &mut Buffer, tier: Tier) -> (u16, Option<Rect>) {
+fn heat(s: &Summary, body: Rect, buf: &mut Buffer, tier: Tier, inks: &Inks) -> (u16, Option<Rect>) {
     let all: Vec<f64> = s.values.iter().flatten().filter_map(|v| v.as_deref().and_then(|t| t.parse::<f64>().ok())).collect();
     let (lo, hi) = all.iter().fold((f64::MAX, f64::MIN), |(a, b), v| (a.min(*v), b.max(*v)));
     let tint = s.series.first().map_or(Shade::Quiet, |x| x.1);
@@ -905,7 +906,7 @@ fn heat(s: &Summary, body: Rect, buf: &mut Buffer, tier: Tier) -> (u16, Option<R
             for dy in 0..ch {
                 for dx in 0..cw {
                     if let Some(cell) = buf.cell_mut((plot.x + p as u16 * cw + dx, plot.y + k as u16 * ch + dy)) {
-                        cell.set_symbol(glyph).set_fg(color(tint, tier));
+                        cell.set_symbol(glyph).set_fg(inks.color(tint));
                     }
                 }
             }
@@ -915,7 +916,7 @@ fn heat(s: &Summary, body: Rect, buf: &mut Buffer, tier: Tier) -> (u16, Option<R
 }
 
 /// One number, its change from the place before, and its run as a sparkline.
-fn figure(s: &Summary, area: Rect, buf: &mut Buffer, tier: Tier) -> u16 {
+fn figure(s: &Summary, area: Rect, buf: &mut Buffer, tier: Tier, inks: &Inks) -> u16 {
     let run: Vec<f64> = s.values.iter().filter_map(|r| r.first().cloned().flatten().and_then(|t| t.parse::<f64>().ok())).collect();
     let Some(&now) = run.last() else { return area.y };
     buf.set_string(area.x, area.y, s.figure(now), Style::default().add_modifier(Modifier::BOLD));
@@ -929,7 +930,7 @@ fn figure(s: &Summary, area: Rect, buf: &mut Buffer, tier: Tier) -> u16 {
             ["▁", "▂", "▃", "▄", "▅", "▆", "▇", "█"]
         };
         let (lo, hi) = run.iter().fold((f64::MAX, f64::MIN), |(a, b), v| (a.min(*v), b.max(*v)));
-        let tint = color(s.series.first().map_or(Shade::Quiet, |x| x.1), tier);
+        let tint = inks.color(s.series.first().map_or(Shade::Quiet, |x| x.1));
         for (i, v) in run.iter().rev().take(area.width as usize).rev().enumerate() {
             let level = if hi > lo { ((v - lo) / (hi - lo) * 7.0).round() as usize } else { 7 };
             buf.set_string(area.x + i as u16, area.y + 2, bars[level], Style::default().fg(tint));
@@ -939,40 +940,72 @@ fn figure(s: &Summary, area: Rect, buf: &mut Buffer, tier: Tier) -> u16 {
     area.y + 1
 }
 
-/// A shade as the terminal draws it: true colour, the 256's nearest, or the sixteen's.
-fn color(shade: Shade, tier: Tier) -> Color {
-    let hex = shade.hex(true);
-    let rgb = u32::from_str_radix(&hex[1..], 16).expect("a shade is #rrggbb");
-    let (r, g, b) = ((rgb >> 16) as u8, (rgb >> 8) as u8, rgb as u8);
-    match tier.colors {
-        Colors::True => Color::Rgb(r, g, b),
-        Colors::Indexed => {
-            let step = |c: u8| ((c as u16 * 5 + 127) / 255) as u8;
-            Color::Indexed(16 + 36 * step(r) + 6 * step(g) + step(b))
+/// The colours a chart's series are drawn in at a tier, one to each shade they wear, what
+/// the marks and the legend alike are drawn in. True colour draws a shade as it is; the
+/// 256's cube and the sixteen hold fewer, so each shade takes the nearest the tier holds
+/// that no other shade of the chart takes, the closest pairs chosen first (ties in the
+/// series' order): two series stay two on screen. Only shades past the colours a tier
+/// holds share, each its nearest.
+struct Inks(Vec<(u32, Color)>);
+
+impl Inks {
+    fn of(parts: &[&Summary], tier: Tier) -> Inks {
+        let mut shades: Vec<u32> = Vec::new();
+        for (_, shade) in parts.iter().flat_map(|p| &p.series) {
+            if !shades.contains(&rgb(*shade)) {
+                shades.push(rgb(*shade));
+            }
         }
-        Colors::Sixteen => {
-            // the sixteen by their usual values, the nearest taken
-            const ANSI: [(Color, (u8, u8, u8)); 12] = [
-                (Color::Red, (205, 49, 49)),
-                (Color::Green, (13, 188, 121)),
-                (Color::Yellow, (229, 229, 16)),
-                (Color::Blue, (36, 114, 200)),
-                (Color::Magenta, (188, 63, 188)),
-                (Color::Cyan, (17, 168, 205)),
-                (Color::Gray, (229, 229, 229)),
-                (Color::DarkGray, (102, 102, 102)),
-                (Color::LightRed, (241, 76, 76)),
-                (Color::LightGreen, (35, 209, 139)),
-                (Color::LightYellow, (245, 245, 67)),
-                (Color::LightMagenta, (214, 112, 214)),
-            ];
-            let d = |(x, y, z): (u8, u8, u8)| {
-                let (dr, dg, db) = (x as i32 - r as i32, y as i32 - g as i32, z as i32 - b as i32);
-                dr * dr + dg * dg + db * db
-            };
-            ANSI.iter().min_by_key(|(_, c)| d(*c)).map(|(c, _)| *c).unwrap_or(Color::Gray)
+        let held: Vec<(Color, u32)> = match tier.colors {
+            Colors::True => return Inks(shades.iter().map(|&c| (c, Color::Rgb((c >> 16) as u8, (c >> 8) as u8, c as u8))).collect()),
+            // the cube's six levels a channel
+            Colors::Indexed => {
+                (0..216u32).map(|i| (Color::Indexed(16 + i as u8), (i / 36 * 51) << 16 | (i / 6 % 6 * 51) << 8 | i % 6 * 51)).collect()
+            }
+            // the twelve of the sixteen a series is drawn in, by their usual values
+            Colors::Sixteen => [
+                (Color::Red, 0xcd3131),
+                (Color::Green, 0x0dbc79),
+                (Color::Yellow, 0xe5e510),
+                (Color::Blue, 0x2472c8),
+                (Color::Magenta, 0xbc3fbc),
+                (Color::Cyan, 0x11a8cd),
+                (Color::Gray, 0xe5e5e5),
+                (Color::DarkGray, 0x666666),
+                (Color::LightRed, 0xf14c4c),
+                (Color::LightGreen, 0x23d18b),
+                (Color::LightYellow, 0xf5f543),
+                (Color::LightMagenta, 0xd670d6),
+            ]
+            .to_vec(),
+        };
+        let apart = |a: u32, b: u32| {
+            let d = |shift: u32| ((a >> shift) & 0xff) as i32 - ((b >> shift) & 0xff) as i32;
+            d(16) * d(16) + d(8) * d(8) + d(0) * d(0)
+        };
+        let mut pairs: Vec<(i32, usize, usize)> =
+            shades.iter().enumerate().flat_map(|(s, &c)| held.iter().enumerate().map(move |(h, &(_, t))| (apart(c, t), s, h))).collect();
+        pairs.sort();
+        let mut taken: Vec<Option<usize>> = vec![None; shades.len()];
+        let mut used = vec![false; held.len()];
+        for (_, s, h) in pairs {
+            if taken[s].is_none() && !used[h] {
+                taken[s] = Some(h);
+                used[h] = true;
+            }
         }
+        let nearest = |c: u32| (0..held.len()).min_by_key(|&h| apart(c, held[h].1)).expect("a tier holds colours");
+        Inks(shades.iter().zip(taken).map(|(&c, h)| (c, held[h.unwrap_or_else(|| nearest(c))].0)).collect())
     }
+
+    fn color(&self, shade: Shade) -> Color {
+        self.0.iter().find(|(c, _)| *c == rgb(shade)).expect("every series' shade is inked").1
+    }
+}
+
+/// A shade as `0xrrggbb`, on a dark ground.
+fn rgb(shade: Shade) -> u32 {
+    u32::from_str_radix(&shade.hex(true)[1..], 16).expect("a shade is #rrggbb")
 }
 
 /// A named colour's place among the sixteen: 0 to 7, and the bright ones 8 to 15.
@@ -1214,6 +1247,8 @@ mod tests {
 
     const FINE: Tier = Tier { glyphs: Glyphs::Fine, colors: Colors::True, edges: None };
     const EDGED: Tier = Tier { edges: Some(Edges { round: true }), ..FINE };
+    const INDEXED: Tier = Tier { colors: Colors::Indexed, ..FINE };
+    const SIXTEEN: Tier = Tier { colors: Colors::Sixteen, ..FINE };
 
     /// Chart `n` of a case in the suite's `tests/charts`.
     fn summary(case: &str, n: usize) -> Summary {
@@ -1448,14 +1483,14 @@ mod tests {
         for (case, n) in cases {
             let s = summary(case, n);
             let parts: Vec<&Summary> = if s.layers.is_empty() { vec![&s] } else { s.layers.iter().collect() };
-            for tier in [FINE, EDGED] {
+            for tier in [FINE, EDGED, INDEXED, SIXTEEN] {
                 for width in [80, 50, 30] {
                     let (_, buf) = card(&s, tier, width, Foot { said: Vec::new(), keys: Vec::new() });
                     let inner = 2..width - 2;
                     for p in &parts {
                         for (name, shade) in &p.series {
                             let name = if name.is_empty() { p.title.as_str() } else { name.as_str() };
-                            let fg = color(*shade, tier);
+                            let fg = Inks::of(&parts, tier).color(*shade);
                             let mark = swatch(p.kind, tier.glyphs);
                             let shown = (1..10).any(|y| {
                                 let line = row(&buf, y);
@@ -1490,5 +1525,33 @@ mod tests {
         // a heat's rows named at their left
         let (_, buf) = card(&summary("heat", 1), FINE, 80, Foot { said: Vec::new(), keys: Vec::new() });
         assert!((0..21).any(|y| row(&buf, y).trim_start_matches(['│', ' ']).starts_with("14 ")), "the heat's rows are not named");
+    }
+
+    /// Series of different shades are drawn in different colours at every tier: blue and
+    /// teal, one cyan by nearness alone in the sixteen, are two. The legend names each in
+    /// the same colour (`every_series_is_named_in_its_colour`).
+    #[test]
+    fn series_stay_apart_at_every_tier() {
+        let cases = [
+            ("split-of-a-choice-past-the-tints", 1),
+            ("split-past-the-tints-folds-the-smallest", 1),
+            ("color-tinted-and-unworn", 1),
+            ("stack-modes", 1),
+            ("layers-by-name", 3),
+        ];
+        for (case, n) in cases {
+            let s = summary(case, n);
+            let parts: Vec<&Summary> = if s.layers.is_empty() { vec![&s] } else { s.layers.iter().collect() };
+            let shades: Vec<Shade> = parts.iter().flat_map(|p| p.series.iter().map(|x| x.1)).collect();
+            for tier in [FINE, INDEXED, SIXTEEN] {
+                let inks = Inks::of(&parts, tier);
+                let colors: Vec<Color> = shades.iter().map(|sh| inks.color(*sh)).collect();
+                for (i, a) in shades.iter().enumerate() {
+                    for (j, b) in shades.iter().enumerate() {
+                        assert!(a == b || colors[i] != colors[j], "{case} {n} ({tier:?}): {a:?} and {b:?} share {:?}", colors[i]);
+                    }
+                }
+            }
+        }
     }
 }
