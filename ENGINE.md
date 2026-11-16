@@ -24,6 +24,8 @@ What is built (`cells-daemon`'s `wire`, `server`, `client`) speaks JSON, one obj
 
 The language server is a client: it asks for the folder the editor names and each open file's own, and diagnoses again on every change the engine tells, watching nothing itself. Each open file's own folder too, because an editor may name no folder (Helix names none where no project marker is), and an import may climb out of the one it names; the engine watches every file a served file imports, wherever it is. One watcher serves every client, never one per client. A folder is served whole, everything under it watched and read, but for the home folder and the disk's root, which are served shallow: their own files alone, never a folder under them, so a file kept in `~` is followed without the engine crawling the disk (its log is `~/.cells/log.jsonl`).
 
+A folder served is the folder locked (`.cells/serve.lock`), not its path. Trashed and a copy put at its path, the copy is another folder: the engine lets the first go and serves the copy from its own history, never numbering on in the one it held. A folder gone is let go. A file iCloud keeps only in the cloud is fetched when the engine reads it (macOS refuses that to a background process unless it asks, and the engine asks); a folder whose log the disk will not give is refused, saying why, its lock let go.
+
 ### Reading
 
 - **Parsed once, kept on disk.** Each file's columns are cached as Arrow, memory-mapped, keyed by the file's identity (device, inode, size, modification time) and its content hash, so a restart parses nothing and the kernel decides what stays in memory. Size and time alone never decide: two writes in one tick, or a clock stepped back, leave both equal over different bytes, so the hash does.
