@@ -19,7 +19,7 @@ pnpm engine                               # the engine and grammar from this rep
 pnpm charts                               # the hero terminal's frames, after cells chart or the hero changes
 pnpm dev                                  # :3200; ?still=0.5 holds the hero at a moment
 pnpm check                                # ui's items fresh, types, the story's claims, the docs
-pnpm deploy                               # next build, then wrangler (workers.dev)
+pnpm run deploy                           # next build, then wrangler; `run`, since pnpm deploy is pnpm's own
 ```
 
 `pnpm ui` installs every item in `scripts/ui-items.ts` from the ui checkout, and `pnpm check` fails while any installed file differs from that checkout's registry (`scripts/ui-fresh.ts`), so a stale copy cannot ship. A patch the site needs inside an installed file sits between `// site-patch: <why>` and `// end site-patch`, named on every check, and goes when ui ships its replacement.
