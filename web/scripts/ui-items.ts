@@ -8,6 +8,7 @@ export const UI_ITEMS = [
   "cells-code",
   "code",
   "code-session",
+  "code-spans",
   "command",
   "desk",
   "device-frame",
