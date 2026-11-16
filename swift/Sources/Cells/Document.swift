@@ -381,6 +381,24 @@ extension Cells {
     /// The columns, in the header's order.
     public var columns: [Column] { engine.said.columns }
 
+    /// The column that is the rows' identity, as the engine names a row (the first key,
+    /// else the `id` column it gives a file); nil for a file with neither, whose rows are
+    /// known by their place.
+    public var identity: Int? {
+      engine.with { cells_identity($0) }.flatMap { $0 < 0 ? nil : Int($0) }
+    }
+
+    /// Each row's identity as the engine names it: its identity column's text, nil for a
+    /// file with none, and nil for a row whose cell there is blank (written by a tool that
+    /// bypasses the engine, until it next writes the file).
+    public var keys: [String?]? {
+      guard let c = identity else { return nil }
+      return (0..<rows).map { r in
+        let t = text(row: r, column: c)
+        return t.isEmpty ? nil : t
+      }
+    }
+
     /// Named types the prelude declares.
     public var names: [String: ColumnType] { engine.said.names }
 

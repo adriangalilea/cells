@@ -102,6 +102,17 @@ let money = """
     #expect(with != other)
 }
 
+@Test func aRowIsNamedByItsKeyElseItsId() {
+    let keyed = Cells.Document(reading: "item:text!,cost:EUR\nfuel,84.20\nferry,50.00\n")
+    #expect(keyed.identity == 0)
+    #expect(keyed.keys == ["fuel", "ferry"])
+    let ided = Cells.Document(reading: "item:text,id:id!\nfuel,k7m2q9xa\nferry,\n")
+    #expect(ided.identity == 1)
+    #expect(ided.keys == ["k7m2q9xa", nil], "a row with no id yet has no key")
+    let plain = Cells.Document(reading: "item:text\nfuel\n")
+    #expect(plain.identity == nil && plain.keys == nil)
+}
+
 @Test func aPackedCopyIsReadInItsSourcesPlace() throws {
     let money = "---\nimport accounts from \"accounts.cells\"\n---\nto:accounts.account\ncoffee\n"
     let doc = Cells.Document(

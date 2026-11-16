@@ -564,6 +564,17 @@ pub unsafe extern "C" fn cells_columns(d: *mut CellsDoc) -> usize {
     unsafe { doc(d) }.doc.columns().len()
 }
 
+/// The column that is the rows' identity (`Doc::identity`: the first key, else an `id`
+/// column), or -1 for a file with neither, whose rows are named by their place.
+///
+/// # Safety
+/// `d` is a live doc.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn cells_identity(d: *mut CellsDoc) -> isize {
+    // SAFETY: the caller's promise.
+    unsafe { doc(d) }.doc.identity().map_or(-1, |c| c as isize)
+}
+
 /// Where a cell's value comes from.
 #[repr(C)]
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
