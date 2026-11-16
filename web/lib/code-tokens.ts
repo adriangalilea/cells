@@ -23,6 +23,15 @@ export const VSCODE_THEMES = {
   dark: "dark-plus",
 } as const
 
+/** The longest line the grammar reads, in characters; a longer one is drawn whole in
+ *  the theme's foreground. VS Code's own limit (`editor.maxTokenizationLineLength`):
+ *  the tokenizer's cost grows with the line (some 60 µs a character inside a string)
+ *  and blocks its thread, and a line past this is data, not code: cells-wasm.ts's one
+ *  line of 885 000 characters of base64 takes 30 s read and half a second drawn
+ *  whole, and a prerender worker blocked that long fails every page beside it. Both
+ *  ways of colouring here (`codeHtml`, `codeColours`) pass it to Shiki. */
+export const TOKENIZED_LINE_LENGTH = 20_000
+
 /** Lines to mark, as every code view here spells them: `"2"` or `"1,4-6"`, counted
  *  from 1. Screams at anything else. */
 export function linesOf(spec: string): Set<number> {
@@ -296,6 +305,7 @@ export async function codeColours(
   const lines = h.codeToTokensWithThemes(text, {
     lang: h.getLoadedLanguages().includes(lang) ? lang : "text",
     themes: { light: themes.light, dark: themes.dark },
+    tokenizeMaxLineLength: TOKENIZED_LINE_LENGTH,
   })
   const inks: CodeInk[] = []
   const known = new Map<string, number>()

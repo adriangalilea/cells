@@ -15,6 +15,7 @@ import {
   readerOf,
   registeredLanguage,
   runsOf,
+  TOKENIZED_LINE_LENGTH,
 } from "@/lib/code-tokens"
 
 /** A language as code is told it: a Shiki id or alias, a registered language's id or
@@ -142,6 +143,7 @@ export async function codeHtml(
     lang: read ? "text" : lang,
     themes: CODE_THEMES,
     defaultColor: false,
+    tokenizeMaxLineLength: TOKENIZED_LINE_LENGTH,
     transformers: [
       ...reader,
       // The notations travel INSIDE the source, so they survive an edit that moves a
