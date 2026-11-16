@@ -88,7 +88,7 @@ extension Cells {
     public struct TypeError: Error, Sendable, Equatable, CustomStringConvertible {
         public let type: String
         public let reason: String
-        public var description: String { "\"\(type)\": \(reason)" }
+        public var description: String { "\(code(type)): \(reason)" }
     }
 
     /// A type's text read into a type, named types resolved from `names`.
@@ -107,8 +107,8 @@ extension Cells {
                 broken.at == .header(column: 0), "Cells: the named types do not read: \(broken)")
             // The words name the column, `x`, which is this call's own.
             let reason =
-                broken.message.hasPrefix("x: ")
-                ? String(broken.message.dropFirst(3)) : broken.message
+                broken.message.hasPrefix("`x`: ")
+                ? String(broken.message.dropFirst(5)) : broken.message
             throw TypeError(type: raw, reason: reason)
         }
         return doc.columns[0].type!

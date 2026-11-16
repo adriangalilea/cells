@@ -469,7 +469,7 @@ private func read(_ doc: Cells.Document, _ want: [String: Any]) -> [String] {
     if ours != theirs { fails.append("problems \(ours), the suite says \(theirs)") }
     for p in cellProblems {
         guard case .cell(let r, let c) = p.at else { continue }
-        if p.description != "row \(r + 1), \(doc.columns[c].name): \(p.message)" {
+        if p.description != "row \(r + 1), \(code(doc.columns[c].name)): \(p.message)" {
             fails.append(
                 "problem \(p.description.debugDescription) is not its message at its place")
         }

@@ -141,7 +141,7 @@ let budget = """
       "cell(row: 2, column: 2) type", "cell(row: 3, column: 0) key",
       "cell(row: 3, column: 2) missing",
     ], "\(found)")
-  #expect(doc.describe(doc.problems[1]) == "row 2, cost: \"8x.50\" is not a number")
+  #expect(doc.describe(doc.problems[1]) == "row 2, `cost`: `8x.50` is not a number")
   #expect(doc.value(row: 1, column: 1) == .failure(doc.problems[1]))
 }
 
@@ -156,7 +156,7 @@ let budget = """
   // a header cell that does not read is a column of text, the others typed
   let typo = Cells.Document(reading: "cost:EURO,qty:int\n1,2\n")
   #expect(typo.broken.map(\.at) == [.header(column: 0)])
-  #expect(typo.broken[0].message == "cost: no type or currency \"EURO\"")
+  #expect(typo.broken[0].message == "`cost`: no type or currency `EURO`")
   #expect(typo.value(row: 0, column: 0) == .success(.text("1")))
   #expect(typo.value(row: 0, column: 1) == .success(.int(2)))
   #expect(Cells.Document(reading: Data([0x61, 0xFF, 0x0A])).broken.map(\.at) == [.file])
@@ -302,7 +302,7 @@ let budget = """
     Cells.decode("84.20", try Cells.parseType("EUR>=0"))
       == .success(.money(Decimal(string: "84.2")!, currency: "EUR")))
   if case .failure(let m) = Cells.decode("-1", try Cells.parseType("EUR>=0")) {
-    #expect(m.message == "\"-1\" is below 0")
+    #expect(m.message == "`-1` is below `0`")
   } else {
     Issue.record("-1 breaks EUR>=0")
   }

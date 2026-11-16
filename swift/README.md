@@ -22,7 +22,7 @@ import Cells
 
 var doc = Cells.Document(reading: "item: text!,cost: EUR>=0,paid: yes/no\nfuel,84.20,yes\n")
 doc.value(row: 0, column: 1)        // .success(.money(84.20, currency: "EUR"))
-doc.problems.map(doc.describe)      // ["row 1, cost: \"8x.50\" is not a number", …]
+doc.problems.map(doc.describe)      // ["row 1, `cost`: `8x.50` is not a number", …]
 try doc.set(row: 0, column: 1, to: "90.00")  // `` `=96.75 / 3` `` is the cell's own formula
 try doc.setFormula("cost * 2", column: 1)    // its column's, after its type's `=`
 doc.moveRows(fromOffsets: [3], toOffset: 0)   // insertRows, removeRows: the file read again

@@ -134,7 +134,8 @@ extension Cells {
 
     public let at: Where
     public let kind: Kind
-    /// What is wrong, without the place: `"8x.50" is not a number`.
+    /// What is wrong, without the place: ``` `8x.50` is not a number ```, every part of the
+    /// file it names Markdown's inline code.
     public let message: String
     /// The engine's sentence for it, the place included.
     let said: String
@@ -172,11 +173,11 @@ extension Cells {
     case money(Decimal, currency: String)
   }
 
-  /// Why a column's formula was refused, in words: `no column "qtty"`.
+  /// Why a column's formula was refused, in words: ``no column `qtty` ``.
   public struct FormulaError: Error, Sendable, Equatable, CustomStringConvertible {
     public let formula: String
     public let reason: String
-    public var description: String { "\"\(formula)\": \(reason)" }
+    public var description: String { "\(code(formula)): \(reason)" }
   }
 
   /// How the file separates cells and lines, read from the file, kept on write.
@@ -419,7 +420,7 @@ extension Cells {
       return engine.with { Engine.part($0, CellsOfColumn, column, CellsPartShorthand) }!
     }
 
-    /// A problem as a person reads it: `row 3, cost: "8x.50" is not a number`.
+    /// A problem as a person reads it: ``` row 3, `cost`: `8x.50` is not a number ```.
     public func describe(_ problem: Problem) -> String { problem.said }
 
     /// The file's text: every byte nobody changed as it was read.

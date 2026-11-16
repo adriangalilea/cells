@@ -68,7 +68,7 @@ extension Cells {
         public let character: Character
         public let encoding: Encoding
         public var description: String {
-            "\(encoding) has no bytes for \"\(character)\""
+            "\(encoding) has no bytes for \(code(String(character)))"
         }
     }
 

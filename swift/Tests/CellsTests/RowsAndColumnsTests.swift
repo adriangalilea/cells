@@ -37,7 +37,7 @@ import Testing
 @Test func twoColumnsOfOneNameAreAProblem() {
     let doc = Cells.Document(reading: "a,a\n1,2\n", as: .plain())
     #expect(
-        doc.problems.map { doc.describe($0) } == ["the header, column 2: \"a\" names column 1 too"])
+        doc.problems.map { doc.describe($0) } == ["the header, column 2: `a` names column 1 too"])
     // in a Cells file the second is a break
     #expect(Cells.Document(reading: "a,a\n1,2\n").broken.map(\.at) == [.header(column: 1)])
 }
@@ -135,7 +135,7 @@ import Testing
     #expect(doc.problems.map(\.kind) == [.stale])
     #expect(
         doc.problems.first?.description
-            == "row 1, total: the formula gives 90.00, the cell stores 84.20")
+            == "row 1, `total`: the formula gives `90.00`, the cell stores `84.20`")
     guard case .failure(let stale) = doc.value(row: 0, column: 3) else {
         Issue.record("a stale cell has no value")
         return
@@ -157,7 +157,7 @@ import Testing
     let held = Cells.Document(
         reading: money, at: "books/home/money.cells", files: ["books/accounts.cells": accounts])
     #expect(held.problems.map(\.kind) == [.reference])
-    #expect(held.problems.first?.description == "row 2, to: \"rnet\" is no key of accounts")
+    #expect(held.problems.first?.description == "row 2, `to`: `rnet` is no key of `accounts`")
     let dir = FileManager.default.temporaryDirectory.appendingPathComponent("cells-\(UUID())")
     try FileManager.default.createDirectory(
         at: dir.appendingPathComponent("home"), withIntermediateDirectories: true)
