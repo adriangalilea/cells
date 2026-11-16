@@ -747,8 +747,8 @@ fn an_intent_is_journalled_its_rows_given_ids_and_what_it_reached_follows_it() {
     let q4 = d.world().get(Q4);
     assert_eq!(version, hash(&q4));
     assert_eq!(assigned.len(), 2, "a file with no key gets an id in every row at the engine's first write: {q4}");
-    assert!(q4.contains("id: id!,kind:Kind,amount:EUR,cost\n"), "{q4}");
-    assert!(q4.contains(&format!("{},cost,200.00,200.00=\n", assigned[1])), "the cell set, its computed cell stored: {q4}");
+    assert!(q4.contains("kind:Kind,amount:EUR,cost,id: id!\n"), "after the person's columns: {q4}");
+    assert!(q4.contains(&format!("cost,200.00,200.00=,{}\n", assigned[1])), "the cell set, its computed cell stored: {q4}");
     assert_eq!(d.world().get(QUARTERS), INDEX.replace("180.00=SUM", "200.00=SUM"), "what it reached follows");
     let log = d.world().log();
     assert!(log[0].contains("\"kind\":\"edit\",\"path\":\"q4/money.cells\",\"intent\":\"k7m2q9xa\",\"by\":\"Cells Dev\""), "{}", log[0]);
@@ -771,7 +771,7 @@ fn an_intent_made_against_an_earlier_version_applies_only_where_it_saw_what_is_t
     let applied = intent(&mut d, INTENT, &hash(MONEY), vec![set_amount("180.00", "200.00")]);
     assert!(matches!(applied, FromEngine::Applied { .. }), "the cost row is untouched: {applied:?}");
     let q4 = d.world().get(Q4);
-    assert!(q4.contains(",income,4300.00,0.00=\n") && q4.contains(",cost,200.00,200.00=\n"), "both kept: {q4}");
+    assert!(q4.contains("income,4300.00,0.00=,") && q4.contains("cost,200.00,200.00=,"), "both kept: {q4}");
     // an intent whose cell was changed since is refused, both said, nothing written
     let before = d.world().get(Q4);
     let FromEngine::Refused { why } = intent(
@@ -803,7 +803,7 @@ fn a_whole_text_is_written_logged_by_its_version_and_laid_over_a_moved_file() {
     let q4 = d.world().get(Q4);
     assert_eq!(first, hash(&q4));
     assert_eq!(assigned.len(), 2, "a .cells file without a key gets its ids: {q4}");
-    assert!(q4.contains(",cost,200.00,200.00=\n"), "its computed cell stored: {q4}");
+    assert!(q4.contains("cost,200.00,200.00=,"), "its computed cell stored: {q4}");
     let log = d.world().log();
     let edit = log.iter().find(|l| l.contains("\"kind\":\"edit\"")).expect("the edit logged");
     assert!(edit.contains(&format!("\"op\":\"text\",\"version\":\"{}\"", hash(&mine))), "by its version: {edit}");
@@ -811,13 +811,13 @@ fn a_whole_text_is_written_logged_by_its_version_and_laid_over_a_moved_file() {
     assert_eq!(d.world().get(&format!("/w/.cells/versions/{}", hash(&mine))), mine, "its text kept, though the file never held it");
     // someone saves the income row; the app, not having heard, sends its next text made
     // against the version it holds: its row laid over theirs
-    d.world().put(Q4, &q4.replace(",income,4200.00,0.00=", ",income,4300.00,0.00="));
+    d.world().put(Q4, &q4.replace("income,4200.00,0.00=,", "income,4300.00,0.00=,"));
     heard(&mut d, &[Q4]);
-    let next = q4.replace(",cost,200.00,200.00=", ",cost,210.00,200.00=");
+    let next = q4.replace("cost,200.00,200.00=,", "cost,210.00,200.00=,");
     let applied = intent(&mut d, "a1b2c3d4", &first, vec![text(&next)]);
     assert!(matches!(applied, FromEngine::Applied { .. }), "{applied:?}");
     let q4 = d.world().get(Q4);
-    assert!(q4.contains(",income,4300.00,0.00=\n") && q4.contains(",cost,210.00,210.00=\n"), "both kept: {q4}");
+    assert!(q4.contains("income,4300.00,0.00=,") && q4.contains("cost,210.00,210.00=,"), "both kept: {q4}");
 }
 
 #[test]
@@ -828,7 +828,7 @@ fn a_version_on_disk_not_yet_heard_is_heard_before_an_intent_applies() {
     let applied = intent(&mut d, INTENT, &hash(MONEY), vec![set_amount("180.00", "200.00")]);
     assert!(matches!(applied, FromEngine::Applied { .. }), "{applied:?}");
     let q4 = d.world().get(Q4);
-    assert!(q4.contains(",income,4300.00,0.00=\n") && q4.contains(",cost,200.00,200.00=\n"), "nobody's write lost: {q4}");
+    assert!(q4.contains("income,4300.00,0.00=,") && q4.contains("cost,200.00,200.00=,"), "nobody's write lost: {q4}");
     let log = d.world().log();
     let kinds: Vec<&str> = log.iter().map(|l| l.split("\"kind\":\"").nth(1).unwrap().split('"').next().unwrap()).collect();
     assert_eq!(&kinds[..2], ["external", "edit"], "the save it found, then the edit over it: {log:#?}");

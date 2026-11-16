@@ -452,13 +452,13 @@ mod tests {
         let ops = [Op::Add { cells: alloc::vec![("item".into(), "taxi".into())] }];
         let out = apply(plain, &ops, false, None, counter(), &mut read).unwrap();
         let doc = read(&out.text).unwrap();
-        assert_eq!(doc.columns()[0].name, "id");
+        assert_eq!(doc.columns()[2].name, "id", "after the person's columns");
         assert_eq!(out.assigned.len(), 3, "every row, the two copies apart");
-        assert_ne!(doc.text(0, 0), doc.text(1, 0));
+        assert_ne!(doc.text(0, 2), doc.text(1, 2));
         // applied again to what it wrote, the ids stay
         let again = apply(&out.text, &[], false, None, counter(), &mut read).unwrap();
         assert_eq!((again.text, again.assigned), (out.text.clone(), Vec::new()));
-        let id = doc.text(2, 0).into_owned();
+        let id = doc.text(2, 2).into_owned();
         let write = [Op::Set { row: RowAt::Id(id), column: "id".into(), was: None, text: "k7m2q9xa".into() }];
         assert!(matches!(apply(&out.text, &write, false, None, counter(), &mut read), Err(Refused::Op { op: 0, .. })));
         let add = [Op::Add { cells: alloc::vec![("id".into(), "k7m2q9xa".into())] }];

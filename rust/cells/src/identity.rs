@@ -9,7 +9,7 @@ use alloc::format;
 use alloc::string::String;
 use alloc::vec::Vec;
 
-use crate::doc::{Doc, Error, decode_one};
+use crate::doc::{ColumnAt, Doc, Error, decode_one};
 use crate::types::Base;
 use crate::value;
 
@@ -164,22 +164,16 @@ impl Doc {
                 if self.columns().is_empty() {
                     return Ok(self);
                 }
-                // The text as it stands, read again so every record's span is its own.
-                let written = crate::read(self.write())?;
-                let (src, at) = (written.source(), written.records());
-                let body = written.body();
+                // after every column the person wrote, as the core adds any column
+                // (`reshaped`: a short row padded, quotes only where needed), so none of
+                // theirs moves: its place, and the colour its place gives it, stay
                 let mut seen = BTreeSet::new();
-                let mut out = String::with_capacity(src.len() + rows * 9 + 8);
-                out.push_str(&src[..body]);
-                out.push_str(&crate::prelude::header_cell("id", "id!"));
-                out.push(',');
-                out.push_str(&src[body..at[0] as usize]);
-                for r in 0..rows {
-                    out.push_str(&fresh(&mut seen, &mut bits));
-                    out.push(',');
-                    out.push_str(&src[at[r] as usize..at[r + 1] as usize]);
-                }
-                crate::read(out).map_err(|e| Error { at: e.at, why: format!("with ids added: {}", e.why), within: e.within })
+                let ids: Vec<String> = (0..rows).map(|_| fresh(&mut seen, &mut bits)).collect();
+                let cells: Vec<&str> = ids.iter().map(String::as_str).collect();
+                let head = crate::prelude::header_cell("id", "id!");
+                let mut columns: Vec<ColumnAt> = (0..self.columns().len()).map(ColumnAt::Kept).collect();
+                columns.push(ColumnAt::New(&head, &cells));
+                self.reshaped(&columns, 1).map_err(|e| Error { at: e.at, why: format!("with ids added: {}", e.why), within: e.within })
             }
         }
     }
@@ -212,14 +206,17 @@ mod tests {
             n += 1;
             n * 0x1F_0F0F
         };
-        let doc = crate::read("title:text\r\nMoss\r\nSalt\r\n").unwrap().assign_ids(next).unwrap();
-        assert_eq!(doc.columns()[0].name, "id");
-        assert!(doc.columns()[0].ty.key);
+        // after the person's columns, a short row padded so its id lands in its own column
+        let doc = crate::read("title:text,note:text?\r\nMoss,soft\r\nSalt\r\n").unwrap().assign_ids(next).unwrap();
+        assert_eq!(doc.columns()[2].name, "id");
+        assert!(doc.columns()[2].ty.key);
+        assert_eq!(doc.columns()[0].name, "title", "the person's columns keep their places");
         assert_eq!(doc.problems(), &[]);
         let text = doc.write();
-        assert!(text.starts_with("id: id!,title:text\r\n"), "{text:?}");
+        assert!(text.starts_with("title:text,note:text?,id: id!\r\n"), "{text:?}");
         assert_eq!(text.lines().count(), 3);
-        let id = doc.text(1, 0).into_owned();
+        assert!(crate::value::is_id(doc.text(1, 2).as_bytes()), "the short row's id: {text:?}");
+        let id = doc.text(1, 2).into_owned();
         assert_eq!(doc.find(&RowAt::Key(id)), Some(1));
 
         // A repeated id is replaced on the later copy; a blank one is filled.
