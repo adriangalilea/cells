@@ -8,6 +8,7 @@ import * as React from "react"
 import { AppWindow } from "@/components/ui/app-window"
 import { Table, type TableColumn, type TableFace, type TableProblem } from "@/components/ui/table"
 import { ChartView } from "@/components/chart-view"
+import { Said } from "@/components/said"
 import type { ChartSummary, Tinted } from "@/lib/engine/cells.ts"
 
 /** A tint as a CSS colour: one of the ten names in the tokens' colour for it, a `#rrggbb`
@@ -320,7 +321,14 @@ export function CellsWindow({
           <span className={cn("w-[10ch] shrink-0 tabular-nums", !said.length ? "text-edge/80" : wrong ? "text-haze" : "text-tone-warn")}>
             {said.length ? `${said.length} ${said.length === 1 ? "problem" : "problems"}` : "no problems"}
           </span>
-          <span className="min-w-0 truncate text-white/60">{said.join(" · ")}</span>
+          <span className="min-w-0 truncate text-white/60">
+            {said.map((s, i) => (
+              <React.Fragment key={i}>
+                {i > 0 && " · "}
+                <Said text={s} />
+              </React.Fragment>
+            ))}
+          </span>
         </div>
       </div>
     </AppWindow>

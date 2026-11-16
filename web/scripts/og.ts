@@ -45,7 +45,7 @@ coffee,2.10,3
 /** As saved: what the language server's formatting writes (lib/view `savedAs`). */
 const text = savedAs(engine, { name, text: TYPED }, { name, text: TYPED }, [])
 const read = readFiles(engine, [{ name, text }])
-assert.deepEqual(read.problems.map((p) => p.why), ['row 2, cost: "96.7x" is not a number'], "the card's one problem")
+assert.deepEqual(read.problems.map((p) => p.why), ["row 2, `cost`: `96.7x` is not a number"], "the card's one problem")
 assert.deepEqual(read.broken, [], "the file's grammar reads whole")
 assert.deepEqual(read.values.total, [84.2, null, 6.3], "the totals, and none for the broken row")
 assert.equal(
@@ -77,7 +77,7 @@ const screen = await editorStill({
   diagnose: cellsDiagnose(engine),
   accent: ACCENT,
 })
-assert.equal(screen.rows[2]?.worst?.message, 'cost: "96.7x" is not a number', "helix says the engine's words")
+assert.equal(screen.rows[2]?.worst?.message, "`cost`: `96.7x` is not a number", "helix says the engine's words")
 assert.deepEqual(screen.status.counts, [{ severity: "error", n: 1 }])
 assert.ok(
   screen.rows.every((r) => !r || r.runs.reduce((n, x) => n + x.text.length, 0) + screen.gutter <= screen.columns),

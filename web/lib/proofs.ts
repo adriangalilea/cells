@@ -20,7 +20,7 @@ export const TRIP_FILES = [
   },
 ]
 /** The check's one problem, as the engine says it. */
-export const TRIP_PROBLEM = 'row 2, paid: "karla" is no key of people'
+export const TRIP_PROBLEM = "row 2, `paid`: `karla` is no key of `people`"
 
 /** The reveal's one file: the three tools at once, a spreadsheet's columns that compute, a
  *  database's link to another file checked, and a script's table kept current. Read with

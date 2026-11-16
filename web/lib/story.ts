@@ -233,7 +233,7 @@ taxi,dan,18.40
       expect: {
         problems: [],
         values: { cost: [412, 540, 96.75, 18.4] },
-        between: [['row 2, cost: "54O.00" is not a number']],
+        between: [["row 2, `cost`: `54O.00` is not a number"]],
       },
     },
     {
@@ -279,7 +279,7 @@ taxi,dan,18.40
         { after: "dinner,", remove: 5, insert: "karla" },
       ],
       light: { column: "paid", row: 2 },
-      expect: { problems: ['row 3, paid: "karla" is no key of people'], between: [[], []] },
+      expect: { problems: ["row 3, `paid`: `karla` is no key of `people`"], between: [[], []] },
     },
     // ── the file: what it is, now the reader knows what it does ──
     {
@@ -288,7 +288,7 @@ taxi,dan,18.40
       doc: "/docs/spec/the-file",
       lead: "Underneath, it is plain text",
       rest: "Everything you just did is a few characters: the types in the header, each computed value beside its `=`, the other file imported between the `---` lines. Open it in Vim, Helix or any editor.",
-      expect: { problems: ['row 3, paid: "karla" is no key of people'] },
+      expect: { problems: ["row 3, `paid`: `karla` is no key of `people`"] },
     },
     {
       id: "editor",
