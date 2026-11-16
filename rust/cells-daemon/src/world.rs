@@ -10,6 +10,18 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use notify::{RecommendedWatcher, RecursiveMode, Watcher};
 
+/// What became of a folder this process locked (`World::kept`).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Kept {
+    /// The folder locked, still at its path.
+    Held,
+    /// Another folder at its path: the one locked was moved or trashed and this one put
+    /// there, holding its own history or none.
+    Replaced,
+    /// Nothing at its path.
+    Gone,
+}
+
 /// A file as it was read.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Found {
@@ -44,6 +56,12 @@ pub trait World {
     fn keep(&self, path: &Path, text: &str) -> Result<(), String>;
     /// `root` held for this process alone while it runs: two daemons never write one folder.
     fn lock(&mut self, root: &Path) -> Result<(), String>;
+    /// `root`'s lock let go: a folder that could not be served, or is no longer there, left
+    /// to whoever serves it next.
+    fn unlock(&mut self, root: &Path);
+    /// What became of `root`, locked by this process: still the folder locked, another
+    /// folder at its path (trashed and a copy put there, its own history in it), or gone.
+    fn kept(&self, root: &Path) -> Kept;
     /// Changes under `dir` heard from now on, everything under it when `whole`: each path
     /// handed to what the world was made with (`Disk::new`).
     fn watch(&mut self, dir: &Path, whole: bool) -> Result<(), String>;
@@ -127,14 +145,34 @@ pub fn table_file(path: &Path) -> bool {
 
 pub struct Disk {
     watcher: RecommendedWatcher,
-    /// Each folder's lock, held while the daemon runs.
-    locks: Vec<File>,
+    /// Each folder's lock, by the folder, held while the daemon serves it.
+    locks: Vec<(PathBuf, File)>,
 }
 
 impl Disk {
     /// The disk, every path it says changed under a folder watched handed to `heard`, on the
-    /// watcher's own thread.
+    /// watcher's own thread. A file iCloud keeps only in the cloud (dataless, as
+    /// `~/Documents` holds them under Optimize Mac Storage) is fetched when read: macOS
+    /// fetches one for an app by default but refuses a background agent (EDEADLK, "Resource
+    /// deadlock avoided") unless the process asks, which this does for the whole process.
     pub fn new(heard: impl Fn(PathBuf) + Send + 'static) -> Result<Disk, String> {
+        #[cfg(target_os = "macos")]
+        {
+            // <sys/resource.h>; not in the libc crate
+            const IOPOL_TYPE_VFS_MATERIALIZE_DATALESS_FILES: libc::c_int = 3;
+            const IOPOL_SCOPE_PROCESS: libc::c_int = 0;
+            const IOPOL_MATERIALIZE_DATALESS_FILES_ON: libc::c_int = 2;
+            unsafe extern "C" {
+                fn setiopolicy_np(kind: libc::c_int, scope: libc::c_int, policy: libc::c_int) -> libc::c_int;
+            }
+            // SAFETY: a plain syscall wrapper over three integers
+            let set = unsafe {
+                setiopolicy_np(IOPOL_TYPE_VFS_MATERIALIZE_DATALESS_FILES, IOPOL_SCOPE_PROCESS, IOPOL_MATERIALIZE_DATALESS_FILES_ON)
+            };
+            if set != 0 {
+                return Err(format!("iCloud's files cannot be fetched when read: {}", std::io::Error::last_os_error()));
+            }
+        }
         let watcher = notify::recommended_watcher(move |e: notify::Result<notify::Event>| match e {
             Ok(e) if !e.kind.is_access() => e.paths.into_iter().for_each(&heard),
             Ok(_) => {}
@@ -243,11 +281,32 @@ impl World for Disk {
         let f = File::create(&path).map_err(|e| format!("{}: {e}", path.display()))?;
         match f.try_lock() {
             Ok(()) => {
-                self.locks.push(f);
+                self.locks.push((root.to_path_buf(), f));
                 Ok(())
             }
             Err(TryLockError::WouldBlock) => Err(format!("{} is served already: another `cells serve` holds it", root.display())),
             Err(TryLockError::Error(e)) => Err(format!("{}: {e}", path.display())),
+        }
+    }
+
+    fn unlock(&mut self, root: &Path) {
+        let held = self.locks.len();
+        // its file closed, the lock goes with it
+        self.locks.retain(|(r, _)| r != root);
+        assert_eq!(self.locks.len() + 1, held, "{} let go unheld", root.display());
+    }
+
+    fn kept(&self, root: &Path) -> Kept {
+        use std::os::unix::fs::MetadataExt;
+        let (_, file) = self.locks.iter().find(|(r, _)| r == root).unwrap_or_else(|| panic!("{} asked after, unlocked", root.display()));
+        if !root.is_dir() {
+            return Kept::Gone;
+        }
+        // the folder locked is the one whose lock file is the file held open
+        let held = file.metadata().expect("a file held open has metadata");
+        match fs::metadata(root.join(".cells").join("serve.lock")) {
+            Ok(now) if now.dev() == held.dev() && now.ino() == held.ino() => Kept::Held,
+            _ => Kept::Replaced,
         }
     }
 

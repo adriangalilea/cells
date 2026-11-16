@@ -20,7 +20,7 @@ use crate::history;
 use crate::log::{Cause, Changed, Edit, Log, Logged, Op, Outcome, hash};
 use crate::trace::ENGINE;
 use crate::wire::{FromEngine, ToEngine};
-use crate::world::{Found, Replaced, World, table_file};
+use crate::world::{Found, Kept, Replaced, World, table_file};
 
 /// What reaches the daemon, in the order it came: the disk's changes and its clients'
 /// requests, through one channel, so the daemon is one thread and never shares its state.
@@ -211,12 +211,24 @@ impl<W: World> Daemon<W> {
         if let Some(holder) = self.served.iter().find(|l| l.root == root || (l.whole && root.starts_with(&l.root))) {
             return Ok(holder.root.clone());
         }
+        self.begin(root, false)
+    }
+
+    /// `root` served, its log opened and its files read; `again` (another folder put at
+    /// its path) reads each file as the start of its history, held already or not.
+    fn begin(&mut self, root: &Path, again: bool) -> Result<PathBuf, String> {
         let whole = cells::folder::served_whole(&root.to_string_lossy(), &self.world.home().to_string_lossy());
         let span = tracing::info_span!(target: ENGINE, "serve", path = %root.display(), whole);
         let _serving = span.enter();
         self.world.lock(root)?;
-        self.watch(root, whole)?;
-        let (log, broken) = Log::open(root, whole, &self.world);
+        // a folder that cannot be served is let go whole, its lock with it
+        let (log, broken) = match Log::open(root, whole, &self.world).and_then(|opened| self.watch(root, whole).map(|()| opened)) {
+            Ok(opened) => opened,
+            Err(why) => {
+                self.world.unlock(root);
+                return Err(why);
+            }
+        };
         if let Some(why) = broken {
             warned!(why, "log broken: kept and continued, what it says past there cannot be trusted");
         }
@@ -225,7 +237,7 @@ impl<W: World> Daemon<W> {
         let found = self.world.list(root, whole);
         for path in &found {
             // a file of a folder served already, taken in, is held as it was
-            if self.folder.text(&key(path)).is_some() {
+            if !again && self.folder.text(&key(path)).is_some() {
                 continue;
             }
             match self.world.read(path) {
@@ -720,6 +732,7 @@ impl<W: World> Daemon<W> {
     /// is the same text and changes nothing). Each change is a span, ending once every
     /// file it reached is stored.
     pub fn hear(&mut self, paths: &BTreeSet<PathBuf>) {
+        self.settle_roots(paths);
         let tracked: Vec<&PathBuf> = paths.iter().filter(|p| self.tracked(p)).collect();
         if tracked.is_empty() {
             return;
@@ -770,6 +783,35 @@ impl<W: World> Daemon<W> {
     fn tracked(&self, path: &Path) -> bool {
         let within = self.root_of(path).map_or(path, |root| path.strip_prefix(root).expect("under its root"));
         table_file(path) && !within.components().any(|c| c.as_os_str().to_string_lossy().starts_with('.'))
+    }
+
+    /// Each folder served that `paths` were heard in, asked whether it is still the folder
+    /// locked: one gone is let go, and one another folder took the place of (trashed and a
+    /// copy put there) is served again from its own history, never continued in the one
+    /// it replaced.
+    fn settle_roots(&mut self, paths: &BTreeSet<PathBuf>) {
+        let heard: Vec<PathBuf> = self
+            .served
+            .iter()
+            .filter(|l| paths.iter().any(|p| p.starts_with(&l.root) || l.root.starts_with(p)))
+            .map(|l| l.root.clone())
+            .collect();
+        for root in heard {
+            let kept = self.world.kept(&root);
+            if kept == Kept::Held {
+                continue;
+            }
+            self.served.retain(|l| l.root != root);
+            self.world.unlock(&root);
+            if kept == Kept::Gone {
+                said!(path = %root.display(), "let go: the folder is gone");
+                continue;
+            }
+            said!(path = %root.display(), "another folder in its place: served again, from its own history");
+            if let Err(why) = self.begin(&root, true) {
+                warned!(path = %root.display(), why, "not served again");
+            }
+        }
     }
 
     /// The client that said it held `version` of `path`, when one did: it wrote it.

@@ -312,13 +312,14 @@ pub struct Log {
 impl Log {
     /// The log of the folder at `root`, read whole, and why it cannot be trusted past a
     /// line when a link is broken or a line is no entry: it is continued either way, and
-    /// what follows a break is said, never hidden.
-    pub fn open(root: &Path, whole: bool, world: &impl World) -> (Log, Option<String>) {
+    /// what follows a break is said, never hidden. A log the disk will not give is the
+    /// folder refused: its history continued from nothing would fork it.
+    pub fn open(root: &Path, whole: bool, world: &impl World) -> Result<(Log, Option<String>), String> {
         let path = root.join(".cells").join("log.jsonl");
         let text = match world.read(&path) {
             Found::Text(t) => t,
             Found::Missing => String::new(),
-            Found::Unreadable(why) => panic!("{}: {why}", path.display()),
+            Found::Unreadable(why) => return Err(format!("its history ({}) cannot be read: {why}", path.display())),
         };
         let mut lines = Vec::new();
         let mut prev = String::new();
@@ -339,7 +340,7 @@ impl Log {
             }
             prev = hash(raw);
         }
-        (Log { root: root.to_path_buf(), whole, path, lines, prev }, broken)
+        Ok((Log { root: root.to_path_buf(), whole, path, lines, prev }, broken))
     }
 
     /// The folder holds `path`: under it when served whole, in it when shallow.

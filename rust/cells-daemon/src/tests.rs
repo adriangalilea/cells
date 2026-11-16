@@ -10,11 +10,15 @@ use crate::daemon::{Daemon, Event};
 use crate::log::{Logged, hash};
 use crate::trace::caught;
 use crate::wire::{FromEngine, ToEngine};
-use crate::world::{Found, Replaced, World, table_file};
+use crate::world::{Found, Kept, Replaced, World, table_file};
 
 #[derive(Default)]
 struct Sim {
     files: RefCell<BTreeMap<PathBuf, String>>,
+    /// Files the disk will not give, and why (iCloud's, kept only in the cloud).
+    unreadable: RefCell<BTreeMap<PathBuf, String>>,
+    /// Folders locked that are no longer the folder at their path, and what is there.
+    moved: RefCell<BTreeMap<PathBuf, Kept>>,
     locked: Vec<PathBuf>,
     watched: Vec<(PathBuf, bool)>,
     /// What each script returns when run, by name: its lines, or why it failed.
@@ -48,6 +52,9 @@ impl Sim {
 
 impl World for Sim {
     fn read(&self, path: &Path) -> Found {
+        if let Some(why) = self.unreadable.borrow().get(path) {
+            return Found::Unreadable(why.clone());
+        }
         self.files.borrow().get(path).map_or(Found::Missing, |t| Found::Text(t.clone()))
     }
 
@@ -80,6 +87,17 @@ impl World for Sim {
     fn lock(&mut self, root: &Path) -> Result<(), String> {
         self.locked.push(root.to_path_buf());
         Ok(())
+    }
+
+    fn unlock(&mut self, root: &Path) {
+        let at = self.locked.iter().position(|r| r == root).expect("a lock let go is held");
+        self.locked.remove(at);
+        self.moved.borrow_mut().remove(root);
+    }
+
+    fn kept(&self, root: &Path) -> Kept {
+        assert!(self.locked.iter().any(|r| r == root), "{} asked after, unlocked", root.display());
+        self.moved.borrow().get(root).copied().unwrap_or(Kept::Held)
     }
 
     fn watch(&mut self, dir: &Path, whole: bool) -> Result<(), String> {
@@ -139,6 +157,54 @@ fn daemon() -> Daemon<Sim> {
 
 fn heard(d: &mut Daemon<Sim>, paths: &[&str]) {
     d.hear(&paths.iter().map(PathBuf::from).collect());
+}
+
+#[test]
+fn a_folder_whose_history_cannot_be_read_is_refused_and_let_go() {
+    let sim = Sim::default();
+    sim.put(Q4, MONEY);
+    let log = PathBuf::from("/w/.cells/log.jsonl");
+    sim.unreadable.borrow_mut().insert(log.clone(), "Resource deadlock avoided (os error 11)".into());
+    let (back, _inbox) = channel();
+    let mut d = Daemon::new(sim, back);
+    let why = d.serve(Path::new("/w")).unwrap_err();
+    assert!(why.contains("/w/.cells/log.jsonl") && why.contains("os error 11"), "{why}");
+    assert!(d.world().locked.is_empty(), "its lock let go");
+    assert!(d.world().watched.is_empty(), "never watched");
+    // readable again (fetched from iCloud), the folder is served as any other
+    d.world().unreadable.borrow_mut().remove(&log);
+    assert_eq!(d.serve(Path::new("/w")).unwrap(), PathBuf::from("/w"));
+    assert_eq!(d.world().locked, [PathBuf::from("/w")]);
+}
+
+#[test]
+fn a_folder_replaced_at_its_path_is_served_again_from_its_own_history() {
+    let mut d = daemon();
+    d.world().put(Q4, &MONEY.replace("cost,180.00,180.00=", "cost,200.00,180.00="));
+    heard(&mut d, &[Q4]);
+    assert_eq!(d.world().log().len(), 3);
+    // the folder trashed and a fresh copy put at its path: no history in it
+    d.world().files.borrow_mut().retain(|p, _| !p.starts_with("/w/.cells"));
+    d.world().put(Q4, MONEY);
+    d.world().put(QUARTERS, INDEX);
+    d.world().moved.borrow_mut().insert(PathBuf::from("/w"), Kept::Replaced);
+    heard(&mut d, &[Q4, QUARTERS]);
+    assert!(d.world().log().is_empty(), "the copy's files are the start of its history: {:#?}", d.world().log());
+    assert_eq!(d.world().locked, [PathBuf::from("/w")], "locked again, the copy's lock");
+    d.world().put(Q4, &MONEY.replace("cost,180.00,180.00=", "cost,200.00,180.00="));
+    heard(&mut d, &[Q4]);
+    let log = d.world().log();
+    assert!(log[0].starts_with("{\"n\":1,\"prev\":\"\","), "its history begins at its first line: {}", log[0]);
+}
+
+#[test]
+fn a_folder_gone_is_let_go() {
+    let mut d = daemon();
+    d.world().files.borrow_mut().clear();
+    d.world().moved.borrow_mut().insert(PathBuf::from("/w"), Kept::Gone);
+    heard(&mut d, &[Q4, QUARTERS]);
+    assert!(d.world().locked.is_empty(), "its lock let go");
+    assert!(d.world().log().is_empty(), "nothing logged in a folder that is not there");
 }
 
 #[test]
