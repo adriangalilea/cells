@@ -1827,6 +1827,35 @@ impl Doc {
         &self.imported
     }
 
+    /// What the file read through its imports, as one version: the SHA-256 of each import
+    /// as written and the source of the file it was followed to (with that file's own
+    /// imports' version), or that it was not reached. Two docs of one text say the same
+    /// (their values, problems, links) exactly when this is the same too: the same text
+    /// read alone and read beside its imports are two docs. Empty for a file that imports
+    /// nothing.
+    pub fn imports_version(&self) -> String {
+        if self.imported.is_empty() {
+            return String::new();
+        }
+        let mut all = String::new();
+        for (import, doc) in &self.imported {
+            all.push_str(&import.from);
+            for (k, v) in &import.with {
+                all.push_str(&format!("\u{1f}{k}={v}"));
+            }
+            match doc {
+                Some(doc) => {
+                    all.push('\u{1e}');
+                    all.push_str(&crate::sha256::hex(doc.source().as_bytes()));
+                    all.push_str(&doc.imports_version());
+                }
+                None => all.push_str("\u{1e}unreached"),
+            }
+            all.push('\u{1d}');
+        }
+        crate::sha256::hex(all.as_bytes())
+    }
+
     /// Every packed copy that reads, in the prelude's order, with how it stands to its
     /// source (SPEC.md, Packed imports).
     pub fn copies(&self) -> &[Copied] {

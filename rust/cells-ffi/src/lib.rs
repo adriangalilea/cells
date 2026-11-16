@@ -788,6 +788,19 @@ pub unsafe extern "C" fn cells_text(d: *mut CellsDoc, row: usize, column: usize)
     CellsStr::of(&d.out)
 }
 
+/// What the doc read through its imports, as one version (`Doc::imports_version`): empty
+/// for a file that imports nothing. A doc says what its text and this say together.
+///
+/// # Safety
+/// `d` is a live doc.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn cells_imports_version(d: *mut CellsDoc) -> CellsStr {
+    // SAFETY: the caller's promise.
+    let d = unsafe { doc(d) };
+    d.out = d.doc.imports_version();
+    CellsStr::of(&d.out)
+}
+
 /// A tint (SPEC.md, Choices): `kind` 0 none, 1 a name (`value` its place in
 /// `cells::look::TINTS`: red, orange, yellow, green, teal, blue, purple, pink, brown, gray),
 /// 2 an exact colour (`value` `0xRRGGBB`).

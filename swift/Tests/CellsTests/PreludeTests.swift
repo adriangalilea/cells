@@ -85,6 +85,23 @@ let money = """
     #expect(bare.text(.add("type A = int")) == "---\ntype A = int\n---\na:int\n1\n")
 }
 
+@Test func aDocumentIsItsTextBesideItsImports() {
+    let money = "---\nimport accounts from \"accounts.cells\"\n---\nto:accounts.account\nrent\n"
+    let alone = Cells.Document(reading: money)
+    let with = Cells.Document(
+        reading: money, at: "money.cells", files: ["accounts.cells": "account:text!\ncoffee\n"])
+    let again = Cells.Document(
+        reading: money, at: "money.cells", files: ["accounts.cells": "account:text!\ncoffee\n"])
+    let other = Cells.Document(
+        reading: money, at: "money.cells", files: ["accounts.cells": "account:text!\nrent\n"])
+    // one text, read alone and read beside what it imports: two documents, saying two things
+    #expect(alone.text == with.text)
+    #expect(alone.problems.count != with.problems.count)
+    #expect(alone != with)
+    #expect(with == again)
+    #expect(with != other)
+}
+
 @Test func aPackedCopyIsReadInItsSourcesPlace() throws {
     let money = "---\nimport accounts from \"accounts.cells\"\n---\nto:accounts.account\ncoffee\n"
     let doc = Cells.Document(

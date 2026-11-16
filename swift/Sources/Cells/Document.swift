@@ -356,9 +356,13 @@ extension Cells {
         doc, &failure, text: header.joined(separator: String(layout.delimiter)), sep: sep)
     }
 
+    /// The same document: the same text, read the same way, beside the same imports. The
+    /// same text read alone and read with what it imports are two documents, which say
+    /// different things (a reference's keys, its problems, its values).
     public static func == (a: Document, b: Document) -> Bool {
       if a.engine === b.engine { return true }
       return a.text == b.text && a.dialect == b.dialect
+        && a.engine.importsVersion == b.engine.importsVersion
     }
 
     // MARK: - What it holds

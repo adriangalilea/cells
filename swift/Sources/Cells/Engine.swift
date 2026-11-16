@@ -108,6 +108,21 @@ final class Engine: @unchecked Sendable {
             exports = [:]
             read = nil
             looked = [:]
+            imports = nil
+        }
+    }
+
+    private var imports: String?
+
+    /// What the doc read through its imports, as one version (`cells_imports_version`),
+    /// read once per version: empty for a file importing nothing, or that does not read.
+    var importsVersion: String {
+        guard let doc else { return "" }
+        return lock.withLock {
+            if let imports { return imports }
+            let read = string(cells_imports_version(doc))
+            imports = read
+            return read
         }
     }
 
