@@ -10,6 +10,7 @@ use alloc::string::String;
 use alloc::vec::Vec;
 
 use crate::doc::{Doc, Import, Imports, read_with};
+use crate::say::code;
 
 /// Whether an import names a file by its URL.
 pub fn is_url(from: &str) -> bool {
@@ -81,7 +82,7 @@ pub fn pin_of(path: &str, bytes: &[u8]) -> String {
 pub fn pinned(path: &str, bytes: &[u8], with: &[(String, String)]) -> Result<(), String> {
     let Some((_, pin)) = with.iter().find(|(k, _)| k == "sha256") else { return Ok(()) };
     let now = pin_of(path, bytes);
-    if &now == pin { Ok(()) } else { Err(format!("changed: pinned sha256 {pin}, now {now} (cells pin moves it)")) }
+    if &now == pin { Ok(()) } else { Err(format!("changed: pinned `sha256` {}, now {} (`cells pin` moves it)", code(pin), code(&now))) }
 }
 
 impl Imports for Files<'_> {
@@ -98,8 +99,10 @@ impl Imports for Files<'_> {
         if let Some(from) = chain.iter().position(|f| *f == key) {
             let through = &chain[from + 1..];
             let why = match through.is_empty() {
-                true => format!("{key} imports itself"),
-                false => format!("{key} imports itself, through {}", through.join(", ")),
+                true => format!("{} imports itself", code(&key)),
+                false => {
+                    format!("{} imports itself, through {}", code(&key), through.iter().map(|t| code(t)).collect::<Vec<_>>().join(", "))
+                }
             };
             self.cycle = Some(why.clone());
             return Err(why);
@@ -141,7 +144,7 @@ mod tests {
         let money = files["books/home/money.cells"].clone();
         let doc = read_with(MONEY, money.clone(), &mut Files::new(&files, "books/home/money.cells"), 1).unwrap();
         assert_eq!(doc.problems().len(), 1);
-        assert_eq!(doc.describe(&doc.problems()[0]), "row 2, to: \"rnet\" is no key of accounts");
+        assert_eq!(doc.describe(&doc.problems()[0]), "row 2, `to`: `rnet` is no key of `accounts`");
         // Read alone, the reference is unchecked.
         assert!(crate::read(money).unwrap().problems().is_empty());
         // A formula reading the import computes where it is reached; alone, what the file
@@ -155,7 +158,7 @@ mod tests {
         assert_eq!(alone.value(0, 2), crate::Value::Decimal(crate::Decimal { mantissa: 4000, scale: 2 }));
         let p = alone.problems()[0];
         assert_eq!((p.kind(), p.kind().severity()), (crate::Kind::Unreached, crate::Severity::Note));
-        assert_eq!(alone.why(&p), "from ../accounts.cells, not reachable: the value the file stores stands");
+        assert_eq!(alone.why(&p), "from `../accounts.cells`, not reachable: the value the file stores stands");
         assert_eq!(alone.shown(), "to\tamount\tleft\nrent\t950\t40.00\n");
         alone.set_cell(0, 1, "900").unwrap();
         alone.store_unstored();
@@ -311,7 +314,7 @@ mod tests {
         let orphan = "---\npacked accounts = ```cells\naccount: text!\nrent\n```\n---\nto:text\nrent\n";
         let doc = crate::read(orphan).unwrap();
         assert_eq!(doc.broken().iter().map(|e| e.at).collect::<Vec<_>>(), [crate::At::PreludeLine(1)]);
-        assert!(doc.broken()[0].why.contains("no import above it names accounts"), "{}", doc.broken()[0].why);
+        assert!(doc.broken()[0].why.contains("no import above it names `accounts`"), "{}", doc.broken()[0].why);
         assert!(crate::read("---\nexport packed type A = text\n---\na\n").unwrap().broken().len() == 1);
         assert!(crate::read("---\nimport x from \"./x.cells\" with { pack: \"always\" }\n---\na\n").unwrap().broken().len() == 1);
         // auto packs only the imports that ask, and always while their source is reached

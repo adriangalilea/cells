@@ -26,6 +26,7 @@ use alloc::vec::Vec;
 
 use crate::column::Severity;
 use crate::identity::{Change, RowAt};
+use crate::say::code;
 use crate::types::Base;
 use crate::{Doc, value};
 
@@ -165,7 +166,7 @@ pub fn apply(
                 if let Some(was) = was
                     && doc.line(r) != was
                 {
-                    return Err(refuse(format!("the row changed since this intent was made: it reads {:?} now", doc.line(r))));
+                    return Err(refuse(format!("the row changed since this intent was made: it reads {} now", code(doc.line(r)))));
                 }
                 let written = doc.write();
                 let doc = read(&written).map_err(Refused::Unread)?;
@@ -302,16 +303,19 @@ fn copies_kept(was: &Doc, is: &Doc) -> Result<(), Refused> {
             })
         })
         .unwrap_or_else(|| name.clone());
-    Err(Refused::Op { op: 0, why: format!("a copy of {from}: edit that file (cells pack writes its copies)") })
+    Err(Refused::Op { op: 0, why: format!("a copy of {}: edit that file (`cells pack` writes its copies)", code(&from)) })
 }
 
 /// A refusal of the core's in words, the column named.
 fn said(why: &crate::Refused, column: &str) -> String {
     match why {
         crate::Refused::NoRow => "no row is that one: it was deleted, or its key changed".into(),
-        crate::Refused::NoColumn(c) => format!("no column is named {c}"),
+        crate::Refused::NoColumn(c) => format!("no column is named {}", code(c)),
         crate::Refused::Id => "the id column is the engine's: no edit writes it".into(),
-        crate::Refused::Changed { now } => format!("{column} changed since this intent was made: it holds {now:?} now"),
+        crate::Refused::Changed { now } => {
+            let now = if now.is_empty() { "nothing".to_owned() } else { code(now) };
+            format!("{} changed since this intent was made: it holds {now} now", code(column))
+        }
         crate::Refused::Type(e) | crate::Refused::Control(e) => e.why.clone(),
     }
 }
@@ -342,7 +346,7 @@ fn given_ids(doc: Doc, bits: &mut dyn FnMut() -> u64, read: &mut dyn FnMut(&str)
 fn add(doc: &Doc, text: &str, cells: &[(String, String)], bits: &mut dyn FnMut() -> u64) -> Result<(String, RowAt), String> {
     let columns = doc.columns();
     for (name, _) in cells {
-        let c = columns.iter().position(|c| c.name == *name).ok_or_else(|| format!("no column is named {name}"))?;
+        let c = columns.iter().position(|c| c.name == *name).ok_or_else(|| format!("no column is named {}", code(name)))?;
         if columns[c].ty.base == Base::Id {
             return Err("the id column is the engine's: no edit writes it".into());
         }
@@ -473,7 +477,7 @@ mod tests {
         // the cell it set was changed since: refused, both versions said
         let touched = [Op::Set { row: RowAt::Key("fuel".into()), column: "cost".into(), was: Some("84.20".into()), text: "85.00".into() }];
         let why = apply(&now, &touched, true, None, counter(), &mut read).unwrap_err().to_string();
-        assert_eq!(why, "op 1: cost changed since this intent was made: it holds \"90.00\" now");
+        assert_eq!(why, "op 1: `cost` changed since this intent was made: it holds `90.00` now");
         // saying nothing of what it saw, it cannot be applied to another version
         let blind = [Op::Set { row: RowAt::Key("ferry".into()), column: "qty".into(), was: None, text: "3".into() }];
         assert!(apply(&now, &blind, true, None, counter(), &mut read).is_err());
@@ -500,7 +504,7 @@ mod tests {
         let mine = now.replace("account: text!\nrent\n", "account: text!\nrent\nbank\n");
         let op = [Op::Text { text: mine }];
         let Err(Refused::Op { why, .. }) = apply(now, &op, false, None, counter(), &mut read) else { panic!("a copy edited is refused") };
-        assert_eq!(why, "a copy of ./accounts.cells: edit that file (cells pack writes its copies)");
+        assert_eq!(why, "a copy of `./accounts.cells`: edit that file (`cells pack` writes its copies)");
         // a row of the file's own, beside it, is the file's
         let rows = [Op::Text { text: format!("{now}rent2\n") }];
         assert!(apply(now, &rows, false, None, counter(), &mut read).is_ok());

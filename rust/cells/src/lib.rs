@@ -4,7 +4,7 @@
 //! ```
 //! let doc = cells::read("item:text!,cost:EUR>=0\nfuel,84.20\nsnacks,8x.50\n").unwrap();
 //! assert_eq!(doc.rows(), 2);
-//! assert_eq!(doc.describe(&doc.problems()[0]), r#"row 2, cost: "8x.50" is not a number"#);
+//! assert_eq!(doc.describe(&doc.problems()[0]), "row 2, `cost`: `8x.50` is not a number");
 //! let mut doc = doc;
 //! doc.set_cell(1, 1, "8.50");
 //! assert_eq!(doc.write(), "item:text!,cost:EUR>=0\nfuel,84.20\nsnacks,8.50\n");
@@ -12,7 +12,8 @@
 //!
 //! `read` never refuses a file for its data: a cell that breaks its type is a `Problem`,
 //! its text kept and its value null. It refuses a broken grammar with an `Error` naming
-//! where (`At`). Columns are stored as Arrow lays them out (`column::Data`), and `arrow`
+//! where (`At`). Every part of the file a message names is Markdown's inline code (`say`).
+//! Columns are stored as Arrow lays them out (`column::Data`), and `arrow`
 //! exports them through the Arrow C Data Interface without a copy.
 
 #![no_std]
@@ -43,6 +44,7 @@ pub mod prelude;
 mod properties;
 mod read;
 pub mod run;
+pub mod say;
 mod scan;
 pub mod sha256;
 pub mod sheet;

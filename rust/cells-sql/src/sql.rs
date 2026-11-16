@@ -16,6 +16,7 @@ use std::path::{Component, Path, PathBuf};
 use std::ptr;
 use std::sync::Arc;
 
+use cells::say::code;
 use cells::value::{self, Instant};
 use cells::{Base, Data, Decimal, Dialect, Doc, Separator, Statement};
 use libduckdb_sys as ffi;
@@ -128,7 +129,7 @@ fn sql_of(doc: &Doc, k: usize) -> Result<Sql, String> {
             let mut keys = targets.iter().map(|t| {
                 let table = doc.tables().iter().find(|x| x.name == t.table).expect("a reference names a table of the file");
                 let Some(target) = table.doc.as_deref() else {
-                    return Err(format!("{}: references {}, which could not be read", c.name, t.table));
+                    return Err(format!("{}: references {}, which could not be read", code(&c.name), code(&t.table)));
                 };
                 let key = target.column(&t.column).expect("a reference names a column of its table");
                 sql_of(target, key)
@@ -137,16 +138,21 @@ fn sql_of(doc: &Doc, k: usize) -> Result<Sql, String> {
             for other in keys {
                 let other = other?;
                 if other != first {
-                    return Err(format!("{}: references keys of two types, {} and {}", c.name, first.spelled(), other.spelled()));
+                    return Err(format!(
+                        "{}: references keys of two types, {} and {}",
+                        code(&c.name),
+                        code(&first.spelled()),
+                        code(&other.spelled())
+                    ));
                 }
             }
             match first {
                 Sql::Varchar | Sql::Bigint | Sql::Decimal(_) | Sql::Date => first,
                 other => {
                     return Err(format!(
-                        "{}: references a key of type {}; cells sql reads a reference to text, a number or a date",
-                        c.name,
-                        other.spelled()
+                        "{}: references a key of type {}; `cells sql` reads a reference to text, a number or a date",
+                        code(&c.name),
+                        code(&other.spelled())
                     ));
                 }
             }
@@ -201,7 +207,11 @@ fn table(name: String, parts: Vec<Part>) -> Result<Table, String> {
     for (p, part) in parts.iter().enumerate() {
         for (k, c) in part.doc.columns().iter().enumerate() {
             if c.name == FILE {
-                return Err(format!("{}: has a column named {FILE}, the name cells sql gives the path each row is read from", part.file));
+                return Err(format!(
+                    "{}: has a column named {}, the name `cells sql` gives the path each row is read from",
+                    part.file,
+                    code(FILE)
+                ));
             }
             let sql = sql_of(&part.doc, k).map_err(|e| format!("{} {e}", part.file))?;
             let Some(j) = columns.iter().position(|x| x.name == c.name) else {
@@ -216,11 +226,11 @@ fn table(name: String, parts: Vec<Part>) -> Result<Table, String> {
             let joined = same_kind(&was_c.ty.base, &c.ty.base).then(|| columns[j].sql.joined(&sql)).flatten();
             let Some(joined) = joined else {
                 return Err(format!(
-                    "{name}.{}: {} in {} and {} in {}",
-                    c.name,
-                    was_c.ty.shorthand(),
+                    "{}: {} in {} and {} in {}",
+                    code(&format!("{name}.{}", c.name)),
+                    code(&was_c.ty.shorthand()),
                     was.file,
-                    c.ty.shorthand(),
+                    code(&c.ty.shorthand()),
                     part.file
                 ));
             };
@@ -456,8 +466,8 @@ unsafe fn fill(v: ffi::duckdb_vector, sql: &Sql, c: &cells::Column, from: usize,
                         m.ok_or_else(|| {
                             format!(
                                 "{}: {} has more than {WIDTH} digits at {to} after the point",
-                                c.name,
-                                Decimal { mantissa: values[at], scale: *scale }
+                                code(&c.name),
+                                code(&Decimal { mantissa: values[at], scale: *scale }.to_string())
                             )
                         })?,
                     );
@@ -481,9 +491,9 @@ unsafe fn fill(v: ffi::duckdb_vector, sql: &Sql, c: &cells::Column, from: usize,
                         r,
                         t.ok_or_else(|| {
                             format!(
-                                "{}: {} is past what a TIMESTAMP holds",
-                                c.name,
-                                value::format_datetime(Instant::from(values[at], *unit))
+                                "{}: {} is past what a `TIMESTAMP` holds",
+                                code(&c.name),
+                                code(&value::format_datetime(Instant::from(values[at], *unit)))
                             )
                         })?,
                     );
@@ -612,7 +622,7 @@ impl Duck {
         for (k, t) in tables.iter().enumerate() {
             let name = format!("\"{}\"", t.name.replace('"', "\"\""));
             self.query(&format!("CREATE VIEW {name} AS SELECT * FROM cells_scan({k})"))
-                .map_err(|e| format!("the table {}: {e}", t.name))?;
+                .map_err(|e| format!("the table {}: {e}", code(&t.name)))?;
         }
         Ok(())
     }
@@ -698,7 +708,7 @@ unsafe fn shown(answer: &mut Answer, k: u64) -> Result<Shown, String> {
             }
             id => {
                 let name = CStr::from_ptr(ffi::duckdb_column_name(&mut answer.0, k)).to_string_lossy();
-                Err(format!("{name} is {}, which no Cells column holds: CAST it to VARCHAR", named(id)))
+                Err(format!("{} is {}, which no Cells column holds: `CAST` it to `VARCHAR`", code(&name), named(id)))
             }
         };
         ffi::duckdb_destroy_logical_type(&mut ty);

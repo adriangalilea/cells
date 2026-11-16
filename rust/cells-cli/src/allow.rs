@@ -8,6 +8,7 @@ use std::fs;
 use std::io::{BufRead, IsTerminal, Write};
 use std::path::Path;
 
+use cells::say::code;
 use cells_daemon::Engine;
 use cells_daemon::allowed::{Allowed, version};
 
@@ -22,7 +23,7 @@ pub fn allow(path: &Path, only: Option<&str>) -> Result<Vec<String>, String> {
     let allowed = Allowed::read();
     let asked: Vec<&cells::Script> = match only {
         Some(name) => {
-            vec![doc.scripts().iter().find(|s| s.name == name).ok_or_else(|| format!("{} has no script {name}", path.display()))?]
+            vec![doc.scripts().iter().find(|s| s.name == name).ok_or_else(|| format!("{} has no script {}", path.display(), code(name)))?]
         }
         None => doc.scripts().iter().filter(|s| !allowed.allows(&file, s)).collect(),
     };
@@ -40,15 +41,16 @@ pub fn allow(path: &Path, only: Option<&str>) -> Result<Vec<String>, String> {
         for (n, line) in script.code.lines().enumerate() {
             writeln!(out, "{:>4}  {line}", n + 1).map_err(|e| e.to_string())?;
         }
-        write!(out, "\nAllow {} to run, as written above? [y/N] ", script.name).map_err(|e| e.to_string())?;
+        let name = code(&script.name);
+        write!(out, "\nAllow {name} to run, as written above? [y/N] ").map_err(|e| e.to_string())?;
         out.flush().map_err(|e| e.to_string())?;
         let mut answer = String::new();
         stdin.lock().read_line(&mut answer).map_err(|e| e.to_string())?;
         if matches!(answer.trim(), "y" | "Y" | "yes") {
             engine.allow(&file, &script.name, &version(script))?;
-            said.push(format!("{}: allowed, as written", script.name));
+            said.push(format!("{name}: allowed, as written"));
         } else {
-            said.push(format!("{}: not allowed", script.name));
+            said.push(format!("{name}: not allowed"));
         }
     }
     Ok(said)

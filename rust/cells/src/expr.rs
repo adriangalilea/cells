@@ -11,6 +11,7 @@ use alloc::vec::Vec;
 use core::cmp::Ordering;
 
 use crate::exact::Exact;
+use crate::say::code;
 
 /// A value inside an expression.
 #[derive(Clone, Debug, PartialEq)]
@@ -219,7 +220,7 @@ fn capitals(w: &str) -> bool {
 /// written in capitals.
 fn spelled_low(w: &str) -> Option<String> {
     let up = w.to_ascii_uppercase();
-    (up != w && language(&up)).then(|| format!("\"{w}\" is a name: the language is written in capitals, {up}"))
+    (up != w && language(&up)).then(|| format!("{} is a name: the language is written in capitals, {}", code(w), code(&up)))
 }
 
 /// The formula's tokens, each with where it is written.
@@ -250,7 +251,7 @@ fn lex(src: &str) -> Result<Vec<(Tok, Sp)>, Fault> {
             let mut from = i;
             loop {
                 if i >= b.len() {
-                    let why = if c == b'\'' { "a text's ' is not closed" } else { "a name's \" is not closed" };
+                    let why = if c == b'\'' { "a text's `'` is not closed" } else { "a name's `\"` is not closed" };
                     return Err(Fault::at(sp(start, b.len()), why.to_owned()));
                 }
                 if b[i] == c {
@@ -279,11 +280,11 @@ fn lex(src: &str) -> Result<Vec<(Tok, Sp)>, Fault> {
             // `#3`, a row by where a screen shows it: input an app or the language server
             // turns into the row's key, never what a file holds.
             let end = i + 1 + b[i + 1..].iter().take_while(|d| d.is_ascii_digit()).count();
-            let why = format!("{} is a row by where it shows, which a file never holds: write its key, TABLE['…']", &src[i..end]);
+            let why = format!("{} is a row by where it shows, which a file never holds: write its key, `TABLE['…']`", code(&src[i..end]));
             return Err(Fault::at(sp(i, end), why));
         } else {
             let ch = src[i..].chars().next().unwrap();
-            return Err(Fault::at(sp(i, i + ch.len_utf8()), format!("\"{ch}\" cannot stand in a formula")));
+            return Err(Fault::at(sp(i, i + ch.len_utf8()), format!("{} cannot stand in a formula", code(&ch.to_string()))));
         }
     }
     Ok(out)
@@ -339,7 +340,7 @@ impl Parser {
     }
 
     fn expect_sym(&mut self, s: &str) -> Result<(), Fault> {
-        if self.eat_sym(s) { Ok(()) } else { Err(self.fail(format!("a {s} was expected, not {}", self.shown()))) }
+        if self.eat_sym(s) { Ok(()) } else { Err(self.fail(format!("a {} was expected, not {}", code(s), self.shown()))) }
     }
 
     /// Why the next token stands where nothing can: what `what` says, or, for a name in
@@ -375,10 +376,10 @@ impl Parser {
     fn shown(&self) -> String {
         match self.peek() {
             None => "the end".to_owned(),
-            Some(Tok::Num(n) | Tok::Name(n)) => format!("\"{n}\""),
-            Some(Tok::Str(s)) => format!("'{s}'"),
-            Some(Tok::Quoted(s)) => format!("\"{s}\""),
-            Some(Tok::Sym(s)) => format!("\"{s}\""),
+            Some(Tok::Num(n) | Tok::Name(n)) => code(n),
+            Some(Tok::Str(s)) => code(&format!("'{}'", s.replace('\'', "''"))),
+            Some(Tok::Quoted(s)) => code(&format!("\"{}\"", s.replace('"', "\"\""))),
+            Some(Tok::Sym(s)) => code(s),
         }
     }
 
@@ -412,7 +413,7 @@ impl Parser {
         if self.eat_word("IS") {
             let negated = self.eat_word("NOT");
             if !self.eat_word("NULL") {
-                return Err(self.stray(format!("IS takes NULL, not {}", self.shown())));
+                return Err(self.stray(format!("`IS` takes `NULL`, not {}", self.shown())));
             }
             return Ok(Expr::IsNull(Box::new(a), negated));
         }
@@ -502,7 +503,7 @@ impl Parser {
                 self.at += 1;
                 let e = self.or()?;
                 if !self.eat_sym(")") {
-                    return Err(Fault::at(open, "a ( is not closed".to_owned()));
+                    return Err(Fault::at(open, "a `(` is not closed".to_owned()));
                 }
                 Ok(e)
             }
@@ -521,22 +522,22 @@ impl Parser {
                 while self.eat_word("WHEN") {
                     let w = self.or()?;
                     if !self.eat_word("THEN") {
-                        return Err(self.stray(format!("WHEN takes THEN, not {}", self.shown())));
+                        return Err(self.stray(format!("`WHEN` takes `THEN`, not {}", self.shown())));
                     }
                     arms.push((w, self.or()?));
                 }
                 if arms.is_empty() {
-                    return Err(Fault::at(case, "CASE takes WHEN".to_owned()));
+                    return Err(Fault::at(case, "`CASE` takes `WHEN`".to_owned()));
                 }
                 let otherwise = if self.eat_word("ELSE") { Some(Box::new(self.or()?)) } else { None };
                 if !self.eat_word("END") {
-                    return Err(self.stray(format!("CASE closes with END, not {}", self.shown())));
+                    return Err(self.stray(format!("`CASE` closes with `END`, not {}", self.shown())));
                 }
                 Ok(Expr::Case(arms, otherwise))
             }
             // The language's other words stand only where they belong.
             Tok::Name(n) if KEYWORDS.contains(&n.as_str()) && !matches!(n.as_str(), "TABLE" | "LAG") => {
-                Err(self.fail(format!("{n} cannot stand there")))
+                Err(self.fail(format!("{} cannot stand there", code(&n))))
             }
             Tok::Name(_) | Tok::Quoted(_) => {
                 let named = self.here();
@@ -546,7 +547,11 @@ impl Parser {
                 if matches!(t, Tok::Name(_)) && capitals(&first) && first != "TABLE" && !self.sym("(") {
                     return Err(Fault::at(
                         named,
-                        format!("{first} is in capitals, the language's: a name the file gave so is written quoted, \"{first}\""),
+                        format!(
+                            "{} is in capitals, the language's: a name the file gave so is written quoted, {}",
+                            code(&first),
+                            code(&format!("\"{first}\""))
+                        ),
                     ));
                 }
                 // The language's `TABLE`, never a quoted name that spells it.
@@ -573,7 +578,7 @@ impl Parser {
                     }
                     self.expect_sym("(")?;
                     if !(self.eat_word("ORDER") && self.eat_word("BY")) {
-                        return Err(self.stray(format!("OVER takes ORDER BY: OVER (ORDER BY date), not {}", self.shown())));
+                        return Err(self.stray(format!("`OVER` takes `ORDER BY`: `OVER (ORDER BY date)`, not {}", self.shown())));
                     }
                     let mut order = Vec::new();
                     loop {
@@ -597,7 +602,7 @@ impl Parser {
                         if self.eat_sym(":") {
                             let Some(b) = self.place() else {
                                 return Err(self.fail(format!(
-                                    "a range ends at FIRST, THIS, LAST or a row by where it is (-1, +2), not {}",
+                                    "a range ends at `FIRST`, `THIS`, `LAST` or a row by where it is (`-1`, `+2`), not {}",
                                     self.shown()
                                 )));
                             };
@@ -621,7 +626,12 @@ impl Parser {
                     }
                     if rest.is_empty() {
                         let says = shown(&first);
-                        return Err(Fault::at(named, format!("{says}[…] names a row: a column follows, {says}[…].column")));
+                        let why = format!(
+                            "{} names a row: a column follows, {}",
+                            code(&format!("{says}[…]")),
+                            code(&format!("{says}[…].column"))
+                        );
+                        return Err(Fault::at(named, why));
                     }
                     return Ok(Expr::Lookup(first, Box::new(key), rest, named));
                 }
@@ -971,13 +981,14 @@ impl Resolver<'_, '_> {
             Expr::Lookup(name, key, rest, at) => {
                 let fail = |why: String| Fault::at(*at, why);
                 let says = shown(name);
+                let says = code(says);
                 if self.scope.column(table, name).is_some() && self.named(name).is_some() {
                     return Err(fail(format!("{says} names a column and a table, so it means neither")));
                 }
-                let t = self.named(name).ok_or_else(|| fail(format!("no table \"{says}\"")))?;
+                let t = self.named(name).ok_or_else(|| fail(format!("no table {says}")))?;
                 let k = self.scope.key(t).ok_or_else(|| fail(format!("{says} has no key, so no row is found by one")))?;
                 let (key, _) = self.at(key, table, inside)?;
-                let (col, kind) = self.scope.column(t, &rest[0]).ok_or_else(|| fail(format!("{says} has no column \"{}\"", rest[0])))?;
+                let (col, kind) = self.scope.column(t, &rest[0]).ok_or_else(|| fail(format!("{says} has no column {}", code(&rest[0]))))?;
                 let ir = Ir::Follow(Box::new(key), Vec::from([(t, k, col)]));
                 self.follow(ir, t, col, kind, &rest[1..], &rest[0], *at)?
             }
@@ -988,7 +999,7 @@ impl Resolver<'_, '_> {
             }
             Expr::Not(a) => {
                 let (a, k) = self.at(a, table, inside)?;
-                boolean(k, "not").map_err(Fault::whole)?;
+                boolean(k, "NOT").map_err(Fault::whole)?;
                 (Ir::Not(Box::new(a)), K::Bool)
             }
             Expr::IsNull(a, negated) => {
@@ -1013,7 +1024,7 @@ impl Resolver<'_, '_> {
                     }
                     Bin::Concat => K::Text,
                     Bin::And | Bin::Or => {
-                        let s = if *op == Bin::And { "and" } else { "or" };
+                        let s = if *op == Bin::And { "AND" } else { "OR" };
                         boolean(ka, s).map_err(fail)?;
                         boolean(kb, s).map_err(fail)?;
                         K::Bool
@@ -1030,7 +1041,7 @@ impl Resolver<'_, '_> {
                 let mut kind = K::Null;
                 for (w, t) in arms {
                     let (w, kw) = self.at(w, table, inside)?;
-                    boolean(kw, "when").map_err(Fault::whole)?;
+                    boolean(kw, "WHEN").map_err(Fault::whole)?;
                     let (t, kt) = self.at(t, table, inside)?;
                     kind = kind.meet(kt).ok_or_else(|| Fault::whole(format!("a case gives {} and {}", kind.word(), kt.word())))?;
                     out.push((w, t));
@@ -1053,7 +1064,12 @@ impl Resolver<'_, '_> {
                 self.follow(ir, None, col, kind, rest, name, *at)?
             }
             Expr::Range(name, _, _, at) => {
-                return Err(Fault::at(*at, format!("{name}[…:…] is rows of a column, an aggregate's: SUM({name}[FIRST:THIS])")));
+                let why = format!(
+                    "{} is rows of a column, an aggregate's: {}",
+                    code(&format!("{name}[…:…]")),
+                    code(&format!("SUM({name}[FIRST:THIS])"))
+                );
+                return Err(Fault::at(*at, why));
             }
         })
     }
@@ -1061,23 +1077,28 @@ impl Resolver<'_, '_> {
     /// The column a row by where it is reads: one of the file's own, on a row of it.
     fn placed(&self, name: &str, table: Table, at: Sp) -> Result<(usize, K), Fault> {
         if table.is_some() {
-            return Err(Fault::at(at, format!("{name}[…] is a row by where it is, and only the file's own rows are read so")));
+            let why = format!("{} is a row by where it is, and only the file's own rows are read so", code(&format!("{name}[…]")));
+            return Err(Fault::at(at, why));
         }
         if self.named(name).is_some() {
             let says = shown(name);
             return Err(Fault::at(
                 at,
-                format!("{says} is a table: a row by where it is reads a column ({says}['key'] finds a row by its key)"),
+                format!(
+                    "{} is a table: a row by where it is reads a column ({} finds a row by its key)",
+                    code(says),
+                    code(&format!("{says}['key']"))
+                ),
             ));
         }
-        self.scope.column(None, name).ok_or_else(|| Fault::at(at, format!("no column \"{name}\"")))
+        self.scope.column(None, name).ok_or_else(|| Fault::at(at, format!("no column {}", code(name))))
     }
 
     fn window(&mut self, call: &Expr, order: &[(Expr, bool)], at: Sp, table: Table, inside: bool) -> Result<(Ir, K), Fault> {
         let fail = |why: String| Fault::at(at, why);
         let Expr::Call(name, args, named) = call else { unreachable!("over follows a call") };
         if !self.windows {
-            return Err(fail("a window is a column's formula's: OVER (ORDER BY …) reads the column's rows in order".to_owned()));
+            return Err(fail("a window is a column's formula's: `OVER (ORDER BY …)` reads the column's rows in order".to_owned()));
         }
         if inside || table.is_some() {
             return Err(fail("a window inside an aggregate or another table".to_owned()));
@@ -1090,12 +1111,13 @@ impl Resolver<'_, '_> {
             "COUNT" => Win::Agg(Agg::Count),
             "LAG" => Win::Lag,
             _ => {
-                let why = spelled_low(name).unwrap_or_else(|| format!("{name} is no window: SUM, AVG, MIN, MAX, COUNT, LAG"));
+                let why =
+                    spelled_low(name).unwrap_or_else(|| format!("{} is no window: `SUM`, `AVG`, `MIN`, `MAX`, `COUNT`, `LAG`", code(name)));
                 return Err(Fault::at(*named, why));
             }
         };
         if args.len() != 1 {
-            return Err(Fault::at(*named, format!("{name} takes one value")));
+            return Err(Fault::at(*named, format!("{} takes one value", code(name))));
         }
         let (arg, k) = self.at(&args[0], None, true)?;
         let kind = match win {
@@ -1129,7 +1151,7 @@ impl Resolver<'_, '_> {
         let column = self.scope.column(table, first);
         let named = self.named(first);
         if column.is_some() && named.is_some() {
-            return Err(Fault::at(at, format!("{says} names a column and a table, so it means neither")));
+            return Err(Fault::at(at, format!("{} names a column and a table, so it means neither", code(says))));
         }
         if let Some((col, kind)) = column {
             return self.follow(Ir::Col(col), table, col, kind, &path[1..], first, at);
@@ -1139,19 +1161,25 @@ impl Resolver<'_, '_> {
             && t == table
             && let Some(name) = path.get(1)
         {
-            let (col, kind) = self.scope.column(table, name).ok_or_else(|| Fault::at(at, format!("{says} has no column \"{name}\"")))?;
+            let (col, kind) =
+                self.scope.column(table, name).ok_or_else(|| Fault::at(at, format!("{} has no column {}", code(says), code(name))))?;
             return self.follow(Ir::Col(col), table, col, kind, &path[2..], name, at);
         }
         if named.is_some() {
             return Err(Fault::at(
                 at,
                 match path.get(1) {
-                    Some(c) => format!("{says}.{c} is a whole column: read one row ({says}[key].{c}) or all of them (SUM({says}.{c}))"),
-                    None => format!("{says} is a table, not a value"),
+                    Some(c) => format!(
+                        "{} is a whole column: read one row ({}) or all of them ({})",
+                        code(&format!("{says}.{c}")),
+                        code(&format!("{says}[key].{c}")),
+                        code(&format!("SUM({says}.{c})"))
+                    ),
+                    None => format!("{} is a table, not a value", code(says)),
                 },
             ));
         }
-        Err(Fault::at(at, spelled_low(first).unwrap_or_else(|| format!("no column \"{first}\""))))
+        Err(Fault::at(at, spelled_low(first).unwrap_or_else(|| format!("no column {}", code(first)))))
     }
 
     /// `ir`, column `col` of `table` read, then each name of `rest` followed through the
@@ -1172,13 +1200,14 @@ impl Resolver<'_, '_> {
         for name in rest {
             let targets = self.scope.targets(table, col);
             if targets.is_empty() {
-                return Err(fail(format!("{shown} is no reference, so it has no {name}")));
+                return Err(fail(format!("{} is no reference, so it has no {}", code(&shown), code(name))));
             }
             let mut steps = Vec::with_capacity(targets.len());
             let mut k = K::Null;
             for (t, key) in targets {
-                let (c, kc) = self.scope.column(Some(t), name).ok_or_else(|| fail(format!("{shown} leads to no column \"{name}\"")))?;
-                k = k.meet(kc).ok_or_else(|| fail(format!("{name} is {} in one table and {} in another", k.word(), kc.word())))?;
+                let (c, kc) =
+                    self.scope.column(Some(t), name).ok_or_else(|| fail(format!("{} leads to no column {}", code(&shown), code(name))))?;
+                k = k.meet(kc).ok_or_else(|| fail(format!("{} is {} in one table and {} in another", code(name), k.word(), kc.word())))?;
                 steps.push((Some(t), key, c));
             }
             table = steps[0].0;
@@ -1207,10 +1236,10 @@ impl Resolver<'_, '_> {
         };
         if let Some(agg) = agg {
             if inside {
-                return Err(fail(format!("{name} inside an aggregate")));
+                return Err(fail(format!("{} inside an aggregate", code(name))));
             }
             if args.len() != 1 {
-                return Err(fail(format!("{name} takes one value")));
+                return Err(fail(format!("{} takes one value", code(name))));
             }
             // A range of a column's rows, `SUM(total[FIRST:THIS])`.
             if let Expr::Range(col, a, b, span) = &args[0] {
@@ -1249,7 +1278,7 @@ impl Resolver<'_, '_> {
             kinds.push(k);
         }
         let arity = |n: core::ops::RangeInclusive<usize>| {
-            if n.contains(&args.len()) { Ok(()) } else { Err(fail(format!("{name} takes {} values, not {}", n.end(), args.len()))) }
+            if n.contains(&args.len()) { Ok(()) } else { Err(fail(format!("{} takes {} values, not {}", code(name), n.end(), args.len()))) }
         };
         let (f, k) = match name {
             "ROUND" => {
@@ -1271,11 +1300,11 @@ impl Resolver<'_, '_> {
             }
             "COALESCE" => {
                 if args.is_empty() {
-                    return Err(fail("COALESCE takes values".to_owned()));
+                    return Err(fail("`COALESCE` takes values".to_owned()));
                 }
                 let mut k = K::Null;
                 for x in &kinds {
-                    k = k.meet(*x).ok_or_else(|| fail(format!("COALESCE of {} and {}", k.word(), x.word())))?;
+                    k = k.meet(*x).ok_or_else(|| fail(format!("`COALESCE` of {} and {}", k.word(), x.word())))?;
                 }
                 (F::Coalesce, k)
             }
@@ -1287,7 +1316,7 @@ impl Resolver<'_, '_> {
             "LOWER" | "UPPER" | "TRIM" | "LENGTH" => {
                 arity(1..=1)?;
                 if !matches!(kinds[0], K::Text | K::Null) {
-                    return Err(fail(format!("{name} takes text, not {}", kinds[0].word())));
+                    return Err(fail(format!("{} takes text, not {}", code(name), kinds[0].word())));
                 }
                 match name {
                     "LOWER" => (F::Lower, K::Text),
@@ -1298,18 +1327,19 @@ impl Resolver<'_, '_> {
             }
             "DATE_TRUNC" => {
                 arity(2..=2)?;
-                let units = "'day', 'week', 'month', 'quarter' or 'year'";
+                let units = "`'day'`, `'week'`, `'month'`, `'quarter'` or `'year'`";
                 let Expr::Text(word) = &args[0] else {
-                    return Err(fail(format!("DATE_TRUNC takes its unit written: {units}")));
+                    return Err(fail(format!("`DATE_TRUNC` takes its unit written: {units}")));
                 };
-                let unit = Unit::of(word).ok_or_else(|| fail(format!("DATE_TRUNC: no unit '{word}'; {units}")))?;
+                let unit = Unit::of(word)
+                    .ok_or_else(|| fail(format!("`DATE_TRUNC`: no unit {}; {units}", code(&format!("'{}'", word.replace('\'', "''"))))))?;
                 if !matches!(kinds[1], K::Date | K::Null) {
-                    return Err(fail(format!("DATE_TRUNC takes a date, not {}", kinds[1].word())));
+                    return Err(fail(format!("`DATE_TRUNC` takes a date, not {}", kinds[1].word())));
                 }
                 (F::DateTrunc(unit), K::Date)
             }
-            "LAG" => return Err(fail("LAG is a window's: LAG(balance) OVER (ORDER BY date)".to_owned())),
-            _ => return Err(fail(format!("no function {name}"))),
+            "LAG" => return Err(fail("`LAG` is a window's: `LAG(balance) OVER (ORDER BY date)`".to_owned())),
+            _ => return Err(fail(format!("no function {}", code(name)))),
         };
         Ok((Ir::Call(f, out), k))
     }
@@ -1335,11 +1365,11 @@ fn over(e: &Expr, scope: &dyn Scope) -> Table {
 }
 
 fn number(k: K, op: &str) -> Result<(), String> {
-    if matches!(k, K::Num | K::Null) { Ok(()) } else { Err(format!("{op} takes numbers, not {}", k.word())) }
+    if matches!(k, K::Num | K::Null) { Ok(()) } else { Err(format!("{} takes numbers, not {}", code(op), k.word())) }
 }
 
 fn boolean(k: K, op: &str) -> Result<(), String> {
-    if matches!(k, K::Bool | K::Null) { Ok(()) } else { Err(format!("{op} takes a boolean, not {}", k.word())) }
+    if matches!(k, K::Bool | K::Null) { Ok(()) } else { Err(format!("{} takes a boolean, not {}", code(op), k.word())) }
 }
 
 /// What an evaluation reads.
@@ -2002,10 +2032,10 @@ mod tests {
     #[test]
     fn the_language_is_written_in_capitals() {
         let why = |src: &str| parse(src).and_then(|e| resolve(&e, &One, &mut 0).map(|_| ())).unwrap_err().why;
-        assert_eq!(why("sum(cost)"), "\"sum\" is a name: the language is written in capitals, SUM");
-        assert_eq!(why("cost is null"), "\"is\" is a name: the language is written in capitals, IS");
-        assert_eq!(why("case"), "\"case\" is a name: the language is written in capitals, CASE");
-        assert!(why("VAT * 2").contains("written quoted, \"VAT\""), "{}", why("VAT * 2"));
+        assert_eq!(why("sum(cost)"), "`sum` is a name: the language is written in capitals, `SUM`");
+        assert_eq!(why("cost is null"), "`is` is a name: the language is written in capitals, `IS`");
+        assert_eq!(why("case"), "`case` is a name: the language is written in capitals, `CASE`");
+        assert!(why("VAT * 2").contains("written quoted, `\"VAT\"`"), "{}", why("VAT * 2"));
         assert!(why("FIRST").contains("cannot stand there"));
     }
 

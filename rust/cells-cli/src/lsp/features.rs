@@ -11,6 +11,7 @@ use tower_lsp::lsp_types::{
 
 use cells::complete::{CompletionKind as Kind, HeaderCell, Spot, opened, written, written_key};
 use cells::expr::{self, Named};
+use cells::say::code;
 use cells::{Base, Doc, Origin, Span, Statement};
 
 use cells_daemon::allowed::Allowed;
@@ -75,10 +76,10 @@ pub fn diagnostics(file: &File, allowed: &Allowed) -> Vec<Diagnostic> {
         .collect();
     let problems = |doc: &Doc, base: u32, table: Option<&str>, out: &mut Vec<Diagnostic>| {
         for (p, s) in doc.problems().iter().zip(doc.spans()) {
-            let column = &doc.columns()[p.column as usize].name;
+            let column = code(&doc.columns()[p.column as usize].name);
             let place = match table {
-                Some(t) => format!("{t}, row {}, {column}", p.row + 1),
-                None => column.clone(),
+                Some(t) => format!("{}, row {}, {column}", code(t), p.row + 1),
+                None => column,
             };
             let mut d = error(lines.range(shifted(s, base)), format!("{place}: {}", doc.why(p)));
             // what is wrong is an error, what is not there yet warns, a value standing for an
@@ -95,14 +96,15 @@ pub fn diagnostics(file: &File, allowed: &Allowed) -> Vec<Diagnostic> {
     // a packed copy is another file's: one that is not what its source holds (edited here,
     // or its source changed) warns, one read in its source's place is said
     for c in doc.copies() {
+        let (packed, from) = (code(&format!("packed {}", c.name)), code(&c.from));
         let (severity, message) = match c.packing {
             cells::Packing::Current => continue,
             cells::Packing::Stale => (
                 DiagnosticSeverity::WARNING,
-                format!("packed {}: not what {} holds now. A copy is never edited here: edit {}, then cells pack", c.name, c.from, c.from),
+                format!("{packed}: not what {from} holds now. A copy is never edited here: edit {from}, then `cells pack`"),
             ),
             cells::Packing::Standing => {
-                (DiagnosticSeverity::INFORMATION, format!("packed {}: a copy, read in place of {}, not reachable", c.name, c.from))
+                (DiagnosticSeverity::INFORMATION, format!("{packed}: a copy, read in place of {from}, not reachable"))
             }
         };
         let mut d = error(statement_line(file, c.line), message);
@@ -117,7 +119,7 @@ pub fn diagnostics(file: &File, allowed: &Allowed) -> Vec<Diagnostic> {
     for s in doc.scripts().iter().filter(|s| !allowed.allows(&file.path, s)) {
         let mut d = error(
             statement_line(file, s.line),
-            format!("{} does not run: not allowed on this Mac as it is written. Read its code, then allow it from its fix.", s.name),
+            format!("{} does not run: not allowed on this Mac as it is written. Read its code, then allow it from its fix.", code(&s.name)),
         );
         d.severity = Some(DiagnosticSeverity::WARNING);
         out.push(d);
@@ -549,11 +551,11 @@ pub fn rename(folder: &Folder, file: &File, at: usize, to: &str) -> Result<Works
         Renamed::Column(c, _) => {
             // A name a formula writes bare, so no record needs quoting for it.
             if written(to) != to {
-                return Err(format!("\"{to}\" is a name formulas would quote: a rename takes letters, digits and _"));
+                return Err(format!("{} is a name formulas would quote: a rename takes letters, digits and `_`", code(to)));
             }
             let old = file.doc.columns()[c].name.clone();
             if file.doc.column(to).is_some() {
-                return Err(format!("a column is named {to} already"));
+                return Err(format!("a column is named {} already", code(to)));
             }
             edit(file, header_cell(file, c).name, to.to_owned());
             // A declared column's declaration, renamed with it.
@@ -683,7 +685,7 @@ mod tests {
         let file = folder.read(&money).unwrap();
         let d = diagnostics(&file, &Allowed::default());
         let messages: Vec<&str> = d.iter().map(|d| d.message.as_str()).collect();
-        assert_eq!(messages, ["to: \"pwer\" is no key of accounts", "amount: \"8x\" is not a number"]);
+        assert_eq!(messages, ["`to`: `pwer` is no key of `accounts`", "`amount`: `8x` is not a number"]);
         let lines = Lines::new(MONEY);
         assert_eq!(d[0].range, lines.range(span(at(MONEY, "pwer", 0) as u32, 4)));
         let rent = said(hover(&folder, &file, at(MONEY, "rent", 0)).unwrap());
@@ -733,7 +735,7 @@ mod tests {
         let folder = Folder { open: Arc::new(BTreeMap::from([(money.clone(), text.clone())])), ..folder };
         let file = folder.read(&money).unwrap();
         let d = diagnostics(&file, &Allowed::default());
-        assert_eq!(d[0].message, "to: accounts has no column \"a\" (its key is account)");
+        assert_eq!(d[0].message, "`to`: `accounts` has no column `a` (its key is `account`)");
         assert_eq!(d[0].range, Lines::new(&text).range(span(at(&text, "accounts.a,", 0) as u32, 10)));
         assert!(hover(&folder, &file, at(&text, "950", 0)).is_some());
         // what is wrong is the diagnostic's alone: the hover says what the column reads as
@@ -805,7 +807,7 @@ mod tests {
         let folder = Folder { open: Arc::new(BTreeMap::from([(money.clone(), text.clone())])), ..folder };
         let file = folder.read(&money).unwrap();
         // The file holds it, so the formula breaks, and the action writes the key.
-        assert!(diagnostics(&file, &Allowed::default()).iter().any(|d| d.message.starts_with("double: #2 is a row by where it shows")));
+        assert!(diagnostics(&file, &Allowed::default()).iter().any(|d| d.message.starts_with("`double`: `#2` is a row by where it shows")));
         let header = Lines::new(&text).position(at(&text, "#2", 0)).line;
         let line = Range {
             start: tower_lsp::lsp_types::Position { line: header, character: 0 },
@@ -916,7 +918,7 @@ mod tests {
         .unwrap();
         let file = folder.read(&rates).unwrap();
         let warned: Vec<_> =
-            diagnostics(&file, &Allowed::default()).into_iter().filter(|d| d.message.starts_with("rates does not run")).collect();
+            diagnostics(&file, &Allowed::default()).into_iter().filter(|d| d.message.starts_with("`rates` does not run")).collect();
         assert_eq!(warned.len(), 1);
         assert_eq!((warned[0].range.start.line, warned[0].severity), (1, Some(DiagnosticSeverity::WARNING)));
         let fixes = actions(&folder, &file, warned[0].range, &Allowed::default());

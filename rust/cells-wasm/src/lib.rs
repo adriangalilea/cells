@@ -648,7 +648,7 @@ pub unsafe extern "C" fn cells_text(h: *mut Handle, row: usize, column: usize) -
     give(&h.out)
 }
 
-/// Problem `i` in words: `row 3, cost: "8x.50" is not a number`.
+/// Problem `i` in words: ``` row 3, `cost`: `8x.50` is not a number ```.
 ///
 /// # Safety
 /// `h` is a live handle from `cells_read`.
@@ -660,7 +660,7 @@ pub unsafe extern "C" fn cells_describe(h: *mut Handle, i: usize) -> *const u8 {
     give(&h.out)
 }
 
-/// Problem `i` in words without its place: `"8x.50" is not a number`.
+/// Problem `i` in words without its place: ``` `8x.50` is not a number ```.
 ///
 /// # Safety
 /// `h` is a live handle from `cells_read`.

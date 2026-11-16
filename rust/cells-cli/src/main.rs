@@ -18,6 +18,7 @@ use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
+use cells::say::code;
 use cells_disk::files;
 
 /// What one file says: its lines of output, or the reason it could not be read. A file
@@ -43,21 +44,21 @@ fn check(path: &Path, threads: usize) -> Result<Said, String> {
     // Its packed copies: one its source has moved past fails, one read in its source's
     // place is a note.
     for c in doc.copies() {
-        let place = format!("{shown} prelude line {}: packed {}", c.line, c.name);
+        let place = format!("{shown} prelude line {}: {}", c.line, code(&format!("packed {}", c.name)));
         match c.packing {
             cells::Packing::Current => {}
             cells::Packing::Stale => {
                 fails = true;
-                lines.push(format!("{place} is not what {} holds now: cells pack refreshes it", c.from));
+                lines.push(format!("{place} is not what {} holds now: `cells pack` refreshes it", code(&c.from)));
             }
-            cells::Packing::Standing => lines.push(format!("{place} is read in place of {}, not reachable", c.from)),
+            cells::Packing::Standing => lines.push(format!("{place} is read in place of {}, not reachable", code(&c.from))),
         }
     }
     let noted = |p: &cells::Problem| p.kind().severity() == cells::Severity::Note;
     for t in doc.tables().iter().filter(|t| t.own()) {
         let d = t.doc.as_ref().expect("a table of the file's own is read");
         fails |= d.problems().iter().any(|p| !noted(p));
-        lines.extend(d.problems().iter().map(|p| format!("{shown} {} {}", t.name, d.describe(p))));
+        lines.extend(d.problems().iter().map(|p| format!("{shown} {} {}", code(&t.name), d.describe(p))));
     }
     fails |= doc.problems().iter().any(|p| !noted(p));
     lines.extend(doc.problems().iter().map(|p| format!("{shown} {}", doc.describe(p))));

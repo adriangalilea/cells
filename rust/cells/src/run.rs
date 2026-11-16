@@ -14,6 +14,7 @@ use alloc::vec;
 use alloc::vec::Vec;
 
 use crate::json::{self, Scalar};
+use crate::say::code;
 use crate::value::{Instant, format_datetime, parse_datetime};
 use crate::{Doc, Fenced, Script, Value};
 
@@ -48,7 +49,7 @@ fn runs(text: &str, script: &Script) -> Result<Option<Doc>, String> {
         .as_ref()
         .map(|f| crate::read(text.as_bytes()[f.start..f.end].to_vec()))
         .transpose()
-        .map_err(|e| format!("{}'s runs: {e}", script.name))
+        .map_err(|e| format!("{}'s runs: {e}", code(&script.name)))
 }
 
 /// When `script` last ran, whatever came of it: the latest `at` of its runs block.
@@ -69,7 +70,7 @@ fn cells(table: &Doc, line: &str) -> Result<Vec<String>, String> {
         let k = columns
             .iter()
             .position(|c| c.name == name && c.name != RUN)
-            .ok_or_else(|| format!("the script returns {name:?}, a column its table does not have"))?;
+            .ok_or_else(|| format!("the script returns {}, a column its table does not have", code(&name)))?;
         let c = &columns[k];
         out[k] = match v {
             Scalar::Null => String::new(),
@@ -196,7 +197,7 @@ pub fn landed(
 ) -> Result<(String, Ran), String> {
     let laid = text;
     let doc = read(text)?;
-    let script = doc.scripts().iter().find(|s| s.name == name).ok_or_else(|| format!("no script {name}"))?.clone();
+    let script = doc.scripts().iter().find(|s| s.name == name).ok_or_else(|| format!("no script {}", code(name)))?.clone();
     let nl = doc.newline().to_owned();
     let table = doc.tables().iter().find(|t| t.name == name).and_then(|t| t.doc.clone()).expect("a script's table, declared");
     let runs = runs(text, &script)?;

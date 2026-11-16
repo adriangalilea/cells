@@ -42,7 +42,7 @@ pub fn pack(path: &Path, remove: bool, out: Option<&Path>) -> Result<(Vec<String
         let reached = doc.imported().iter().any(|(i, d)| &i.from == from && &i.with == with && d.is_some());
         let named: Vec<&String> = default.iter().chain(names).collect();
         let copied = doc.copies().iter().any(|c| c.packing == Packing::Standing && named.contains(&&c.name));
-        let place = format!("{shown} prelude line {line}: {from}");
+        let place = format!("{shown} prelude line {line}: {}", cells::say::code(from));
         said.push(match (remove, reached, copied) {
             (true, ..) => format!("{place}: its copies taken out"),
             (false, true, _) => format!("{place}: packed"),

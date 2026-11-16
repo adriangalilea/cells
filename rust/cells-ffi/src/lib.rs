@@ -227,7 +227,7 @@ impl cells::Imports for Disk {
         let path = folder.join(&i.from);
         let Ok(path) = std::fs::canonicalize(&path) else { return Ok(None) };
         if path == self.at || self.stack.contains(&path) {
-            return Err(format!("{} imports itself", path.display()));
+            return Err(format!("{} imports itself", cells::say::code(&path.display().to_string())));
         }
         let Ok(bytes) = std::fs::read(&path) else { return Ok(None) };
         let mut stack = self.stack.clone();
@@ -342,7 +342,7 @@ pub unsafe extern "C" fn cells_naming(d: *mut CellsDoc, i: usize) -> CellsNaming
     }
 }
 
-/// Header problem `i` in words without its place: `has no name`, `"a" names column 1 too`.
+/// Header problem `i` in words without its place: `has no name`, ``` `a` names column 1 too ```.
 ///
 /// # Safety
 /// `d` is a live doc; `i < cells_naming_count(d)`.
@@ -764,7 +764,7 @@ pub unsafe extern "C" fn cells_problem_spans(d: *mut CellsDoc) -> *const CellsSp
     d.spans.as_ptr()
 }
 
-/// Problem `i` in words: `row 3, cost: "8x.50" is not a number`.
+/// Problem `i` in words: ``` row 3, `cost`: `8x.50` is not a number ```.
 ///
 /// # Safety
 /// `d` is a live doc; `i < cells_problem_count(d)`.
@@ -1336,7 +1336,7 @@ pub unsafe extern "C" fn cells_type_part(d: *mut CellsDoc, of: CellsOf, index: u
     CellsStr::of(&d.out)
 }
 
-/// Problem `i` without its place: `"8x.50" is not a number`, `is missing`.
+/// Problem `i` without its place: ``` `8x.50` is not a number ```, `is missing`.
 ///
 /// # Safety
 /// `d` is a live doc; `i < cells_problem_count(d)`.
@@ -2264,7 +2264,7 @@ mod tests {
             assert_eq!((cells_rows(d), cells_broken_count(d)), (1, 1));
             let b = cells_broken(d, 0);
             assert_eq!((b.at, b.number, b.spanned, b.span), (CellsAt::CellsAtColumn, 1, true, CellsSpan { start: 5, len: 4 }));
-            assert_eq!(text(cells_broken_why(d, 0)), "item: no type or currency \"EURO\"");
+            assert_eq!(text(cells_broken_why(d, 0)), "`item`: no type or currency `EURO`");
             cells_free(d);
             let bad = b"\xff";
             assert!(cells_read(bad.as_ptr(), bad.len(), 1, &mut f).is_null());
@@ -2306,7 +2306,7 @@ mod tests {
             let d = cells_read_at(money.as_ptr(), money.len(), lent(at), 1, &mut f);
             assert!(!d.is_null());
             assert_eq!(cells_problem_count(d), 1);
-            assert_eq!(text(cells_describe(d, 0)), "row 2, to: \"rnet\" is no key of accounts");
+            assert_eq!(text(cells_describe(d, 0)), "row 2, `to`: `rnet` is no key of `accounts`");
             cells_free(d);
             std::fs::remove_dir_all(&dir).unwrap();
         }
@@ -2322,7 +2322,7 @@ mod tests {
             let d = cells_read(src.as_ptr(), src.len(), 1, &mut f);
             assert_eq!(cells_problem_count(d), 1);
             assert_eq!(cells_problem(d, 0).kind, CellsKind::CellsKindStale);
-            assert_eq!(text(cells_describe(d, 0)), "row 1, total: the formula gives 90.00, the cell stores 84.20");
+            assert_eq!(text(cells_describe(d, 0)), "row 1, `total`: the formula gives `90.00`, the cell stores `84.20`");
             let kept = cells_clone(d);
             cells_fix_stale(d);
             assert_eq!(text(cells_write(d)), format!("{head}fuel,90.00,1,90.00=\nmaps,4.00,2,8.00=\n"));
@@ -2357,7 +2357,7 @@ mod tests {
             assert_eq!(cells_naming_count(d), 1);
             let n = cells_naming(d, 0);
             assert_eq!((n.column, n.blank, n.first), (1, false, 0));
-            assert_eq!(text(cells_naming_why(d, 0)), "\"a\" names column 1 too");
+            assert_eq!(text(cells_naming_why(d, 0)), "`a` names column 1 too");
             assert_eq!(cells_problem_count(d), 2);
             assert_eq!(cells_problem(d, 1).kind, CellsKind::CellsKindRagged);
             assert_eq!((cells_width(d, 0), cells_width(d, 1)), (2, 4));

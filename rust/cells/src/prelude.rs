@@ -8,6 +8,8 @@ use alloc::format;
 use alloc::string::String;
 use alloc::vec::Vec;
 
+use crate::say::code;
+
 /// A fenced block: its language and where its content lies in the source.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Fenced {
@@ -141,7 +143,12 @@ fn column(said: &str) -> Result<Option<(String, String)>, String> {
         };
         match rest.trim_start_matches(BLANK).strip_prefix(':') {
             Some(after) => (name, after),
-            None => return Err(format!("a column's quoted name is followed by its type: \"{name}\": type")),
+            None => {
+                return Err(format!(
+                    "a column's quoted name is followed by its type: {}",
+                    code(&format!("\"{}\": type", name.replace('"', "\"\"")))
+                ));
+            }
         }
     } else {
         let Some(colon) = said.find(':') else { return Ok(None) };
@@ -150,17 +157,20 @@ fn column(said: &str) -> Result<Option<(String, String)>, String> {
         }
         let name = said[..colon].trim_matches(BLANK);
         if name.contains([',', '"']) {
-            return Err(format!("a column whose name holds a `,` or a `\"` is quoted: \"{}\": …", name.replace('"', "\"\"")));
+            return Err(format!(
+                "a column whose name holds a `,` or a `\"` is quoted: {}",
+                code(&format!("\"{}\": …", name.replace('"', "\"\"")))
+            ));
         }
         (name.to_owned(), &said[colon + 1..])
     };
     if name.is_empty() {
-        return Err("a column's declaration names it: name: type".to_owned());
+        return Err("a column's declaration names it: `name: type`".to_owned());
     }
     let (ty, formula) = crate::types::split_formula(rest.trim_matches(BLANK));
     let ty = ty.trim_matches(BLANK);
     if ty.is_empty() {
-        return Err(format!("{name}: no type"));
+        return Err(format!("{}: no type", code(&name)));
     }
     Ok(Some(match formula {
         Some(f) => (name, format!("{ty}={}", f.trim_matches(BLANK))),
@@ -246,7 +256,7 @@ pub fn parse(source: &str, from: usize) -> Result<Parsed, String> {
         lines.push((at, l));
         at += l.len();
     }
-    let never = || "opens with --- and never closes".to_owned();
+    let never = || "opens with `---` and never closes".to_owned();
     // The opening `---` and its break, checked by the caller.
     let mut k = 1;
     let mut read: Vec<(Statement, core::ops::Range<usize>)> = Vec::new();
@@ -454,7 +464,13 @@ fn statement(source: &str, lines: &[(usize, &str)], k: &mut usize) -> Result<Opt
     if let Some((ticks, lang, label)) = opening(said) {
         let body = fenced(n as usize, ticks, lang, label, k)?;
         if lang != "chart" {
-            return fail(format!("a fence alone is a chart, ```chart; ```{lang} is named: name = ```{lang}"));
+            let fence = format!("```{lang}");
+            return fail(format!(
+                "a fence alone is a chart, {}; {} is named: {}",
+                code("```chart"),
+                code(&fence),
+                code(&format!("name = {fence}"))
+            ));
         }
         return Ok(Some(Statement::Chart { line: n, name: None, body }));
     }
@@ -464,7 +480,7 @@ fn statement(source: &str, lines: &[(usize, &str)], k: &mut usize) -> Result<Opt
     };
     if let Some(rest) = said.strip_prefix("packed").filter(|r| r.starts_with(BLANK)) {
         if exported {
-            return fail("a packed copy is of an import, the file's own: export names a type or a table".to_owned());
+            return fail("a packed copy is of an import, the file's own: `export` names a type or a table".to_owned());
         }
         let rest = rest.trim_start_matches(BLANK);
         if let Some(t) = rest.strip_prefix("type").filter(|r| r.starts_with(BLANK)) {
@@ -479,7 +495,7 @@ fn statement(source: &str, lines: &[(usize, &str)], k: &mut usize) -> Result<Opt
         if let Some(l) = rest.strip_prefix("look").filter(|r| r.starts_with(BLANK)) {
             let (target, rules) = crate::look::statement(l.trim_start_matches(BLANK)).map_err(|why| (n, why))?;
             let crate::look::Target::Name(name) = target else {
-                return fail("a packed look is a named type's: packed look Name: rule, rule".to_owned());
+                return fail("a packed look is a named type's: `packed look Name: rule, rule`".to_owned());
             };
             return Ok(Some(Statement::Packed { line: n, name, copy: Copy::Look(rules) }));
         }
@@ -488,11 +504,11 @@ fn statement(source: &str, lines: &[(usize, &str)], k: &mut usize) -> Result<Opt
             opening(value).map(|o| (name, o))
         });
         let Some((name, (ticks, lang, label))) = fence else {
-            return fail("a packed copy is `packed name = ```cells`, `packed type Name = …` or `packed look Name: …`".to_owned());
+            return fail(format!("a packed copy is {}, `packed type Name = …` or `packed look Name: …`", code("packed name = ```cells")));
         };
         let body = fenced(n as usize, ticks, lang, label, k)?;
         if lang != "cells" || !label.is_empty() {
-            return fail(format!("a packed table is a ```cells fence, not ```{lang}"));
+            return fail(format!("a packed table is a {} fence, not {}", code("```cells"), code(&format!("```{lang}"))));
         }
         return Ok(Some(Statement::Packed { line: n, name: name.to_owned(), copy: Copy::Table(body) }));
     }
@@ -506,7 +522,7 @@ fn statement(source: &str, lines: &[(usize, &str)], k: &mut usize) -> Result<Opt
     }
     if let Some(rest) = said.strip_prefix("import").filter(|r| r.starts_with(BLANK) || r.starts_with('{')) {
         if exported {
-            return fail("an import is the file's own; export what it names instead".to_owned());
+            return fail("an import is the file's own; `export` what it names instead".to_owned());
         }
         return import(n, rest.trim_start_matches(BLANK)).map(Some);
     }
@@ -514,22 +530,22 @@ fn statement(source: &str, lines: &[(usize, &str)], k: &mut usize) -> Result<Opt
     // declared quoted
     if let Some(rest) = said.strip_prefix("look").filter(|r| r.starts_with(BLANK)) {
         if exported {
-            return fail("a look goes with the type it names: export the type".to_owned());
+            return fail("a look goes with the type it names: `export` the type".to_owned());
         }
         let (target, rules) = crate::look::statement(rest.trim_start_matches(BLANK)).map_err(|why| (n, why))?;
         return Ok(Some(Statement::Look { line: n, target, rules }));
     }
     match column(said) {
-        Ok(Some(_)) if exported => return fail("export names a type or a table".to_owned()),
+        Ok(Some(_)) if exported => return fail("`export` names a type or a table".to_owned()),
         Ok(Some((name, spelled))) => return Ok(Some(Statement::Column { line: n, name, spelled })),
         Ok(None) => {}
         Err(why) => return fail(why),
     }
     let Some((name, after)) = ident(said) else {
-        return fail("is no statement: a type, an import, a column (name: type), or name = a table".to_owned());
+        return fail("is no statement: a type, an import, a column (`name: type`), or `name =` a table".to_owned());
     };
     let Some(value) = after.trim_start_matches(BLANK).strip_prefix('=') else {
-        return fail("is no statement: a type, an import, a column (name: type), or name = a table".to_owned());
+        return fail("is no statement: a type, an import, a column (`name: type`), or `name =` a table".to_owned());
     };
     let value = value.trim_matches(BLANK);
     if let Some((ticks, lang, label)) = opening(value) {
@@ -537,12 +553,12 @@ fn statement(source: &str, lines: &[(usize, &str)], k: &mut usize) -> Result<Opt
         let body = fenced(n as usize, ticks, lang, label, k)?;
         if lang == "chart" {
             if exported {
-                return fail("a chart is the file's own: export names a type or a table".to_owned());
+                return fail("a chart is the file's own: `export` names a type or a table".to_owned());
             }
             return Ok(Some(Statement::Chart { line: n, name: Some(name.to_owned()), body }));
         }
         if lang != "cells" || !label.is_empty() {
-            return fail(format!("a table written inline is a ```cells fence, not ```{lang}"));
+            return fail(format!("a table written inline is a {} fence, not {}", code("```cells"), code(&format!("```{lang}"))));
         }
         return Ok(Some(Statement::Table { line: n, name: name.to_owned(), exported, body }));
     }
@@ -564,14 +580,14 @@ fn statement(source: &str, lines: &[(usize, &str)], k: &mut usize) -> Result<Opt
         }
         let schedule = schedule(rest.trim_matches(BLANK)).map_err(|why| (n, why))?;
         let mut blocks = blocks.into_iter();
-        let Some(code) = blocks.next() else {
-            return fail("run is followed by its script's fence: ```ts".to_owned());
+        let Some(script) = blocks.next() else {
+            return fail(format!("`run` is followed by its script's fence: {}", code("```ts")));
         };
-        if code.lang.is_empty() {
-            return Err((code.line, "a script's fence names its language: ```ts".to_owned()));
+        if script.lang.is_empty() {
+            return Err((script.line, format!("a script's fence names its language: {}", code("```ts"))));
         }
-        if code.lang != "ts" {
-            return Err((code.line, format!("no runner for ```{}: v0 runs ```ts", code.lang)));
+        if script.lang != "ts" {
+            return Err((script.line, format!("no runner for {}: v0 runs {}", code(&format!("```{}", script.lang)), code("```ts"))));
         }
         let mut stored = None;
         let mut runs = None;
@@ -580,16 +596,23 @@ fn statement(source: &str, lines: &[(usize, &str)], k: &mut usize) -> Result<Opt
                 ("cells", "") if stored.is_none() && runs.is_none() => stored = Some(b),
                 ("cells", "runs") if runs.is_none() => runs = Some(b),
                 _ => {
-                    return Err((b.line, "after a script come its rows (```cells) and its runs (```cells runs), once each".to_owned()));
+                    let why =
+                        format!("after a script come its rows ({}) and its runs ({}), once each", code("```cells"), code("```cells runs"));
+                    return Err((b.line, why));
                 }
             }
         }
-        return Ok(Some(Statement::Run { line: n, name: name.to_owned(), exported, schedule, code, stored, runs }));
+        return Ok(Some(Statement::Run { line: n, name: name.to_owned(), exported, schedule, code: script, stored, runs }));
     }
     if exported {
-        return fail("export names a type or a table".to_owned());
+        return fail("`export` names a type or a table".to_owned());
     }
-    fail(format!("{name} = … names a table (```cells) or a script (run): a column is declared with its type, {name}: type = formula"))
+    fail(format!(
+        "{} names a table ({}) or a script (`run`): a column is declared with its type, {}",
+        code(&format!("{name} = …")),
+        code("```cells"),
+        code(&format!("{name}: type = formula"))
+    ))
 }
 
 /// What follows `import`.
@@ -599,25 +622,25 @@ fn import(line: u32, s: &str) -> Result<Statement, (u32, String)> {
     let mut default = None;
     let mut names = Vec::new();
     if let Some(rest) = s.strip_prefix('{') {
-        let Some(close) = rest.find('}') else { return fail("a { is not closed") };
+        let Some(close) = rest.find('}') else { return fail("a `{` is not closed") };
         for part in rest[..close].split(',') {
             let part = part.trim_matches(BLANK);
             match ident(part) {
                 Some((n, "")) => names.push(n.to_owned()),
-                _ => return fail("an import names what it takes: import { Kind, rates } from \"…\""),
+                _ => return fail("an import names what it takes: `import { Kind, rates } from \"…\"`"),
             }
         }
         if names.is_empty() {
-            return fail("an import names what it takes: import { Kind, rates } from \"…\"");
+            return fail("an import names what it takes: `import { Kind, rates } from \"…\"`");
         }
         s = rest[close + 1..].trim_start_matches(BLANK);
     } else {
-        let Some((n, rest)) = ident(s) else { return fail("import takes a name: import accounts from \"../accounts.cells\"") };
+        let Some((n, rest)) = ident(s) else { return fail("`import` takes a name: `import accounts from \"../accounts.cells\"`") };
         default = Some(n.to_owned());
         s = rest.trim_start_matches(BLANK);
     }
     let Some(rest) = s.strip_prefix("from").filter(|r| r.starts_with(BLANK)) else {
-        return fail("an import says where from: from \"../accounts.cells\"");
+        return fail("an import says where from: `from \"../accounts.cells\"`");
     };
     let (from, rest) =
         string(rest.trim_start_matches(BLANK)).ok_or((line, "where an import comes from is a quoted path or URL".to_owned()))?;
@@ -625,24 +648,24 @@ fn import(line: u32, s: &str) -> Result<Statement, (u32, String)> {
     let mut with = Vec::new();
     if !rest.is_empty() {
         let Some(attrs) = rest.strip_prefix("with").map(|r| r.trim_start_matches(BLANK)) else {
-            return fail("an import's attributes follow with: with { sha256: \"…\" }");
+            return fail("an import's attributes follow `with`: `with { sha256: \"…\" }`");
         };
         let Some(inner) = attrs.strip_prefix('{').and_then(|r| r.trim_end_matches(BLANK).strip_suffix('}')) else {
-            return fail("an import's attributes are { key: \"value\" }");
+            return fail("an import's attributes are `{ key: \"value\" }`");
         };
         let mut inner = inner.trim_matches(BLANK);
         while !inner.is_empty() {
-            let Some((key, r)) = ident(inner) else { return fail("an attribute is key: \"value\"") };
-            let Some(r) = r.trim_start_matches(BLANK).strip_prefix(':') else { return fail("an attribute is key: \"value\"") };
+            let Some((key, r)) = ident(inner) else { return fail("an attribute is `key: \"value\"`") };
+            let Some(r) = r.trim_start_matches(BLANK).strip_prefix(':') else { return fail("an attribute is `key: \"value\"`") };
             let (value, r) = string(r.trim_start_matches(BLANK)).ok_or((line, "an attribute's value is quoted".to_owned()))?;
             if !matches!(key, "sha256" | "rev" | "pack") {
-                return fail("an import takes sha256, rev or pack");
+                return fail("an import takes `sha256`, `rev` or `pack`");
             }
             if key == "pack" && value != "auto" {
-                return fail("pack is \"auto\": the copy refreshed on every write (without it, cells pack writes copies)");
+                return fail("`pack` is `\"auto\"`: the copy refreshed on every write (without it, `cells pack` writes copies)");
             }
             if with.iter().any(|(k, _): &(String, String)| k == key) {
-                return Err((line, format!("{key} is said twice")));
+                return Err((line, format!("{} is said twice", code(key))));
             }
             with.push((key.to_owned(), value));
             inner = r.trim_start_matches(BLANK);
@@ -671,7 +694,7 @@ const DAYS: [&str; 7] = ["monday", "tuesday", "wednesday", "thursday", "friday",
 
 /// `HH:MM`, as minutes since midnight.
 fn clock(s: &str) -> Result<u16, String> {
-    let bad = || format!("a time of day is HH:MM, not \"{s}\"");
+    let bad = || format!("a time of day is `HH:MM`, not {}", code(s));
     let (h, m) = s.split_once(':').ok_or_else(bad)?;
     if h.len() != 2 || m.len() != 2 {
         return Err(bad());
@@ -686,7 +709,7 @@ fn clock(s: &str) -> Result<u16, String> {
 /// What follows `run`: triggers joined by commas, then `in <zone>` for their times of day.
 pub fn schedule(s: &str) -> Result<Schedule, String> {
     if s.is_empty() {
-        return Err("run says when: every hour, every day at 18:00 in Europe/Madrid, when ../money.cells changes".to_owned());
+        return Err("`run` says when: `every hour`, `every day at 18:00 in Europe/Madrid`, `when ../money.cells changes`".to_owned());
     }
     let (body, zone) = match s.rfind(" in ") {
         Some(at) if !s[at + 4..].trim_matches(BLANK).contains(' ') => (&s[..at], Some(s[at + 4..].trim_matches(BLANK).to_owned())),
@@ -695,7 +718,7 @@ pub fn schedule(s: &str) -> Result<Schedule, String> {
     if let Some(z) = &zone
         && !(z.bytes().all(|c| c.is_ascii_alphanumeric() || matches!(c, b'/' | b'_' | b'-' | b'+')) && z.contains('/') || z == "UTC")
     {
-        return Err(format!("\"{z}\" is no time zone: Europe/Madrid, UTC"));
+        return Err(format!("{} is no time zone: `Europe/Madrid`, `UTC`", code(z)));
     }
     let mut triggers = Vec::new();
     for part in body.split(',') {
@@ -705,7 +728,7 @@ pub fn schedule(s: &str) -> Result<Schedule, String> {
             ["every", "hour"] => Trigger::Every(60),
             ["every", n] if n.ends_with('m') || n.ends_with('h') => {
                 let (digits, unit) = n.split_at(n.len() - 1);
-                let v: u32 = digits.parse().ok().filter(|v| *v > 0).ok_or_else(|| format!("\"{n}\" is no interval: 15m, 6h"))?;
+                let v: u32 = digits.parse().ok().filter(|v| *v > 0).ok_or_else(|| format!("{} is no interval: `15m`, `6h`", code(n)))?;
                 Trigger::Every(if unit == "h" { v * 60 } else { v })
             }
             ["every", "day", "at", t] => Trigger::Daily(clock(t)?),
@@ -714,22 +737,22 @@ pub fn schedule(s: &str) -> Result<Schedule, String> {
                 Trigger::Weekly(DAYS.iter().position(|d| d == day).unwrap() as u8 + 1, clock(t)?)
             }
             ["every", "month", "on", d, "at", t] => {
-                let day: u8 = d.parse().ok().filter(|d| (1..=31).contains(d)).ok_or_else(|| format!("\"{d}\" is no day of a month"))?;
+                let day: u8 = d.parse().ok().filter(|d| (1..=31).contains(d)).ok_or_else(|| format!("{} is no day of a month", code(d)))?;
                 Trigger::Monthly(day, clock(t)?)
             }
             ["cron", fields @ ..] if fields.len() == 5 => Trigger::Cron(fields.join(" ")),
             ["when", path, "changes"] => Trigger::Changes((*path).to_owned()),
             _ => {
                 return Err(format!(
-                    "\"{}\" is no schedule: every 15m, every day at 18:00, cron 0 9 * * 1-5, when ../x.cells changes",
-                    part.trim_matches(BLANK)
+                    "{} is no schedule: `every 15m`, `every day at 18:00`, `cron 0 9 * * 1-5`, `when ../x.cells changes`",
+                    code(part.trim_matches(BLANK))
                 ));
             }
         };
         triggers.push(t);
     }
     if zone.is_none() && triggers.iter().any(Trigger::clock) {
-        return Err("a time of day is in a zone: in Europe/Madrid".to_owned());
+        return Err("a time of day is in a zone: `in Europe/Madrid`".to_owned());
     }
     Ok(Schedule { triggers, zone, spelled: s.to_owned() })
 }

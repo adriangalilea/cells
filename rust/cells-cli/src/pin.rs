@@ -6,6 +6,7 @@ use std::path::Path;
 
 use cells::Statement;
 use cells::files::is_url;
+use cells::say::code;
 use cells_disk::{cache, fetch};
 
 /// The import statement written again, its hash `sha256`, its other attributes kept.
@@ -31,7 +32,7 @@ pub fn pin(path: &Path) -> Result<Vec<String>, String> {
         if !is_url(from) {
             continue;
         }
-        let bytes = fetch(from).ok_or_else(|| format!("{} prelude line {line}: {from} cannot be fetched", path.display()))?;
+        let bytes = fetch(from).ok_or_else(|| format!("{} prelude line {line}: {} cannot be fetched", path.display(), code(from)))?;
         let hash = cells::files::pin_of(from, &bytes);
         let was = with.iter().find(|(k, _)| k == "sha256").map(|(_, v)| v.as_str());
         if was == Some(hash.as_str()) {
@@ -47,8 +48,8 @@ pub fn pin(path: &Path) -> Result<Vec<String>, String> {
         let indent = &content[..content.len() - content.trim_start_matches([' ', '\t']).len()];
         lines[*line as usize] = format!("{indent}{}{kept}{ending}", statement(default, names, from, with, &hash));
         said.push(match was {
-            Some(w) => format!("{} prelude line {line}: {from} pinned {hash}, was {w}", path.display()),
-            None => format!("{} prelude line {line}: {from} pinned {hash}", path.display()),
+            Some(w) => format!("{} prelude line {line}: {} pinned {}, was {}", path.display(), code(from), code(&hash), code(w)),
+            None => format!("{} prelude line {line}: {} pinned {}", path.display(), code(from), code(&hash)),
         });
     }
     if !said.is_empty() {

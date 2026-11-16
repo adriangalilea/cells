@@ -17,6 +17,7 @@ use crate::layout;
 use crate::look::{self, Locale, Look, Rule, Target, Tint, Tinted};
 use crate::prelude::{self, Fenced, Schedule, Statement};
 use crate::read::{self, CellRead, Part, Reading};
+use crate::say::code;
 use crate::scan::{self, Fields, Records, Stop};
 use crate::types::{self, Base, NamedType, Type};
 use crate::value::{self, Decimal, Instant};
@@ -110,8 +111,8 @@ fn stop_why(s: Stop) -> &'static str {
     match s {
         Stop::Unclosed => "a quoted field is never closed",
         Stop::AfterQuote => "text follows a quoted field's closing quote",
-        Stop::Quote => "a \" inside a field that did not open with one",
-        Stop::Return => "a \\r with no \\n after it",
+        Stop::Quote => "a `\"` inside a field that did not open with one",
+        Stop::Return => "a `\\r` with no `\\n` after it",
         Stop::Irregular => unreachable!("an irregular block is read again, never reported"),
     }
 }
@@ -712,7 +713,7 @@ fn read_in(bytes: Vec<u8>, dialect: Dialect, threads: usize, imports: &mut dyn I
     for s in &doc.statements {
         if let Statement::Column { line, name, spelled } = s {
             if declared.iter().any(|d| d.1 == name) {
-                broken.push(error(At::PreludeLine(*line), format!("{name} is declared twice")));
+                broken.push(error(At::PreludeLine(*line), format!("{} is declared twice", code(name))));
             } else {
                 declared.push((*line, name, spelled, false));
             }
@@ -747,13 +748,13 @@ fn read_in(bytes: Vec<u8>, dialect: Dialect, threads: usize, imports: &mut dyn I
             if typed.is_some() {
                 broken.push(error(
                     At::PreludeLine(d.0),
-                    format!("{name} is declared here and typed in its header cell too: say it in one place"),
+                    format!("{} is declared here and typed in its header cell too: say it in one place", code(name)),
                 ));
             } else {
                 let line = d.0;
                 match head(&format!("{name}:{}", d.2), j as u32 + 1, &doc.named, &doc.tables) {
                     Ok(h) if heads.iter().any(|x| x.name == h.name) => {
-                        broken.push(error(at, format!("two columns are named {}", h.name)));
+                        broken.push(error(at, format!("two columns are named {}", code(&h.name))));
                         heads.push(Head::text(cell));
                     }
                     Ok(h) => heads.push(h),
@@ -767,7 +768,7 @@ fn read_in(bytes: Vec<u8>, dialect: Dialect, threads: usize, imports: &mut dyn I
         }
         match head(cell, j as u32 + 1, &doc.named, &doc.tables) {
             Ok(h) if heads.iter().any(|x| x.name == h.name) => {
-                broken.push(error(at, format!("two columns are named {}", h.name)));
+                broken.push(error(at, format!("two columns are named {}", code(&h.name))));
                 heads.push(Head::text(cell));
             }
             Ok(h) => heads.push(h),
@@ -779,7 +780,7 @@ fn read_in(bytes: Vec<u8>, dialect: Dialect, threads: usize, imports: &mut dyn I
     }
     for (line, name, _, named) in &declared {
         if !named {
-            broken.push(error(At::PreludeLine(*line), format!("{name} is declared, and no header cell names it")));
+            broken.push(error(At::PreludeLine(*line), format!("{} is declared, and no header cell names it", code(name))));
         }
     }
     // A column and a prelude name spelled alike: a formula could mean either, so it is
@@ -787,7 +788,10 @@ fn read_in(bytes: Vec<u8>, dialect: Dialect, threads: usize, imports: &mut dyn I
     if !plain {
         for (j, h) in heads.iter().enumerate() {
             let why = if doc.tables.iter().any(|t| t.name == h.name) {
-                Some(format!("{0}: a column and the table {0} are spelled alike, so a formula could mean either; rename one", h.name))
+                Some(format!(
+                    "{0}: a column and the table {0} are spelled alike, so a formula could mean either; rename one",
+                    code(&h.name)
+                ))
             } else {
                 None
             };
@@ -860,18 +864,19 @@ fn head(cell: &str, n: u32, named: &[NamedType], tables: &[Table]) -> Result<Hea
     let from = (spelled.as_ptr() as usize - cell.as_ptr() as usize) as u32;
     let part = |text: &str| Some((from + (text.as_ptr() as usize - spelled.as_ptr() as usize) as u32, text.len() as u32));
     let names: Vec<String> = tables.iter().map(|t| t.name.clone()).collect();
-    let parsed = types::parse_type(ty, named, &names).map_err(|why| (format!("{name}: {why}"), part(ty)))?;
+    let parsed = types::parse_type(ty, named, &names).map_err(|why| (format!("{}: {why}", code(name)), part(ty)))?;
     if let Base::Ref(targets) = &parsed.base {
         for t in targets {
             let Some(doc) = tables.iter().find(|x| x.name == t.table).unwrap().doc.as_deref() else { continue };
             let key = doc.columns.iter().find(|c| c.ty.key).map(|c| c.name.as_str());
             let named = doc.columns.iter().find(|c| c.name == t.column);
-            let why = match (named, key) {
+            let (name, table, column) = (code(name), code(&t.table), code(&t.column));
+            let why = match (named, key.map(code)) {
                 (Some(c), _) if c.ty.key => continue,
-                (None, Some(key)) => format!("{name}: {} has no column \"{}\" (its key is {key})", t.table, t.column),
-                (None, None) => format!("{name}: {} has no column \"{}\", and no key", t.table, t.column),
-                (Some(_), Some(key)) => format!("{name}: {} is not the key of {} (its key is {key})", t.column, t.table),
-                (Some(_), None) => format!("{name}: {} has no key, so a reference names none of its rows", t.table),
+                (None, Some(key)) => format!("{name}: {table} has no column {column} (its key is {key})"),
+                (None, None) => format!("{name}: {table} has no column {column}, and no key"),
+                (Some(_), Some(key)) => format!("{name}: {column} is not the key of {table} (its key is {key})"),
+                (Some(_), None) => format!("{name}: {table} has no key, so a reference names none of its rows"),
             };
             let written = format!("{}.{}", t.table, t.column);
             let at = ty.find(&written).map_or(ty, |i| &ty[i..i + written.len()]);
@@ -915,7 +920,7 @@ fn read_prelude(source: &str, from: usize) -> Read {
         body: source.len(),
         statements: Vec::new(),
         spans: Vec::new(),
-        broken: Vec::from([error(At::Prelude, "opens with --- and never closes")]),
+        broken: Vec::from([error(At::Prelude, "opens with `---` and never closes")]),
     };
     if first.strip_suffix('\n').map(|l| l.strip_suffix('\r').unwrap_or(l)) != Some("---") {
         return if first == "---" { never() } else { Read::none(from) };
@@ -997,13 +1002,15 @@ fn settle_prelude(
                     _ => false,
                 });
                 let capital = name.as_bytes().first().is_some_and(u8::is_ascii_uppercase);
+                let (packed, name) = (code(&format!("packed {name}")), code(name));
                 if twice {
-                    fail(format!("packed {name} is written twice"));
+                    fail(format!("{packed} is written twice"));
                 } else if !imported {
-                    fail(format!("packed {name} is a copy of an import, and no import above it names {name}"));
+                    fail(format!("{packed} is a copy of an import, and no import above it names {name}"));
                 } else if typed != capital {
-                    let what = if capital { "a type, copied as packed type" } else { "a table, copied as packed name = ```cells" };
-                    fail(format!("packed {name}: {name} is {what}"));
+                    let what =
+                        if capital { "a type, copied as `packed type`" } else { "a table, copied as ```` packed name = ```cells ````" };
+                    fail(format!("{packed}: {name} is {what}"));
                 }
             }
             // A column's declaration names no type or table: the header settles it.
@@ -1016,7 +1023,7 @@ fn settle_prelude(
                 for r in rules {
                     match look::rule(r).and_then(|rule| applies(&rule, &t.ty.base).map(|()| rule)) {
                         Ok(rule) => t.looks.push(Look { spelled: r.clone(), rule, line: *line }),
-                        Err(why) => fail(format!("look {n}: {why}")),
+                        Err(why) => fail(format!("{}: {why}", code(&format!("look {n}")))),
                     }
                 }
             }
@@ -1025,21 +1032,21 @@ fn settle_prelude(
             Statement::Chart { .. } => {}
             Statement::Type { name, spelled, .. } => {
                 if !name.as_bytes().first().is_some_and(|c| c.is_ascii_uppercase()) {
-                    fail(format!("a type's name starts with a capital letter, not \"{name}\""));
+                    fail(format!("a type's name starts with a capital letter, not {}", code(name)));
                     continue;
                 }
                 if types::currency(name).is_some() {
-                    fail(format!("{name} is a currency, never a type's name"));
+                    fail(format!("{} is a currency, never a type's name", code(name)));
                     continue;
                 }
                 if taken(named, tables, name) {
-                    fail(format!("the name {name} is taken"));
+                    fail(format!("the name {} is taken", code(name)));
                     continue;
                 }
                 let names: Vec<String> = tables.iter().map(|t| t.name.clone()).collect();
                 match types::parse_type(spelled, named, &names) {
                     Ok(ty) => named.push(NamedType::new(name.clone(), ty)),
-                    Err(why) => fail(format!("type {name}: {why}")),
+                    Err(why) => fail(format!("{}: {why}", code(&format!("type {name}")))),
                 }
             }
             Statement::Import { default, names, from, with, .. } => {
@@ -1047,13 +1054,13 @@ fn settle_prelude(
                 // that cannot be reached does.
                 let import = Import { from: from.clone(), with: with.clone() };
                 let doc = if is_url(from) && !with.iter().any(|(k, _)| k == "sha256") {
-                    fail(format!("\"{from}\" is pinned by its hash: with {{ sha256: \"…\" }}, which cells pin writes"));
+                    fail(format!("{} is pinned by its hash: `with {{ sha256: \"…\" }}`, which `cells pin` writes", code(from)));
                     None
                 } else {
                     match imports.import(&import) {
                         Ok(d) => d.map(Arc::new),
                         Err(why) => {
-                            fail(format!("\"{from}\": {why}"));
+                            fail(format!("{}: {why}", code(from)));
                             None
                         }
                     }
@@ -1083,7 +1090,7 @@ fn settle_prelude(
                 };
                 if let Some(name) = default {
                     if taken(named, tables, name) {
-                        broken.push(error(at, format!("the name {name} is taken")));
+                        broken.push(error(at, format!("the name {} is taken", code(name))));
                     } else {
                         let t = table(name, doc.clone(), &mut copies, broken);
                         tables.push(t);
@@ -1091,7 +1098,7 @@ fn settle_prelude(
                 }
                 for name in names {
                     if taken(named, tables, name) {
-                        broken.push(error(at, format!("the name {name} is taken")));
+                        broken.push(error(at, format!("the name {} is taken", code(name))));
                         continue;
                     }
                     if name.as_bytes()[0].is_ascii_uppercase() {
@@ -1126,16 +1133,18 @@ fn settle_prelude(
                                             for r in rules {
                                                 match look::rule(r).and_then(|rule| applies(&rule, &t.ty.base).map(|()| rule)) {
                                                     Ok(rule) => t.looks.push(Look { spelled: r.clone(), rule, line: look_line }),
-                                                    Err(why) => {
-                                                        broken.push(error(At::PreludeLine(look_line), format!("look {name}: {why}")))
-                                                    }
+                                                    Err(why) => broken.push(error(
+                                                        At::PreludeLine(look_line),
+                                                        format!("{}: {why}", code(&format!("look {name}"))),
+                                                    )),
                                                 }
                                             }
                                         }
                                         named.push(t);
                                     }
                                     Err(why) => {
-                                        broken.push(error(At::PreludeLine(line), format!("packed type {name}: {why}")));
+                                        broken
+                                            .push(error(At::PreludeLine(line), format!("{}: {why}", code(&format!("packed type {name}")))));
                                         named.push(NamedType::new(name.clone(), Type::plain(Base::Text)));
                                     }
                                 },
@@ -1160,26 +1169,29 @@ fn settle_prelude(
             }
             Statement::Table { name, exported, body, .. } => {
                 if taken(named, tables, name) {
-                    fail(format!("the name {name} is taken"));
+                    fail(format!("the name {} is taken", code(name)));
                     continue;
                 }
                 let doc = inline(source, name, body, imports, named, tables, broken);
                 tables.push(Table { name: name.clone(), exported: *exported, doc: Some(Arc::new(doc)), line: s.line(), held: Held::Own });
             }
-            Statement::Run { name, exported, schedule, code, stored, runs, .. } => {
+            Statement::Run { name, exported, schedule, code: script, stored, runs, .. } => {
                 if taken(named, tables, name) {
-                    fail(format!("the name {name} is taken"));
+                    fail(format!("the name {} is taken", code(name)));
                     continue;
                 }
                 let Some(stored) = stored else {
-                    fail(format!("{name}: the rows a script fills are declared under it, a ```cells block holding their header at least"));
+                    fail(format!(
+                        "{}: the rows a script fills are declared under it, a ```` ```cells ```` block holding their header at least",
+                        code(name)
+                    ));
                     continue;
                 };
                 let doc = inline(source, name, stored, imports, named, tables, broken);
                 if doc.columns.is_empty() {
                     broken.push(error(
                         At::PreludeLine(stored.line),
-                        format!("{name}: the ```cells block under its script holds the rows' header at least"),
+                        format!("{}: the ```` ```cells ```` block under its script holds the rows' header at least", code(name)),
                     ));
                     continue;
                 }
@@ -1193,8 +1205,8 @@ fn settle_prelude(
                     name: name.clone(),
                     line: s.line(),
                     schedule: schedule.clone(),
-                    language: code.lang.clone(),
-                    code: source[code.start..code.end].to_owned(),
+                    language: script.lang.clone(),
+                    code: source[script.start..script.end].to_owned(),
                     after,
                     stored: Some(stored.clone()),
                     runs: runs.clone(),
@@ -1208,8 +1220,8 @@ fn settle_prelude(
 /// A named import's name its source does not export, in words.
 fn no_export(from: &str, d: &Doc, name: &str) -> String {
     let all = d.exports();
-    let shown = if all.is_empty() { "nothing".to_owned() } else { all.join(", ") };
-    format!("\"{from}\" exports no \"{name}\" (it exports: {shown})")
+    let shown = if all.is_empty() { "nothing".to_owned() } else { all.iter().map(|n| code(n)).collect::<Vec<_>>().join(", ") };
+    format!("{} exports no {} (it exports: {shown})", code(from), code(name))
 }
 
 /// Two tables' texts as one table: the same once their padding is taken out, as `cells
@@ -1294,7 +1306,7 @@ fn inline(
             // The rows end where the broken record starts.
             At::Row(r) => body.line + 1 + text[..doc.records[r as usize] as usize].matches('\n').count() as u32,
         };
-        broken.push(error(At::PreludeLine(n), format!("{name}: {}", e.why)));
+        broken.push(error(At::PreludeLine(n), format!("{}: {}", code(name), e.why)));
     }
     doc
 }
@@ -1522,17 +1534,17 @@ impl Doc {
         &self.naming
     }
 
-    /// A naming problem in words without its place: `has no name`, `"a" names column 1 too`.
+    /// A naming problem in words without its place: `has no name`, ``` `a` names column 1 too ```.
     pub fn naming_why(&self, n: &Naming) -> String {
         match *n {
             Naming::Blank { .. } => "has no name".to_owned(),
             Naming::Twice { column, first } => {
-                format!("\"{}\" names column {} too", self.columns[column as usize].name, first + 1)
+                format!("{} names column {} too", code(&self.columns[column as usize].name), first + 1)
             }
         }
     }
 
-    /// A naming problem in words: `the header, column 2: "a" names column 1 too`.
+    /// A naming problem in words: ``` the header, column 2: `a` names column 1 too ```.
     pub fn describe_naming(&self, n: &Naming) -> String {
         format!("the header, column {}: {}", n.column() + 1, self.naming_why(n))
     }
@@ -2222,14 +2234,14 @@ impl Doc {
         self.raw_fields(self.line(row)).len()
     }
 
-    /// A problem in words, its row counted from 1 as a table numbers it: `row 3, cost:
-    /// "8x.50" is not a number` for `p.row` 2.
+    /// A problem in words, its row counted from 1 as a table numbers it: ``` row 3, `cost`:
+    /// `8x.50` is not a number ``` for `p.row` 2.
     pub fn describe(&self, p: &Problem) -> String {
-        format!("row {}, {}: {}", p.row + 1, self.columns[p.column as usize].name, self.why(p))
+        format!("row {}, {}: {}", p.row + 1, code(&self.columns[p.column as usize].name), self.why(p))
     }
 
     /// A problem in words without its place, for a host that shows it on the cell:
-    /// `"8x.50" is not a number`, `is missing`.
+    /// ``` `8x.50` is not a number ```, `is missing`.
     pub fn why(&self, p: &Problem) -> String {
         let c = &self.columns[p.column as usize];
         let at = (p.row, p.column);
@@ -2238,10 +2250,10 @@ impl Doc {
             Some(g) => Cow::Borrowed(g.as_str()),
             None => self.text(p.row as usize, p.column as usize),
         };
-        let bound = |b: &Option<types::Bound>| b.map(|b| b.value.normal().to_string()).unwrap_or_default();
+        let bound = |b: &Option<types::Bound>| b.map(|b| code(&b.value.normal().to_string())).unwrap_or_default();
         let length = matches!(c.ty.base, Base::Text);
         let tables = || match &c.ty.base {
-            Base::Ref(t) => t.iter().map(|t| t.table.as_str()).collect::<Vec<_>>().join(" or "),
+            Base::Ref(t) => t.iter().map(|t| code(&t.table)).collect::<Vec<_>>().join(" or "),
             _ => String::new(),
         };
         let why = match p.why {
@@ -2249,28 +2261,30 @@ impl Doc {
             Why::Formula | Why::Computed => {
                 let why = self.unwell.get(&at).map_or("the formula does not compute", |f| f.why.as_str());
                 // A cell its column's formula computes has no text of its own to show.
-                return if text.is_empty() { why.to_owned() } else { format!("{text}: {why}") };
+                return if text.is_empty() { why.to_owned() } else { format!("{}: {why}", code(&text)) };
             }
             Why::Stale => {
                 let raw = self.text(p.row as usize, p.column as usize);
                 let stored = read::split(raw.as_bytes()).map_or(&raw[..], |at| &raw[..at]);
-                let gives = gave.map_or("nothing", |g| g.as_str());
-                let gives = if gives.is_empty() { "nothing" } else { gives };
+                let gives = match gave.map_or("", |g| g.as_str()) {
+                    "" => "nothing".to_owned(),
+                    g => code(g),
+                };
                 // the cell's text as the reader holds it, an editor's unsaved buffer included:
                 // never "the file", which reads as the disk
-                return format!("the formula gives {gives}, the cell stores {stored}");
+                return format!("the formula gives {gives}, the cell stores {}", code(stored));
             }
             Why::Lookup => {
                 let (table, key) = self.missed.get(&at).expect("a lookup's miss, kept as found");
-                let name = self.tables.get(*table).map_or("this table", |t| t.name.as_str());
-                return format!("{name} has no row {key}, so the formula gives nothing");
+                let name = self.tables.get(*table).map_or("this table".to_owned(), |t| code(&t.name));
+                return format!("{name} has no row {}, so the formula gives nothing", code(key));
             }
             Why::Unstored => {
                 let gives = gave.expect("an unstored cell's value, kept as found");
-                return format!("not stored yet: the formula gives {gives}, the next write stores it");
+                return format!("not stored yet: the formula gives {}, the next write stores it", code(gives));
             }
             Why::Unreached { table } => {
-                let from = self.tables[table as usize].from().expect("a table not reached is an import");
+                let from = code(self.tables[table as usize].from().expect("a table not reached is an import"));
                 let raw = self.text(p.row as usize, p.column as usize);
                 return match read::split(raw.as_bytes()) {
                     Some(at) if at > 0 => format!("from {from}, not reachable: the value the file stores stands"),
@@ -2285,7 +2299,7 @@ impl Doc {
                 let what = format!("{}, a control character", code_point(point));
                 return match at {
                     0 => format!("starts with {what}"),
-                    _ => format!("holds {what}, after \"{}\"", &text[..at]),
+                    _ => format!("holds {what}, after {}", code(&text[..at])),
                 };
             }
             Why::Ragged { fields } => {
@@ -2299,19 +2313,19 @@ impl Doc {
             Why::NotNumber => "is not a number".to_owned(),
             Why::NotPct => "is not a percentage".to_owned(),
             Why::NotBool => match &c.ty.base {
-                Base::Bool { yes, no } => format!("is not {yes} or {no}"),
+                Base::Bool { yes, no } => format!("is not {} or {}", code(yes), code(no)),
                 _ => "is not a boolean".to_owned(),
             },
             Why::NotChoice => match &c.ty.base {
-                Base::Choice(w) => format!("is not one of {}", w.join(", ")),
+                Base::Choice(w) => format!("is not one of {}", w.iter().map(|w| code(w)).collect::<Vec<_>>().join(", ")),
                 _ => "is not a choice".to_owned(),
             },
             Why::NotDate => match &c.ty.format {
-                Some(f) => format!("is not a date ({})", f.spelled),
+                Some(f) => format!("is not a date ({})", code(&f.spelled)),
                 None => "is not a date".to_owned(),
             },
             Why::NotTime => match &c.ty.format {
-                Some(f) => format!("is not a time ({})", f.spelled),
+                Some(f) => format!("is not a time ({})", code(&f.spelled)),
                 None => "is not a time".to_owned(),
             },
             Why::NotDateTime => "is not an instant (2026-08-14T14:30:00Z)".to_owned(),
@@ -2344,8 +2358,8 @@ impl Doc {
             Why::Duplicate { other } => format!("is the key of row {} too", other + 1),
         };
         match gave {
-            Some(_) => format!("the formula gives \"{text}\", which {why}"),
-            None => format!("\"{text}\" {why}"),
+            Some(_) => format!("the formula gives {}, which {why}", code(&text)),
+            None => format!("{} {why}", code(&text)),
         }
     }
 
@@ -3104,7 +3118,7 @@ impl Doc {
                 Ok(ir) => formulas.push(Some(ir)),
                 Err(fault) => {
                     let (s, l) = fault.at.unwrap_or((0, f.len() as u32));
-                    let why = format!("{}: {}", c.name, fault.why);
+                    let why = format!("{}: {}", code(&c.name), fault.why);
                     broken.push(match declared {
                         Some(line) => Error { at: At::PreludeLine(line), why, within: None },
                         None => Error { at: At::Column(k as u32 + 1), why, within: Some((from as u32 + s, l)) },
@@ -3145,7 +3159,7 @@ impl Doc {
             let mut state = alloc::vec![0u8; n];
             for k in 0..n {
                 if let Some(c) = visit(k, &reads, &formulas, &mut state) {
-                    broken.push(error(At::Column(c as u32 + 1), format!("{}: the formula reads itself", self.columns[c].name)));
+                    broken.push(error(At::Column(c as u32 + 1), format!("{}: the formula reads itself", code(&self.columns[c].name))));
                     formulas[c] = None;
                     continue 'cycles;
                 }
@@ -3182,11 +3196,11 @@ impl Doc {
                     let rule = look::rule(r).and_then(|rule| match (base, &rule) {
                         (Some(b), _) => applies(&rule, b).map(|()| rule),
                         (None, Rule::When { .. }) => Ok(rule),
-                        (None, _) => Err("a row takes only a tint by a condition: gray when paid".to_owned()),
+                        (None, _) => Err("a row takes only a tint by a condition: `gray when paid`".to_owned()),
                     });
                     match rule {
                         Ok(rule) => out.push(Look { spelled: r.clone(), rule, line: *line }),
-                        Err(why) => broken.push(error(at, format!("look {target}: {why}"))),
+                        Err(why) => broken.push(error(at, format!("{}: {why}", code(&format!("look {target}"))))),
                     }
                 }
                 out
@@ -3202,7 +3216,7 @@ impl Doc {
                         own[k].extend(looks.iter().cloned());
                         stated.push((target.clone(), looks));
                     }
-                    None => broken.push(error(at, format!("look {n}: no column and no type is named {n}"))),
+                    None => broken.push(error(at, format!("{}: no column and no type is named {}", code(&format!("look {n}")), code(n)))),
                 },
                 Target::Row => {
                     let looks = read("row", None);
@@ -3230,7 +3244,7 @@ impl Doc {
                         match resolved {
                             Ok(ir) => Some(ir),
                             Err(fault) => {
-                                let why = format!("look: \"{}\": {}", l.spelled, fault.why);
+                                let why = format!("`look`: {}: {}", code(&l.spelled), fault.why);
                                 if !said.iter().any(|(line, w, _)| *line == l.line && *w == why) {
                                     said.push((l.line, why, l.spelled.clone()));
                                 }
@@ -3326,7 +3340,7 @@ impl Doc {
             if let Some(n) = name
                 && (taken(n) || charts.iter().any(|c| c.name.as_deref() == Some(n.as_str())))
             {
-                said.push((*line, format!("the name {n} is taken")));
+                said.push((*line, format!("the name {} is taken", code(n))));
                 continue;
             }
             let written = match body.label.as_str() {
@@ -3334,8 +3348,8 @@ impl Doc {
                 label => match Kind::of(label) {
                     Some(k) => Some(k),
                     None => {
-                        let kinds: Vec<&str> = Kind::ALL.iter().map(|k| k.word()).collect();
-                        said.push((*line, format!("no chart \"{label}\": {}", kinds.join(", "))));
+                        let kinds: Vec<String> = Kind::ALL.iter().map(|k| code(k.word())).collect();
+                        said.push((*line, format!("no chart {}: {}", code(label), kinds.join(", "))));
                         continue;
                     }
                 },
@@ -3352,13 +3366,13 @@ impl Doc {
                 Some(e) => match self.tables.iter().position(|t| t.name == e.value) {
                     Some(t) if self.tables[t].doc.is_some() => Some(t),
                     Some(_) => {
-                        said.push((e.line, format!("from: {} is not reached, so it has no rows to chart", e.value)));
+                        said.push((e.line, format!("`from`: {} is not reached, so it has no rows to chart", code(&e.value))));
                         continue;
                     }
                     None => {
-                        let names: Vec<&str> = self.tables.iter().map(|t| t.name.as_str()).collect();
+                        let names: Vec<String> = self.tables.iter().map(|t| code(&t.name)).collect();
                         let held = if names.is_empty() { "none".to_owned() } else { names.join(", ") };
-                        said.push((e.line, format!("from: no table is named {} (the prelude's tables: {held})", e.value)));
+                        said.push((e.line, format!("`from`: no table is named {} (the prelude's tables: {held})", code(&e.value))));
                         continue;
                     }
                 },
@@ -3378,7 +3392,7 @@ impl Doc {
                 Some((ir, K::Bool | K::Null, _)) => Some(ir),
                 Some((_, k, _)) => {
                     let at = entry("where").expect("where read").line;
-                    said.push((at, format!("where: a condition is a boolean, and this gives {}", k.word())));
+                    said.push((at, format!("`where`: a condition is a boolean, and this gives {}", k.word())));
                     None
                 }
                 None => None,
@@ -3388,7 +3402,7 @@ impl Doc {
                 Some(e) => match e.value.parse::<usize>() {
                     Ok(n) if n > 0 => Some(n),
                     _ => {
-                        fail(e.line, format!("top: a whole number past 0, not \"{}\"", e.value));
+                        fail(e.line, format!("`top`: a whole number past 0, not {}", code(&e.value)));
                         None
                     }
                 },
@@ -3396,7 +3410,7 @@ impl Doc {
             };
             let stack = match entry("stack") {
                 Some(e) => Stack::of(&e.value).unwrap_or_else(|| {
-                    fail(e.line, format!("stack: stacked, grouped or percent, not \"{}\"", e.value));
+                    fail(e.line, format!("`stack`: `stacked`, `grouped` or `percent`, not {}", code(&e.value)));
                     Stack::Stacked
                 }),
                 None => Stack::Stacked,
@@ -3406,7 +3420,7 @@ impl Doc {
                 for n in e.value.split(',').map(|n| n.trim_matches([' ', '\t'])) {
                     match charts.iter().position(|c| c.name.as_deref() == Some(n)) {
                         Some(i) => layers.push(i),
-                        None => fail(e.line, format!("layers: no chart named {n} above")),
+                        None => fail(e.line, format!("`layers`: no chart named {} above", code(n))),
                     }
                 }
             }
@@ -3428,13 +3442,13 @@ impl Doc {
             if has("layers") {
                 // each layer draws its own table, so a chart of layers names none
                 for e in entries.iter().filter(|e| !matches!(e.key.as_str(), "title" | "layers")) {
-                    fail(e.line, format!("a chart of layers takes title and layers alone, not {}", e.key));
+                    fail(e.line, format!("a chart of layers takes `title` and `layers` alone, not {}", code(&e.key)));
                 }
             }
             if layers.is_empty() {
                 for e in &entries {
                     if !matches!(e.key.as_str(), "title" | "from" | "layers") && !kind.takes().contains(&e.key.as_str()) {
-                        fail(e.line, format!("a {} chart takes no {}", kind.word(), e.key));
+                        fail(e.line, format!("a {} chart takes no {}", code(kind.word()), code(&e.key)));
                     }
                 }
                 let missing = match kind {
@@ -3445,7 +3459,7 @@ impl Doc {
                     _ => [("x", x.is_none()), ("y", y.is_none())].into_iter().find(|p| p.1).map(|p| p.0),
                 };
                 if let Some(k) = missing {
-                    fail(*line, format!("a {} chart draws its {k}: write one", kind.word()));
+                    fail(*line, format!("a {} chart draws its {}: write one", code(kind.word()), code(k)));
                     continue;
                 }
             }
@@ -4052,7 +4066,7 @@ impl Doc {
             }
             for r in 0..c.origin.len() {
                 if c.origin[r] == Origin::Formula {
-                    let why = "its = says its column's formula computes it, and the column has none: write the value alone, or a formula after the =";
+                    let why = "its `=` says its column's formula computes it, and the column has none: write the value alone, or a formula after the `=`";
                     self.unwell.entry((r as u32, k as u32)).or_insert_with(|| expr::Fault::whole(why.to_owned()));
                 }
             }
@@ -4322,14 +4336,14 @@ fn decimal(v: Value) -> Option<Decimal> {
 fn applies(rule: &Rule, base: &Base) -> Result<(), String> {
     match rule {
         Rule::Decimals(_) if !matches!(base, Base::Num | Base::Pct) => {
-            Err(format!("decimals is a num's or a pct's, and this is {}: a currency shows its scale", base.tag()))
+            Err(format!("`decimals` is a `num`'s or a `pct`'s, and this is {}: a currency shows its scale", base.tag()))
         }
         r if r.wants_number() && !base.is_number() => Err(format!("it is a number's rule, and this is {}", base.tag())),
         Rule::As(p) => match base {
-            Base::Date if p.has_time() => Err(format!("'{}' shows a time, and this is a date", p.spelled)),
-            Base::Time if p.has_date() => Err(format!("'{}' shows a date, and this is a time", p.spelled)),
+            Base::Date if p.has_time() => Err(format!("{} shows a time, and this is a date", code(&p.spelled))),
+            Base::Time if p.has_date() => Err(format!("{} shows a date, and this is a time", code(&p.spelled))),
             Base::Date | Base::Time | Base::DateTime => Ok(()),
-            other => Err(format!("as shows a date or a time, and this is {}", other.tag())),
+            other => Err(format!("`as` shows a date or a time, and this is {}", other.tag())),
         },
         _ => Ok(()),
     }
@@ -4527,7 +4541,7 @@ fn chart_formula(
             Some((ir, k, column))
         }
         Err(fault) => {
-            said.push((e.line, format!("{}: {}", e.key, fault.why)));
+            said.push((e.line, format!("{}: {}", code(&e.key), fault.why)));
             None
         }
     }
@@ -4545,7 +4559,7 @@ fn chart_measure(
     let parsed = match expr::parse(&e.value) {
         Ok(x) => x,
         Err(fault) => {
-            said.push((e.line, format!("{}: {}", e.key, fault.why)));
+            said.push((e.line, format!("{}: {}", code(&e.key), fault.why)));
             return None;
         }
     };
@@ -4575,7 +4589,7 @@ fn chart_measure(
             })
         }
         Err(fault) => {
-            said.push((e.line, format!("{}: {}", e.key, fault.why)));
+            said.push((e.line, format!("{}: {}", code(&e.key), fault.why)));
             None
         }
     }
@@ -5018,8 +5032,8 @@ mod tests {
         let doc = read(src).unwrap();
         // the heat chart lacks y and value, and holds a key no chart has: broken, left out
         assert_eq!(doc.charts().len(), 4);
-        assert!(doc.broken().iter().any(|e| e.to_string().contains("no \"nope\"")));
-        assert!(doc.broken().iter().any(|e| e.to_string().contains("draws its y")));
+        assert!(doc.broken().iter().any(|e| e.to_string().contains("no `nope`")));
+        assert!(doc.broken().iter().any(|e| e.to_string().contains("draws its `y`")));
 
         let spending = doc.summary(&doc.charts()[0]);
         assert_eq!(spending.kind, Kind::Bars);
@@ -5121,11 +5135,11 @@ mod tests {
         let doc = read(src).unwrap();
         let at = |needle: &str| doc.broken().iter().find(|e| e.to_string().contains(needle)).map(|e| e.at.to_string());
         // a name that is no table, at its line, and the chart left out
-        assert_eq!(at("no table is named rats").as_deref(), Some("prelude line 33"));
+        assert_eq!(at("no table is named `rats`").as_deref(), Some("prelude line 33"));
         // the charted table's columns alone: the file's own `item` is not among them
-        assert_eq!(at("x: no column").as_deref(), Some("prelude line 39"));
+        assert_eq!(at("`x`: no column").as_deref(), Some("prelude line 39"));
         // a chart of layers draws each layer's own table
-        assert_eq!(at("takes title and layers alone, not from").as_deref(), Some("prelude line 47"));
+        assert_eq!(at("takes `title` and `layers` alone, not `from`").as_deref(), Some("prelude line 47"));
         assert_eq!(doc.charts().len(), 5);
 
         // an inline table's rows, its columns read by name, its choice's tints

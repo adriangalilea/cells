@@ -105,7 +105,7 @@ A break's `span` is where it is in the file, `[start, length]` in bytes, as a pr
 - `the prelude`: a prelude never closed, which holds the whole file: no statement applies, no columns, no rows.
 - `the header`, `row N`: a record that does not read (its quoting, a lone `\r`): the rows end before it, the bytes from it on kept as written.
 
-The words are each implementation's own, as a problem's are, and name what broke on their own: `to: accounts has no column "a" (its key is account)`.
+The words are each implementation's own, as a problem's are, and name what broke on their own: `` `to`: `accounts` has no column `a` (its key is `account`) ``.
 
 **The file is refused**: its bytes are not UTF-8, the one case whose `.cells` is not text.
 

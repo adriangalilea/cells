@@ -568,14 +568,20 @@ impl<W: World> Daemon<W> {
             return Ok(());
         }
         let doc = self.folder.doc(&key(file)).ok_or(format!("{}: not read by the engine; is its folder served?", self.shown(file)))?;
-        let script = doc.scripts().iter().find(|s| s.name == name).ok_or(format!("{} has no script {name}", self.shown(file)))?.clone();
+        let script = doc
+            .scripts()
+            .iter()
+            .find(|s| s.name == name)
+            .ok_or(format!("{} has no script {}", self.shown(file), cells::say::code(name)))?
+            .clone();
         let allowed = match self.world.read(&crate::allowed::path()) {
             Found::Text(t) => Allowed::parse(&t),
             _ => Allowed::default(),
         };
         if !allowed.allows(file, &script) {
             return Err(format!(
-                "{name} is not allowed on this Mac as it is written: `cells allow {} {name}` shows its code and asks",
+                "{} is not allowed on this Mac as it is written: `cells allow {} {name}` shows its code and asks",
+                cells::say::code(name),
                 file.display()
             ));
         }

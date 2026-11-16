@@ -23,11 +23,11 @@ fn check_and_fmt() {
     assert_eq!(
         lines,
         [
-            format!("{} column 1: item: no type or currency \"EURO\"", shown("trip/broken.cells")),
-            format!("{} row 1, item: \"fuel\" is the key of row 2 too", shown("trip/money.cells")),
-            format!("{} row 1, cost: \"8x.50\" is not a number", shown("trip/money.cells")),
-            format!("{} row 2, item: \"fuel\" is the key of row 1 too", shown("trip/money.cells")),
-            format!("{} row 2, cost: \"-1\" is below 0", shown("trip/money.cells")),
+            format!("{} column 1: `item`: no type or currency `EURO`", shown("trip/broken.cells")),
+            format!("{} row 1, `item`: `fuel` is the key of row 2 too", shown("trip/money.cells")),
+            format!("{} row 1, `cost`: `8x.50` is not a number", shown("trip/money.cells")),
+            format!("{} row 2, `item`: `fuel` is the key of row 1 too", shown("trip/money.cells")),
+            format!("{} row 2, `cost`: `-1` is below `0`", shown("trip/money.cells")),
         ]
     );
 
@@ -75,9 +75,9 @@ fn imports_formulas_and_a_script() {
     assert_eq!(
         String::from_utf8(check.stdout).unwrap(),
         format!(
-            "{shown} row 1, eur: not stored yet: the formula gives 25.00, the next write stores it\n\
-             {shown} row 2, to: \"bar\" is no key of accounts\n\
-             {shown} row 2, eur: rates has no row 2026-11-04, so the formula gives nothing\n"
+            "{shown} row 1, `eur`: not stored yet: the formula gives `25.00`, the next write stores it\n\
+             {shown} row 2, `to`: `bar` is no key of `accounts`\n\
+             {shown} row 2, `eur`: `rates` has no row `2026-11-04`, so the formula gives nothing\n"
         )
     );
 
@@ -88,7 +88,7 @@ fn imports_formulas_and_a_script() {
     let run = Command::new(cells).env("HOME", &home).arg("run").arg(&money).output().unwrap();
     assert_eq!(run.status.code(), Some(1));
     let said = String::from_utf8(run.stdout).unwrap();
-    assert!(said.starts_with("rates: not run: rates is not allowed on this Mac as it is written"), "{said}");
+    assert!(said.starts_with("`rates`: not run: `rates` is not allowed on this Mac as it is written"), "{said}");
     // allowed at this version, as the engine keeps an approval
     let doc = cells::read(fs::read(&money).unwrap()).unwrap();
     let approval = cells_daemon::allowed::Approval {
@@ -102,7 +102,7 @@ fn imports_formulas_and_a_script() {
     fs::create_dir_all(kept.parent().unwrap()).unwrap();
     fs::write(&kept, format!("{}\n", cells_daemon::allowed::line(&approval))).unwrap();
     let run = Command::new(cells).env("HOME", &home).arg("run").arg(&money).output().unwrap();
-    assert_eq!(String::from_utf8(run.stdout).unwrap(), "rates: run 1 ok, 1 added, 0 changed\n");
+    assert_eq!(String::from_utf8(run.stdout).unwrap(), "`rates`: run 1 ok, 1 added, 0 changed\n");
     let text = fs::read_to_string(&money).unwrap();
     assert!(text.contains("day:date!,rate:num>0,run:int?\n2026-11-03,0.25,\n2026-11-04,0.5,1\n```\n```cells runs\n"), "{text}");
     // the run is history's: a root, by who asked
@@ -154,7 +154,7 @@ fn pack_a_file_to_send_alone() {
     let check = run(&["check", sent.to_str().unwrap()]);
     assert_eq!(check.status.code(), Some(0));
     let said = String::from_utf8(check.stdout).unwrap();
-    assert!(said.contains("packed accounts is read in place of ../accounts.cells, not reachable"), "{said}");
+    assert!(said.contains("`packed accounts` is read in place of `../accounts.cells`, not reachable"), "{said}");
     // packing it there again keeps the copy; packing in place, then removing, is the file
     assert_eq!(run(&["pack", sent.to_str().unwrap()]).status.code(), Some(0));
     assert_eq!(fs::read_to_string(&sent).unwrap(), packed);
@@ -227,7 +227,7 @@ fn a_plain_file_s_cells_are_text_for_every_command() {
     fs::write(&book, "a:num,b:num\n1,5=a * 2\n").unwrap();
     let check = run(&["check", book.to_str().unwrap()]);
     assert_eq!(check.status.code(), Some(1));
-    assert!(String::from_utf8(check.stdout).unwrap().contains("the formula gives 2"));
+    assert!(String::from_utf8(check.stdout).unwrap().contains("the formula gives `2`"));
     assert_eq!(String::from_utf8(run(&["show", book.to_str().unwrap()]).stdout).unwrap(), "a\tb\n1\t2\n");
     fs::remove_dir_all(&dir).unwrap();
 }

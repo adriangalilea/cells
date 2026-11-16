@@ -7,6 +7,7 @@
 use std::fs;
 use std::path::Path;
 
+use cells::say::code;
 use cells_daemon::Engine;
 use cells_daemon::log::Outcome;
 
@@ -18,7 +19,7 @@ pub fn run(path: &Path, only: Option<&str>) -> Result<(Vec<String>, bool), Strin
     let names: Vec<String> = doc.scripts().iter().map(|s| s.name.clone()).filter(|n| only.is_none_or(|o| o == n)).collect();
     if names.is_empty() {
         return Err(match only {
-            Some(o) => format!("{} has no script {o}", path.display()),
+            Some(o) => format!("{} has no script {}", path.display(), code(o)),
             None => format!("{} has no script", path.display()),
         });
     }
@@ -27,8 +28,9 @@ pub fn run(path: &Path, only: Option<&str>) -> Result<(Vec<String>, bool), Strin
     engine.serve(file.parent().expect("a file is in a folder"))?;
     let mut said = Vec::new();
     let mut all_ok = true;
-    for name in names {
-        match engine.run(&file, &name) {
+    for script in names {
+        let name = code(&script);
+        match engine.run(&file, &script) {
             Ok((run, Outcome::Ok { added, changed })) => said.push(format!("{name}: run {run} ok, {added} added, {changed} changed")),
             Ok((run, Outcome::Failed { why })) => {
                 all_ok = false;

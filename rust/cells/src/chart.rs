@@ -12,6 +12,7 @@ use alloc::vec::Vec;
 use crate::exact::Exact;
 use crate::json::quote;
 use crate::look::{TINTS, Tint};
+use crate::say::code;
 
 /// What a chart is drawn as: the fence's label, or read from its entries.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -158,16 +159,17 @@ pub fn entries(body: &str, first: u32) -> (Vec<Entry>, Vec<(u32, String)>) {
             continue;
         }
         let Some((key, value)) = said.split_once(':') else {
-            broken.push((line, format!("a chart's line is key: value, not \"{said}\"")));
+            broken.push((line, format!("a chart's line is `key: value`, not {}", code(said))));
             continue;
         };
         let key = key.trim_matches([' ', '\t']);
         if !KEYS.contains(&key) {
-            broken.push((line, format!("a chart has no \"{key}\": {}", KEYS.join(", "))));
+            let keys: Vec<String> = KEYS.iter().map(|k| code(k)).collect();
+            broken.push((line, format!("a chart has no {}: {}", code(key), keys.join(", "))));
             continue;
         }
         if out.iter().any(|e| e.key == key) {
-            broken.push((line, format!("{key} is written twice")));
+            broken.push((line, format!("{} is written twice", code(key))));
             continue;
         }
         out.push(Entry { key: key.to_owned(), value: value.trim_matches([' ', '\t']).to_owned(), line });

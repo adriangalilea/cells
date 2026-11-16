@@ -11,6 +11,7 @@ use std::sync::Arc;
 use std::{env, fs};
 
 use cells::files::{is_url, pinned};
+use cells::say::code;
 use cells::{Doc, Import, Imports};
 
 /// Where fetched files are kept, each by its hash: `$XDG_CACHE_HOME/cells`, else
@@ -61,7 +62,7 @@ impl Disk {
         let out = Command::new("git").arg("-C").arg(dir).args(["show", &format!("{rev}:./{name}")]).output();
         match out {
             Ok(o) if o.status.success() => Ok(Some(o.stdout)),
-            Ok(o) => Err(format!("git has no {name} at {rev}: {}", String::from_utf8_lossy(&o.stderr).trim())),
+            Ok(o) => Err(format!("git has no {} at {}: {}", code(&name), code(rev), String::from_utf8_lossy(&o.stderr).trim())),
             Err(_) => Ok(None),
         }
     }
@@ -90,10 +91,10 @@ impl Imports for Disk {
             let mut chain = self.stack.clone();
             chain.push(fs::canonicalize(&self.at).unwrap_or(self.at.clone()));
             if let Some(from) = chain.iter().position(|f| *f == path) {
-                let through: Vec<String> = chain[from + 1..].iter().map(|p| p.display().to_string()).collect();
+                let through: Vec<String> = chain[from + 1..].iter().map(|p| code(&p.display().to_string())).collect();
                 let why = match through.is_empty() {
-                    true => format!("{} imports itself", path.display()),
-                    false => format!("{} imports itself, through {}", path.display(), through.join(", ")),
+                    true => format!("{} imports itself", code(&path.display().to_string())),
+                    false => format!("{} imports itself, through {}", code(&path.display().to_string()), through.join(", ")),
                 };
                 self.cycle = Some(why.clone());
                 return Err(why);

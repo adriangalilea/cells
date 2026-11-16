@@ -12,6 +12,7 @@ use alloc::string::{String, ToString};
 use alloc::vec::Vec;
 
 use crate::look::{Look, Tint};
+use crate::say::code;
 use crate::value::Decimal;
 
 /// What a column holds.
@@ -205,7 +206,7 @@ impl Format {
                 (Piece::Literal(s[i]), 1)
             };
             if !matches!(p, Piece::Literal(_)) && pieces.contains(&p) {
-                return Err(format!("the format {spelled} says {} twice", &spelled[i..i + n]));
+                return Err(format!("the format {} says {} twice", code(spelled), code(&spelled[i..i + n])));
             }
             pieces.push(p);
             i += n;
@@ -493,7 +494,7 @@ fn tokens(spelled: &str) -> Result<Vec<Token<'_>>, String> {
         }
         if c == b'(' {
             let Some(end) = spelled[i..].find(')') else {
-                return Err("a format's ( is not closed".to_owned());
+                return Err("a format's `(` is not closed".to_owned());
             };
             out.push(Token::Format(&spelled[i + 1..i + end]));
             i += end + 1;
@@ -509,7 +510,7 @@ fn tokens(spelled: &str) -> Result<Vec<Token<'_>>, String> {
             i += 1;
         }
         if i == start {
-            return Err(format!("\"{}\" cannot stand in a type", c as char));
+            return Err(format!("{} cannot stand in a type", code(&spelled[i..].chars().next().unwrap().to_string())));
         }
         out.push(Token::Word(&spelled[start..i]));
     }
@@ -518,8 +519,8 @@ fn tokens(spelled: &str) -> Result<Vec<Token<'_>>, String> {
 
 fn number(t: Option<&Token>) -> Result<Decimal, String> {
     match t {
-        Some(Token::Word(w)) => Decimal::parse(w.as_bytes()).map_err(|_| format!("a number was expected, not \"{w}\"")),
-        Some(other) => Err(format!("a number was expected, not \"{}\"", other.shown())),
+        Some(Token::Word(w)) => Decimal::parse(w.as_bytes()).map_err(|_| format!("a number was expected, not {}", code(w))),
+        Some(other) => Err(format!("a number was expected, not {}", code(&other.shown()))),
         None => Err("a number was expected, not the end".to_owned()),
     }
 }
@@ -553,7 +554,7 @@ fn target<'a>(t: &Token<'a>, tables: &[String]) -> Option<Target> {
 fn tint_after(t: Option<&Token>) -> Result<Tint, String> {
     match t {
         Some(Token::Word(w)) => Tint::after_hash(w),
-        _ => Err("a # is followed by a tint: income#green, income#3fa34d".to_owned()),
+        _ => Err("a `#` is followed by a tint: `income#green`, `income#3fa34d`".to_owned()),
     }
 }
 
@@ -566,10 +567,10 @@ fn holder(t: &[Token], i: &mut usize, named: &[NamedType], tables: &[String]) ->
         *i += 1;
         while t.get(*i).is_some_and(|n| n.is_op("|")) {
             let Some(more) = t.get(*i + 1).and_then(|n| target(n, tables)) else {
-                return Err("a reference joins other references with |: shared.account|clients.account".to_owned());
+                return Err("a reference joins other references with `|`: `shared.account|clients.account`".to_owned());
             };
             if targets.contains(&more) {
-                return Err(format!("{}.{} is named twice", more.table, more.column));
+                return Err(format!("{} is named twice", code(&format!("{}.{}", more.table, more.column))));
             }
             targets.push(more);
             *i += 2;
@@ -582,7 +583,7 @@ fn holder(t: &[Token], i: &mut usize, named: &[NamedType], tables: &[String]) ->
         let (mut words, mut tints) = (Vec::new(), Vec::new());
         loop {
             let Some(w) = t.get(*i).and_then(|n| n.text()) else {
-                return Err("a | is followed by no choice".to_owned());
+                return Err("a `|` is followed by no choice".to_owned());
             };
             words.push(w.to_owned());
             *i += 1;
@@ -601,7 +602,7 @@ fn holder(t: &[Token], i: &mut usize, named: &[NamedType], tables: &[String]) ->
         && next.is_some_and(|n| n.is_op("/"))
     {
         let Some(no) = t.get(*i + 2).and_then(|n| n.text()) else {
-            return Err("a / is followed by no word for false".to_owned());
+            return Err("a `/` is followed by no word for false".to_owned());
         };
         *i += 3;
         return Ok(Type::plain(pair(yes, no)?));
@@ -628,7 +629,7 @@ fn holder(t: &[Token], i: &mut usize, named: &[NamedType], tables: &[String]) ->
             }
         }
         if words.is_empty() {
-            return Err("one of names no choice".to_owned());
+            return Err("`one of` names no choice".to_owned());
         }
         return Ok(Type { tints, ..Type::plain(Base::Choice(choices(words)?)) });
     }
@@ -654,14 +655,16 @@ fn holder(t: &[Token], i: &mut usize, named: &[NamedType], tables: &[String]) ->
                 // `table.column`, a reference to a table the prelude does not name, or to
                 // no column of one it does.
                 match tables.iter().any(|n| n == table) {
-                    true if column.is_empty() => Err(format!("a reference names {table}'s key: {table}.<key>")),
-                    _ => Err(format!("no table \"{table}\": the prelude names a table by an import or inline")),
+                    true if column.is_empty() => {
+                        Err(format!("a reference names {}'s key: {}", code(table), code(&format!("{table}.<key>"))))
+                    }
+                    _ => Err(format!("no table {}: the prelude names a table by an import or inline", code(table))),
                 }
             } else {
-                Err(format!("no type or currency \"{w}\""))
+                Err(format!("no type or currency {}", code(w)))
             }
         }
-        other => Err(format!("\"{}\" cannot open a type", other.shown())),
+        other => Err(format!("{} cannot open a type", code(&other.shown()))),
     }
 }
 
@@ -670,7 +673,7 @@ fn holder(t: &[Token], i: &mut usize, named: &[NamedType], tables: &[String]) ->
 /// name. The error is why, without the place; the caller knows the place.
 pub fn parse_type(spelled: &str, named: &[NamedType], tables: &[String]) -> Result<Type, String> {
     if spelled.contains(',') || spelled.contains('"') {
-        return Err("a type never holds , or \"".to_owned());
+        return Err("a type never holds `,` or `\"`".to_owned());
     }
     let t = tokens(spelled)?;
     if t.is_empty() {
@@ -741,14 +744,14 @@ pub fn parse_type(spelled: &str, named: &[NamedType], tables: &[String]) -> Resu
             }
             Token::Word("between") => {
                 if !t.get(i + 2).is_some_and(|a| a.is_word("and")) {
-                    return Err("between takes two numbers joined by and: between 0 and 100".to_owned());
+                    return Err("`between` takes two numbers joined by `and`: `between 0 and 100`".to_owned());
                 }
                 lower(&mut ty, &mut said, number(next)?, true)?;
                 upper(&mut ty, &mut said, number(t.get(i + 3))?, true)?;
                 i += 4;
             }
             Token::Word(w) if next.is_some_and(|n| n.is_op("..")) => {
-                let lo = number(Some(x)).map_err(|_| format!("a range opens with a number, not \"{w}\""))?;
+                let lo = number(Some(x)).map_err(|_| format!("a range opens with a number, not {}", code(w)))?;
                 lower(&mut ty, &mut said, lo, true)?;
                 upper(&mut ty, &mut said, number(t.get(i + 2))?, true)?;
                 i += 3;
@@ -763,7 +766,7 @@ pub fn parse_type(spelled: &str, named: &[NamedType], tables: &[String]) -> Resu
             }
             Token::Op("?") | Token::Word("optional") => {
                 if said.optional {
-                    return Err("optional is said twice".to_owned());
+                    return Err("`optional` is said twice".to_owned());
                 }
                 said.optional = true;
                 ty.optional = true;
@@ -774,9 +777,9 @@ pub fn parse_type(spelled: &str, named: &[NamedType], tables: &[String]) -> Resu
             {
                 return Err("two types in one cell".to_owned());
             }
-            Token::Word(w) if !EXPLICIT.contains(w) => return Err(format!("no type or currency \"{w}\"")),
-            Token::Op("#") | Token::Word("tint") => return Err("a tint follows a choice's word: income#green".to_owned()),
-            other => return Err(format!("\"{}\" cannot stand here", other.shown())),
+            Token::Word(w) if !EXPLICIT.contains(w) => return Err(format!("no type or currency {}", code(w))),
+            Token::Op("#") | Token::Word("tint") => return Err("a tint follows a choice's word: `income#green`".to_owned()),
+            other => return Err(format!("{} cannot stand here", code(&other.shown()))),
         }
     }
     check(&mut ty, format)?;
@@ -794,7 +797,7 @@ fn check(ty: &mut Type, format: Option<&str>) -> Result<(), String> {
             for b in [ty.min, ty.max].into_iter().flatten() {
                 let v = b.value.normal();
                 if v.scale != 0 || v.mantissa < 0 {
-                    return Err(format!("a text's length is a whole number, at least 0, not {}", b.value));
+                    return Err(format!("a text's length is a whole number, at least 0, not {}", code(&b.value.to_string())));
                 }
             }
         }
@@ -809,12 +812,9 @@ fn check(ty: &mut Type, format: Option<&str>) -> Result<(), String> {
         && matches!(ty.base, Base::Money(_))
     {
         // A currency's parentheses are its scale: a whole number of digits after the point.
-        let d: u8 = f
-            .trim_matches([' ', '\t'])
-            .parse()
-            .ok()
-            .filter(|d| *d <= 18)
-            .ok_or_else(|| format!("a currency's scale is a whole number from 0 to 18, the digits after the point: not ({f})"))?;
+        let d: u8 = f.trim_matches([' ', '\t']).parse().ok().filter(|d| *d <= 18).ok_or_else(|| {
+            format!("a currency's scale is a whole number from 0 to 18, the digits after the point: not {}", code(&format!("({f})")))
+        })?;
         ty.digits = Some(d);
         return check(ty, None);
     }
@@ -830,8 +830,9 @@ fn check(ty: &mut Type, format: Option<&str>) -> Result<(), String> {
             _ => f.has(Piece::Hour) && f.has(Piece::Minute) && !date.iter().any(|p| f.has(*p)),
         };
         if !ok {
-            let needs = if ty.base == Base::Date { "YYYY, MM and DD, and no time" } else { "HH and mm, ss or not, and no date" };
-            return Err(format!("the format {} is no {}: it holds {needs}", f.spelled, ty.base.tag()));
+            let needs =
+                if ty.base == Base::Date { "`YYYY`, `MM` and `DD`, and no time" } else { "`HH` and `mm`, `ss` or not, and no date" };
+            return Err(format!("the format {} is no {}: it holds {needs}", code(&f.spelled), ty.base.tag()));
         }
         ty.format = Some(f);
     }
@@ -847,7 +848,7 @@ fn choices(words: Vec<String>) -> Result<Vec<String>, String> {
             return Err("a choice is never blank".to_owned());
         }
         if words[..k].contains(w) {
-            return Err(format!("the choice \"{w}\" is written twice"));
+            return Err(format!("the choice {} is written twice", code(w)));
         }
     }
     Ok(words)
@@ -858,7 +859,7 @@ fn pair(yes: &str, no: &str) -> Result<Base, String> {
         return Err("a boolean's word is never blank".to_owned());
     }
     if yes == no {
-        return Err(format!("true and false are both \"{yes}\""));
+        return Err(format!("true and false are both {}", code(yes)));
     }
     Ok(Base::Bool { yes: yes.to_owned(), no: no.to_owned() })
 }

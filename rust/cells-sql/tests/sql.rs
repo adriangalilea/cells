@@ -70,7 +70,7 @@ fn sql_over_the_books() {
     let (code, out, err) = sql(&[&dir], "SELECT * FROM money");
     assert_eq!((code, out.as_str()), (Some(2), ""));
     let shown = |p: &str| dir.join(p).display().to_string();
-    assert_eq!(err, format!("cells sql: money.cost: EUR in {} and USD in {}\n", shown("a/money.cells"), shown("b/money.cells")));
+    assert_eq!(err, format!("cells sql: `money.cost`: `EUR` in {} and `USD` in {}\n", shown("a/money.cells"), shown("b/money.cells")));
     // A query DuckDB refuses cannot run.
     let (code, _, err) = sql(&[&dir.join("a")], "SELEC 1");
     assert_eq!(code, Some(2));

@@ -14,11 +14,18 @@ use alloc::string::{String, ToString};
 use alloc::vec::Vec;
 use core::ops::Range;
 
+use crate::say::code;
 use crate::value::{Decimal, Instant, civil_from_days, pow10};
 
 /// The tints a name says, in the order a picker shows them. Each reader draws a name in its
 /// own theme's colour, light and dark, at a contrast that reads.
 pub const TINTS: [&str; 10] = ["red", "orange", "yellow", "green", "teal", "blue", "purple", "pink", "brown", "gray"];
+
+/// Why `word` is no tint, every tint named.
+fn no_tint(word: &str) -> String {
+    let tints: Vec<String> = TINTS.iter().map(|t| code(t)).collect();
+    format!("{} is no tint: {}, or `#` and six hex digits", code(word), tints.join(", "))
+}
 
 /// A tint: one of `TINTS` by its index, or an exact colour, `0xRRGGBB`, the same in every
 /// theme.
@@ -38,17 +45,17 @@ impl Tint {
             // Folded by hand: a parse's error type would link its Debug formatting.
             return Ok(Tint::Hex(word.bytes().fold(0, |n, c| n * 16 + (c as char).to_digit(16).unwrap())));
         }
-        Err(format!("\"{word}\" is no tint: {}, or # and six hex digits", TINTS.join(", ")))
+        Err(no_tint(word))
     }
 
     /// A tint as a look's rule writes it: a name, or `#` and six hexadecimal digits.
     pub fn parse(word: &str) -> Result<Tint, String> {
         match word.strip_prefix('#') {
             Some(hex) if hex.len() == 6 && hex.bytes().all(|c| c.is_ascii_hexdigit()) => Tint::after_hash(hex),
-            Some(_) => Err(format!("\"{word}\" is no tint: # is followed by six hex digits")),
+            Some(_) => Err(format!("{} is no tint: `#` is followed by six hex digits", code(word))),
             None => match TINTS.iter().position(|t| *t == word) {
                 Some(k) => Ok(Tint::Named(k as u8)),
-                None => Err(format!("\"{word}\" is no tint: {}, or # and six hex digits", TINTS.join(", "))),
+                None => Err(no_tint(word)),
             },
         }
     }
@@ -184,19 +191,19 @@ pub enum Target {
 pub fn statement(said: &str) -> Result<(Target, Vec<String>), String> {
     let (target, rest) = if let Some(q) = said.strip_prefix('"') {
         let close = q.find('"').ok_or("a quoted name is never closed")?;
-        let rest = q[close + 1..].trim_start_matches([' ', '\t']).strip_prefix(':').ok_or("look names what it is for, then a `:`")?;
+        let rest = q[close + 1..].trim_start_matches([' ', '\t']).strip_prefix(':').ok_or("`look` names what it is for, then a `:`")?;
         (Target::Name(q[..close].to_owned()), rest)
     } else {
-        let colon = said.find(':').ok_or("look names what it is for, then a `:`: look amount: grouped")?;
+        let colon = said.find(':').ok_or("`look` names what it is for, then a `:`: `look amount: grouped`")?;
         let name = said[..colon].trim_matches([' ', '\t']);
         if name.is_empty() {
-            return Err("look names a column, a type or row: look amount: grouped".to_owned());
+            return Err("`look` names a column, a type or `row`: `look amount: grouped`".to_owned());
         }
         (if name == "row" { Target::Row } else { Target::Name(name.to_owned()) }, &said[colon + 1..])
     };
     let rules = split(rest);
     if rules.iter().all(|r| r.is_empty()) {
-        return Err("look says at least one rule: grouped, negative red, red when …".to_owned());
+        return Err("`look` says at least one rule: `grouped`, `negative red`, `red when …`".to_owned());
     }
     if let Some(empty) = rules.iter().position(String::is_empty) {
         return Err(format!("rule {} is empty: rules are joined by commas", empty + 1));
@@ -272,14 +279,17 @@ pub fn rule(spelled: &str) -> Result<Rule, String> {
     let words: Vec<&str> = spelled.split([' ', '\t']).filter(|w| !w.is_empty()).collect();
     match words.as_slice() {
         ["grouped"] => Ok(Rule::Grouped),
-        ["decimals", n] => {
-            n.parse::<u8>().ok().filter(|n| *n <= 18).map(Rule::Decimals).ok_or_else(|| format!("decimals takes 0 to 18, not \"{n}\""))
-        }
+        ["decimals", n] => n
+            .parse::<u8>()
+            .ok()
+            .filter(|n| *n <= 18)
+            .map(Rule::Decimals)
+            .ok_or_else(|| format!("`decimals` takes 0 to 18, not {}", code(n))),
         ["negative", "in", "parentheses"] => Ok(Rule::Parentheses),
         ["negative", t] => Tint::parse(t).map(Rule::Negative),
         ["positive", t] => Tint::parse(t).map(Rule::Positive),
         ["scale", range] => {
-            let (a, b) = range.split_once("..").ok_or("a scale runs from one tint to another: scale red..green")?;
+            let (a, b) = range.split_once("..").ok_or("a scale runs from one tint to another: `scale red..green`")?;
             Ok(Rule::Scale { from: Tint::parse(a)?, to: Tint::parse(b)? })
         }
         ["as", ..] => {
@@ -288,7 +298,7 @@ pub fn rule(spelled: &str) -> Result<Rule, String> {
                 .strip_prefix('\'')
                 .and_then(|r| r.strip_suffix('\''))
                 .filter(|r| !r.is_empty())
-                .ok_or("as takes a pattern in single quotes: as 'D MMM YYYY'")?;
+                .ok_or("`as` takes a pattern in single quotes: `as 'D MMM YYYY'`")?;
             Pattern::parse(&inner.replace("''", "'")).map(Rule::As)
         }
         [t, "when", ..] => {
@@ -296,12 +306,13 @@ pub fn rule(spelled: &str) -> Result<Rule, String> {
             let at = spelled.find("when").expect("the word is there") + 4;
             let condition = spelled[at..].trim_matches([' ', '\t']);
             if condition.is_empty() {
-                return Err("when is followed by a condition over the row: red when balance < 0".to_owned());
+                return Err("`when` is followed by a condition over the row: `red when balance < 0`".to_owned());
             }
             Ok(Rule::When { tint, condition: condition.to_owned() })
         }
         _ => Err(format!(
-            "\"{spelled}\" is no rule: grouped, decimals 2, negative in parentheses, negative red, positive green, scale red..green, as 'D MMM YYYY', red when …"
+            "{} is no rule: `grouped`, `decimals 2`, `negative in parentheses`, `negative red`, `positive green`, `scale red..green`, `as 'D MMM YYYY'`, `red when …`",
+            code(spelled)
         )),
     }
 }
@@ -374,7 +385,7 @@ impl Pattern {
         let mut rest = spelled;
         while let Some(c) = rest.chars().next() {
             if let Some(word) = rest.strip_prefix('[') {
-                let close = word.find(']').ok_or("a [ in a pattern is never closed")?;
+                let close = word.find(']').ok_or("a `[` in a pattern is never closed")?;
                 pieces.push(Piece::Literal(word[..close].to_owned()));
                 rest = &word[close + 1..];
                 continue;
@@ -386,7 +397,8 @@ impl Pattern {
             }
             if c.is_alphabetic() {
                 return Err(format!(
-                    "\"{c}\" is no piece of a pattern: YYYY, MMMM, MMM, MM, DD, D, dddd, HH, hh, mm, ss, A; a word between [brackets]"
+                    "{} is no piece of a pattern: `YYYY`, `MMMM`, `MMM`, `MM`, `DD`, `D`, `dddd`, `HH`, `hh`, `mm`, `ss`, `A`; a word between `[brackets]`",
+                    code(&c.to_string())
                 ));
             }
             match pieces.last_mut() {
@@ -396,7 +408,7 @@ impl Pattern {
             rest = &rest[c.len_utf8()..];
         }
         if pieces.iter().all(|p| matches!(p, Piece::Literal(_))) {
-            return Err("a pattern holds at least one piece: YYYY, MMM, D, HH, mm".to_owned());
+            return Err("a pattern holds at least one piece: `YYYY`, `MMM`, `D`, `HH`, `mm`".to_owned());
         }
         Ok(Pattern { spelled: spelled.to_owned(), pieces })
     }
