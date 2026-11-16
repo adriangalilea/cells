@@ -32,7 +32,7 @@ pub fn pin(path: &Path) -> Result<Vec<String>, String> {
             continue;
         }
         let bytes = fetch(from).ok_or_else(|| format!("{} prelude line {line}: {from} cannot be fetched", path.display()))?;
-        let hash = cells::sha256::hex(&bytes);
+        let hash = cells::files::pin_of(from, &bytes);
         let was = with.iter().find(|(k, _)| k == "sha256").map(|(_, v)| v.as_str());
         if was == Some(hash.as_str()) {
             continue;

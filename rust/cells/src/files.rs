@@ -67,10 +67,20 @@ impl<'a> Files<'a> {
     }
 }
 
-/// Bytes against a pin: nothing when they match, why not when they do not.
-pub fn pinned(bytes: &[u8], with: &[(String, String)]) -> Result<(), String> {
+/// What a pin names: the SHA-256 of a file's content, in lower-case hexadecimal. A Cells
+/// file's content is the file as `cells fmt` writes it tight, so padding is never a new
+/// version and a value, a line or a comment always is; any other file's is its bytes.
+pub fn pin_of(path: &str, bytes: &[u8]) -> String {
+    match (crate::format::dialect(path, bytes), core::str::from_utf8(bytes)) {
+        (crate::format::Dialect::Cells, Ok(text)) => crate::sha256::hex(crate::layout::formatted(text, false).as_bytes()),
+        _ => crate::sha256::hex(bytes),
+    }
+}
+
+/// A file's bytes against its pin: nothing when they match, why not when they do not.
+pub fn pinned(path: &str, bytes: &[u8], with: &[(String, String)]) -> Result<(), String> {
     let Some((_, pin)) = with.iter().find(|(k, _)| k == "sha256") else { return Ok(()) };
-    let now = crate::sha256::hex(bytes);
+    let now = pin_of(path, bytes);
     if &now == pin { Ok(()) } else { Err(format!("changed: pinned sha256 {pin}, now {now} (cells pin moves it)")) }
 }
 
@@ -82,7 +92,7 @@ impl Imports for Files<'_> {
         let key = if is_url(&i.from) { i.from.clone() } else { join(dir(&self.at), &i.from) };
         self.reached.push(key.clone());
         let Some(text) = self.files.get(&key) else { return Ok(None) };
-        pinned(text.as_bytes(), &i.with)?;
+        pinned(&key, text.as_bytes(), &i.with)?;
         let mut chain = self.stack.clone();
         chain.push(self.at.clone());
         if let Some(from) = chain.iter().position(|f| *f == key) {
@@ -262,11 +272,24 @@ mod tests {
     }
 
     #[test]
+    fn a_pin_is_of_the_content_not_the_padding() {
+        let tight = "key:text!,v:int\nk,1\n";
+        let pin = pin_of("rates.cells", tight.as_bytes());
+        assert_eq!(pin_of("https://x.example/rates.cells?v=2", "key:text!, v:int\nk,   1\n".as_bytes()), pin);
+        assert_eq!(pin_of("rates.cells", crate::layout::formatted(tight, true).as_bytes()), pin);
+        assert_ne!(pin_of("rates.cells", "key:text!,v:int\nk,2\n".as_bytes()), pin);
+        assert_ne!(pin_of("rates.cells", "key:text!,v:int\nk,1 // one\n".as_bytes()), pin);
+        // a file that is not Cells is pinned by its bytes, its spaces part of its values
+        assert_eq!(pin_of("rates.csv", tight.as_bytes()), crate::sha256::hex(tight.as_bytes()));
+        assert_ne!(pin_of("rates.csv", "key:text!, v:int\nk,1\n".as_bytes()), pin_of("rates.csv", tight.as_bytes()));
+    }
+
+    #[test]
     fn a_url_is_packed_from_its_pinned_bytes_alone() {
         use crate::{Pack, Packing};
         let url = "https://x.example/rates.cells";
         let bytes = "key:text!,v:int\nk,1\n";
-        let pin = crate::sha256::hex(bytes.as_bytes());
+        let pin = pin_of(url, bytes.as_bytes());
         let text = format!(
             "---\nimport rates from \"{url}\" with {{ sha256: \"{pin}\", pack: \"auto\" }}\n---\nkey:text!,v:int=rates[key].v\nk,1=\n"
         );

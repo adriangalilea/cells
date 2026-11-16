@@ -77,7 +77,7 @@ impl Imports for Disk {
                 Ok(b) => b,
                 Err(_) => {
                     let Some(b) = fetch(&i.from) else { return Ok(None) };
-                    pinned(&b, &i.with)?;
+                    pinned(&i.from, &b, &i.with)?;
                     fs::create_dir_all(cache()).map_err(|e| e.to_string())?;
                     fs::write(&kept, &b).map_err(|e| e.to_string())?;
                     b
@@ -113,11 +113,11 @@ impl Imports for Disk {
             };
             (bytes, path)
         };
-        pinned(&bytes, &i.with)?;
-        let mut stack = self.stack.clone();
-        stack.push(fs::canonicalize(&self.at).unwrap_or(self.at.clone()));
         // a URL's file is named by the URL, a local one by its path
         let named = if is_url(&i.from) { i.from.clone() } else { path.to_string_lossy().into_owned() };
+        pinned(&named, &bytes, &i.with)?;
+        let mut stack = self.stack.clone();
+        stack.push(fs::canonicalize(&self.at).unwrap_or(self.at.clone()));
         let mut inner = Disk { at: path, stack, cycle: None, open: Arc::clone(&self.open) };
         let doc = cells::read_with(&named, bytes, &mut inner, 1).map_err(|e| e.to_string())?;
         if let Some(why) = inner.cycle {
