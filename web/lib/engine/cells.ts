@@ -462,10 +462,11 @@ export interface Problem {
   severity: Severity
   /** The cell's text as written. */
   readonly text: string
-  /** The problem in words: `row 3, cost: "8x.50" is not a number`. */
+  /** The problem in words, every part of the file it names Markdown's inline code:
+   *  ``` row 3, `cost`: `8x.50` is not a number ```. */
   readonly why: string
   /** The same without its place, for a view that shows it on the cell:
-   *  `"8x.50" is not a number`. */
+   *  ``` `8x.50` is not a number ```. */
   readonly reason: string
   /** Where it is in the text `write` gives now: the cell's text inside its quotes, the
    *  control character it holds, the part of its own formula that does not read, an
