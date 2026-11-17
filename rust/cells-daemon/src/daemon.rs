@@ -29,6 +29,14 @@ pub enum Event {
     /// A path the disk says changed, with the file ID its event named when the watcher
     /// names one.
     Disk(Heard),
+    /// What the host heard in one batch (`hosted`, FSEvents): the paths it says changed,
+    /// the folders whose events it lost (every file under each looked at again), and the
+    /// number of its last event, kept as handled once the batch is.
+    Host {
+        heard: Vec<Heard>,
+        lost: Vec<PathBuf>,
+        n: u64,
+    },
     /// A client's request, its paths canonical (`server`), answered when it wants one.
     Ask {
         id: u64,
@@ -369,22 +377,34 @@ impl<W: World> Daemon<W> {
                 Err(RecvTimeoutError::Disconnected) => panic!("the daemon's senders are gone"),
             };
             let mut heard = Vec::new();
+            let mut lost = Vec::new();
+            let mut last = None;
             let mut asked = Vec::new();
-            match first {
+            // what the disk said, gathered; anything else kept to answer after
+            let mut take = |event: Event, asked: &mut Vec<Event>| match event {
                 Event::Disk(h) => heard.push(h),
+                Event::Host { heard: h, lost: l, n } => {
+                    heard.extend(h);
+                    lost.extend(l);
+                    last = Some(n);
+                }
                 other => asked.push(other),
-            }
-            if !heard.is_empty() {
+            };
+            let disk = matches!(first, Event::Disk(_) | Event::Host { .. });
+            take(first, &mut asked);
+            if disk {
                 let began = Instant::now();
                 loop {
                     match events.recv_timeout(STILL.min(PATIENCE.saturating_sub(began.elapsed()))) {
-                        Ok(Event::Disk(h)) => heard.push(h),
-                        Ok(other) => asked.push(other),
+                        Ok(event) => take(event, &mut asked),
                         Err(RecvTimeoutError::Timeout) => break,
                         Err(RecvTimeoutError::Disconnected) => panic!("the daemon's senders are gone"),
                     }
                 }
-                self.hear(&heard);
+                match last {
+                    Some(n) => self.host(&heard, &lost, n),
+                    None => self.hear(&heard, &lost),
+                }
             }
             for event in asked {
                 self.answer(event);
@@ -395,7 +415,7 @@ impl<W: World> Daemon<W> {
 
     pub(crate) fn answer(&mut self, event: Event) {
         match event {
-            Event::Disk(_) => unreachable!("the disk's events are heard, never answered"),
+            Event::Disk(_) | Event::Host { .. } => unreachable!("the disk's events are heard, never answered"),
             Event::Ran(running, returned) => self.land(running, returned),
             Event::Ask { id, client, request: ToEngine::Run { file, script }, answer } => {
                 let answer = answer.expect("a run is answered");
@@ -618,7 +638,7 @@ impl<W: World> Daemon<W> {
             match self.world.replace(file, &was, &applied.text) {
                 Replaced::Done => {}
                 Replaced::Moved => {
-                    self.hear(&[Heard { path: file.to_path_buf(), id: None }]);
+                    self.hear(&[Heard { path: file.to_path_buf(), id: None }], &[]);
                     continue;
                 }
                 Replaced::Failed(why) => return Err(format!("{}: {why}", self.shown(file))),
@@ -878,9 +898,22 @@ impl<W: World> Daemon<W> {
     /// whose text is not what the folder holds as changed (the engine's own write coming
     /// back, or a file touched, is the same text and changes nothing). A folder heard
     /// (moved, removed) is every file held under it and every one the walk finds in it
-    /// now. Each change is a span, ending once every file it reached is stored.
-    pub fn hear(&mut self, heard: &[Heard]) {
+    /// now. A folder whose events were `lost` (the watcher dropped them, or a folder above it
+    /// moved) is looked at whole the same way, the home folder included. Each change is a
+    /// span, ending once every file it reached is stored.
+    pub fn hear(&mut self, heard: &[Heard], lost: &[PathBuf]) {
         let mut paths: BTreeMap<PathBuf, Vec<u64>> = BTreeMap::new();
+        for dir in lost {
+            // a path outside home (the volume's root, for events the kernel dropped): home
+            // looked at whole
+            let dir = if dir.starts_with(&self.home) { dir.clone() } else { self.home.clone() };
+            warned!(folder = %self.shown(&dir), "its events were lost: every file in it looked at again");
+            let under: Vec<PathBuf> =
+                self.index.held().filter(|k| k.path.starts_with(&dir)).map(|k| k.path.clone()).chain(self.world.files(&dir)).collect();
+            for p in under {
+                paths.entry(p).or_default();
+            }
+        }
         for h in heard {
             if table_file(&h.path) {
                 if self.index.at(&h.path).is_some() || visible(&self.home, &h.path) {
@@ -969,6 +1002,16 @@ impl<W: World> Daemon<W> {
         if handed == 0 {
             detail!("same as held: the engine's own writes, or files touched");
         }
+        self.persist();
+    }
+
+    /// What the host heard, up to its event `n`, heard (`hear`), and `n` kept with the index
+    /// as the last event handled once it is: where the host's watcher starts again after a
+    /// restart. Kept with what the batch changed, else as `Index::save` says.
+    pub fn host(&mut self, heard: &[Heard], lost: &[PathBuf], n: u64) {
+        // the index is kept only once the batch is heard, at the end of `hear` or below
+        self.index.handled(n);
+        self.hear(heard, lost);
         self.persist();
     }
 
@@ -1297,9 +1340,10 @@ impl<W: World> Daemon<W> {
         self.index.seen(id, path, sys, &hash(text));
     }
 
-    /// The index kept on disk when it changed.
+    /// The index kept on disk when it changed (`Index::save`).
     fn persist(&mut self) {
-        if let Err(why) = self.index.save(&self.world) {
+        let now = self.world.now();
+        if let Err(why) = self.index.save(&self.world, now) {
             tracing::error!(target: ENGINE, why, "index not kept");
         }
     }

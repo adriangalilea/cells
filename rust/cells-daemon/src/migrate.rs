@@ -209,7 +209,8 @@ pub fn run(world: &mut impl World) -> Result<Migrated, String> {
         }
     }
     world.save(&log::path(), &log::written(&lines))?;
-    known.save(world)?;
+    let now = world.now();
+    known.save(world, now)?;
     for (root, _) in &read_logs {
         let name = format!("{} .cells", root.file_name().and_then(|n| n.to_str()).unwrap_or("disk"));
         match world.trash(&root.join(".cells"), &name) {

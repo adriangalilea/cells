@@ -42,17 +42,20 @@ use std::sync::mpsc::{Receiver, channel};
 
 pub use client::Engine;
 pub use daemon::{Daemon, Event};
-pub use world::{Disk, World};
+pub use world::{Disk, Ears, World};
 
 use server::{Held, Listening, Unbound};
 
-/// The engine run over its socket until the process ends.
-fn run(listening: Listening, events: std::sync::mpsc::Sender<Event>, heard: Receiver<Event>) -> Result<Infallible, String> {
+/// The engine run over its socket until the process ends, the home folder heard by `ears`.
+fn run(listening: Listening, events: std::sync::mpsc::Sender<Event>, heard: Receiver<Event>, ears: Ears) -> Result<Infallible, String> {
     let disk = events.clone();
-    let world = Disk::new(move |heard| {
-        // fails only once the daemon is gone
-        let _ = disk.send(Event::Disk(heard));
-    })?;
+    let world = Disk::new(
+        move |heard| {
+            // fails only once the daemon is gone
+            let _ = disk.send(Event::Disk(heard));
+        },
+        ears,
+    )?;
     tracing::info!(target: trace::ENGINE, socket = %listening.socket.display(), pid = std::process::id(), admits = listening.admits, "listening");
     let mut daemon = Daemon::start(world, events.clone())?;
     // the socket and its lock live as long as the daemon, which never returns
@@ -63,7 +66,8 @@ fn run(listening: Listening, events: std::sync::mpsc::Sender<Event>, heard: Rece
 /// The engine as Cells.app keeps it (`CellsEngine.app`, a launch agent): the lock waited
 /// for when another process holds it, so launchd's keeping it alive never turns into
 /// restarting it against an engine a client started first. Every record goes to `sink`,
-/// the host's writer (`trace`).
+/// the host's writer (`trace`); the home folder is heard by the host (`Ears::Host`), its
+/// batches arriving through `cells_engine_heard` on the daemon's channel.
 pub fn hosted(sink: trace::Sink) -> Result<Infallible, String> {
     trace::to_host(sink);
     // launchd hands a job no terminal: what the host writes on stderr goes to
@@ -80,9 +84,9 @@ pub fn hosted(sink: trace::Sink) -> Result<Infallible, String> {
         assert!(unsafe { libc::dup2(trace.as_raw_fd(), fd) } == fd, "stdio onto {}", trace_path.display());
     }
     let _trace = trace;
-    let (events, heard) = channel();
+    let (events, heard) = hosted::channel_taken();
     match server::listen(events.clone(), Held::Wait) {
-        Ok(listening) => run(listening, events, heard),
+        Ok(listening) => run(listening, events, heard, Ears::Host),
         Err(Unbound::Running) => unreachable!("a hosted engine waits for the lock"),
         Err(Unbound::Failed(why)) => Err(why),
     }
@@ -102,7 +106,7 @@ pub fn engine(args: &[String]) -> Result<Infallible, String> {
     trace::to_stderr(verbose);
     let (events, heard) = channel();
     match server::listen(events.clone(), Held::Leave) {
-        Ok(listening) => run(listening, events, heard),
+        Ok(listening) => run(listening, events, heard, Ears::Own),
         Err(Unbound::Running) => {
             let (engine, _) = Engine::connect("cli")?;
             Err(format!("the engine runs already (pid {})", engine.pid))

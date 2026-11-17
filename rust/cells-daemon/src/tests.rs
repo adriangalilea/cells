@@ -240,7 +240,7 @@ fn daemon() -> Daemon<Sim> {
 
 fn heard(d: &mut Daemon<Sim>, paths: &[&str]) {
     let heard: Vec<Heard> = paths.iter().map(|p| Heard { path: p.into(), id: None }).collect();
-    d.hear(&heard);
+    d.hear(&heard, &[]);
 }
 
 /// The identity of the file held at `path`.
@@ -395,7 +395,7 @@ fn rule_1_a_move_heard_by_its_file_id_is_followed_edited_as_it_moved() {
     let edited = MONEY.replace("income,4200.00", "income,4300.00");
     d.world().put(to, &edited);
     let sys = d.world().id(to);
-    let ((), said) = caught(|| d.hear(&[Heard { path: Q4.into(), id: Some(sys) }, Heard { path: to.into(), id: Some(sys) }]));
+    let ((), said) = caught(|| d.hear(&[Heard { path: Q4.into(), id: Some(sys) }, Heard { path: to.into(), id: Some(sys) }], &[]));
     assert!(said.iter().any(|l| l.contains("~/w/q4/money.cells → ~/Music/q4.cells by its file ID, heard")), "{said:#?}");
     assert_eq!(id(&d, to), q4);
     assert_eq!(d.world().get(QUARTERS), INDEX.replace("./q4/money.cells", "../Music/q4.cells"));
@@ -414,7 +414,7 @@ fn two_files_trading_places_are_each_followed() {
     mv(&mut d, QUARTERS, Q4);
     mv(&mut d, tmp, QUARTERS);
     let at = |path: &str, id| Heard { path: path.into(), id: Some(id) };
-    d.hear(&[at(Q4, a), at(tmp, a), at(QUARTERS, b), at(Q4, b), at(tmp, a), at(QUARTERS, a)]);
+    d.hear(&[at(Q4, a), at(tmp, a), at(QUARTERS, b), at(Q4, b), at(tmp, a), at(QUARTERS, a)], &[]);
     assert_eq!(id(&d, QUARTERS), q4);
     assert_eq!(id(&d, Q4), quarters);
     assert_eq!(d.world().get(Q4), INDEX.replace("./q4/money.cells", "../quarters.cells"), "its import follows the file it reads");
@@ -1376,6 +1376,43 @@ fn every_folder_s_history_moves_into_the_one_and_its_folder_to_the_trash() {
         assert_eq!(d.world().lines().len(), 5);
     });
     assert!(said.iter().any(|l| l.contains("folders=2 lines=5 files=3")), "x, y and t: {said:#?}");
+}
+
+/// The host's last event handled is kept with the index: at once when a file changed with
+/// it, else once a minute, so a busy home folder does not rewrite the index per event.
+#[test]
+fn the_last_event_heard_is_kept_with_the_index() {
+    let mut d = daemon();
+    let kept = |d: &Daemon<Sim>| crate::index::Index::parse(&d.world().get(crate::index::path().to_str().unwrap())).unwrap().heard();
+    assert_eq!(kept(&d), 0, "none heard yet");
+    let at = |path: &str| Heard { path: path.into(), id: None };
+    d.world().put(Q4, &MONEY.replace("cost,180.00,180.00=", "cost,200.00,180.00="));
+    d.host(&[at(Q4)], &[], 41);
+    assert_eq!(kept(&d), 41, "kept with the files the batch changed");
+    d.host(&[at("/h/w/notes.cells")], &[], 42);
+    assert_eq!(kept(&d), 41, "nothing changed: not kept yet");
+    d.world().clock.set(NOW + crate::index::HEARD_KEPT_EVERY);
+    d.host(&[], &[], 43);
+    assert_eq!(kept(&d), 43, "kept a minute on");
+    let d = restarted(d);
+    assert_eq!(d.index().heard(), 43, "where the host starts hearing again");
+}
+
+/// Events lost (FSEvents dropped them, or asks for a scan): the folder looked at whole, a
+/// file moved in it found by its file ID with no event naming it.
+#[test]
+fn a_folder_whose_events_were_lost_is_looked_at_whole() {
+    let mut d = daemon();
+    let q4 = id(&d, Q4);
+    let to = "/h/w/2026/q4.cells";
+    mv(&mut d, Q4, to);
+    d.hear(&[], &[PathBuf::from("/h/w")]);
+    assert_eq!(id(&d, to), q4, "followed");
+    assert_eq!(d.world().get(QUARTERS), INDEX.replace("./q4/money.cells", "./2026/q4.cells"));
+    // the volume's root, for events the kernel dropped: home whole
+    mv(&mut d, to, "/h/Music/q4.cells");
+    d.hear(&[], &[PathBuf::from("/")]);
+    assert_eq!(id(&d, "/h/Music/q4.cells"), q4);
 }
 
 #[test]

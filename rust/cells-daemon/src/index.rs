@@ -161,12 +161,31 @@ pub fn icloud(home: &Path) -> PathBuf {
     home.join("Library/Mobile Documents")
 }
 
-/// Every file the engine holds and every one it saw go, by identity.
+/// Every file the engine holds and every one it saw go, by identity, and the last event of
+/// the host's watcher the engine kept.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct Index {
     files: Vec<Known>,
-    /// Changed since it was last kept on disk.
+    /// The number of the last event the host heard that the engine handled (FSEvents' event
+    /// ID, `hosted`): where the host's watcher starts again after a restart, so nothing that
+    /// happened meanwhile is missed. 0 when none was.
+    heard: u64,
+    /// The files changed since the index was last kept on disk.
     dirty: bool,
+    /// `heard` as last kept on disk, and when it was kept (milliseconds since the epoch).
+    heard_kept: (u64, u64),
+}
+
+/// How often the last event heard is kept when no file changed: an engine stopped replays
+/// at most this much of what it heard once more (a look at each path again, which changes
+/// nothing), and the index is not rewritten for every event a busy home folder makes.
+pub const HEARD_KEPT_EVERY: u64 = 60 * 1000;
+
+/// The index as kept on disk: `{"heard":412,"files":[…]}`, one file a line.
+#[derive(Deserialize)]
+struct Kept {
+    heard: u64,
+    files: Vec<Known>,
 }
 
 /// Where the index is kept.
@@ -180,25 +199,44 @@ impl Index {
     /// be new files, and every history would fork.
     pub fn open(world: &impl World) -> Result<Index, String> {
         let at = path();
-        let text = match world.read(&at) {
-            Found::Text(t) => t,
-            Found::Missing => return Ok(Index::default()),
-            Found::Unreadable(why) => return Err(format!("{}: {why}", at.display())),
-        };
-        let files: Vec<Known> = serde_json::from_str(&text).map_err(|e| format!("{}: no index: {e}", at.display()))?;
-        let index = Index { files, dirty: false };
+        match world.read(&at) {
+            Found::Text(t) => Index::parse(&t).map_err(|why| format!("{}: {why}", at.display())),
+            Found::Missing => Ok(Index::default()),
+            Found::Unreadable(why) => Err(format!("{}: {why}", at.display())),
+        }
+    }
+
+    /// The index in `text`, as `save` writes it.
+    pub fn parse(text: &str) -> Result<Index, String> {
+        let kept: Kept = serde_json::from_str(text).map_err(|e| format!("no index: {e}"))?;
+        let index = Index { files: kept.files, heard: kept.heard, dirty: false, heard_kept: (kept.heard, 0) };
         index.holds_together();
         Ok(index)
     }
 
-    /// Kept on disk when it changed since.
-    pub fn save(&mut self, world: &impl World) -> Result<(), String> {
-        if !std::mem::take(&mut self.dirty) {
+    /// Kept on disk when a file changed since, or when the last event heard did and it was
+    /// last kept `HEARD_KEPT_EVERY` before `now` (milliseconds since the epoch).
+    pub fn save(&mut self, world: &impl World, now: u64) -> Result<(), String> {
+        let heard_due = self.heard != self.heard_kept.0 && now.saturating_sub(self.heard_kept.1) >= HEARD_KEPT_EVERY;
+        if !self.dirty && !heard_due {
             return Ok(());
         }
         self.holds_together();
         let lines: Vec<String> = self.files.iter().map(|k| serde_json::to_string(k).expect("a file known serializes")).collect();
-        world.save(&path(), &format!("[\n{}\n]\n", lines.join(",\n")))
+        world.save(&path(), &format!("{{\"heard\":{},\"files\":[\n{}\n]}}\n", self.heard, lines.join(",\n")))?;
+        self.dirty = false;
+        self.heard_kept = (self.heard, now);
+        Ok(())
+    }
+
+    /// The last event heard that the engine handled (`heard`).
+    pub fn heard(&self) -> u64 {
+        self.heard
+    }
+
+    /// `n` the last event heard that the engine handled: kept with the index (`save`).
+    pub fn handled(&mut self, n: u64) {
+        self.heard = n;
     }
 
     /// Every identity once, and every path held by one file at most.

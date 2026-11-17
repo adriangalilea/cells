@@ -191,21 +191,41 @@ fn written(path: &Path, text: &str) -> Result<(), String> {
     })
 }
 
+/// Who hears the home folder.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Ears {
+    /// The engine, through `notify`: `cells engine` run from a shell, or on a system with no
+    /// host app.
+    Own,
+    /// The host app (`CellsEngine.app`'s FSEvents streams, `hosted`): the home folder
+    /// without `~/Library`, and iCloud Drive's folder in it (`host_hears`). Only a folder
+    /// outside those is watched through `notify`.
+    Host,
+}
+
+/// Whether the host app hears `dir` (`Ears::Host`): `Engine/Hearing.swift` streams the home
+/// folder without `~/Library`, and `~/Library/Mobile Documents`.
+pub fn host_hears(home: &Path, dir: &Path) -> bool {
+    dir.starts_with(home) && (!dir.starts_with(home.join("Library")) || dir.starts_with(icloud(home)))
+}
+
 pub struct Disk {
     watcher: RecommendedWatcher,
+    ears: Ears,
 }
 
 impl Disk {
     /// The disk, every path it says changed under a folder watched handed to `heard`, on the
-    /// watcher's own thread. `notify` names no file ID (its FSEvents backend asks for no
-    /// extended data and says a rename's two sides apart), so a move heard through it is
-    /// followed by the IDs the index holds and by text (`index::follow`, rules 2 to 5): the
-    /// fallback where no host hands the engine FSEvents' own events. A file iCloud keeps only
+    /// watcher's own thread, a folder the host hears for it (`ears`) left to the host.
+    /// `notify` names no file ID (its FSEvents backend asks for no extended data and says a
+    /// rename's two sides apart), so a move heard through it is followed by the IDs the
+    /// index holds and by text (`index::follow`, rules 2 to 5): the fallback where no host
+    /// hands the engine FSEvents' own events. A file iCloud keeps only
     /// in the cloud (dataless, as `~/Documents` holds them under Optimize Mac Storage) is
     /// fetched when read: macOS fetches one for an app by default but refuses a background
     /// agent (EDEADLK, "Resource deadlock avoided") unless the process asks, which this does
     /// for the whole process.
-    pub fn new(heard: impl Fn(Heard) + Send + 'static) -> Result<Disk, String> {
+    pub fn new(heard: impl Fn(Heard) + Send + 'static, ears: Ears) -> Result<Disk, String> {
         #[cfg(target_os = "macos")]
         {
             // <sys/resource.h>; not in the libc crate
@@ -229,7 +249,7 @@ impl Disk {
             Err(e) => tracing::error!(target: crate::trace::ENGINE, why = %e, "the disk's change events failed"),
         })
         .map_err(|e| format!("no file watcher: {e}"))?;
-        Ok(Disk { watcher })
+        Ok(Disk { watcher, ears })
     }
 }
 
@@ -326,6 +346,9 @@ impl World for Disk {
     }
 
     fn watch(&mut self, dir: &Path, whole: bool) -> Result<(), String> {
+        if self.ears == Ears::Host && host_hears(&self.home(), dir) {
+            return Ok(());
+        }
         let mode = if whole { RecursiveMode::Recursive } else { RecursiveMode::NonRecursive };
         self.watcher.watch(dir, mode).map_err(|e| format!("{}: {e}", dir.display()))
     }
