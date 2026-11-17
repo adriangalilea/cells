@@ -4,260 +4,293 @@
 // prelude's text: the engine reads every statement and writes every line.
 
 import CellsCore
+import Foundation
 
 extension Cells {
-    /// A statement of the prelude that reads.
-    public struct Statement: Sendable, Equatable, Identifiable {
-        public enum Kind: Sendable, Equatable {
-            /// `type Money = EUR>=0`: the type as written after its `=`.
-            case type(name: String, spelled: String)
-            /// `import accounts from "accounts.cells"` (`name`), or `import { Kind, rates }
-            /// from "…"` (`names`); its `sha256` when pinned; `autoPacked` when it keeps its
-            /// copy written, `with { pack: "auto" }`; how it stands (`reach`).
-            case `import`(
-                name: String?, names: [String], from: String, sha256: String?, autoPacked: Bool,
-                reach: Reach)
-            /// `fees = ```cells`: a table written inline, its rows as written.
-            case table(name: String, rows: String)
-            /// `rates = run every day at 18:00 in Europe/Madrid`: its schedule as written, its
-            /// script, and the rows its last run stored.
-            case run(name: String, schedule: String, language: String, code: String, rows: String)
-            /// `total: EUR = cost * qty`: a column of the file's table, what follows its `:`
-            /// as a header cell spells it (`EUR=cost * qty`).
-            case column(name: String, spelled: String)
-            /// `look amount: grouped, negative red`: how a column's, a named type's or every
-            /// row's (`row`) values show, its rules as the core writes them, joined by `, `.
-            /// What a rule does is the core's (`Document.looks`), never read from these words.
-            case look(target: String, rules: String)
-            /// ```` ```chart bars ````: a chart, named only when another reads it, its kind
-            /// as its fence's label (empty when read from its entries), its entries as
-            /// written. What it draws is the core's (`Document.charts`, `summary`).
-            case chart(name: String?, kind: String, entries: String)
-            /// `packed accounts = ```cells`, `packed type Kind = …`, `packed look Kind: …`:
-            /// a copy of what the import from `from` names, never the file's own to edit
-            /// (SPEC.md, Packed imports). `copy` is its rows (a table), its type as written
-            /// (a type) or its rules joined by `, ` (a look).
-            case packed(name: String, copied: Copied, from: String, packing: Packing?, copy: String)
-        }
-
-        /// How an import stands, the engine's one answer (`Doc::reach`): its source followed
-        /// (`reached`), not followed with a packed copy read in its place (`standing`), or not
-        /// followed with nothing of it in the file (`missing`: what it names reads as nothing,
-        /// and a packed or sent copy of the file goes without it).
-        public enum Reach: String, Sendable, Equatable {
-            case reached, standing, missing
-        }
-
-        /// What a packed copy copies.
-        public enum Copied: String, Sendable, Equatable {
-            case table, type, look
-        }
-
-        /// How a packed copy stands to its source: the same as it (`current`), not what it
-        /// holds now and so never read (`stale`, `cells pack` refreshes it), or read in its
-        /// place, the source not reached (`standing`).
-        public enum Packing: String, Sendable, Equatable {
-            case current, stale, standing
-        }
-
-        /// Its place among the statements.
-        public let id: Int
-        public let kind: Kind
-        public let exported: Bool
-        /// Its prelude lines, 0-based inside the fences.
-        public let lines: Range<Int>
-        /// A script's code between its fences, as prelude lines: what an edit of the code
-        /// alone replaces.
-        public let codeLines: Range<Int>?
-        /// A table's rows between their fences, a script's stored rows.
-        public let rowsLines: Range<Int>?
-        /// As written, its comments included.
-        public let text: String
-
-        /// The name it gives; nil for an import that names what it takes, and for a look,
-        /// which gives none (it names what it looks at).
-        public var name: String? {
-            switch kind {
-            case .type(let n, _), .table(let n, _), .run(let n, _, _, _, _), .column(let n, _): n
-            case .import(let n, _, _, _, _, _): n
-            case .chart(let n, _, _): n
-            case .look, .packed: nil
-            }
-        }
-
-        /// Whether it is a packed copy: shown as one, read-only, never edited here.
-        public var isCopy: Bool {
-            if case .packed = kind { return true }
-            return false
-        }
+  /// A statement of the prelude that reads.
+  public struct Statement: Sendable, Equatable, Identifiable {
+    public enum Kind: Sendable, Equatable {
+      /// `type Money = EUR>=0`: the type as written after its `=`.
+      case type(name: String, spelled: String)
+      /// `import accounts from "accounts.cells"` (`name`), or `import { Kind, rates }
+      /// from "…"` (`names`); its `sha256` when pinned; `autoPacked` when it keeps its
+      /// copy written, `with { pack: "auto" }`; how it stands (`reach`).
+      case `import`(
+        name: String?, names: [String], from: String, sha256: String?, autoPacked: Bool,
+        reach: Reach)
+      /// `fees = ```cells`: a table written inline, its rows as written.
+      case table(name: String, rows: String)
+      /// `rates = run every day at 18:00 in Europe/Madrid`: its schedule as written, its
+      /// script, and the rows its last run stored.
+      case run(name: String, schedule: String, language: String, code: String, rows: String)
+      /// `total: EUR = cost * qty`: a column of the file's table, what follows its `:`
+      /// as a header cell spells it (`EUR=cost * qty`).
+      case column(name: String, spelled: String)
+      /// `look amount: grouped, negative red`: how a column's, a named type's or every
+      /// row's (`row`) values show, its rules as the core writes them, joined by `, `.
+      /// What a rule does is the core's (`Document.looks`), never read from these words.
+      case look(target: String, rules: String)
+      /// ```` ```chart bars ````: a chart, named only when another reads it, its kind
+      /// as its fence's label (empty when read from its entries), its entries as
+      /// written. What it draws is the core's (`Document.charts`, `summary`).
+      case chart(name: String?, kind: String, entries: String)
+      /// `packed accounts = ```cells`, `packed type Kind = …`, `packed look Kind: …`:
+      /// a copy of what the import from `from` names, never the file's own to edit
+      /// (SPEC.md, Packed imports). `copy` is its rows (a table), its type as written
+      /// (a type) or its rules joined by `, ` (a look).
+      case packed(name: String, copied: Copied, from: String, packing: Packing?, copy: String)
     }
 
-    /// Which packed copies a text holds (`PreludeEdit.pack`).
-    public enum Pack: Sendable, Equatable {
-        /// Every import's whose source is reached: `cells pack`, a self-contained copy.
-        case all
-        /// Those of imports `with { pack: "auto" }`: what every write writes.
-        case auto
-        /// None: every copy taken out.
-        case remove
-        /// Only this import's, where its source is reached: one import packed in place,
-        /// every other copy as it is.
-        case `import`(Statement)
+    /// How an import stands, the engine's one answer (`Doc::reach`): its source followed
+    /// (`reached`), not followed with a packed copy read in its place (`standing`), or not
+    /// followed with nothing of it in the file (`missing`: what it names reads as nothing,
+    /// and a packed or sent copy of the file goes without it).
+    public enum Reach: String, Sendable, Equatable {
+      case reached, standing, missing
     }
 
-    /// A one-line statement, written by the engine as a writer writes it.
-    public enum Line: Sendable, Equatable {
-        /// `type Money = EUR>=0`, `export type …` when exported.
-        case type(String, spelled: String, exported: Bool = false)
-        /// `import accounts from "accounts.cells"`.
-        case `import`(String, from: String)
-        /// `total: EUR = cost * qty`, from what a header cell spells after its `:`.
-        case column(String, spelled: String)
-        /// A script's first line, `rates = run every hour`: its fences follow it.
-        case run(String, schedule: String, exported: Bool = false)
-        /// `look amount: grouped, negative red`, a column's or a named type's look (`row`
-        /// for every row's), its rules joined as a person writes them.
-        case look(String, rules: String)
+    /// What a packed copy copies.
+    public enum Copied: String, Sendable, Equatable {
+      case table, type, look
     }
 
-    /// A change to the prelude: the file's text is the host's to read again.
-    public enum PreludeEdit: Sendable, Equatable {
-        /// Prelude lines (a statement's, a script's code alone) written as `text` (lines
-        /// joined by `\n`; empty takes them out).
-        case replace(Range<Int>, with: String)
-        /// `text` written after the last statement, a prelude opened for it if none is.
-        case add(String)
-        /// The imports' copies written as the engine packs them (SPEC.md, Packed imports):
-        /// `cells pack` for `.all`, the self-contained file `cells pack --out` writes. A
-        /// copy of a source not reached is kept as it is.
-        case pack(Pack)
-        /// An import keeping its copy written (`with { pack: "auto" }` on it, its copy
-        /// written fresh) or no longer (the attribute taken out, the copy left as it is).
-        case keepPacked(Statement, Bool)
-
-        /// The statement taken out.
-        public static func remove(_ s: Statement) -> PreludeEdit { .replace(s.lines, with: "") }
+    /// How a packed copy stands to its source: the same as it (`current`), not what it
+    /// holds now and so never read (`stale`, `cells pack` refreshes it), or read in its
+    /// place, the source not reached (`standing`).
+    public enum Packing: String, Sendable, Equatable {
+      case current, stale, standing
     }
+
+    /// Its place among the statements.
+    public let id: Int
+    public let kind: Kind
+    public let exported: Bool
+    /// Its prelude lines, 0-based inside the fences.
+    public let lines: Range<Int>
+    /// A script's code between its fences, as prelude lines: what an edit of the code
+    /// alone replaces.
+    public let codeLines: Range<Int>?
+    /// A table's rows between their fences, a script's stored rows.
+    public let rowsLines: Range<Int>?
+    /// As written, its comments included.
+    public let text: String
+
+    /// The name it gives; nil for an import that names what it takes, and for a look,
+    /// which gives none (it names what it looks at).
+    public var name: String? {
+      switch kind {
+      case .type(let n, _), .table(let n, _), .run(let n, _, _, _, _), .column(let n, _): n
+      case .import(let n, _, _, _, _, _): n
+      case .chart(let n, _, _): n
+      case .look, .packed: nil
+      }
+    }
+
+    /// Whether it is a packed copy: shown as one, read-only, never edited here.
+    public var isCopy: Bool {
+      if case .packed = kind { return true }
+      return false
+    }
+  }
+
+  /// Which packed copies a text holds (`PreludeEdit.pack`).
+  public enum Pack: Sendable, Equatable {
+    /// Every import's whose source is reached: `cells pack`, a self-contained copy.
+    case all
+    /// Those of imports `with { pack: "auto" }`: what every write writes.
+    case auto
+    /// None: every copy taken out.
+    case remove
+    /// Only this import's, where its source is reached: one import packed in place,
+    /// every other copy as it is.
+    case `import`(Statement)
+  }
+
+  /// A one-line statement, written by the engine as a writer writes it.
+  public enum Line: Sendable, Equatable {
+    /// `type Money = EUR>=0`, `export type …` when exported.
+    case type(String, spelled: String, exported: Bool = false)
+    /// `import accounts from "accounts.cells"`.
+    case `import`(String, from: String)
+    /// `total: EUR = cost * qty`, from what a header cell spells after its `:`.
+    case column(String, spelled: String)
+    /// A script's first line, `rates = run every hour`: its fences follow it.
+    case run(String, schedule: String, exported: Bool = false)
+    /// `look amount: grouped, negative red`, a column's or a named type's look (`row`
+    /// for every row's), its rules joined as a person writes them.
+    case look(String, rules: String)
+  }
+
+  /// A change to the prelude: the file's text is the host's to read again.
+  public enum PreludeEdit: Sendable, Equatable {
+    /// Prelude lines (a statement's, a script's code alone) written as `text` (lines
+    /// joined by `\n`; empty takes them out).
+    case replace(Range<Int>, with: String)
+    /// `text` written after the last statement, a prelude opened for it if none is.
+    case add(String)
+    /// The imports' copies written as the engine packs them (SPEC.md, Packed imports):
+    /// `cells pack` for `.all`, the self-contained file `cells pack --out` writes. A
+    /// copy of a source not reached is kept as it is.
+    case pack(Pack)
+    /// An import keeping its copy written (`with { pack: "auto" }` on it, its copy
+    /// written fresh) or no longer (the attribute taken out, the copy left as it is).
+    case keepPacked(Statement, Bool)
+    /// An import naming another path, every import naming the path it named with it:
+    /// the fix of an import not found, its file found elsewhere (`foundElsewhere`).
+    case importFrom(Statement, String)
+
+    /// The statement taken out.
+    public static func remove(_ s: Statement) -> PreludeEdit { .replace(s.lines, with: "") }
+  }
 }
 
 extension Cells.Document {
-    /// The prelude's statements that read, in order; empty for a plain file or one
-    /// without a prelude. A statement that does not read is in `broken`.
-    public var statements: [Cells.Statement] { engine.said.statements }
+  /// The prelude's statements that read, in order; empty for a plain file or one
+  /// without a prelude. A statement that does not read is in `broken`.
+  public var statements: [Cells.Statement] { engine.said.statements }
 
-    /// The file's text with its prelude edited, every other byte as it is now: read it
-    /// again (`init(reading:at:)`) so what a new line imports is followed.
-    public func text(_ edit: Cells.PreludeEdit) -> String {
-        precondition(typed, "Cells: a plain file has no prelude")
-        // the engine's lines are 1-based inside the fences, 0 for "after the last"
-        let (from, to, text): (UInt32, UInt32, String)
-        switch edit {
-        case .replace(let lines, let t):
-            (from, to, text) = (UInt32(lines.lowerBound + 1), UInt32(lines.upperBound + 1), t)
-        case .add(let t): (from, to, text) = (0, 0, t)
-        case .pack(let how):
-            let (pack, statement) =
-                switch how {
-                case .all: (CellsPackAll, 0)
-                case .auto: (CellsPackAuto, 0)
-                case .remove: (CellsPackRemove, 0)
-                case .import(let s): (CellsPackImport, Self.imported(s))
-                }
-            return engine.with { d in string(cells_packed(d, pack, statement)) }!
-        case .keepPacked(let s, let keep):
-            let i = Self.imported(s)
-            return engine.with { d in string(cells_packing_kept(d, i, keep)) }!
+  /// The file's text with its prelude edited, every other byte as it is now: read it
+  /// again (`init(reading:at:)`) so what a new line imports is followed.
+  public func text(_ edit: Cells.PreludeEdit) -> String {
+    precondition(typed, "Cells: a plain file has no prelude")
+    // the engine's lines are 1-based inside the fences, 0 for "after the last"
+    let (from, to, text): (UInt32, UInt32, String)
+    switch edit {
+    case .replace(let lines, let t):
+      (from, to, text) = (UInt32(lines.lowerBound + 1), UInt32(lines.upperBound + 1), t)
+    case .add(let t): (from, to, text) = (0, 0, t)
+    case .pack(let how):
+      let (pack, statement) =
+        switch how {
+        case .all: (CellsPackAll, 0)
+        case .auto: (CellsPackAuto, 0)
+        case .remove: (CellsPackRemove, 0)
+        case .import(let s): (CellsPackImport, Self.imported(s))
         }
-        precondition(!text.contains("\r"), "Cells: a prelude edit's lines are joined by \\n")
-        return engine.with { d in
-            lending([text]) { s in
-                string(cells_prelude_edited(d, from, to, s[0].ptr, s[0].len))
-            }
-        }!
+      return engine.with { d in string(cells_packed(d, pack, statement)) }!
+    case .keepPacked(let s, let keep):
+      let i = Self.imported(s)
+      return engine.with { d in string(cells_packing_kept(d, i, keep)) }!
+    case .importFrom(let s, let path):
+      let i = Self.imported(s)
+      return engine.with { d in
+        lending([path]) { p in string(cells_import_from(d, i, p[0].ptr, p[0].len)) }
+      }!
     }
+    precondition(!text.contains("\r"), "Cells: a prelude edit's lines are joined by \\n")
+    return engine.with { d in
+      lending([text]) { s in
+        string(cells_prelude_edited(d, from, to, s[0].ptr, s[0].len))
+      }
+    }!
+  }
 
-    /// An import's place among the statements, for the engine's calls on it.
-    private static func imported(_ s: Cells.Statement) -> Int {
-        guard case .import = s.kind else { preconditionFailure("Cells: \(s.kind) is no import") }
-        return s.id
-    }
+  /// The path an import in `folder` names `file` by, as the engine writes it: `./` down
+  /// into the folder's, `../` up to the books beside or above it.
+  public func importPath(_ file: URL, from folder: URL) -> String {
+    engine.with { d in
+      lending([folder.standardizedFileURL.path, file.standardizedFileURL.path]) { s in
+        string(cells_import_path(d, s[0].ptr, s[0].len, s[1].ptr, s[1].len))
+      }
+    }!
+  }
 
-    /// A one-line statement as the engine writes it.
-    public func written(_ line: Cells.Line) -> String {
-        let (kind, exported, name, said) =
-            switch line {
-            case .type(let n, let s, let e): (CellsStatementType, e, n, s)
-            case .import(let n, let f): (CellsStatementImport, false, n, f)
-            case .column(let n, let s): (CellsStatementColumn, false, n, s)
-            case .run(let n, let s, let e): (CellsStatementRun, e, n, s)
-            case .look(let n, let r): (CellsStatementLook, false, n, r)
-            }
-        return engine.with { d in
-            lending([name, said]) { s in
-                string(cells_prelude_line(d, kind, exported, s[0], s[1]))
-            }
-        }!
-    }
+  /// Where the file import `s` names may be, this document read at `at` and not finding
+  /// it (its `reach` missing): each of `held` (the files the host holds) of its name, as
+  /// the import would name it, nearest first. A guess to offer a person, never to follow.
+  public func foundElsewhere(_ s: Cells.Statement, at: URL, held: [URL]) -> [String] {
+    let i = Self.imported(s)
+    let paths = held.map(\.standardizedFileURL.path).joined(separator: "\n")
+    let found = engine.with { d in
+      lending([at.standardizedFileURL.path, paths]) { a in
+        string(cells_found_elsewhere(d, i, a[0].ptr, a[0].len, a[1].ptr, a[1].len))
+      }
+    }!
+    return found.split(separator: "\n").map(String.init)
+  }
+
+  /// An import's place among the statements, for the engine's calls on it.
+  private static func imported(_ s: Cells.Statement) -> Int {
+    guard case .import = s.kind else { preconditionFailure("Cells: \(s.kind) is no import") }
+    return s.id
+  }
+
+  /// A one-line statement as the engine writes it.
+  public func written(_ line: Cells.Line) -> String {
+    let (kind, exported, name, said) =
+      switch line {
+      case .type(let n, let s, let e): (CellsStatementType, e, n, s)
+      case .import(let n, let f): (CellsStatementImport, false, n, f)
+      case .column(let n, let s): (CellsStatementColumn, false, n, s)
+      case .run(let n, let s, let e): (CellsStatementRun, e, n, s)
+      case .look(let n, let r): (CellsStatementLook, false, n, r)
+      }
+    return engine.with { d in
+      lending([name, said]) { s in
+        string(cells_prelude_line(d, kind, exported, s[0], s[1]))
+      }
+    }!
+  }
 }
 
 extension Engine {
-    /// The doc's statements, read once per version.
-    static func statements(_ d: OpaquePointer) -> [Cells.Statement] {
-        (0..<cells_statement_count(d)).map { i in
-            let s = cells_statement(d, i)
-            func part(_ p: CellsStatementPart, _ word: Int = 0) -> String {
-                string(cells_statement_part(d, i, p, word))
-            }
-            let kind: Cells.Statement.Kind =
-                switch s.kind {
-                case CellsStatementType:
-                    .type(name: part(CellsStatementName), spelled: part(CellsStatementSpelled))
-                case CellsStatementImport:
-                    .import(
-                        name: s.words == 0 ? part(CellsStatementName) : nil,
-                        names: (0..<s.words).map { part(CellsStatementWord, $0) },
-                        from: part(CellsStatementFrom),
-                        sha256: { $0.isEmpty ? nil : $0 }(part(CellsStatementHash)),
-                        autoPacked: part(CellsStatementPack) == "auto",
-                        reach: Cells.Statement.Reach(rawValue: part(CellsStatementReach))!)
-                case CellsStatementTable:
-                    .table(name: part(CellsStatementName), rows: part(CellsStatementRows))
-                case CellsStatementRun:
-                    .run(
-                        name: part(CellsStatementName), schedule: part(CellsStatementSchedule),
-                        language: part(CellsStatementLanguage), code: part(CellsStatementCode),
-                        rows: part(CellsStatementRows))
-                case CellsStatementColumn:
-                    .column(name: part(CellsStatementName), spelled: part(CellsStatementSpelled))
-                case CellsStatementLook:
-                    .look(target: part(CellsStatementName), rules: part(CellsStatementSpelled))
-                case CellsStatementChart:
-                    .chart(
-                        name: { $0.isEmpty ? nil : $0 }(part(CellsStatementName)),
-                        kind: part(CellsStatementSpelled), entries: part(CellsStatementRows))
-                case CellsStatementPacked:
-                    {
-                        let copied = Cells.Statement.Copied(rawValue: part(CellsStatementCopied))!
-                        return .packed(
-                            name: part(CellsStatementName), copied: copied,
-                            from: part(CellsStatementFrom),
-                            packing: Cells.Statement.Packing(rawValue: part(CellsStatementPacking)),
-                            copy: part(
-                                copied == .table ? CellsStatementRows : CellsStatementSpelled))
-                    }()
-                default:
-                    preconditionFailure(
-                        "Cells: the core names a statement kind \(s.kind.rawValue) this binding does not know"
-                    )
-                }
-            func lines(_ from: UInt32, _ to: UInt32) -> Range<Int>? {
-                from == 0 ? nil : Int(from) - 1..<Int(to) - 1
-            }
-            return Cells.Statement(
-                id: i, kind: kind, exported: s.exported, lines: lines(s.line, s.end)!,
-                codeLines: lines(s.code_line, s.code_end),
-                rowsLines: lines(s.rows_line, s.rows_end),
-                text: part(CellsStatementText))
+  /// The doc's statements, read once per version.
+  static func statements(_ d: OpaquePointer) -> [Cells.Statement] {
+    (0..<cells_statement_count(d)).map { i in
+      let s = cells_statement(d, i)
+      func part(_ p: CellsStatementPart, _ word: Int = 0) -> String {
+        string(cells_statement_part(d, i, p, word))
+      }
+      let kind: Cells.Statement.Kind =
+        switch s.kind {
+        case CellsStatementType:
+          .type(name: part(CellsStatementName), spelled: part(CellsStatementSpelled))
+        case CellsStatementImport:
+          .import(
+            name: s.words == 0 ? part(CellsStatementName) : nil,
+            names: (0..<s.words).map { part(CellsStatementWord, $0) },
+            from: part(CellsStatementFrom),
+            sha256: { $0.isEmpty ? nil : $0 }(part(CellsStatementHash)),
+            autoPacked: part(CellsStatementPack) == "auto",
+            reach: Cells.Statement.Reach(rawValue: part(CellsStatementReach))!)
+        case CellsStatementTable:
+          .table(name: part(CellsStatementName), rows: part(CellsStatementRows))
+        case CellsStatementRun:
+          .run(
+            name: part(CellsStatementName), schedule: part(CellsStatementSchedule),
+            language: part(CellsStatementLanguage), code: part(CellsStatementCode),
+            rows: part(CellsStatementRows))
+        case CellsStatementColumn:
+          .column(name: part(CellsStatementName), spelled: part(CellsStatementSpelled))
+        case CellsStatementLook:
+          .look(target: part(CellsStatementName), rules: part(CellsStatementSpelled))
+        case CellsStatementChart:
+          .chart(
+            name: { $0.isEmpty ? nil : $0 }(part(CellsStatementName)),
+            kind: part(CellsStatementSpelled), entries: part(CellsStatementRows))
+        case CellsStatementPacked:
+          {
+            let copied = Cells.Statement.Copied(rawValue: part(CellsStatementCopied))!
+            return .packed(
+              name: part(CellsStatementName), copied: copied,
+              from: part(CellsStatementFrom),
+              packing: Cells.Statement.Packing(rawValue: part(CellsStatementPacking)),
+              copy: part(
+                copied == .table ? CellsStatementRows : CellsStatementSpelled))
+          }()
+        default:
+          preconditionFailure(
+            "Cells: the core names a statement kind \(s.kind.rawValue) this binding does not know"
+          )
         }
+      func lines(_ from: UInt32, _ to: UInt32) -> Range<Int>? {
+        from == 0 ? nil : Int(from) - 1..<Int(to) - 1
+      }
+      return Cells.Statement(
+        id: i, kind: kind, exported: s.exported, lines: lines(s.line, s.end)!,
+        codeLines: lines(s.code_line, s.code_end),
+        rowsLines: lines(s.rows_line, s.rows_end),
+        text: part(CellsStatementText))
     }
+  }
 }

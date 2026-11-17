@@ -489,6 +489,74 @@ pub unsafe extern "C" fn cells_packing_kept(d: *mut CellsDoc, statement: usize, 
     CellsStr::of(&d.out)
 }
 
+/// The doc's text with the import that is statement `statement` naming `now` (`len` bytes)
+/// in place of the path it names: `cells::Doc::import_from`, the fix of an import not found.
+///
+/// # Safety
+/// `d` is a live Cells doc; `statement` is one of its imports; `now` points at `len` bytes
+/// of UTF-8.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn cells_import_from(d: *mut CellsDoc, statement: usize, now: *const c_char, len: usize) -> CellsStr {
+    // SAFETY: the caller's promise.
+    let d = unsafe { doc(d) };
+    // SAFETY: the caller's promise.
+    let now = unsafe { text_of(now, len) }.to_owned();
+    d.out = d.doc.import_from(statement, &now);
+    CellsStr::of(&d.out)
+}
+
+/// The path an import in the folder `dir` (`dir_len` bytes) names `path` (`path_len`
+/// bytes) by: `cells::files::relative`, `./` down and `../` up. Held in `d`'s buffer, like
+/// every text it hands out.
+///
+/// # Safety
+/// `d` is a live Cells doc; `dir` and `path` point at their lengths of UTF-8, both resolved
+/// paths from `/`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn cells_import_path(
+    d: *mut CellsDoc,
+    dir: *const c_char,
+    dir_len: usize,
+    path: *const c_char,
+    path_len: usize,
+) -> CellsStr {
+    // SAFETY: the caller's promise.
+    let d = unsafe { doc(d) };
+    // SAFETY: the caller's promise.
+    let (dir, path) = unsafe { (text_of(dir, dir_len).to_owned(), text_of(path, path_len).to_owned()) };
+    d.out = cells::files::relative(&dir, &path);
+    CellsStr::of(&d.out)
+}
+
+/// Where the file the import that is statement `statement` names may be, the doc read at
+/// `at` (`at_len` bytes) and not finding it: `cells::files::found_elsewhere` over `held`
+/// (`held_len` bytes, the host's files' resolved paths, one a line), each as the import
+/// would name it, one a line, nearest first; empty when none is.
+///
+/// # Safety
+/// `d` is a live Cells doc; `statement` is one of its imports; `at` and `held` point at
+/// their lengths of UTF-8.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn cells_found_elsewhere(
+    d: *mut CellsDoc,
+    statement: usize,
+    at: *const c_char,
+    at_len: usize,
+    held: *const c_char,
+    held_len: usize,
+) -> CellsStr {
+    // SAFETY: the caller's promise.
+    let d = unsafe { doc(d) };
+    // SAFETY: the caller's promise.
+    let (at, held) = unsafe { (text_of(at, at_len).to_owned(), text_of(held, held_len).to_owned()) };
+    let Some(cells::Statement::Import { from, .. }) = d.doc.statements().get(statement) else {
+        panic!("statement {statement} is no import")
+    };
+    let held: Vec<&str> = held.lines().filter(|l| !l.is_empty()).collect();
+    d.out = cells::files::found_elsewhere(&at, from, &held).join("\n");
+    CellsStr::of(&d.out)
+}
+
 /// A typed header cell as a writer writes it (`cells::prelude::header_cell`): `name` and
 /// what follows its `:` (`EUR=cost * qty`) as `total: EUR = cost * qty`, the form a
 /// declaration has. Unquoted: the table's writer quotes the field. Held in `d`'s buffer,
