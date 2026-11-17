@@ -190,6 +190,7 @@ impl Index {
         if !std::mem::take(&mut self.dirty) {
             return Ok(());
         }
+        self.holds_together();
         let lines: Vec<String> = self.files.iter().map(|k| serde_json::to_string(k).expect("a file known serializes")).collect();
         world.save(&path(), &format!("[\n{}\n]\n", lines.join(",\n")))
     }
@@ -243,9 +244,10 @@ impl Index {
     }
 
     /// `id` seen at `path`, holding the text whose SHA-256 is `hash`, with the system ID
-    /// `sys`: where it stayed, moved or came back.
+    /// `sys`: where it stayed, moved or came back. Mid-moment a path may be held twice (two
+    /// files trading places, one recorded before the other): the index holds together again by
+    /// the time it is saved, where that is checked.
     pub fn seen(&mut self, id: &FileId, path: &Path, sys: Option<u64>, hash: &str) {
-        assert!(self.at(path).is_none_or(|k| k.id == *id), "{} seen where another file is held", path.display());
         let k = self.files.iter_mut().find(|k| k.id == *id).unwrap_or_else(|| panic!("{id} is no file known"));
         let now = Known { id: id.clone(), path: path.to_path_buf(), sys, hash: hash.to_owned(), gone: false };
         if *k != now {

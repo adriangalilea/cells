@@ -256,15 +256,20 @@ impl Folder {
                         Some((was, now, k.doc.clone()?))
                     })
                     .collect();
+                // every moved file lifted before any is put down: two files may trade places
+                let mut lifted = Vec::new();
                 for (from, to) in &moves {
                     if from_of.get(to) == Some(from) {
                         assert!(self.texts.contains_key(to), "{from} moved to {to}, seen at neither");
                         continue;
                     }
                     let text = self.texts.remove(from).unwrap_or_else(|| panic!("{from} moved, never held"));
-                    assert!(!self.texts.contains_key(to), "{from} moved onto {to}, a file held");
-                    self.texts.insert(to.clone(), text);
                     self.known.remove(from);
+                    lifted.push((to, text));
+                }
+                for (to, text) in lifted {
+                    assert!(!self.texts.contains_key(to), "a file moved onto {to}, a file held");
+                    self.texts.insert(to.clone(), text);
                 }
                 for (was, now, doc) in before {
                     let mut named = Vec::new();

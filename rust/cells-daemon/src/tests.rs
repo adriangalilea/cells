@@ -402,6 +402,24 @@ fn rule_1_a_move_heard_by_its_file_id_is_followed_edited_as_it_moved() {
     assert_eq!(of(&d, &q4), [("relocated".to_owned(), to.to_owned()), ("external".to_owned(), to.to_owned())], "moved, then its edit");
 }
 
+/// Two files trading places in one moment (through a name no table has): each is followed
+/// to the other's path, though each path was the other's file's when the moment began.
+#[test]
+fn two_files_trading_places_are_each_followed() {
+    let mut d = daemon();
+    let (q4, quarters) = (id(&d, Q4), id(&d, QUARTERS));
+    let (a, b) = (d.world().id(Q4), d.world().id(QUARTERS));
+    let tmp = "/h/w/trading";
+    mv(&mut d, Q4, tmp);
+    mv(&mut d, QUARTERS, Q4);
+    mv(&mut d, tmp, QUARTERS);
+    let at = |path: &str, id| Heard { path: path.into(), id: Some(id) };
+    d.hear(&[at(Q4, a), at(tmp, a), at(QUARTERS, b), at(Q4, b), at(tmp, a), at(QUARTERS, a)]);
+    assert_eq!(id(&d, QUARTERS), q4);
+    assert_eq!(id(&d, Q4), quarters);
+    assert_eq!(d.world().get(Q4), INDEX.replace("./q4/money.cells", "../quarters.cells"), "its import follows the file it reads");
+}
+
 /// Rule 2: an editor's atomic save gives the file another system ID; it is the same file.
 #[test]
 fn rule_2_an_atomic_save_keeps_the_file_s_identity() {
