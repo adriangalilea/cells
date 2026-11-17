@@ -171,7 +171,8 @@ impl World for Sim {
             let there = to.join(p.strip_prefix(path).unwrap());
             let text = self.files.borrow_mut().remove(&p).unwrap();
             self.files.borrow_mut().insert(there.clone(), text);
-            if let Some(id) = self.ids.borrow_mut().remove(&p) {
+            let id = self.ids.borrow_mut().remove(&p);
+            if let Some(id) = id {
                 self.ids.borrow_mut().insert(there, id);
             }
         }
@@ -1252,6 +1253,100 @@ fn a_cells_file_importing_a_csv_reads_it_plain() {
     // the `.cells` file's own `=` is still a formula, computed over the csv's amounts
     assert_eq!(doc.columns()[1].origin(0), cells::Origin::Cell);
     assert_eq!(doc.text(0, 1), "149.86=SUM(money.amount)");
+}
+
+/// A folder's own log as it was written: each line its fields, numbered from 1 and linked
+/// to the one before.
+fn folder_log(lines: Vec<serde_json::Value>) -> String {
+    let mut prev = String::new();
+    let mut out = String::new();
+    for (i, line) in lines.into_iter().enumerate() {
+        let serde_json::Value::Object(fields) = line else { panic!("a line is an object") };
+        let mut l = serde_json::Map::new();
+        l.insert("n".into(), (i as u64 + 1).into());
+        l.insert("prev".into(), prev.clone().into());
+        l.extend(fields);
+        let raw = serde_json::to_string(&l).unwrap();
+        prev = hash(&raw);
+        out.push_str(&raw);
+        out.push('\n');
+    }
+    out
+}
+
+/// Two folders that kept their own history: `~/a` saved `x.cells` (what it reached stored
+/// in `~/a/y.cells`, and in `~/b/t.cells` through an import), then `x.cells` moved into `~/b`,
+/// heard gone in `~/a` and found in `~/b`.
+#[test]
+fn every_folder_s_history_moves_into_the_one_and_its_folder_to_the_trash() {
+    use serde_json::json;
+    let text = |what: &str, v: &str| format!("{what}:num\n{v}\n");
+    let (x0, x1, y0, y1, t0, t1) = (text("x", "1"), text("x", "2"), text("y", "1"), text("y", "2"), text("t", "1"), text("t", "2"));
+    let sim = Sim::default();
+    sim.put("/h/a/y.cells", &y1);
+    sim.put("/h/b/x.cells", &x1);
+    sim.put("/h/b/t.cells", &t1);
+    let a = folder_log(vec![
+        json!({"at": 1000, "kind": "external", "path": "x.cells", "was": hash(&x0), "now": hash(&x1), "by": null}),
+        json!({"at": 1000, "kind": "store", "path": "y.cells", "cause": {"n": 1}, "via": ["x.cells"], "against": hash(&y0), "now": hash(&y1), "stored": []}),
+        json!({"at": 1500, "kind": "external", "path": "x.cells", "was": hash(&x1), "now": null, "by": null}),
+    ]);
+    let b = folder_log(vec![
+        json!({"at": 1000, "kind": "store", "path": "t.cells", "cause": {"n": 1, "folder": "/h/a"}, "via": ["/h/a/x.cells"], "against": hash(&t0), "now": hash(&t1), "stored": []}),
+        json!({"at": 2000, "kind": "relocated", "path": "x.cells", "from": "/h/a/x.cells", "now": hash(&x1)}),
+    ]);
+    sim.put("/h/a/.cells/log.jsonl", &a);
+    sim.put("/h/b/.cells/log.jsonl", &b);
+    for (folder, versions) in [("/h/a", [&x0, &x1, &y0, &y1]), ("/h/b", [&x1, &t0, &t1, &t1])] {
+        for v in versions {
+            sim.put(&format!("{folder}/.cells/versions/{}", hash(v)), v);
+        }
+    }
+    sim.put("/h/a/.cells/serve.lock", "");
+    let ((), said) = caught(|| {
+        let d = started(sim);
+        let lines = d.world().lines();
+        let shape: Vec<(u64, String, Option<u64>)> =
+            lines.iter().map(|l| (l.n, l.entry.path().to_owned(), l.entry.cause().map(|c| c.n))).collect();
+        assert_eq!(
+            shape,
+            [
+                (1, "/h/a/x.cells".to_owned(), None),
+                (2, "/h/a/y.cells".to_owned(), Some(1)),
+                (3, "/h/b/t.cells".to_owned(), Some(1)),
+                (4, "/h/a/x.cells".to_owned(), None),
+                (5, "/h/b/x.cells".to_owned(), None)
+            ],
+            "by time, a root before what follows it, every cause numbered anew"
+        );
+        assert!(matches!(&lines[4].entry, crate::log::Logged::Relocated { from, .. } if from == "/h/a/x.cells"));
+        assert_eq!(lines[0].file, lines[4].file, "the file moved is one file across both folders");
+        assert_eq!(lines[0].file, lines[3].file);
+        assert_eq!(id(&d, "/h/b/x.cells"), lines[0].file, "the index holds it where it is");
+        assert_eq!(d.world().get(crate::log::path().to_str().unwrap()), crate::log::written(&lines), "one chain, each line linked");
+        for v in [&x0, &x1, &y0, &y1, &t0, &t1] {
+            assert_eq!(&d.world().get(crate::log::version(&hash(v)).to_str().unwrap()), v, "every version copied");
+        }
+        for folder in ["/h/a", "/h/b"] {
+            assert!(!d.world().files.borrow().keys().any(|p| p.starts_with(format!("{folder}/.cells"))), "{folder}/.cells moved");
+        }
+        assert_eq!(d.world().get("/h/.Trash/a .cells/log.jsonl"), a, "in the Trash whole, nothing deleted");
+        assert_eq!(d.world().get("/h/.Trash/b .cells/log.jsonl"), b);
+        assert!(d.world().files.borrow().contains_key(Path::new("/h/.Trash/a .cells/serve.lock")));
+        let mut d = d;
+        let chains = history(&mut d, Some("/h/b/x.cells"), None);
+        assert_eq!(chains.len(), 3, "its history, from both folders: {chains:#?}");
+        // started again: the history there, nothing looked for again
+        let d = restarted(d);
+        assert_eq!(d.world().lines().len(), 5);
+    });
+    assert!(said.iter().any(|l| l.contains("folders=2 lines=5 files=3")), "x, y and t: {said:#?}");
+}
+
+#[test]
+fn a_home_with_no_folder_history_starts_one_empty() {
+    let d = daemon();
+    assert_eq!(d.world().files.borrow().get(&crate::log::path()).map(String::as_str), Some(""), "looked for once");
 }
 
 #[test]

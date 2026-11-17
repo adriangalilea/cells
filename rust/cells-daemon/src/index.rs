@@ -22,6 +22,16 @@ use crate::world::{Found, World};
 pub struct FileId(String);
 
 impl FileId {
+    /// An identity from random `bits`, drawn again while it is one `taken` says is known.
+    pub fn mint(mut bits: impl FnMut() -> u64, taken: impl Fn(&FileId) -> bool) -> FileId {
+        loop {
+            let id = FileId(String::from_utf8(cells::value::id_from(bits()).to_vec()).expect("base 32 is ASCII"));
+            if !taken(&id) {
+                return id;
+            }
+        }
+    }
+
     pub fn as_str(&self) -> &str {
         &self.0
     }
@@ -217,12 +227,7 @@ impl Index {
     /// while it names one known).
     pub fn add(&mut self, path: &Path, sys: Option<u64>, hash: &str, mut bits: impl FnMut() -> u64) -> FileId {
         assert!(self.at(path).is_none(), "{} added, held already", path.display());
-        let id = loop {
-            let id = FileId(String::from_utf8(cells::value::id_from(bits()).to_vec()).expect("base 32 is ASCII"));
-            if !self.files.iter().any(|k| k.id == id) {
-                break id;
-            }
-        };
+        let id = FileId::mint(&mut bits, |id| self.files.iter().any(|k| k.id == *id));
         self.files.push(Known { id: id.clone(), path: path.to_path_buf(), sys, hash: hash.to_owned(), gone: false });
         self.dirty = true;
         id

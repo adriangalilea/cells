@@ -29,6 +29,7 @@ pub mod history;
 pub mod hosted;
 pub mod index;
 pub mod log;
+pub mod migrate;
 pub mod schedule;
 pub mod server;
 pub mod trace;

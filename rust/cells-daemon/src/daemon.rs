@@ -211,12 +211,17 @@ impl<W: World> Daemon<W> {
     /// reads: its history and index read, the home folder watched whole, and every file
     /// under it walked and followed against what the index last knew (a file moved,
     /// changed or removed while the engine was not running is logged as such), each read
-    /// as the start of what the engine holds. A history or an index the disk will not give
-    /// is refused, saying why: continued from nothing, every history would fork.
-    pub fn start(world: W, back: Sender<Event>) -> Result<Daemon<W>, String> {
+    /// as the start of what the engine holds. An engine that keeps no history yet first
+    /// moves every folder's own into it (`migrate`). A history or an index the disk will
+    /// not give is refused, saying why: continued from nothing, every history would fork.
+    pub fn start(mut world: W, back: Sender<Event>) -> Result<Daemon<W>, String> {
         let home = world.home();
         let span = tracing::info_span!(target: ENGINE, "start", home = %home.display());
         let _starting = span.enter();
+        if matches!(world.read(&log::path()), Found::Missing) {
+            let moved = crate::migrate::run(&mut world)?;
+            said!(folders = moved.folders, lines = moved.lines, files = moved.files, "every folder's history moved into the engine's");
+        }
         let (log, broken) = Log::open(&world)?;
         if let Some(why) = broken {
             warned!(why, "history broken: kept and continued, what it says past there cannot be trusted");
