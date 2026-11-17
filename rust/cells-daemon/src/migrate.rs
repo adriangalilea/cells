@@ -190,7 +190,8 @@ pub fn run(world: &mut impl World) -> Result<Migrated, String> {
             path: at.clone(),
             sys: if here { world.file_id(&at) } else { None },
             hash: held.clone(),
-            gone: !here,
+            // a file the old logs held and the disk does not: remembered from the move on
+            gone: (!here).then(|| world.now()),
         });
     }
     for (root, _) in &read_logs {

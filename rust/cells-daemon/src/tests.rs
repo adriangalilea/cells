@@ -476,8 +476,25 @@ fn rule_5_a_file_gone_and_another_come_with_other_text_is_no_move() {
     heard(&mut d, &[Q4, to]);
     assert_eq!(d.world().get(QUARTERS), INDEX, "never guessed: the index still names where it was");
     assert_ne!(id(&d, to), q4, "another file");
-    assert!(d.index().get(&q4).gone, "the one gone remembered");
+    assert_eq!(d.index().get(&q4).gone, Some(NOW), "the one gone remembered");
     assert_eq!(kinds(&d.world().log()), ["external", "external"]);
+}
+
+/// A file gone is remembered for `FORGOTTEN_AFTER`, then forgotten: one of its text come after
+/// is a file of its own, and the index holds only what the person keeps.
+#[test]
+fn a_file_gone_long_ago_is_forgotten() {
+    let mut d = daemon();
+    let q4 = id(&d, Q4);
+    let away = d.world().remove(Q4);
+    heard(&mut d, &[Q4]);
+    d.world().clock.set(NOW + crate::index::FORGOTTEN_AFTER);
+    let to = "/h/Music/q4.cells";
+    d.world().put(to, &away);
+    heard(&mut d, &[to]);
+    assert!(d.index().known().iter().all(|k| k.id != q4), "forgotten");
+    assert_ne!(id(&d, to), q4, "a file of its own");
+    assert_eq!(d.world().get(QUARTERS), INDEX, "never guessed: its importer still names where it was");
 }
 
 #[test]
@@ -713,7 +730,7 @@ fn a_file_trashed_is_gone() {
     let q4 = id(&d, Q4);
     mv(&mut d, Q4, "/h/.Trash/money.cells");
     heard(&mut d, &[Q4, "/h/.Trash/money.cells"]);
-    assert!(d.index().get(&q4).gone, "never followed into the Trash");
+    assert!(d.index().get(&q4).gone.is_some(), "never followed into the Trash");
     assert_eq!(d.world().get(QUARTERS), INDEX);
 }
 

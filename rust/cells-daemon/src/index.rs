@@ -72,11 +72,17 @@ pub struct Known {
     /// The SHA-256 of the text last held: what finds it again once its ID is lost (a copy
     /// across disks, iCloud's replacement of a file).
     pub hash: String,
-    /// Seen gone and found nowhere since: remembered, so a file of its text come anywhere
-    /// later, across restarts, is it.
-    #[serde(skip_serializing_if = "std::ops::Not::not", default)]
-    pub gone: bool,
+    /// When it was seen gone (milliseconds since the epoch), found nowhere since: remembered
+    /// for `FORGOTTEN_AFTER`, so a file of its text come anywhere in that time, across restarts,
+    /// is it. Its history outlives it in the log, under its identity.
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub gone: Option<u64>,
 }
+
+/// How long a file gone is remembered: a Trash's Put Back, a download of it again, iCloud
+/// giving it back. Past that, a file of its text is a new file, and the index stays the size
+/// of what the person keeps.
+pub const FORGOTTEN_AFTER: u64 = 90 * 24 * 60 * 60 * 1000;
 
 /// A path the disk said changed, and the system's ID of the file its event was about when
 /// the watcher says it (FSEvents' extended data; `notify` says none).
@@ -201,13 +207,13 @@ impl Index {
         let mut paths = BTreeSet::new();
         for k in &self.files {
             assert!(ids.insert(&k.id), "{} known twice", k.id);
-            assert!(k.gone || paths.insert(&k.path), "{} held by two files", k.path.display());
+            assert!(k.gone.is_some() || paths.insert(&k.path), "{} held by two files", k.path.display());
         }
     }
 
     /// The file held at `path`, not gone.
     pub fn at(&self, path: &Path) -> Option<&Known> {
-        self.files.iter().find(|k| !k.gone && k.path == path)
+        self.files.iter().find(|k| k.gone.is_none() && k.path == path)
     }
 
     pub fn get(&self, id: &FileId) -> &Known {
@@ -216,7 +222,7 @@ impl Index {
 
     /// Every file held, not gone.
     pub fn held(&self) -> impl Iterator<Item = &Known> {
-        self.files.iter().filter(|k| !k.gone)
+        self.files.iter().filter(|k| k.gone.is_none())
     }
 
     /// Every file known, gone ones included.
@@ -229,7 +235,7 @@ impl Index {
     pub fn add(&mut self, path: &Path, sys: Option<u64>, hash: &str, mut bits: impl FnMut() -> u64) -> FileId {
         assert!(self.at(path).is_none(), "{} added, held already", path.display());
         let id = FileId::mint(&mut bits, |id| self.files.iter().any(|k| k.id == *id));
-        self.files.push(Known { id: id.clone(), path: path.to_path_buf(), sys, hash: hash.to_owned(), gone: false });
+        self.files.push(Known { id: id.clone(), path: path.to_path_buf(), sys, hash: hash.to_owned(), gone: None });
         self.dirty = true;
         id
     }
@@ -238,7 +244,7 @@ impl Index {
     /// name it already).
     pub fn insert(&mut self, known: Known) {
         assert!(!self.files.iter().any(|k| k.id == known.id), "{} known twice", known.id);
-        assert!(known.gone || self.at(&known.path).is_none(), "{} held by two files", known.path.display());
+        assert!(known.gone.is_some() || self.at(&known.path).is_none(), "{} held by two files", known.path.display());
         self.files.push(known);
         self.dirty = true;
     }
@@ -249,19 +255,27 @@ impl Index {
     /// the time it is saved, where that is checked.
     pub fn seen(&mut self, id: &FileId, path: &Path, sys: Option<u64>, hash: &str) {
         let k = self.files.iter_mut().find(|k| k.id == *id).unwrap_or_else(|| panic!("{id} is no file known"));
-        let now = Known { id: id.clone(), path: path.to_path_buf(), sys, hash: hash.to_owned(), gone: false };
+        let now = Known { id: id.clone(), path: path.to_path_buf(), sys, hash: hash.to_owned(), gone: None };
         if *k != now {
             *k = now;
             self.dirty = true;
         }
     }
 
-    /// `id` seen gone.
-    pub fn gone(&mut self, id: &FileId) {
+    /// `id` seen gone at `now` (milliseconds since the epoch).
+    pub fn gone(&mut self, id: &FileId, now: u64) {
         let k = self.files.iter_mut().find(|k| k.id == *id).unwrap_or_else(|| panic!("{id} is no file known"));
-        assert!(!k.gone, "{id} gone twice");
-        k.gone = true;
+        assert!(k.gone.is_none(), "{id} gone twice");
+        k.gone = Some(now);
         self.dirty = true;
+    }
+
+    /// The files gone longer than `FORGOTTEN_AFTER` at `now` (milliseconds since the epoch)
+    /// forgotten: called before every `follow`, so none of them is found again.
+    pub fn forget(&mut self, now: u64) {
+        let before = self.files.len();
+        self.files.retain(|k| k.gone.is_none_or(|at| now.saturating_sub(at) < FORGOTTEN_AFTER));
+        self.dirty |= self.files.len() != before;
     }
 
     /// What became of each file `looked` reaches, by one rule, in order:
@@ -346,7 +360,7 @@ impl Index {
                 gone.push(k);
             }
         }
-        let remembered: Vec<&Known> = self.files.iter().filter(|k| k.gone).collect();
+        let remembered: Vec<&Known> = self.files.iter().filter(|k| k.gone.is_some()).collect();
         let away: Vec<&Known> = gone.iter().copied().chain(remembered).collect();
         let come: Vec<usize> =
             (0..looked.len()).filter(|i| looked[*i].now.is_some() && !stayed.contains(i) && !claimed.contains(i)).collect();
@@ -489,7 +503,7 @@ mod tests {
         let id = known(&mut index, "/h/a.cells", Some(1), "x");
         let fates = index.follow(&[looked("/h/a.cells", &[], None), looked("/h/b.cells", &[], Some(("y", Some(2))))]);
         assert_eq!(fates, [Fate::Gone { id: id.clone(), path: "/h/a.cells".into() }, Fate::New { path: "/h/b.cells".into() }]);
-        index.gone(&id);
+        index.gone(&id, 0);
         // later, anywhere: a file of the text it last held
         let fates = index.follow(&[looked("/h/far/away.cells", &[], Some(("x", Some(3))))]);
         assert_eq!(fates, [Fate::Moved { id, from: "/h/a.cells".into(), to: "/h/far/away.cells".into(), by: By::Text }]);

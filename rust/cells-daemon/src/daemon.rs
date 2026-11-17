@@ -257,6 +257,7 @@ impl<W: World> Daemon<W> {
         let mut paths: BTreeMap<PathBuf, Vec<u64>> = self.world.files(&self.home).into_iter().map(|p| (p, Vec::new())).collect();
         paths.extend(self.index.held().map(|k| (k.path.clone(), Vec::new())));
         let (looked, texts) = self.look(paths);
+        self.index.forget(self.world.now());
         let fates = self.index.follow(&looked);
         // every identity settled before any file is read, so a file read through an import
         // is the one the index says it is
@@ -286,7 +287,7 @@ impl<W: World> Daemon<W> {
                 }
                 Fate::Gone { id, path } => {
                     let was = self.index.get(id).hash.clone();
-                    self.index.gone(id);
+                    self.index.gone(id, self.world.now());
                     let span = tracing::info_span!(target: ENGINE, "change", path = %self.shown(path), what = "removed");
                     let _changing = span.enter();
                     let root =
@@ -909,6 +910,7 @@ impl<W: World> Daemon<W> {
         let shown: Vec<String> = paths.keys().map(|p| self.shown(p)).collect();
         detail!(paths = shown.join(" "), "heard");
         let (looked, texts) = self.look(paths);
+        self.index.forget(self.world.now());
         let fates = self.index.follow(&looked);
         let mut handed = 0;
         for fate in &fates {
@@ -1003,7 +1005,7 @@ impl<W: World> Daemon<W> {
     fn removed(&mut self, id: &FileId, path: &Path) {
         let k = key(path);
         let was = self.index.get(id).hash.clone();
-        self.index.gone(id);
+        self.index.gone(id, self.world.now());
         let span = tracing::info_span!(target: ENGINE, "change", path = %self.shown(path), what = "removed");
         let _changing = span.enter();
         self.changed.insert(path.to_path_buf());
