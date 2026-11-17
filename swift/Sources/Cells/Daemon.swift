@@ -19,6 +19,9 @@
         public final class Daemon: @unchecked Sendable {
             /// The engine's process.
             public let pid: Int32
+            /// The engine Cells.app keeps (`CellsEngine.app`), whose reach the app tells it
+            /// (`reach`); false for one a client started, which reaches what its start said.
+            public let hosted: Bool
             /// Every file whose version changed, as the engine tells them, in batches.
             public let changes: AsyncStream<[URL]>
 
@@ -30,7 +33,7 @@
             private var answer: Result<[String: Any], DaemonError>?
 
             /// The protocol's version, the engine's own (`wire::VERSION`).
-            static let version = 3
+            static let version = 4
 
             /// A path as the engine names it: real, every link resolved (`realpath`), so
             /// `/tmp/work` is `/private/tmp/work`. Never `resolvingSymlinksInPath()`, which
@@ -82,7 +85,8 @@
                 switch hello["say"] as? String {
                 case "hello" where hello["version"] as? Int == version:
                     return Daemon(
-                        handle: handle, lines: lines, pid: Int32(hello["pid"] as? Int ?? -1))
+                        handle: handle, lines: lines, pid: Int32(hello["pid"] as! Int),
+                        hosted: hello["hosted"] as! Bool)
                 case "refused":
                     throw .refused(hello["why"] as? String ?? "refused")
                 default:
@@ -93,7 +97,9 @@
             /// The running engine, or one started from `command` (the `cells` the app carries)
             /// when nothing answers: detached, its trace in `engine.trace` beside the socket, as
             /// the language server starts it. Two clients starting one at once start two; the
-            /// second finds the first holding the engine's lock and leaves.
+            /// second finds the first holding the engine's lock and leaves. One started here
+            /// enters no protected folder (`--reach none`): macOS judges it as this client, so
+            /// a folder it touched would ask the person in this client's name.
             public static func connectOrStart(client: String, command: URL)
                 async throws(DaemonError) -> Daemon
             {
@@ -107,7 +113,7 @@
                 }
                 let process = Process()
                 process.executableURL = command
-                process.arguments = ["engine"]
+                process.arguments = ["engine", "--reach", "none"]
                 guard let out = try? FileHandle(forWritingTo: trace) else {
                     throw .unreachable("\(trace.path): not writable")
                 }
@@ -134,9 +140,10 @@
                 }
             }
 
-            private init(handle: FileHandle, lines: Lines, pid: Int32) {
+            private init(handle: FileHandle, lines: Lines, pid: Int32, hosted: Bool) {
                 self.handle = handle
                 self.pid = pid
+                self.hosted = hosted
                 (changes, telling) = AsyncStream.makeStream(of: [URL].self)
                 let reader = Thread { [unowned self] in self.hear(lines) }
                 reader.name = "cells-daemon"
@@ -161,6 +168,20 @@
             public func editing(file: URL, text: String) {
                 let version = History.version(of: text)
                 Self.send(["say": "editing", "file": file.path, "version": version], to: handle)
+            }
+
+            /// The protected folders the engine may enter (`Folder`), every other kept out of:
+            /// what the hosting app reads of the engine's own Files & Folders switches, said
+            /// whenever one changes. A folder newly allowed is walked then. Never answered.
+            public func reach(_ allowed: Set<Folder>) {
+                Self.send(
+                    ["say": "reach", "allowed": allowed.map(\.rawValue).sorted()], to: handle)
+            }
+
+            /// A folder macOS keeps from a process until its person allows it (System
+            /// Settings › Privacy & Security › Files & Folders), by the engine's word.
+            public enum Folder: String, Sendable, CaseIterable {
+                case desktop, documents, downloads, removable, network
             }
 
             /// What changed in `file` since `version` (the one its person last worked on): each
@@ -289,6 +310,12 @@
                     case "refused":
                         answer = .failure(.refused(said["why"] as? String ?? "refused"))
                         answered.signal()
+                    case "unreached":
+                        answer = .failure(
+                            .unreached(
+                                file: URL(filePath: said["file"] as! String),
+                                folder: Folder(rawValue: said["folder"] as! String)!))
+                        answered.signal()
                     default:
                         assertionFailure(
                             "the engine said something this client does not read: \(said)")
@@ -313,11 +340,17 @@
             case unreachable(String)
             /// The engine refused: the client's signature, its version, a request.
             case refused(String)
+            /// The request's file is in a protected folder the engine may not enter yet: it
+            /// was neither read nor written. Not a failure of the file's: the person allows
+            /// the folder, and the engine holds it then.
+            case unreached(file: URL, folder: Daemon.Folder)
 
             public var description: String {
                 switch self {
                 case .unreachable(let why): "the Cells engine is unreachable: \(why)"
                 case .refused(let why): "the Cells engine refused: \(why)"
+                case .unreached(let file, let folder):
+                    "\(file.path) is in a folder macOS keeps from the Cells engine (\(folder.rawValue))"
                 }
             }
         }
