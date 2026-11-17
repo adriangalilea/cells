@@ -165,7 +165,11 @@ impl Logged {
 
 /// Every line of `log` about the file at `path` (as the log names it), oldest first,
 /// those it was logged with under every path it had before it moved there included: a
-/// file's history follows it, and a path another file had before is that file's.
+/// file's history follows it, and a path another file had before is that file's. Within
+/// this log alone: a file moved here from another folder has its lines before the move in
+/// that folder's log, so a cell's values and the marks since a version (`history::cell`,
+/// `since`) start at its move here, the version it came with known; its chains, the
+/// History pane's, follow it through every log (`history::named`).
 pub fn lines_of<'a>(log: &'a Log, path: &str) -> Vec<&'a Line> {
     let mut named = path.to_owned();
     let mut lines = Vec::new();

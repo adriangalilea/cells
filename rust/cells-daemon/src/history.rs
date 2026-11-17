@@ -73,9 +73,52 @@ pub struct Mark {
     pub root: (PathBuf, u64),
 }
 
-/// The chains of every log, newest root first: only those with an entry about a file
-/// `wanted` says yes to, at most `limit`.
-pub fn chains<'a>(logs: impl Iterator<Item = &'a Log>, wanted: impl Fn(&Path) -> bool, limit: usize) -> Vec<Chain> {
+/// A path a file had: where, and until when (the moment it moved on, milliseconds since
+/// the Unix epoch; none for where it is now).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Named {
+    pub path: PathBuf,
+    pub until: Option<u64>,
+}
+
+/// Every path `file` had, where it is now first: each `relocated` line that brought it to
+/// one read back to the path it had before, in whichever log holds that line (a file moved
+/// between folders served logs its move where it went, the path it came from whole).
+pub fn named(logs: &[Log], file: &Path) -> Vec<Named> {
+    let mut out = vec![Named { path: file.to_path_buf(), until: None }];
+    // each move followed once: a file moved back and forth is read back through every move
+    let mut followed: Vec<(PathBuf, u64)> = Vec::new();
+    loop {
+        let here = out.last().expect("where it is");
+        let came = logs
+            .iter()
+            .flat_map(|log| log.lines().iter().map(move |l| (log, l)))
+            .filter_map(|(log, l)| match &l.entry {
+                Logged::Relocated { path, from, .. }
+                    if log.root.join(path) == here.path
+                        && here.until.is_none_or(|u| l.at <= u)
+                        && !followed.contains(&(log.root.clone(), l.n)) =>
+                {
+                    Some((log.root.clone(), l.n, l.at, log.root.join(from)))
+                }
+                _ => None,
+            })
+            .max_by_key(|(_, _, at, _)| *at);
+        let Some((root, n, at, from)) = came else { return out };
+        followed.push((root, n));
+        out.push(Named { path: from, until: Some(at) });
+    }
+}
+
+/// Whether the entry about `file` logged at `at` is one of `names`: the file at one of the
+/// paths it had, while it had it.
+pub fn named_at(names: &[Named], file: &Path, at: u64) -> bool {
+    names.iter().any(|n| n.path == file && n.until.is_none_or(|u| at <= u))
+}
+
+/// The chains of every log, newest root first: only those with an entry `wanted` says yes
+/// to (its file, and when it was logged), at most `limit`.
+pub fn chains<'a>(logs: impl Iterator<Item = &'a Log>, wanted: impl Fn(&Path, u64) -> bool, limit: usize) -> Vec<Chain> {
     let mut roots: BTreeMap<(PathBuf, u64), (Event, Vec<Event>)> = BTreeMap::new();
     let mut followers: Vec<((PathBuf, u64), Event)> = Vec::new();
     for log in logs {
@@ -98,7 +141,7 @@ pub fn chains<'a>(logs: impl Iterator<Item = &'a Log>, wanted: impl Fn(&Path) ->
     }
     let mut out: Vec<Chain> = roots
         .into_values()
-        .filter(|(root, followed)| wanted(&root.file()) || followed.iter().any(|e| wanted(&e.file())))
+        .filter(|(root, followed)| wanted(&root.file(), root.line.at) || followed.iter().any(|e| wanted(&e.file(), e.line.at)))
         .map(|(root, mut followed)| {
             // logged in the order it happened, folders served apart by their clocks
             followed.sort_by_key(|e| e.line.at);

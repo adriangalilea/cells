@@ -96,6 +96,10 @@ pub struct Daemon<W: World> {
     /// The files a root changed since the scripts were last looked at: what starts a
     /// script that runs `when <file> changes`.
     touched: BTreeSet<PathBuf>,
+    /// Each file heard gone and not seen since, by its path, with the version it last held:
+    /// a file of that text read anywhere later is it, moved (`arrived`). Rebuilt from each
+    /// folder's log as it is served, so a restart forgets none.
+    gone: BTreeMap<PathBuf, String>,
 }
 
 struct Holding {
@@ -242,6 +246,7 @@ impl<W: World> Daemon<W> {
             landing: Vec::new(),
             told: BTreeSet::new(),
             touched: BTreeSet::new(),
+            gone: BTreeMap::new(),
         }
     }
 
@@ -278,18 +283,45 @@ impl<W: World> Daemon<W> {
         if let Some(why) = broken {
             warned!(why, "log broken: kept and continued, what it says past there cannot be trusted");
         }
+        // each file its log last says is gone, still nowhere on the disk: one of its text
+        // read later, anywhere, is it moved
+        let mut last: BTreeMap<PathBuf, Option<String>> = BTreeMap::new();
+        for line in log.lines() {
+            let held = match &line.entry {
+                Logged::External { was: Some(was), now: None, .. } => Some(was.clone()),
+                _ => None,
+            };
+            last.insert(log.root.join(line.entry.path()), held);
+        }
+        for (path, was) in last {
+            if let Some(was) = was
+                && matches!(self.world.read(&path), Found::Missing)
+            {
+                self.gone.insert(path, was);
+            }
+        }
         self.served.push(log);
         let held = self.folder.paths().count();
         let found = self.world.list(root, whole);
-        for path in &found {
-            // a file of a folder served already, taken in, is held as it was
-            if !again && self.folder.text(&key(path)).is_some() {
-                continue;
-            }
-            match self.world.read(path) {
+        // a file of a folder served already, taken in, is held as it was
+        let read: Vec<(&PathBuf, Found)> =
+            found.iter().filter(|p| again || self.folder.text(&key(p)).is_none()).map(|p| (p, self.world.read(p))).collect();
+        let texts: Vec<(&Path, String)> = read
+            .iter()
+            .filter_map(|(p, f)| match f {
+                Found::Text(t) => Some((p.as_path(), hash(t))),
+                _ => None,
+            })
+            .collect();
+        for (path, found) in read {
+            match found {
                 Found::Text(text) => {
                     self.keep(path, &text);
-                    self.hand(Change::Seen { path: key(path), text }, None);
+                    let now = hash(&text);
+                    let rivals: Vec<&Path> = texts.iter().filter(|(p, h)| *p != path.as_path() && *h == now).map(|(p, _)| *p).collect();
+                    if !self.arrived(path, &text, &rivals) {
+                        self.hand(Change::Seen { path: key(path), text }, None);
+                    }
                 }
                 Found::Missing => {}
                 Found::Unreadable(why) => warned!(path = %self.shown(path), why, "unread"),
@@ -401,12 +433,16 @@ impl<W: World> Daemon<W> {
             }
             ToEngine::History { folder, file, limit } => {
                 let chains = match &file {
-                    Some(f) => history::chains(self.served.iter(), |p| p == f, limit),
+                    // the file under every path it had, in whichever folder logged it there
+                    Some(f) => {
+                        let names = history::named(&self.served, f);
+                        history::chains(self.served.iter(), |p, at| history::named_at(&names, p, at), limit)
+                    }
                     // the files the folder holds, as it is served (`Log::holds`); a folder
                     // inside one served, every file under it
                     None => match self.served.iter().find(|l| l.root == folder) {
-                        Some(log) => history::chains(self.served.iter(), |p| log.holds(p), limit),
-                        None => history::chains(self.served.iter(), |p| p.starts_with(&folder), limit),
+                        Some(log) => history::chains(self.served.iter(), |p, _| log.holds(p), limit),
+                        None => history::chains(self.served.iter(), |p, _| p.starts_with(&folder), limit),
                     },
                 };
                 FromEngine::History { chains }
@@ -427,7 +463,8 @@ impl<W: World> Daemon<W> {
                     None => FromEngine::Since { known: false, marks: Vec::new(), chains: Vec::new() },
                     Some(marks) => {
                         let roots: std::collections::BTreeSet<&(PathBuf, u64)> = marks.iter().map(|m| &m.root).collect();
-                        let chains = history::chains(self.served.iter(), |p| p == file, usize::MAX)
+                        let names = history::named(&self.served, &file);
+                        let chains = history::chains(self.served.iter(), |p, at| history::named_at(&names, p, at), usize::MAX)
                             .into_iter()
                             .filter(|c| roots.contains(&(c.root.folder.clone(), c.root.line.n)))
                             .collect();
@@ -799,6 +836,16 @@ impl<W: World> Daemon<W> {
             self.relocate(&read, &moves);
             handed += moves.len();
         }
+        // every file come new and no move of this batch: each one's text beside the others'
+        let come: Vec<(PathBuf, String)> = read
+            .iter()
+            .enumerate()
+            .filter(|(i, _)| !moves.iter().any(|&(_, c)| c == *i))
+            .filter_map(|(_, (p, was, f))| match (was, f) {
+                (None, Found::Text(t)) => Some(((*p).clone(), hash(t))),
+                _ => None,
+            })
+            .collect();
         for (i, (path, was, found)) in read.into_iter().enumerate() {
             if moves.iter().any(|&(g, c)| g == i || c == i) {
                 continue;
@@ -808,6 +855,16 @@ impl<W: World> Daemon<W> {
                 Found::Text(text) => {
                     if self.folder.text(&k) == Some(text.as_str()) {
                         continue;
+                    }
+                    // new here, and the text of a file gone before: it, moved
+                    if was.is_none() {
+                        self.keep(path, &text);
+                        let now = hash(&text);
+                        let rivals: Vec<&Path> = come.iter().filter(|(p, h)| p != path && *h == now).map(|(p, _)| p.as_path()).collect();
+                        if self.arrived(path, &text, &rivals) {
+                            handed += 1;
+                            continue;
+                        }
                     }
                     let now = hash(&text);
                     let by = self.written_by(path, &now);
@@ -826,6 +883,8 @@ impl<W: World> Daemon<W> {
                     let _changing = span.enter();
                     self.changed.insert(path.to_path_buf());
                     self.touched.insert(path.to_path_buf());
+                    // remembered: a file of its text read later, anywhere, is it moved
+                    self.gone.insert(path.to_path_buf(), was.clone().expect("a file gone was held"));
                     let root = Root { path: path.to_path_buf(), was, now: None, kind: RootKind::External { by: None } };
                     self.hand(Change::Gone { path: k }, Some(root));
                     handed += 1;
@@ -837,6 +896,43 @@ impl<W: World> Daemon<W> {
         if handed == 0 {
             detail!("same as held: the engine's own writes, or files touched");
         }
+    }
+
+    /// The file at `path`, read for the first time with `text`: when a file heard gone
+    /// before (`gone`), still nowhere on the disk, last held that text, it is that file
+    /// moved, found late: seen here, followed by every import still naming where it was,
+    /// logged as relocated. The one gone file of that text, else the one of its name among
+    /// several, else none; and of the files read with it holding that text too (`rivals`),
+    /// it alone, else it alone of the gone file's name, else none: a move is never guessed.
+    /// Whether it was one.
+    fn arrived(&mut self, path: &Path, text: &str, rivals: &[&Path]) -> bool {
+        let now = hash(text);
+        let same: Vec<PathBuf> = self
+            .gone
+            .iter()
+            .filter(|(p, was)| **was == now && p.as_path() != path && matches!(self.world.read(p), Found::Missing))
+            .map(|(p, _)| p.clone())
+            .collect();
+        let named: Vec<&PathBuf> = same.iter().filter(|p| p.file_name() == path.file_name()).collect();
+        let from = match (&same[..], &named[..]) {
+            ([one], _) => one.clone(),
+            (_, [one]) => (*one).clone(),
+            _ => return false,
+        };
+        if !rivals.is_empty() && (path.file_name() != from.file_name() || rivals.iter().any(|r| r.file_name() == from.file_name())) {
+            return false;
+        }
+        self.gone.remove(&from);
+        let span =
+            tracing::info_span!(target: ENGINE, "change", what = "moved", moves = format!("{} → {}", self.shown(&from), self.shown(path)));
+        let _changing = span.enter();
+        self.changed.insert(path.to_path_buf());
+        self.touched.insert(path.to_path_buf());
+        self.hand(Change::Seen { path: key(path), text: text.to_owned() }, None);
+        let root =
+            Root { path: path.to_path_buf(), was: Some(now.clone()), now: Some(now), kind: RootKind::Relocated { from: from.clone() } };
+        self.hand(Change::Moved { moves: vec![(key(&from), key(path))] }, Some(root));
+        true
     }
 
     /// The files `moves` pairs in `read` (gone, come: indices), handed to the folder as one

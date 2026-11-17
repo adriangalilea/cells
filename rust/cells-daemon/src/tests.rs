@@ -295,6 +295,69 @@ fn a_file_moved_keeps_its_history() {
 }
 
 #[test]
+fn a_file_moved_into_a_folder_served_later_is_found_moved() {
+    let mut d = daemon();
+    d.world().put(Q4, &MONEY.replace("cost,180.00,180.00=", "cost,200.00,180.00="));
+    heard(&mut d, &[Q4]);
+    // moved out of the folder served, into one the engine hears nothing of yet
+    let to = "/v/q4.cells";
+    mv(&mut d, Q4, to);
+    d.world().clock.set(NOW + 1_000);
+    heard(&mut d, &[Q4]);
+    assert_eq!(kinds(&d.world().log())[3..], ["external"], "first heard as gone");
+    // the folder it went to served: it is the file gone, moved
+    d.world().clock.set(NOW + 2_000);
+    d.serve(Path::new("/v")).unwrap();
+    assert_eq!(
+        d.world().get(QUARTERS),
+        INDEX.replace("./q4/money.cells", "../v/q4.cells").replace("180.00=SUM", "200.00=SUM"),
+        "the index names it where it went"
+    );
+    let there: Vec<String> = d.world().files.borrow()[Path::new("/v/.cells/log.jsonl")].lines().map(str::to_owned).collect();
+    assert_eq!(kinds(&there), ["relocated"]);
+    assert!(there[0].contains("\"path\":\"q4.cells\",\"from\":\"/w/q4/money.cells\""), "{}", there[0]);
+    // its history is the file's under both paths, across both folders
+    let FromEngine::History { chains } = ask(&mut d, "app", ToEngine::History { folder: "/v".into(), file: Some(to.into()), limit: 10 })
+    else {
+        panic!()
+    };
+    let roots: Vec<(String, String)> =
+        chains.iter().map(|c| (c.root.folder.display().to_string(), c.root.line.entry.path().to_owned())).collect();
+    assert_eq!(
+        roots,
+        [
+            ("/v".to_owned(), "q4.cells".to_owned()),
+            ("/w".to_owned(), "q4/money.cells".to_owned()),
+            ("/w".to_owned(), "q4/money.cells".to_owned())
+        ],
+        "moved, gone, saved: {chains:#?}"
+    );
+}
+
+#[test]
+fn a_file_gone_is_remembered_across_a_restart() {
+    let mut d = daemon();
+    let to = "/v/q4.cells";
+    mv(&mut d, Q4, to);
+    heard(&mut d, &[Q4]);
+    // the engine started again: what it remembers is what the folder's log says
+    let sim = std::mem::take(d.world_mut());
+    let mut d = served(sim, "/w");
+    d.serve(Path::new("/v")).unwrap();
+    assert_eq!(d.world().get(QUARTERS), INDEX.replace("./q4/money.cells", "../v/q4.cells"));
+}
+
+#[test]
+fn a_file_of_a_gone_file_text_and_another_name_among_two_is_no_move() {
+    let mut d = daemon();
+    mv(&mut d, Q4, "/v/a.cells");
+    d.world().put("/v/b.cells", MONEY);
+    heard(&mut d, &[Q4]);
+    d.serve(Path::new("/v")).unwrap();
+    assert_eq!(d.world().get(QUARTERS), INDEX, "two files of its text, neither of its name: never guessed");
+}
+
+#[test]
 fn a_change_is_said_as_a_span_and_what_it_stored_in_it() {
     let mut d = daemon();
     d.world().put(Q4, &MONEY.replace("cost,180.00,180.00=", "cost,200.00,180.00="));
