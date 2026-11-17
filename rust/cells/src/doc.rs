@@ -311,6 +311,17 @@ pub enum Packing {
     Standing,
 }
 
+/// How an import stands (`Doc::reach`).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Reach {
+    /// Its source is followed: what it names reads from there.
+    Reached,
+    /// Its source is not reached; a packed copy of it is read in its place.
+    Standing,
+    /// Its source is not reached and the file holds no copy of it.
+    Missing,
+}
+
 /// Which packed copies a write writes (`Doc::packed`).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Pack {
@@ -1825,6 +1836,23 @@ impl Doc {
     /// Every import, as written, and what following it gave: nothing for one not reached.
     pub fn imported(&self) -> &[(Import, Option<Arc<Doc>>)] {
         &self.imported
+    }
+
+    /// How the import that is statement `i` stands: its source followed (`Reached`), or
+    /// not, a packed copy of it read in its place (`Standing`), or not, and nothing of it
+    /// in the file (`Missing`: what it names reads as nothing, and a packed or sent copy
+    /// of the file goes without it). None for a statement that is no import. The one
+    /// answer every reader asks: `cells pack`'s report, an editor's prelude, a share.
+    pub fn reach(&self, i: usize) -> Option<Reach> {
+        let Statement::Import { default, names, from, with, .. } = self.statements.get(i)? else {
+            return None;
+        };
+        if self.imported.iter().any(|(m, d)| &m.from == from && &m.with == with && d.is_some()) {
+            return Some(Reach::Reached);
+        }
+        let named: Vec<&String> = default.iter().chain(names).collect();
+        let standing = self.copies.iter().any(|c| c.packing == Packing::Standing && named.contains(&&c.name));
+        Some(if standing { Reach::Standing } else { Reach::Missing })
     }
 
     /// What the file read through its imports, as one version: the SHA-256 of each import

@@ -1556,6 +1556,9 @@ pub enum CellsStatementPart {
     CellsStatementPacking = 11,
     /// An import's `pack`: `auto` when its copy is kept written, empty otherwise.
     CellsStatementPack = 12,
+    /// How an import stands (`Doc::reach`): `reached`, `standing` (its source not reached,
+    /// a packed copy read in its place) or `missing` (not reached, nothing of it in the file).
+    CellsStatementReach = 13,
 }
 
 /// How many statements the prelude holds that read.
@@ -1641,6 +1644,12 @@ pub unsafe extern "C" fn cells_statement_part(d: *mut CellsDoc, i: usize, part: 
         (P::CellsStatementPack, S::Import { with, .. }) => {
             with.iter().find(|(k, _)| k == "pack").map(|(_, v)| v.clone()).unwrap_or_default()
         }
+        (P::CellsStatementReach, S::Import { .. }) => match d.doc.reach(i) {
+            Some(cells::Reach::Reached) => "reached",
+            Some(cells::Reach::Standing) => "standing",
+            Some(cells::Reach::Missing) | None => "missing",
+        }
+        .to_owned(),
         (P::CellsStatementSchedule, S::Run { schedule, .. }) => schedule.spelled.clone(),
         (P::CellsStatementLanguage, S::Run { code, .. }) => code.lang.clone(),
         (P::CellsStatementCode, S::Run { code, .. }) => fenced(code),

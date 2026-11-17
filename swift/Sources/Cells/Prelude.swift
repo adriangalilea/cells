@@ -13,9 +13,10 @@ extension Cells {
             case type(name: String, spelled: String)
             /// `import accounts from "accounts.cells"` (`name`), or `import { Kind, rates }
             /// from "…"` (`names`); its `sha256` when pinned; `autoPacked` when it keeps its
-            /// copy written, `with { pack: "auto" }`.
+            /// copy written, `with { pack: "auto" }`; how it stands (`reach`).
             case `import`(
-                name: String?, names: [String], from: String, sha256: String?, autoPacked: Bool)
+                name: String?, names: [String], from: String, sha256: String?, autoPacked: Bool,
+                reach: Reach)
             /// `fees = ```cells`: a table written inline, its rows as written.
             case table(name: String, rows: String)
             /// `rates = run every day at 18:00 in Europe/Madrid`: its schedule as written, its
@@ -37,6 +38,14 @@ extension Cells {
             /// (SPEC.md, Packed imports). `copy` is its rows (a table), its type as written
             /// (a type) or its rules joined by `, ` (a look).
             case packed(name: String, copied: Copied, from: String, packing: Packing?, copy: String)
+        }
+
+        /// How an import stands, the engine's one answer (`Doc::reach`): its source followed
+        /// (`reached`), not followed with a packed copy read in its place (`standing`), or not
+        /// followed with nothing of it in the file (`missing`: what it names reads as nothing,
+        /// and a packed or sent copy of the file goes without it).
+        public enum Reach: String, Sendable, Equatable {
+            case reached, standing, missing
         }
 
         /// What a packed copy copies.
@@ -70,7 +79,7 @@ extension Cells {
         public var name: String? {
             switch kind {
             case .type(let n, _), .table(let n, _), .run(let n, _, _, _, _), .column(let n, _): n
-            case .import(let n, _, _, _, _): n
+            case .import(let n, _, _, _, _, _): n
             case .chart(let n, _, _): n
             case .look, .packed: nil
             }
@@ -209,7 +218,8 @@ extension Engine {
                         names: (0..<s.words).map { part(CellsStatementWord, $0) },
                         from: part(CellsStatementFrom),
                         sha256: { $0.isEmpty ? nil : $0 }(part(CellsStatementHash)),
-                        autoPacked: part(CellsStatementPack) == "auto")
+                        autoPacked: part(CellsStatementPack) == "auto",
+                        reach: Cells.Statement.Reach(rawValue: part(CellsStatementReach))!)
                 case CellsStatementTable:
                     .table(name: part(CellsStatementName), rows: part(CellsStatementRows))
                 case CellsStatementRun:

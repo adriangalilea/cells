@@ -70,7 +70,8 @@ let money = """
     #expect(
         added.statements[3].kind
             == .import(
-                name: "accounts", names: [], from: "accounts.cells", sha256: nil, autoPacked: false)
+                name: "accounts", names: [], from: "accounts.cells", sha256: nil, autoPacked: false,
+                reach: .reached)
     )
     let removed = Cells.Document(reading: added.text(.remove(added.statements[1])))
     #expect(removed.statements.map(\.name) == ["Money", "vat", "accounts"])
@@ -140,7 +141,7 @@ let money = """
     let doc = Cells.Document(reading: money, at: "money.cells", files: files)
     let kept = Cells.Document(
         reading: doc.text(.keepPacked(doc.statements[0], true)), at: "money.cells", files: files)
-    guard case .import(_, _, _, _, let auto) = kept.statements[0].kind,
+    guard case .import(_, _, _, _, let auto, _) = kept.statements[0].kind,
         case .packed(_, _, _, let packing, _) = kept.statements[1].kind
     else {
         Issue.record("no import kept packed: \(kept.statements)")

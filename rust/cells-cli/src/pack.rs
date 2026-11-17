@@ -7,7 +7,7 @@
 use std::fs;
 use std::path::Path;
 
-use cells::{Pack, Packing, Statement};
+use cells::{Pack, Reach, Statement};
 
 /// What `cells pack`'s arguments say: whether it removes, where it writes, the file.
 pub fn args(args: &[String]) -> Option<(bool, Option<&str>, &str)> {
@@ -37,17 +37,15 @@ pub fn pack(path: &Path, remove: bool, out: Option<&Path>) -> Result<(Vec<String
     let text = doc.packed(if remove { Pack::Remove } else { Pack::All });
     let mut said = Vec::new();
     let mut whole = true;
-    for s in doc.statements() {
-        let Statement::Import { line, default, names, from, with } = s else { continue };
-        let reached = doc.imported().iter().any(|(i, d)| &i.from == from && &i.with == with && d.is_some());
-        let named: Vec<&String> = default.iter().chain(names).collect();
-        let copied = doc.copies().iter().any(|c| c.packing == Packing::Standing && named.contains(&&c.name));
+    for (i, s) in doc.statements().iter().enumerate() {
+        let Statement::Import { line, from, .. } = s else { continue };
+        let reach = doc.reach(i).expect("an import has a reach");
         let place = format!("{shown} prelude line {line}: {}", cells::say::code(from));
-        said.push(match (remove, reached, copied) {
-            (true, ..) => format!("{place}: its copies taken out"),
-            (false, true, _) => format!("{place}: packed"),
-            (false, false, true) => format!("{place}: not reachable, its copy kept as it is"),
-            (false, false, false) => {
+        said.push(match (remove, reach) {
+            (true, _) => format!("{place}: its copies taken out"),
+            (false, Reach::Reached) => format!("{place}: packed"),
+            (false, Reach::Standing) => format!("{place}: not reachable, its copy kept as it is"),
+            (false, Reach::Missing) => {
                 whole = false;
                 format!("{place}: not reachable and never packed, so it is not in the file")
             }
