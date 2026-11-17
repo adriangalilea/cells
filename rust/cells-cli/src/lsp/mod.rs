@@ -48,9 +48,10 @@ struct Backend {
 /// are now.
 async fn diagnose(client: &Client, folder: Folder) {
     let allowed = Allowed::read();
+    let held = folder.files();
     for path in folder.open.keys() {
         let Some(file) = folder.read(path) else { continue };
-        client.publish_diagnostics(folder.uri(path), features::diagnostics(&file, &allowed), None).await;
+        client.publish_diagnostics(folder.uri(path), features::diagnostics(&file, &allowed, &held), None).await;
     }
 }
 

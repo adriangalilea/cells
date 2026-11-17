@@ -3,6 +3,7 @@
 //! followed through every file that names what is renamed.
 
 use std::collections::HashMap;
+use std::path::PathBuf;
 
 use tower_lsp::lsp_types::{
     CodeAction, CodeActionKind, CompletionItem, CompletionItemKind, CompletionTextEdit, Diagnostic, DiagnosticSeverity, Documentation,
@@ -64,8 +65,29 @@ fn error(range: Range, message: String) -> Diagnostic {
     Diagnostic { range, severity: Some(DiagnosticSeverity::ERROR), source: Some("cells".into()), message, ..Diagnostic::default() }
 }
 
-/// Every break and problem of a file, its own tables' included, where it is.
-pub fn diagnostics(file: &File, allowed: &Allowed) -> Vec<Diagnostic> {
+/// Each import of `file` not found anywhere (`Doc::reach`, missing): its statement, the
+/// path it names, its line, and where a file of its name is among `held` (the folder's
+/// files), as the import would name it, nearest first.
+fn not_found<'a>(file: &'a File, held: &[PathBuf]) -> Vec<(usize, &'a str, u32, Vec<String>)> {
+    let held: Vec<String> = held.iter().map(|p| p.display().to_string()).collect();
+    let held: Vec<&str> = held.iter().map(String::as_str).collect();
+    let at = file.path.display().to_string();
+    file.doc
+        .statements()
+        .iter()
+        .enumerate()
+        .filter_map(|(i, s)| match s {
+            Statement::Import { line, from, .. } if file.doc.reach(i) == Some(cells::Reach::Missing) => {
+                Some((i, from.as_str(), *line, cells::files::found_elsewhere(&at, from, &held)))
+            }
+            _ => None,
+        })
+        .collect()
+}
+
+/// Every break and problem of a file, its own tables' included, where it is; `held` the
+/// folder's files, where an import not found may be.
+pub fn diagnostics(file: &File, allowed: &Allowed, held: &[PathBuf]) -> Vec<Diagnostic> {
     let lines = Lines::new(&file.text);
     let doc = &file.doc;
     let mut out: Vec<Diagnostic> = doc
@@ -109,6 +131,20 @@ pub fn diagnostics(file: &File, allowed: &Allowed) -> Vec<Diagnostic> {
         };
         let mut d = error(statement_line(file, c.line), message);
         d.severity = Some(severity);
+        out.push(d);
+    }
+    // an import found nowhere, with no copy standing for it: what it names reads as nothing
+    for (_, from, line, found) in not_found(file, held) {
+        let elsewhere =
+            found.first().map_or(String::new(), |f| format!(" A file of its name is at {}: its fix imports it from there.", code(f)));
+        let mut d = error(
+            statement_line(file, line),
+            format!(
+                "{}: not found. What it names reads as nothing, and a packed or sent copy of this file goes without it.{elsewhere}",
+                code(from)
+            ),
+        );
+        d.severity = Some(DiagnosticSeverity::WARNING);
         out.push(d);
     }
     for t in doc.tables().iter().filter(|t| t.own()) {
@@ -348,6 +384,17 @@ pub fn actions(folder: &Folder, file: &File, range: Range, allowed: &Allowed) ->
             command: Some(tower_lsp::lsp_types::Command { title, command: ALLOW.to_owned(), arguments }),
             ..CodeAction::default()
         });
+    }
+    // an import found nowhere: imported from each place a file of its name is
+    for (i, from, line, found) in not_found(file, &folder.files()) {
+        let at = statement_line(file, line);
+        if at.start.line < range.start.line || at.start.line > range.end.line {
+            continue;
+        }
+        for path in found {
+            let fixed = whole(file, &lines, file.doc.import_from(i, &path));
+            out.push(quickfix(folder, file, format!("Import {from} from {path}"), Vec::from([fixed])));
+        }
     }
     let doc = &file.doc;
     for (p, s) in doc.problems().iter().zip(doc.spans()) {
@@ -683,7 +730,7 @@ mod tests {
     fn diagnostics_and_hover() {
         let (folder, _, money) = books("diagnose");
         let file = folder.read(&money).unwrap();
-        let d = diagnostics(&file, &Allowed::default());
+        let d = diagnostics(&file, &Allowed::default(), &[]);
         let messages: Vec<&str> = d.iter().map(|d| d.message.as_str()).collect();
         assert_eq!(messages, ["`to`: `pwer` is no key of `accounts`", "`amount`: `8x` is not a number"]);
         let lines = Lines::new(MONEY);
@@ -702,7 +749,7 @@ mod tests {
         let text = "---\nqty: int>=1\ntotal: EUR = cost * qty\n---\nitem: text!,cost: EUR,qty,total\nfuel,2.00,3,6.00=\n";
         let folder = Folder { open: Arc::new(BTreeMap::from([(money.clone(), text.to_owned())])), ..folder };
         let file = folder.read(&money).unwrap();
-        assert!(diagnostics(&file, &Allowed::default()).is_empty(), "{:?}", diagnostics(&file, &Allowed::default()));
+        assert!(diagnostics(&file, &Allowed::default(), &[]).is_empty(), "{:?}", diagnostics(&file, &Allowed::default(), &[]));
         let lines = Lines::new(text);
         // Hover on the declaration and on the header's bare name says the column.
         let declared = said(hover(&folder, &file, at(text, "total:", 0)).unwrap());
@@ -734,7 +781,7 @@ mod tests {
         let text = MONEY.replace("to: accounts.account", "to: accounts.a");
         let folder = Folder { open: Arc::new(BTreeMap::from([(money.clone(), text.clone())])), ..folder };
         let file = folder.read(&money).unwrap();
-        let d = diagnostics(&file, &Allowed::default());
+        let d = diagnostics(&file, &Allowed::default(), &[]);
         assert_eq!(d[0].message, "`to`: `accounts` has no column `a` (its key is `account`)");
         assert_eq!(d[0].range, Lines::new(&text).range(span(at(&text, "accounts.a,", 0) as u32, 10)));
         assert!(hover(&folder, &file, at(&text, "950", 0)).is_some());
@@ -807,7 +854,9 @@ mod tests {
         let folder = Folder { open: Arc::new(BTreeMap::from([(money.clone(), text.clone())])), ..folder };
         let file = folder.read(&money).unwrap();
         // The file holds it, so the formula breaks, and the action writes the key.
-        assert!(diagnostics(&file, &Allowed::default()).iter().any(|d| d.message.starts_with("`double`: `#2` is a row by where it shows")));
+        assert!(
+            diagnostics(&file, &Allowed::default(), &[]).iter().any(|d| d.message.starts_with("`double`: `#2` is a row by where it shows"))
+        );
         let header = Lines::new(&text).position(at(&text, "#2", 0)).line;
         let line = Range {
             start: tower_lsp::lsp_types::Position { line: header, character: 0 },
@@ -882,6 +931,26 @@ mod tests {
     }
 
     #[test]
+    fn an_import_not_found_warns_and_its_fix_imports_a_file_of_its_name() {
+        let (folder, accounts, money) = books("not-found");
+        // the books moved down a folder, the money file left naming them where they were
+        let moved = accounts.parent().unwrap().join("2026/accounts.cells");
+        fs::create_dir_all(moved.parent().unwrap()).unwrap();
+        fs::rename(&accounts, &moved).unwrap();
+        let file = folder.read(&money).unwrap();
+        let d = diagnostics(&file, &Allowed::default(), &folder.files());
+        let warned: Vec<&str> =
+            d.iter().filter(|d| d.message.starts_with("`../accounts.cells`: not found")).map(|d| d.message.as_str()).collect();
+        assert_eq!(warned.len(), 1, "{d:?}");
+        assert!(warned[0].ends_with("A file of its name is at `../2026/accounts.cells`: its fix imports it from there."), "{}", warned[0]);
+        let on = statement_line(&file, 1);
+        let a = actions(&folder, &file, on, &Allowed::default());
+        let fix = a.iter().find(|a| a.title == "Import ../accounts.cells from ../2026/accounts.cells").expect("the fix offered");
+        let edits = &fix.edit.as_ref().unwrap().changes.as_ref().unwrap()[&folder.uri(&money)];
+        assert_eq!(edits[0].new_text, MONEY.replace("\"../accounts.cells\"", "\"../2026/accounts.cells\""));
+    }
+
+    #[test]
     fn a_key_renamed_follows_every_reference() {
         let (folder, accounts, money) = books("rename-key");
         let file = folder.read(&accounts).unwrap();
@@ -918,7 +987,7 @@ mod tests {
         .unwrap();
         let file = folder.read(&rates).unwrap();
         let warned: Vec<_> =
-            diagnostics(&file, &Allowed::default()).into_iter().filter(|d| d.message.starts_with("`rates` does not run")).collect();
+            diagnostics(&file, &Allowed::default(), &[]).into_iter().filter(|d| d.message.starts_with("`rates` does not run")).collect();
         assert_eq!(warned.len(), 1);
         assert_eq!((warned[0].range.start.line, warned[0].severity), (1, Some(DiagnosticSeverity::WARNING)));
         let fixes = actions(&folder, &file, warned[0].range, &Allowed::default());
