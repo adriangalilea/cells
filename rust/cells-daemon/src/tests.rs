@@ -1560,6 +1560,7 @@ fn a_folder_newly_reached_is_walked_and_its_imports_held() {
     let mut d = started_reaching(sim, crate::Reach::default());
     assert!(touched_under(&d, "/h/Documents").is_empty(), "the import not followed: {:?}", touched_under(&d, "/h/Documents"));
     assert!(d.index().at(Path::new(PLAN)).is_some(), "the importer is held");
+    assert_eq!(d.world().get(PLAN), PLAN_TEXT, "nothing stored from an import never read");
     // its import changed while out of reach, so reaching it stores what it reaches
     d.world().put(DOCS, &MONEY.replace("cost,180.00,180.00=", "cost,200.00,200.00="));
     d.answer(Event::Ask {
