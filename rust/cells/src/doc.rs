@@ -1792,6 +1792,47 @@ impl Doc {
         &text[..text.len() - ending(text).len()]
     }
 
+    /// The file's text with each import's path that `to` gives another written as that one,
+    /// every other byte as `write` gives it, and each path rewritten (as written before,
+    /// as written now); nothing when `to` changes none. `to` is handed each import's path
+    /// as written, a URL's included, and answers the path to write in its place: what a
+    /// file moved asks of every file naming it, and of its own imports (`folder`, Moved).
+    pub fn imports_moved(&self, mut to: impl FnMut(&str) -> Option<String>) -> Option<(String, Vec<(String, String)>)> {
+        if self.dialect != Dialect::Cells {
+            return None;
+        }
+        let written = self.write();
+        let prelude = &written[..self.body as usize];
+        let mut text = written.clone();
+        let mut moved = Vec::new();
+        // the last statement first, so the byte ranges before it stand
+        for (i, s) in self.statements.iter().enumerate().rev() {
+            let Statement::Import { from, .. } = s else { continue };
+            let Some(now) = to(from).filter(|n| n != from) else { continue };
+            let span = &self.spans[i];
+            let (start, end) = (prelude_line(prelude, span.start).0, prelude_line(prelude, span.end - 1).1);
+            let quoted = format!("\"{from}\"");
+            let at = prelude[start..end]
+                .find(&quoted)
+                .unwrap_or_else(|| panic!("statement {i} names {from}, its text holds no {quoted}: {}", &prelude[start..end]));
+            text.replace_range(start + at..start + at + quoted.len(), &format!("\"{now}\""));
+            moved.push((from.clone(), now));
+        }
+        moved.reverse();
+        (!moved.is_empty()).then_some((text, moved))
+    }
+
+    /// The file's text with the import that is statement `i` naming `now` in place of the
+    /// path it names, every import naming that same path with it: the fix of an import not
+    /// found, its file found elsewhere (`files::found_elsewhere`), what it holds read again
+    /// by the host.
+    pub fn import_from(&self, i: usize, now: &str) -> String {
+        let Some(Statement::Import { from, .. }) = self.statements.get(i) else {
+            panic!("statement {i} is no import: {:?}", self.statements.get(i))
+        };
+        self.imports_moved(|f| (f == from).then(|| now.to_owned())).map_or_else(|| self.write(), |(text, _)| text)
+    }
+
     /// The file's text with its prelude edited: prelude `lines` (1-based inside the
     /// fences, a statement's from `statement_lines`, a script's code alone) replaced by
     /// `text` (empty: taken out; an empty range: written before its line), or `text`

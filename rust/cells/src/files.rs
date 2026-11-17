@@ -45,6 +45,36 @@ pub fn join(dir: &str, path: &str) -> String {
     if rooted { format!("/{body}") } else { body }
 }
 
+/// The path an import in the folder `dir` names `path` by, `join`'s inverse, written as
+/// imports are: `./` for a file in the folder or under it, `../` once for each folder up.
+/// `relative("books/home", "books/accounts.cells")` is `../accounts.cells`. Both are
+/// resolved paths, both from `/` or neither.
+pub fn relative(dir: &str, path: &str) -> String {
+    assert_eq!(dir.starts_with('/'), path.starts_with('/'), "{dir} and {path}: one rooted, one not");
+    let from: Vec<&str> = dir.split('/').filter(|p| !p.is_empty()).collect();
+    let to: Vec<&str> = path.split('/').filter(|p| !p.is_empty()).collect();
+    let shared = from.iter().zip(&to).take_while(|(a, b)| a == b).count();
+    let up = from.len() - shared;
+    let rest = to[shared..].join("/");
+    if up == 0 { format!("./{rest}") } else { format!("{}{rest}", "../".repeat(up)) }
+}
+
+/// Where the file an import in the file at `at` names as `from`, not found there, may be:
+/// each of `held` (the files a host holds, resolved paths) of its name, as the import
+/// would name it, the fewest folders from where it was looked for first, then by path.
+/// What a fix offers, never what a reader follows: a file of the same name is a guess.
+pub fn found_elsewhere(at: &str, from: &str, held: &[&str]) -> Vec<String> {
+    let missing = join(dir(at), from);
+    let name = missing.rsplit('/').next().unwrap_or(&missing);
+    let mut found: Vec<(usize, &str)> = held
+        .iter()
+        .filter(|p| **p != missing && **p != at && p.rsplit('/').next() == Some(name))
+        .map(|p| (relative(dir(&missing), p).matches('/').count(), *p))
+        .collect();
+    found.sort();
+    found.into_iter().map(|(_, p)| relative(dir(at), p)).collect()
+}
+
 /// The imports of the file at `at`, followed through `files`: a path read from the
 /// importing file's folder, a URL by itself. A file `files` does not hold, or a revision
 /// (`with { rev }`, which only a host with the file's history reads), is unreachable.

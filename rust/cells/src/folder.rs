@@ -34,7 +34,7 @@ use alloc::vec::Vec;
 
 use crate::column::Kind;
 use crate::doc::{Doc, read_with};
-use crate::files::Files;
+use crate::files::{Files, dir, join, relative};
 
 /// What a host saw of a file, by the path the folder keys it with (absolute, as the host
 /// resolves it; a URL for a fetched file).
@@ -53,6 +53,13 @@ pub enum Change {
     Written { path: String, text: String },
     /// The file removed.
     Gone { path: String },
+    /// Files moved, each from one path to another, their text as held: one moment of the
+    /// folder (a folder moved moves every file in it at once). The folder follows them:
+    /// every import naming a moved file is written to name it where it is now, and a moved
+    /// file's own imports to name what they named, as the paths relative to its new folder
+    /// say (a file moved with one it imports keeps naming it as it did). Nothing else of
+    /// a file changes, so nothing is stored.
+    Moved { moves: Vec<(String, String)> },
 }
 
 /// What a change led to, each list in the order it happened.
@@ -94,6 +101,9 @@ pub struct Write {
     pub via: Vec<String>,
     /// Each computed cell stored, its values as the file stores them before its `=`.
     pub stored: Vec<Cell>,
+    /// Each import's path written anew, following a file moved: as written before, as
+    /// written now.
+    pub imports: Vec<(String, String)>,
 }
 
 /// One cell of a table, changed: its row as the table numbers it (from 1), the row's key
@@ -215,7 +225,54 @@ impl Folder {
             Change::Written { path, text } => {
                 assert!(self.texts.contains_key(&path), "{path} written, never held: the folder writes only files it read");
                 self.texts.insert(path.clone(), text);
+                let reads = self.reads(&path).to_vec();
                 self.read(&path, None, &mut out);
+                // its imports name other files now (a move followed): every file reading
+                // it reaches those, and is read again to know so
+                if self.reads(&path) != reads {
+                    for p in self.reached_by(&path).into_iter().filter(|p| *p != path) {
+                        self.read(&p, None, &mut out);
+                    }
+                }
+            }
+            Change::Moved { moves } => {
+                let to_of: BTreeMap<String, String> = moves.iter().cloned().collect();
+                // every file as it was read, by the path it had and the one it has now: the
+                // imports to follow are read from these
+                let before: Vec<(String, String, Doc)> =
+                    self.known.iter().filter_map(|(p, k)| Some((p.clone(), to_of.get(p).unwrap_or(p).clone(), k.doc.clone()?))).collect();
+                for (from, to) in &moves {
+                    let text = self.texts.remove(from).unwrap_or_else(|| panic!("{from} moved, never held"));
+                    assert!(!self.texts.contains_key(to), "{from} moved onto {to}, a file held");
+                    self.texts.insert(to.clone(), text);
+                    self.known.remove(from);
+                }
+                for (was, now, doc) in before {
+                    let mut named = Vec::new();
+                    let followed = doc.imports_moved(|written| {
+                        if crate::files::is_url(written) {
+                            return None;
+                        }
+                        let target = join(dir(&was), written);
+                        let target = to_of.get(&target).cloned().unwrap_or(target);
+                        if join(dir(&now), written) == target {
+                            return None;
+                        }
+                        named.push(target.clone());
+                        Some(relative(dir(&now), &target))
+                    });
+                    if let Some((text, imports)) = followed {
+                        let against = crate::sha256::hex(self.texts[&now].as_bytes());
+                        let via = named.into_iter().filter(|t| to_of.values().any(|m| m == t)).collect();
+                        out.writes.push(Write { path: now, against, text, via, stored: Vec::new(), imports });
+                    }
+                }
+                // each moved file read where it is now, and every file reading it
+                for (_, to) in &moves {
+                    for p in self.reached_by(to) {
+                        self.read(&p, None, &mut out);
+                    }
+                }
             }
             Change::Gone { path } => {
                 let reached = self.reached_by(&path);
@@ -287,7 +344,7 @@ impl Folder {
                     if written != text {
                         let against = crate::sha256::hex(text.as_bytes());
                         let stored = stored(doc, &after);
-                        out.writes.push(Write { path: path.to_owned(), against, text: written, via, stored });
+                        out.writes.push(Write { path: path.to_owned(), against, text: written, via, stored, imports: Vec::new() });
                         wrote = true;
                     }
                 }
@@ -902,5 +959,59 @@ mod tests {
         assert_eq!(out.read.iter().map(|r| r.path.as_str()).collect::<Vec<_>>(), [QUARTERS]);
         assert_eq!(out.needs, [Q4]);
         assert!(f.text(Q4).is_none());
+    }
+
+    fn moved(f: &mut Folder, moves: &[(&str, &str)]) -> Outcome {
+        f.apply(Change::Moved { moves: moves.iter().map(|(a, b)| ((*a).into(), (*b).into())).collect() })
+    }
+
+    #[test]
+    fn a_file_moved_is_followed_by_every_file_naming_it() {
+        let mut f = folder();
+        let to = "/w/2026/q4.cells";
+        let out = moved(&mut f, &[(Q4, to)]);
+        let [w] = &out.writes[..] else { panic!("the index written: {:?}", out.writes) };
+        assert_eq!(w.path, QUARTERS);
+        assert_eq!(w.imports, [("./q4/money.cells".to_owned(), "./2026/q4.cells".to_owned())]);
+        assert_eq!(w.text, INDEX.replace("./q4/money.cells", "./2026/q4.cells"), "nothing else of it changes");
+        assert!(w.stored.is_empty() && w.via == [to]);
+        assert_eq!(f.text(to), Some(MONEY));
+        assert!(f.text(Q4).is_none());
+        // the write landing: the index reads the file where it is, its values its own
+        f.apply(Change::Written { path: QUARTERS.into(), text: w.text.clone() });
+        assert_eq!(f.reads(QUARTERS), [to]);
+        let out = changed(&mut f, to, &MONEY.replace("cost,180.00,180.00=", "cost,200.00,180.00="));
+        assert!(out.writes.iter().any(|w| w.path == QUARTERS), "a change to it reaches the index again");
+    }
+
+    #[test]
+    fn a_file_moved_names_what_it_named_from_its_new_folder() {
+        let mut f = folder();
+        let to = "/w/archive/2026/quarters.cells";
+        let out = moved(&mut f, &[(QUARTERS, to)]);
+        let [w] = &out.writes[..] else { panic!("the index written: {:?}", out.writes) };
+        assert_eq!((w.path.as_str(), &w.imports[..]), (to, &[("./q4/money.cells".to_owned(), "../../q4/money.cells".to_owned())][..]));
+    }
+
+    #[test]
+    fn files_moved_together_keep_naming_each_other() {
+        let mut f = folder();
+        let out = moved(&mut f, &[(Q4, "/v/q4/money.cells"), (QUARTERS, "/v/quarters.cells")]);
+        assert!(out.writes.is_empty(), "the path between them is the same: {:?}", out.writes);
+        assert_eq!(f.reads("/v/quarters.cells"), ["/v/q4/money.cells"]);
+    }
+
+    #[test]
+    fn relative_is_join_inverted() {
+        use crate::files::relative;
+        for (dir, path, rel) in [
+            ("/w", "/w/a.cells", "./a.cells"),
+            ("/w", "/w/q4/a.cells", "./q4/a.cells"),
+            ("/w/q4", "/w/a.cells", "../a.cells"),
+            ("/w/q4/x", "/w/y/a.cells", "../../y/a.cells"),
+        ] {
+            assert_eq!(relative(dir, path), rel);
+            assert_eq!(join(dir, rel), path);
+        }
     }
 }
