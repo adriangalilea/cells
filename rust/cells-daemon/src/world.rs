@@ -1,26 +1,16 @@
-//! The daemon's one way to the world (ENGINE.md, Proving it): files read, listed and
-//! replaced, lines appended to a log, folders locked and watched, and the clock. `Disk` is
-//! a Mac's; a simulation implements the same trait, so the daemon's every decision runs
+//! The daemon's one way to the world (ENGINE.md, Proving it): files read, walked and
+//! replaced, lines appended to the log, folders watched and trashed, and the clock. `Disk`
+//! is a Mac's; a simulation implements the same trait, so the daemon's every decision runs
 //! the same against either.
 
-use std::fs::{self, File, OpenOptions, TryLockError};
+use std::fs::{self, File, OpenOptions};
 use std::io::Write as _;
 use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use notify::{RecommendedWatcher, RecursiveMode, Watcher};
 
-/// What became of a folder this process locked (`World::kept`).
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum Kept {
-    /// The folder locked, still at its path.
-    Held,
-    /// Another folder at its path: the one locked was moved or trashed and this one put
-    /// there, holding its own history or none.
-    Replaced,
-    /// Nothing at its path.
-    Gone,
-}
+use crate::index::{Heard, icloud, visible};
 
 /// A file as it was read.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -43,25 +33,34 @@ pub enum Replaced {
 
 pub trait World {
     fn read(&self, path: &Path) -> Found;
-    /// Every file a table is read from (`.cells`, `.csv`, `.tsv`) under `root` when `whole`,
-    /// else in it alone, hidden folders left out (`.git`, the engine's own `.cells`), sorted.
-    fn list(&self, root: &Path, whole: bool) -> Vec<PathBuf>;
+    /// The system's ID of the file at `path` (its inode, which FSEvents names a file by),
+    /// when one is there and the disk gives one.
+    fn file_id(&self, path: &Path) -> Option<u64>;
+    /// Every file a table is read from (`.cells`, `.csv`, `.tsv`) under `root` that the
+    /// engine takes in (`index::visible`, by the home folder's rule; iCloud Drive's folder
+    /// inside `~/Library` walked too), sorted.
+    fn files(&self, root: &Path) -> Vec<PathBuf>;
+    /// Every log a folder kept its own history in before the engine kept one
+    /// (`<folder>/.cells/log.jsonl`), of the home folder and every folder the walk takes
+    /// in, sorted: what `migrate` reads once.
+    fn folder_logs(&self) -> Vec<PathBuf>;
+    /// Every file directly in `dir`, sorted; none when there is no such folder.
+    fn entries(&self, dir: &Path) -> Vec<PathBuf>;
     /// `text` written over `path` whole or not at all, and only over the version whose
     /// SHA-256 is `against`.
     fn replace(&self, path: &Path, against: &str, text: &str) -> Replaced;
+    /// `text` written at `path` whole or not at all, whatever is there: the engine's own
+    /// files (the index, the history written whole once).
+    fn save(&self, path: &Path, text: &str) -> Result<(), String>;
     /// `line` appended to the file at `path`, and flushed to the disk.
     fn append(&self, path: &Path, line: &str) -> Result<(), String>;
     /// `text` written at `path` unless a file is there already: what is kept there is
     /// named by its own hash, so one there holds the same text.
     fn keep(&self, path: &Path, text: &str) -> Result<(), String>;
-    /// `root` held for this process alone while it runs: two daemons never write one folder.
-    fn lock(&mut self, root: &Path) -> Result<(), String>;
-    /// `root`'s lock let go: a folder that could not be served, or is no longer there, left
-    /// to whoever serves it next.
-    fn unlock(&mut self, root: &Path);
-    /// What became of `root`, locked by this process: still the folder locked, another
-    /// folder at its path (trashed and a copy put there, its own history in it), or gone.
-    fn kept(&self, root: &Path) -> Kept;
+    /// `path` (a file or a folder) moved into the home folder's Trash as `name`, numbered
+    /// when the Trash holds one of that name (`name 2`), so it is recoverable from the
+    /// Finder and nothing is deleted: where it went.
+    fn trash(&mut self, path: &Path, name: &str) -> Result<PathBuf, String>;
     /// Changes under `dir` heard from now on, everything under it when `whole`: each path
     /// handed to what the world was made with (`Disk::new`).
     fn watch(&mut self, dir: &Path, whole: bool) -> Result<(), String>;
@@ -77,7 +76,7 @@ pub trait World {
         context: String,
         done: Box<dyn FnOnce(Result<Vec<String>, String>) + Send>,
     );
-    /// The user's home folder, which is never served whole.
+    /// The user's home folder, canonical: every `.cells` file under it is held.
     fn home(&self) -> PathBuf;
     /// Milliseconds since the Unix epoch.
     fn now(&self) -> u64;
@@ -143,19 +142,70 @@ pub fn table_file(path: &Path) -> bool {
     path.extension().is_some_and(|e| e == "cells" || e == "csv" || e == "tsv")
 }
 
+/// Every file and every folder the walk takes in under `dir` (`index::visible` by `home`'s
+/// rule), symbolic links never followed: a link is another name for a file held where it is.
+fn walk(home: &Path, dir: &Path, dirs: &mut Vec<PathBuf>, files: &mut Vec<PathBuf>) {
+    let Ok(entries) = fs::read_dir(dir) else { return };
+    dirs.push(dir.to_path_buf());
+    for e in entries.flatten() {
+        let p = e.path();
+        if !visible(home, &p) {
+            continue;
+        }
+        match e.file_type() {
+            Ok(t) if t.is_dir() => walk(home, &p, dirs, files),
+            Ok(t) if t.is_file() && table_file(&p) => files.push(p),
+            _ => {}
+        }
+    }
+}
+
+/// The walk of `root`, and of iCloud Drive's folder when `root` holds it (inside
+/// `~/Library`, which the walk leaves out).
+fn walked(home: &Path, root: &Path) -> (Vec<PathBuf>, Vec<PathBuf>) {
+    let (mut dirs, mut files) = (Vec::new(), Vec::new());
+    walk(home, root, &mut dirs, &mut files);
+    let cloud = icloud(home);
+    if cloud.starts_with(root) && cloud != root {
+        walk(home, &cloud, &mut dirs, &mut files);
+    }
+    dirs.sort();
+    files.sort();
+    (dirs, files)
+}
+
+/// `text` written beside `path` and renamed over it, so it is never half of one.
+fn written(path: &Path, text: &str) -> Result<(), String> {
+    let dir = path.parent().expect("a file is in a folder");
+    fs::create_dir_all(dir).map_err(|e| format!("{}: {e}", dir.display()))?;
+    let beside = dir.join(format!(".{}.{}", path.file_name().expect("a file has a name").to_string_lossy(), std::process::id()));
+    let done = (|| -> std::io::Result<()> {
+        let mut f = File::create(&beside)?;
+        f.write_all(text.as_bytes())?;
+        f.sync_all()?;
+        fs::rename(&beside, path)
+    })();
+    done.map_err(|e| {
+        let _ = fs::remove_file(&beside);
+        format!("{}: {e}", path.display())
+    })
+}
+
 pub struct Disk {
     watcher: RecommendedWatcher,
-    /// Each folder's lock, by the folder, held while the daemon serves it.
-    locks: Vec<(PathBuf, File)>,
 }
 
 impl Disk {
     /// The disk, every path it says changed under a folder watched handed to `heard`, on the
-    /// watcher's own thread. A file iCloud keeps only in the cloud (dataless, as
-    /// `~/Documents` holds them under Optimize Mac Storage) is fetched when read: macOS
-    /// fetches one for an app by default but refuses a background agent (EDEADLK, "Resource
-    /// deadlock avoided") unless the process asks, which this does for the whole process.
-    pub fn new(heard: impl Fn(PathBuf) + Send + 'static) -> Result<Disk, String> {
+    /// watcher's own thread. `notify` names no file ID (its FSEvents backend asks for no
+    /// extended data and says a rename's two sides apart), so a move heard through it is
+    /// followed by the IDs the index holds and by text (`index::follow`, rules 2 to 5): the
+    /// fallback where no host hands the engine FSEvents' own events. A file iCloud keeps only
+    /// in the cloud (dataless, as `~/Documents` holds them under Optimize Mac Storage) is
+    /// fetched when read: macOS fetches one for an app by default but refuses a background
+    /// agent (EDEADLK, "Resource deadlock avoided") unless the process asks, which this does
+    /// for the whole process.
+    pub fn new(heard: impl Fn(Heard) + Send + 'static) -> Result<Disk, String> {
         #[cfg(target_os = "macos")]
         {
             // <sys/resource.h>; not in the libc crate
@@ -174,12 +224,12 @@ impl Disk {
             }
         }
         let watcher = notify::recommended_watcher(move |e: notify::Result<notify::Event>| match e {
-            Ok(e) if !e.kind.is_access() => e.paths.into_iter().for_each(&heard),
+            Ok(e) if !e.kind.is_access() => e.paths.into_iter().for_each(|path| heard(Heard { path, id: None })),
             Ok(_) => {}
             Err(e) => tracing::error!(target: crate::trace::ENGINE, why = %e, "the disk's change events failed"),
         })
         .map_err(|e| format!("no file watcher: {e}"))?;
-        Ok(Disk { watcher, locks: Vec::new() })
+        Ok(Disk { watcher })
     }
 }
 
@@ -195,28 +245,42 @@ impl World for Disk {
         }
     }
 
-    fn list(&self, root: &Path, whole: bool) -> Vec<PathBuf> {
-        fn walk(dir: &Path, whole: bool, out: &mut Vec<PathBuf>) {
-            let Ok(entries) = fs::read_dir(dir) else { return };
-            for e in entries.flatten() {
-                let p = e.path();
-                let hidden = p.file_name().is_some_and(|n| n.to_string_lossy().starts_with('.'));
-                if hidden {
-                    continue;
-                }
-                if p.is_dir() {
-                    if whole {
-                        walk(&p, whole, out);
-                    }
-                } else if table_file(&p) {
-                    out.push(p);
-                }
-            }
-        }
-        let mut out = Vec::new();
-        walk(root, whole, &mut out);
+    fn file_id(&self, path: &Path) -> Option<u64> {
+        use std::os::unix::fs::MetadataExt;
+        fs::metadata(path).ok().map(|m| m.ino())
+    }
+
+    fn files(&self, root: &Path) -> Vec<PathBuf> {
+        walked(&self.home(), root).1
+    }
+
+    fn folder_logs(&self) -> Vec<PathBuf> {
+        let home = self.home();
+        let (dirs, _) = walked(&home, &home);
+        dirs.into_iter().map(|d| d.join(".cells").join("log.jsonl")).filter(|l| l.is_file()).collect()
+    }
+
+    fn entries(&self, dir: &Path) -> Vec<PathBuf> {
+        let Ok(entries) = fs::read_dir(dir) else { return Vec::new() };
+        let mut out: Vec<PathBuf> = entries.flatten().filter(|e| e.file_type().is_ok_and(|t| t.is_file())).map(|e| e.path()).collect();
         out.sort();
         out
+    }
+
+    fn save(&self, path: &Path, text: &str) -> Result<(), String> {
+        written(path, text)
+    }
+
+    /// A rename into `~/.Trash`, as the Finder's Move to Trash makes on the home volume: the
+    /// engine is a library and asks no app (NSFileManager's `trashItem`) to do it. A folder
+    /// on another volume is not moved, and the rename's failure says so.
+    fn trash(&mut self, path: &Path, name: &str) -> Result<PathBuf, String> {
+        let trash = self.home().join(".Trash");
+        fs::create_dir_all(&trash).map_err(|e| format!("{}: {e}", trash.display()))?;
+        let to = (1..).map(|n| trash.join(if n == 1 { name.to_owned() } else { format!("{name} {n}") })).find(|p| !p.exists());
+        let to = to.expect("a name free in the Trash");
+        fs::rename(path, &to).map_err(|e| format!("{} into the Trash: {e}", path.display()))?;
+        Ok(to)
     }
 
     fn replace(&self, path: &Path, against: &str, text: &str) -> Replaced {
@@ -258,56 +322,7 @@ impl World for Disk {
         if path.exists() {
             return Ok(());
         }
-        let dir = path.parent().expect("a version is in a folder");
-        fs::create_dir_all(dir).map_err(|e| format!("{}: {e}", dir.display()))?;
-        // written beside and renamed, so a version kept is never half of one
-        let beside = dir.join(format!(".{}.{}", path.file_name().expect("a version has a name").to_string_lossy(), std::process::id()));
-        let written = (|| -> std::io::Result<()> {
-            let mut f = File::create(&beside)?;
-            f.write_all(text.as_bytes())?;
-            f.sync_all()?;
-            fs::rename(&beside, path)
-        })();
-        written.map_err(|e| {
-            let _ = fs::remove_file(&beside);
-            format!("{}: {e}", path.display())
-        })
-    }
-
-    fn lock(&mut self, root: &Path) -> Result<(), String> {
-        let dir = root.join(".cells");
-        fs::create_dir_all(&dir).map_err(|e| format!("{}: {e}", dir.display()))?;
-        let path = dir.join("serve.lock");
-        let f = File::create(&path).map_err(|e| format!("{}: {e}", path.display()))?;
-        match f.try_lock() {
-            Ok(()) => {
-                self.locks.push((root.to_path_buf(), f));
-                Ok(())
-            }
-            Err(TryLockError::WouldBlock) => Err(format!("{} is served already: another `cells serve` holds it", root.display())),
-            Err(TryLockError::Error(e)) => Err(format!("{}: {e}", path.display())),
-        }
-    }
-
-    fn unlock(&mut self, root: &Path) {
-        let held = self.locks.len();
-        // its file closed, the lock goes with it
-        self.locks.retain(|(r, _)| r != root);
-        assert_eq!(self.locks.len() + 1, held, "{} let go unheld", root.display());
-    }
-
-    fn kept(&self, root: &Path) -> Kept {
-        use std::os::unix::fs::MetadataExt;
-        let (_, file) = self.locks.iter().find(|(r, _)| r == root).unwrap_or_else(|| panic!("{} asked after, unlocked", root.display()));
-        if !root.is_dir() {
-            return Kept::Gone;
-        }
-        // the folder locked is the one whose lock file is the file held open
-        let held = file.metadata().expect("a file held open has metadata");
-        match fs::metadata(root.join(".cells").join("serve.lock")) {
-            Ok(now) if now.dev() == held.dev() && now.ino() == held.ino() => Kept::Held,
-            _ => Kept::Replaced,
-        }
+        written(path, text)
     }
 
     fn watch(&mut self, dir: &Path, whole: bool) -> Result<(), String> {

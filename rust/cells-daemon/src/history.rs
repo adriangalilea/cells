@@ -1,36 +1,23 @@
-//! History (ENGINE.md, History): the folders' logs read as a person asks them. A chain is
-//! a root (an outside edit, a person's restore) and every entry that follows it, in any
-//! folder served; a cell's history is every value it held, each beside the entry that
-//! wrote it and that entry's root. Every surface asks the engine, so every surface folds
-//! and follows a chain the same way.
+//! History (ENGINE.md, History): the log read as a person asks it. A chain is a root (an
+//! outside edit, a person's restore) and every entry that follows it; a cell's history is
+//! every value it held, each beside the entry that wrote it and that entry's root. A file's
+//! history is every line of its identity, wherever it was; a folder's, every line whose
+//! path was under it when it was logged. Every surface asks the engine, so every surface
+//! folds and follows a chain the same way.
 
 use std::collections::BTreeMap;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 use serde::{Deserialize, Serialize};
 
+use crate::index::FileId;
 use crate::log::{Line, Log, Logged, Renamed};
 
-/// An entry of a folder's log, with the folder it is in.
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub struct Event {
-    pub folder: PathBuf,
-    #[serde(flatten)]
-    pub line: Line,
-}
-
-impl Event {
-    /// The file the entry is about, whole.
-    pub fn file(&self) -> PathBuf {
-        self.folder.join(self.line.entry.path())
-    }
-}
-
 /// A root and what followed it, in the order it was logged, drawn as a tree: each entry
-/// under the one it followed.
+/// under the one it followed. An entry is known by its number (`Line::n`).
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Chain {
-    pub root: Event,
+    pub root: Line,
     pub followed: Vec<Followed>,
 }
 
@@ -40,20 +27,18 @@ pub struct Chain {
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Followed {
     #[serde(flatten)]
-    pub event: Event,
+    pub event: Line,
     pub under: Option<usize>,
 }
 
-/// A value a cell held: the entry that wrote it, and that entry's root.
+/// A value a cell held: the entry that wrote it (`n`), and that entry's root.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Held {
     pub value: String,
     pub was: String,
     pub at: u64,
-    pub folder: PathBuf,
     pub n: u64,
-    /// The root of the chain the entry is in: its folder and number.
-    pub root: (PathBuf, u64),
+    pub root: u64,
 }
 
 /// A cell the versions after one changed, its row as the file numbers it now: what it held
@@ -69,117 +54,85 @@ pub struct Mark {
     pub was: Option<String>,
     pub now: String,
     pub at: u64,
-    pub entry: (PathBuf, u64),
-    pub root: (PathBuf, u64),
+    pub entry: u64,
+    pub root: u64,
 }
 
-/// A path a file had: where, and until when (the moment it moved on, milliseconds since
-/// the Unix epoch; none for where it is now).
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct Named {
-    pub path: PathBuf,
-    pub until: Option<u64>,
+/// What a history is asked of: one file's lines, every line whose path was under a folder,
+/// both, or neither (every chain).
+pub struct Asked<'a> {
+    pub file: Option<&'a FileId>,
+    pub under: Option<&'a Path>,
 }
 
-/// Every path `file` had, where it is now first: each `relocated` line that brought it to
-/// one read back to the path it had before, in whichever log holds that line (a file moved
-/// between folders served logs its move where it went, the path it came from whole).
-pub fn named(logs: &[Log], file: &Path) -> Vec<Named> {
-    let mut out = vec![Named { path: file.to_path_buf(), until: None }];
-    // each move followed once: a file moved back and forth is read back through every move
-    let mut followed: Vec<(PathBuf, u64)> = Vec::new();
-    loop {
-        let here = out.last().expect("where it is");
-        let came = logs
-            .iter()
-            .flat_map(|log| log.lines().iter().map(move |l| (log, l)))
-            .filter_map(|(log, l)| match &l.entry {
-                Logged::Relocated { path, from, .. }
-                    if log.root.join(path) == here.path
-                        && here.until.is_none_or(|u| l.at <= u)
-                        && !followed.contains(&(log.root.clone(), l.n)) =>
-                {
-                    Some((log.root.clone(), l.n, l.at, log.root.join(from)))
-                }
-                _ => None,
-            })
-            .max_by_key(|(_, _, at, _)| *at);
-        let Some((root, n, at, from)) = came else { return out };
-        followed.push((root, n));
-        out.push(Named { path: from, until: Some(at) });
+impl Asked<'_> {
+    fn wants(&self, line: &Line) -> bool {
+        self.file.is_none_or(|f| line.file == *f) && self.under.is_none_or(|u| Path::new(line.entry.path()).starts_with(u))
     }
 }
 
-/// Whether the entry about `file` logged at `at` is one of `names`: the file at one of the
-/// paths it had, while it had it.
-pub fn named_at(names: &[Named], file: &Path, at: u64) -> bool {
-    names.iter().any(|n| n.path == file && n.until.is_none_or(|u| at <= u))
+/// The root of the chain `line` is in: its number.
+fn root_of(line: &Line) -> u64 {
+    line.entry.cause().map_or(line.n, |c| c.n)
 }
 
-/// The chains of every log, newest root first: only those with an entry `wanted` says yes
-/// to (its file, and when it was logged), at most `limit`.
-pub fn chains<'a>(logs: impl Iterator<Item = &'a Log>, wanted: impl Fn(&Path, u64) -> bool, limit: usize) -> Vec<Chain> {
-    let mut roots: BTreeMap<(PathBuf, u64), (Event, Vec<Event>)> = BTreeMap::new();
-    let mut followers: Vec<((PathBuf, u64), Event)> = Vec::new();
-    for log in logs {
-        for line in log.lines() {
-            let event = Event { folder: log.root.clone(), line: line.clone() };
-            match line.entry.cause() {
-                None => {
-                    roots.insert((log.root.clone(), line.n), (event, Vec::new()));
-                }
-                Some(cause) => followers.push(((cause.folder.clone().unwrap_or_else(|| log.root.clone()), cause.n), event)),
+/// The log's chains, newest root first: only those with an entry `asked` wants, at most
+/// `limit`.
+pub fn chains(log: &Log, asked: &Asked, limit: usize) -> Vec<Chain> {
+    let mut roots: BTreeMap<u64, (Line, Vec<Line>)> = BTreeMap::new();
+    for line in log.lines() {
+        match line.entry.cause() {
+            None => {
+                roots.insert(line.n, (line.clone(), Vec::new()));
             }
-        }
-    }
-    // an entry whose root is gone (a log cut short by hand) has no chain to be drawn in,
-    // and the log said it was broken when it was read
-    for (root, event) in followers {
-        if let Some((_, followed)) = roots.get_mut(&root) {
-            followed.push(event);
+            // an entry whose root is gone (a log cut short by hand) has no chain to be drawn
+            // in, and the log said it was broken when it was read
+            Some(cause) => {
+                if let Some((_, followed)) = roots.get_mut(&cause.n) {
+                    followed.push(line.clone());
+                }
+            }
         }
     }
     let mut out: Vec<Chain> = roots
         .into_values()
-        .filter(|(root, followed)| wanted(&root.file(), root.line.at) || followed.iter().any(|e| wanted(&e.file(), e.line.at)))
-        .map(|(root, mut followed)| {
-            // logged in the order it happened, folders served apart by their clocks
-            followed.sort_by_key(|e| e.line.at);
+        .filter(|(root, followed)| asked.wants(root) || followed.iter().any(|e| asked.wants(e)))
+        .map(|(root, followed)| {
             let followed = tree(&root, followed);
             Chain { root, followed }
         })
         .collect();
-    out.sort_by_key(|c| std::cmp::Reverse((c.root.line.at, c.root.line.n)));
+    out.sort_by_key(|c| std::cmp::Reverse((c.root.at, c.root.n)));
     out.truncate(limit);
     out
 }
 
 /// Each entry of a chain with the one it is drawn under (`Followed::under`).
-fn tree(root: &Event, followed: Vec<Event>) -> Vec<Followed> {
+fn tree(root: &Line, followed: Vec<Line>) -> Vec<Followed> {
     let mut out: Vec<Followed> = Vec::with_capacity(followed.len());
     for event in followed {
-        let first = match &event.line.entry {
-            Logged::Store { via, .. } => via.first().map(|v| event.folder.join(v)),
+        let first = match &event.entry {
+            Logged::Store { via, .. } => via.first().cloned(),
             _ => None,
         };
-        let under = first.filter(|f| *f != root.file()).and_then(|f| out.iter().rposition(|o| o.event.file() == f));
+        let under = first.filter(|f| f != root.entry.path()).and_then(|f| out.iter().rposition(|o| o.event.entry.path() == f));
         out.push(Followed { event, under });
     }
     out
 }
 
-/// Every cell of `file` the versions after `version` changed, as `Mark`s: the rows each
-/// version added and removed followed down to the rows the file has now, a cell changed
-/// twice marked once with what it held at `version`, a cell changed back not marked.
-/// `version` is one the log names, as what an entry made or what one was made over; nothing
-/// when it names none (a version never logged, older than the log), since what came after
-/// it is not known. `current` is the version the file holds now: since it, nothing.
-pub fn since(log: &Log, file: &Path, version: &str, current: &str) -> Option<Vec<Mark>> {
+/// Every cell of the file `id` the versions after `version` changed, as `Mark`s: the rows
+/// each version added and removed followed down to the rows the file has now, a cell
+/// changed twice marked once with what it held at `version`, a cell changed back not
+/// marked. `version` is one the log names, as what an entry made or what one was made
+/// over; nothing when it names none (a version never logged, older than the log), since
+/// what came after it is not known. `current` is the version the file holds now: since it,
+/// nothing.
+pub fn since(log: &Log, id: &FileId, version: &str, current: &str) -> Option<Vec<Mark>> {
     if version == current {
         return Some(Vec::new());
     }
-    let path = log.shown(file);
-    let lines: Vec<&Line> = crate::log::lines_of(log, &path);
+    let lines: Vec<&Line> = log.of(id).collect();
     fn over(l: &Line) -> Option<&str> {
         match &l.entry {
             Logged::External { was, .. } => was.as_deref(),
@@ -195,10 +148,6 @@ pub fn since(log: &Log, file: &Path, version: &str, current: &str) -> Option<Vec
         .rposition(|l| l.entry.now() == Some(version))
         .map(|i| i + 1)
         .or_else(|| lines.iter().position(|l| over(l) == Some(version)))?;
-    let root_of = |l: &Line| match l.entry.cause() {
-        Some(c) => (c.folder.clone().unwrap_or_else(|| log.root.clone()), c.n),
-        None => (log.root.clone(), l.n),
-    };
     let mut marks: Vec<Mark> = Vec::new();
     for l in &lines[start..] {
         let (cells, added, removed, renamed): (&[crate::log::Changed], &[usize], &[usize], &[Renamed]) = match &l.entry {
@@ -216,7 +165,7 @@ pub fn since(log: &Log, file: &Path, version: &str, current: &str) -> Option<Vec
             // a move changes no cell; a write not made, none either
             Logged::Relocated { .. } | Logged::Moved { .. } => continue,
         };
-        let (entry, root) = ((log.root.clone(), l.n), root_of(l));
+        let (entry, root) = (l.n, root_of(l));
         for r in renamed {
             marks.iter_mut().filter(|m| m.column.as_deref() == Some(r.from.as_str())).for_each(|m| m.column = Some(r.to.clone()));
         }
@@ -231,16 +180,7 @@ pub fn since(log: &Log, file: &Path, version: &str, current: &str) -> Option<Vec
         new.sort_unstable();
         for a in new {
             marks.iter_mut().filter(|m| m.row >= a).for_each(|m| m.row += 1);
-            marks.push(Mark {
-                row: a,
-                key: None,
-                column: None,
-                was: None,
-                now: String::new(),
-                at: l.at,
-                entry: entry.clone(),
-                root: root.clone(),
-            });
+            marks.push(Mark { row: a, key: None, column: None, was: None, now: String::new(), at: l.at, entry, root });
         }
         for c in cells {
             if marks.iter().any(|m| m.row == c.row && m.column.is_none()) {
@@ -250,8 +190,8 @@ pub fn since(log: &Log, file: &Path, version: &str, current: &str) -> Option<Vec
                 Some(m) => {
                     m.now = c.now.clone();
                     m.at = l.at;
-                    m.entry = entry.clone();
-                    m.root = root.clone();
+                    m.entry = entry;
+                    m.root = root;
                 }
                 None => marks.push(Mark {
                     row: c.row,
@@ -260,8 +200,8 @@ pub fn since(log: &Log, file: &Path, version: &str, current: &str) -> Option<Vec
                     was: Some(c.was.clone()),
                     now: c.now.clone(),
                     at: l.at,
-                    entry: entry.clone(),
-                    root: root.clone(),
+                    entry,
+                    root,
                 }),
             }
         }
@@ -271,17 +211,12 @@ pub fn since(log: &Log, file: &Path, version: &str, current: &str) -> Option<Vec
     Some(marks)
 }
 
-/// Every value the cell at `row` (as the file numbers it now, from 1) of `column` held,
-/// newest first, back to the entry that added its row. A row with a key is followed by its
-/// key; one without, by its place, moved back over the rows each version added and
-/// removed above it.
-pub fn cell(log: &Log, file: &Path, row: usize, key: Option<&str>, column: &str) -> Vec<Held> {
-    let path = log.shown(file);
-    let lines: Vec<&Line> = crate::log::lines_of(log, &path);
-    let root_of = |l: &Line| match l.entry.cause() {
-        Some(c) => (c.folder.clone().unwrap_or_else(|| log.root.clone()), c.n),
-        None => (log.root.clone(), l.n),
-    };
+/// Every value the cell at `row` (as the file numbers it now, from 1) of `column` of the
+/// file `id` held, newest first, back to the entry that added its row. A row with a key is
+/// followed by its key; one without, by its place, moved back over the rows each version
+/// added and removed above it.
+pub fn cell(log: &Log, id: &FileId, row: usize, key: Option<&str>, column: &str) -> Vec<Held> {
+    let lines: Vec<&Line> = log.of(id).collect();
     let mut out = Vec::new();
     let mut row = row;
     let mut column = column.to_owned();
@@ -301,7 +236,7 @@ pub fn cell(log: &Log, file: &Path, row: usize, key: Option<&str>, column: &str)
         let same =
             |c: &&crate::log::Changed| c.column == column && (key.is_some() && c.key.as_deref() == key || key.is_none() && c.row == row);
         if let Some(c) = cells.iter().find(same) {
-            out.push(Held { value: c.now.clone(), was: c.was.clone(), at: l.at, folder: log.root.clone(), n: l.n, root: root_of(l) });
+            out.push(Held { value: c.now.clone(), was: c.was.clone(), at: l.at, n: l.n, root: root_of(l) });
         }
         // before a version that renamed the column, it had its old name
         if let Some(r) = renamed.iter().find(|r| r.to == column) {

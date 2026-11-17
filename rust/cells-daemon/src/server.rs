@@ -39,8 +39,8 @@ pub enum Unbound {
 /// What a process does when another holds the engine's lock.
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum Held {
-    /// Returns `Unbound::Running`: `cells serve` typed by a person, or started by a client,
-    /// hands its folders to the engine running.
+    /// Returns `Unbound::Running`: `cells engine` typed by a person, or started by a client,
+    /// leaves the engine running to be the one.
     Leave,
     /// Waits until it is free, then is the engine: Cells.app's own engine, kept by
     /// launchd, outwaiting one a client started before it, never restarting against it.
@@ -179,16 +179,11 @@ fn canonical(request: ToEngine) -> Result<ToEngine, String> {
     }
     Ok(match request {
         ToEngine::Hello { .. } => request,
-        ToEngine::Serve { folder } => {
-            let folder = fs::canonicalize(&folder).map_err(|e| format!("{}: {e}", folder.display()))?;
-            if !folder.is_dir() {
-                return Err(format!("{}: not a folder", folder.display()));
-            }
-            ToEngine::Serve { folder }
-        }
         ToEngine::Allow { file, script, version } => ToEngine::Allow { file: path(file)?, script, version },
         ToEngine::Editing { file, version } => ToEngine::Editing { file: path(file)?, version },
-        ToEngine::History { folder, file, limit } => ToEngine::History { folder: path(folder)?, file: file.map(path).transpose()?, limit },
+        ToEngine::History { file, under, limit } => {
+            ToEngine::History { file: file.map(path).transpose()?, under: under.map(path).transpose()?, limit }
+        }
         ToEngine::Cell { file, row, column } => ToEngine::Cell { file: path(file)?, row, column },
         ToEngine::Version { file, version } => ToEngine::Version { file: path(file)?, version },
         ToEngine::Restore { file, version } => ToEngine::Restore { file: path(file)?, version },

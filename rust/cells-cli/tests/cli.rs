@@ -109,9 +109,9 @@ fn imports_formulas_and_a_script() {
     let history = Command::new(cells).env("HOME", &home).arg("history").arg(&money).output().unwrap();
     let history = String::from_utf8(history.stdout).unwrap();
     assert!(history.contains("money.cells: rates run 1 by cells run, 1 added, 0 changed"), "{history}");
-    // the engine this test started, stopped: `cells serve` names the one running
-    let serve = Command::new(cells).env("HOME", &home).arg("serve").output().unwrap();
-    let said = String::from_utf8(serve.stderr).unwrap();
+    // the engine this test started, stopped: `cells engine` names the one running
+    let engine = Command::new(cells).env("HOME", &home).arg("engine").output().unwrap();
+    let said = String::from_utf8(engine.stderr).unwrap();
     let pid: i32 =
         said.split("pid ").nth(1).and_then(|s| s.split(')').next()).and_then(|p| p.parse().ok()).unwrap_or_else(|| panic!("{said}"));
     Command::new("kill").arg(pid.to_string()).status().unwrap();

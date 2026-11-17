@@ -25,7 +25,6 @@ pub fn run(path: &Path, only: Option<&str>) -> Result<(Vec<String>, bool), Strin
     }
     let exe = std::env::current_exe().map_err(|e| e.to_string())?;
     let (engine, _) = Engine::connect_or_start("cells run", &exe)?;
-    engine.serve(file.parent().expect("a file is in a folder"))?;
     let mut said = Vec::new();
     let mut all_ok = true;
     for script in names {

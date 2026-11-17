@@ -4,9 +4,9 @@
 //! answers from the doc. Diagnostics follow every change, in every open file, since a
 //! change in one may break a reference in another: a change the editor makes, and one
 //! written to the disk by anything else (another editor, Cells.app, a script, the
-//! engine storing what a change reached). The engine (`cells serve`) hears the disk and
-//! says what changed: the server asks it to serve the folder the editor names, and each
-//! open file's own, starting it when none answers.
+//! engine storing what a change reached). The engine (`cells engine`) hears the disk and
+//! says what changed, holding every file under home and every file a client names (the
+//! server names each it is told is edited), started by the server when none answers.
 
 mod colour;
 mod features;
@@ -83,16 +83,6 @@ impl Backend {
         diagnose(&self.client, self.folder()).await;
     }
 
-    /// `folder` served by the engine, when one was reached; a refusal (a folder too wide
-    /// to serve whole) said to the editor.
-    async fn serve(&self, folder: PathBuf) {
-        let Some(engine) = self.engine.lock().unwrap().clone() else { return };
-        let answer = tokio::task::spawn_blocking(move || engine.serve(&folder)).await.expect("the engine's request never panics");
-        if let Err(why) = answer {
-            self.client.log_message(MessageType::WARNING, format!("cells: {why}")).await;
-        }
-    }
-
     /// The file a request names, read, and the byte its position names.
     fn at(&self, doc: &TextDocumentPositionParams) -> Option<(Folder, File, usize)> {
         let folder = self.folder();
@@ -167,8 +157,8 @@ impl LanguageServer for Backend {
         })
     }
 
-    /// The engine reached (started when none answers), told the folder the editor named and
-    /// every file's open already, and what it says changed diagnosed from then on.
+    /// The engine reached (started when none answers), and what it says changed diagnosed
+    /// from then on.
     async fn initialized(&self, _: InitializedParams) {
         let exe = std::env::current_exe().expect("the server knows its own binary");
         let name = self.name.lock().unwrap().clone();
@@ -197,15 +187,6 @@ impl LanguageServer for Backend {
                 diagnose(&client, held).await;
             }
         });
-        let held = self.folder();
-        // Each open file's own folder beside the editor's: an editor may name none (Helix,
-        // where no project marker is), and the engine watches what a served file imports,
-        // wherever it is.
-        let folders: Vec<PathBuf> =
-            held.root.iter().cloned().chain(held.open.keys().filter_map(|p| p.parent().map(Path::to_path_buf))).collect();
-        for f in folders {
-            self.serve(f).await;
-        }
     }
 
     async fn shutdown(&self) -> Result<()> {
@@ -220,9 +201,6 @@ impl LanguageServer for Backend {
             self.saved.lock().unwrap().insert(path.clone(), p.text_document.text.clone());
             self.change(path.clone(), Some(p.text_document.text));
             self.diagnose().await;
-            if let Some(dir) = path.parent() {
-                self.serve(dir.to_path_buf()).await;
-            }
         }
     }
 

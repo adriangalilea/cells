@@ -1,34 +1,40 @@
-//! The daemon against a simulated world: files in memory, change events handed in by
-//! the test, a clock that only moves when asked. Every run is the same run.
+//! The daemon against a simulated world: one home folder in memory, each file with a system
+//! ID as a disk gives one (kept by a write in place and a rename, new for a file saved over
+//! atomically or copied), change events handed in by the test, a clock that only moves when
+//! asked. Every run is the same run.
 
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use std::sync::mpsc::channel;
 
 use crate::daemon::{Daemon, Event};
-use crate::log::{Logged, hash};
+use crate::index::{FileId, Heard, visible};
+use crate::log::{Line, hash};
 use crate::trace::caught;
 use crate::wire::{FromEngine, ToEngine};
-use crate::world::{Found, Kept, Replaced, World, table_file};
+use crate::world::{Found, Replaced, World, table_file};
 
 #[derive(Default)]
-struct Sim {
+pub(crate) struct Sim {
     files: RefCell<BTreeMap<PathBuf, String>>,
+    /// Each file's system ID.
+    ids: RefCell<BTreeMap<PathBuf, u64>>,
+    /// The last system ID given.
+    last_id: Cell<u64>,
+    /// A disk that gives no file IDs: what a move is followed by is the events' IDs, or text.
+    pub(crate) blind: bool,
     /// Files the disk will not give, and why (iCloud's, kept only in the cloud).
     unreadable: RefCell<BTreeMap<PathBuf, String>>,
-    /// Folders locked that are no longer the folder at their path, and what is there.
-    moved: RefCell<BTreeMap<PathBuf, Kept>>,
-    locked: Vec<PathBuf>,
     watched: Vec<(PathBuf, bool)>,
     /// What each script returns when run, by name: its lines, or why it failed.
     scripts: RefCell<BTreeMap<String, Result<Vec<String>, String>>>,
     /// Every script started, by name, in order.
     started: RefCell<Vec<String>>,
     /// The clock, in milliseconds since the Unix epoch: `NOW` unless a test moves it.
-    clock: std::cell::Cell<u64>,
+    clock: Cell<u64>,
     /// The random bits handed out, counted: every run the same ids.
-    drawn: std::cell::Cell<u64>,
+    drawn: Cell<u64>,
     /// What the daemon says back to itself (a run ended), read by `pump`.
     inbox: Option<std::sync::mpsc::Receiver<Event>>,
 }
@@ -36,17 +42,56 @@ struct Sim {
 /// The simulated clock's start: 2026-11-06T21:20:00Z.
 const NOW: u64 = 1_794_000_000_000;
 
+/// The simulated home folder.
+pub(crate) const HOME: &str = "/h";
+
 impl Sim {
-    fn put(&self, path: &str, text: &str) {
+    /// A system ID never given before.
+    fn fresh(&self) -> u64 {
+        self.last_id.set(self.last_id.get() + 1);
+        self.last_id.get()
+    }
+
+    /// `text` written at `path` in place, as an editor that writes into the file does: its
+    /// system ID kept, a new one for a file new there.
+    pub(crate) fn put(&self, path: &str, text: &str) {
+        let p = PathBuf::from(path);
+        if !self.ids.borrow().contains_key(&p) {
+            let id = self.fresh();
+            self.ids.borrow_mut().insert(p.clone(), id);
+        }
+        self.files.borrow_mut().insert(p, text.to_owned());
+    }
+
+    /// `text` saved over `path` atomically, as most editors save: a new file renamed over
+    /// it, another system ID.
+    fn save_over(&self, path: &str, text: &str) {
+        let id = self.fresh();
+        self.ids.borrow_mut().insert(PathBuf::from(path), id);
         self.files.borrow_mut().insert(PathBuf::from(path), text.to_owned());
     }
 
-    fn get(&self, path: &str) -> String {
+    pub(crate) fn get(&self, path: &str) -> String {
         self.files.borrow()[Path::new(path)].clone()
     }
 
-    fn log(&self) -> Vec<String> {
-        self.files.borrow().get(Path::new("/w/.cells/log.jsonl")).map_or(Vec::new(), |t| t.lines().map(str::to_owned).collect())
+    fn remove(&self, path: &str) -> String {
+        self.ids.borrow_mut().remove(Path::new(path));
+        self.files.borrow_mut().remove(Path::new(path)).expect("a file to remove")
+    }
+
+    fn id(&self, path: &str) -> u64 {
+        self.ids.borrow()[Path::new(path)]
+    }
+
+    /// The log's lines as written.
+    pub(crate) fn log(&self) -> Vec<String> {
+        self.files.borrow().get(&crate::log::path()).map_or(Vec::new(), |t| t.lines().map(str::to_owned).collect())
+    }
+
+    /// The log's lines, read.
+    fn lines(&self) -> Vec<Line> {
+        self.log().iter().map(|l| serde_json::from_str(l).unwrap()).collect()
     }
 }
 
@@ -58,20 +103,48 @@ impl World for Sim {
         self.files.borrow().get(path).map_or(Found::Missing, |t| Found::Text(t.clone()))
     }
 
-    fn list(&self, root: &Path, whole: bool) -> Vec<PathBuf> {
-        let within = |p: &Path| if whole { p.starts_with(root) } else { p.parent() == Some(root) };
-        self.files.borrow().keys().filter(|p| within(p) && table_file(p)).cloned().collect()
+    fn file_id(&self, path: &Path) -> Option<u64> {
+        if self.blind {
+            return None;
+        }
+        self.ids.borrow().get(path).copied()
+    }
+
+    fn files(&self, root: &Path) -> Vec<PathBuf> {
+        let home = self.home();
+        self.files.borrow().keys().filter(|p| p.starts_with(root) && table_file(p) && visible(&home, p)).cloned().collect()
+    }
+
+    fn folder_logs(&self) -> Vec<PathBuf> {
+        let home = self.home();
+        self.files
+            .borrow()
+            .keys()
+            .filter(|p| p.ends_with(".cells/log.jsonl"))
+            .filter(|p| p.starts_with(&home) && visible(&home, p.parent().and_then(Path::parent).expect("a folder's log")))
+            .cloned()
+            .collect()
+    }
+
+    fn entries(&self, dir: &Path) -> Vec<PathBuf> {
+        self.files.borrow().keys().filter(|p| p.parent() == Some(dir)).cloned().collect()
     }
 
     fn replace(&self, path: &Path, against: &str, text: &str) -> Replaced {
-        let mut files = self.files.borrow_mut();
-        match files.get(path) {
-            Some(now) if hash(now) == against => {
-                files.insert(path.to_path_buf(), text.to_owned());
+        let now = self.files.borrow().get(path).cloned();
+        match now {
+            // the engine writes beside and renames over: another system ID
+            Some(now) if hash(&now) == against => {
+                self.save_over(path.to_str().unwrap(), text);
                 Replaced::Done
             }
             _ => Replaced::Moved,
         }
+    }
+
+    fn save(&self, path: &Path, text: &str) -> Result<(), String> {
+        self.save_over(path.to_str().unwrap(), text);
+        Ok(())
     }
 
     fn append(&self, path: &Path, line: &str) -> Result<(), String> {
@@ -84,20 +157,25 @@ impl World for Sim {
         Ok(())
     }
 
-    fn lock(&mut self, root: &Path) -> Result<(), String> {
-        self.locked.push(root.to_path_buf());
-        Ok(())
-    }
-
-    fn unlock(&mut self, root: &Path) {
-        let at = self.locked.iter().position(|r| r == root).expect("a lock let go is held");
-        self.locked.remove(at);
-        self.moved.borrow_mut().remove(root);
-    }
-
-    fn kept(&self, root: &Path) -> Kept {
-        assert!(self.locked.iter().any(|r| r == root), "{} asked after, unlocked", root.display());
-        self.moved.borrow().get(root).copied().unwrap_or(Kept::Held)
+    fn trash(&mut self, path: &Path, name: &str) -> Result<PathBuf, String> {
+        let trash = self.home().join(".Trash");
+        let to = (1..)
+            .map(|n| trash.join(if n == 1 { name.to_owned() } else { format!("{name} {n}") }))
+            .find(|t| !self.files.borrow().keys().any(|p| p.starts_with(t)))
+            .unwrap();
+        let moved: Vec<PathBuf> = self.files.borrow().keys().filter(|p| p.starts_with(path)).cloned().collect();
+        if moved.is_empty() {
+            return Err(format!("{}: no such folder", path.display()));
+        }
+        for p in moved {
+            let there = to.join(p.strip_prefix(path).unwrap());
+            let text = self.files.borrow_mut().remove(&p).unwrap();
+            self.files.borrow_mut().insert(there.clone(), text);
+            if let Some(id) = self.ids.borrow_mut().remove(&p) {
+                self.ids.borrow_mut().insert(there, id);
+            }
+        }
+        Ok(to)
     }
 
     fn watch(&mut self, dir: &Path, whole: bool) -> Result<(), String> {
@@ -111,7 +189,7 @@ impl World for Sim {
     }
 
     fn home(&self) -> PathBuf {
-        PathBuf::from("/home/someone")
+        PathBuf::from(HOME)
     }
 
     fn now(&self) -> u64 {
@@ -134,103 +212,39 @@ fn pump(d: &mut Daemon<Sim>) {
     }
 }
 
-const Q4: &str = "/w/q4/money.cells";
-const QUARTERS: &str = "/w/quarters.cells";
+const Q4: &str = "/h/w/q4/money.cells";
+const QUARTERS: &str = "/h/w/quarters.cells";
 const ACCOUNTS: &str = "/books/accounts.cells";
 const MONEY: &str = "---\ntype Kind = income|cost\ncost: EUR = CASE WHEN kind = 'cost' THEN amount ELSE 0 END\n---\nkind:Kind,amount:EUR,cost\nincome,4200.00,0.00=\ncost,180.00,180.00=\n";
 const INDEX: &str = "---\nimport q4 from \"./q4/money.cells\"\n---\nquarter:text!,costs:EUR\nq4,180.00=SUM(q4.cost)\n";
 
-fn served(sim: Sim, root: &str) -> Daemon<Sim> {
+/// The engine started over `sim`.
+pub(crate) fn started(mut sim: Sim) -> Daemon<Sim> {
     let (back, inbox) = channel();
-    let mut d = Daemon::new(sim, back);
-    d.world_mut().inbox = Some(inbox);
-    assert_eq!(d.serve(Path::new(root)).unwrap(), PathBuf::from(root));
-    d
+    sim.inbox = Some(inbox);
+    Daemon::start(sim, back).unwrap()
+}
+
+/// The engine stopped and started again over the same disk.
+fn restarted(d: Daemon<Sim>) -> Daemon<Sim> {
+    started(d.into_world())
 }
 
 fn daemon() -> Daemon<Sim> {
     let sim = Sim::default();
     sim.put(Q4, MONEY);
     sim.put(QUARTERS, INDEX);
-    served(sim, "/w")
+    started(sim)
 }
 
 fn heard(d: &mut Daemon<Sim>, paths: &[&str]) {
-    d.hear(&paths.iter().map(PathBuf::from).collect());
+    let heard: Vec<Heard> = paths.iter().map(|p| Heard { path: p.into(), id: None }).collect();
+    d.hear(&heard);
 }
 
-#[test]
-fn a_folder_whose_history_cannot_be_read_is_refused_and_let_go() {
-    let sim = Sim::default();
-    sim.put(Q4, MONEY);
-    let log = PathBuf::from("/w/.cells/log.jsonl");
-    sim.unreadable.borrow_mut().insert(log.clone(), "Resource deadlock avoided (os error 11)".into());
-    let (back, _inbox) = channel();
-    let mut d = Daemon::new(sim, back);
-    let why = d.serve(Path::new("/w")).unwrap_err();
-    assert!(why.contains("/w/.cells/log.jsonl") && why.contains("os error 11"), "{why}");
-    assert!(d.world().locked.is_empty(), "its lock let go");
-    assert!(d.world().watched.is_empty(), "never watched");
-    // readable again (fetched from iCloud), the folder is served as any other
-    d.world().unreadable.borrow_mut().remove(&log);
-    assert_eq!(d.serve(Path::new("/w")).unwrap(), PathBuf::from("/w"));
-    assert_eq!(d.world().locked, [PathBuf::from("/w")]);
-}
-
-#[test]
-fn a_folder_replaced_at_its_path_is_served_again_from_its_own_history() {
-    let mut d = daemon();
-    d.world().put(Q4, &MONEY.replace("cost,180.00,180.00=", "cost,200.00,180.00="));
-    heard(&mut d, &[Q4]);
-    assert_eq!(d.world().log().len(), 3);
-    // the folder trashed and a fresh copy put at its path: no history in it
-    d.world().files.borrow_mut().retain(|p, _| !p.starts_with("/w/.cells"));
-    d.world().put(Q4, MONEY);
-    d.world().put(QUARTERS, INDEX);
-    d.world().moved.borrow_mut().insert(PathBuf::from("/w"), Kept::Replaced);
-    heard(&mut d, &[Q4, QUARTERS]);
-    assert!(d.world().log().is_empty(), "the copy's files are the start of its history: {:#?}", d.world().log());
-    assert_eq!(d.world().locked, [PathBuf::from("/w")], "locked again, the copy's lock");
-    d.world().put(Q4, &MONEY.replace("cost,180.00,180.00=", "cost,200.00,180.00="));
-    heard(&mut d, &[Q4]);
-    let log = d.world().log();
-    assert!(log[0].starts_with("{\"n\":1,\"prev\":\"\","), "its history begins at its first line: {}", log[0]);
-}
-
-#[test]
-fn a_folder_gone_is_let_go() {
-    let mut d = daemon();
-    d.world().files.borrow_mut().clear();
-    d.world().moved.borrow_mut().insert(PathBuf::from("/w"), Kept::Gone);
-    heard(&mut d, &[Q4, QUARTERS]);
-    assert!(d.world().locked.is_empty(), "its lock let go");
-    assert!(d.world().log().is_empty(), "nothing logged in a folder that is not there");
-}
-
-#[test]
-fn a_save_stores_what_it_reaches_in_every_file() {
-    let mut d = daemon();
-    assert!(d.world().log().is_empty(), "starting writes nothing");
-    d.world().put(Q4, &MONEY.replace("cost,180.00,180.00=", "cost,200.00,180.00="));
-    heard(&mut d, &[Q4]);
-    assert_eq!(d.world().get(Q4), MONEY.replace("cost,180.00,180.00=", "cost,200.00,200.00="));
-    assert_eq!(d.world().get(QUARTERS), INDEX.replace("180.00=SUM", "200.00=SUM"));
-    let log = d.world().log();
-    let kinds: Vec<&str> = log.iter().map(|l| l.split("\"kind\":\"").nth(1).unwrap().split('"').next().unwrap()).collect();
-    assert_eq!(kinds, ["external", "store", "store"]);
-    assert!(log[0].starts_with("{\"n\":1,\"prev\":\"\","), "{}", log[0]);
-    assert!(log[1].starts_with(&format!("{{\"n\":2,\"prev\":\"{}\",", hash(&log[0]))), "each line links the one before");
-    assert!(
-        log[0].contains("\"edited\":{\"cells\":[{\"row\":2,\"column\":\"amount\",\"was\":\"180.00\",\"now\":\"200.00\"}]}"),
-        "{}",
-        log[0]
-    );
-    assert!(log[2].contains("\"path\":\"quarters.cells\",\"cause\":{\"n\":1},\"via\":[\"q4/money.cells\"]"), "{}", log[2]);
-    assert!(
-        log[2].contains("\"stored\":[{\"row\":1,\"key\":\"q4\",\"column\":\"costs\",\"was\":\"180.00\",\"now\":\"200.00\"}]"),
-        "{}",
-        log[2]
-    );
+/// The identity of the file held at `path`.
+fn id(d: &Daemon<Sim>, path: &str) -> FileId {
+    d.index().at(Path::new(path)).unwrap_or_else(|| panic!("{path} held")).id.clone()
 }
 
 /// What each line of the log is, in order.
@@ -238,22 +252,128 @@ fn kinds(log: &[String]) -> Vec<String> {
     log.iter().map(|l| l.split("\"kind\":\"").nth(1).unwrap().split('"').next().unwrap().to_owned()).collect()
 }
 
-/// `from` moved to `to` on the simulated disk, as the Finder moves it.
+/// Each line about the file `id`: its kind and its path then.
+fn of(d: &Daemon<Sim>, id: &FileId) -> Vec<(String, String)> {
+    d.world()
+        .lines()
+        .iter()
+        .filter(|l| l.file == *id)
+        .map(|l| (kinds(&[serde_json::to_string(l).unwrap()])[0].clone(), l.entry.path().to_owned()))
+        .collect()
+}
+
+/// `from` moved to `to` on the simulated disk, as the Finder moves it on one disk: its
+/// system ID with it.
 fn mv(d: &mut Daemon<Sim>, from: &str, to: &str) {
-    let text = d.world().files.borrow_mut().remove(Path::new(from)).expect("a file to move");
-    d.world().put(to, &text);
+    let w = d.world();
+    let id = w.id(from);
+    let text = w.remove(from);
+    w.files.borrow_mut().insert(to.into(), text);
+    w.ids.borrow_mut().insert(to.into(), id);
+}
+
+/// `from` moved to `to` across disks (a copy, the original removed), or replaced by iCloud:
+/// another system ID.
+fn copied(d: &mut Daemon<Sim>, from: &str, to: &str) {
+    let text = d.world().remove(from);
+    d.world().save_over(to, &text);
+}
+
+fn ask(d: &mut Daemon<Sim>, client: &str, request: ToEngine) -> FromEngine {
+    let (answer, answered) = channel();
+    d.answer(Event::Ask { id: 1, client: client.into(), request, answer: Some(answer) });
+    answered.try_recv().expect("answered")
+}
+
+fn history(d: &mut Daemon<Sim>, file: Option<&str>, under: Option<&str>) -> Vec<crate::history::Chain> {
+    let asked = ToEngine::History { file: file.map(PathBuf::from), under: under.map(PathBuf::from), limit: 100 };
+    match ask(d, "app", asked) {
+        FromEngine::History { chains } => chains,
+        other => panic!("{other:?}"),
+    }
+}
+
+#[test]
+fn every_cells_file_under_home_is_held_by_an_identity_kept_across_restarts() {
+    let sim = Sim::default();
+    sim.put(Q4, MONEY);
+    sim.put(QUARTERS, INDEX);
+    sim.put("/h/Music/prices.cells", "price:num\n1\n");
+    sim.put("/h/w/loose.csv", "a,b\n1,2\n");
+    sim.put("/h/.config/hidden.cells", "a:num\n1\n");
+    sim.put("/h/Library/Preferences/app.cells", "a:num\n1\n");
+    sim.put("/h/Library/Mobile Documents/com~apple~CloudDocs/cloud.cells", "a:num\n1\n");
+    let d = started(sim);
+    assert!(d.world().watched.contains(&(PathBuf::from(HOME), true)), "the home folder watched whole: {:?}", d.world().watched);
+    let held: Vec<String> = d.index().held().map(|k| k.path.display().to_string()).collect();
+    assert_eq!(
+        held,
+        ["/h/Library/Mobile Documents/com~apple~CloudDocs/cloud.cells", "/h/Music/prices.cells", Q4, QUARTERS],
+        "every .cells file the walk takes in, iCloud Drive's too; no CSV nobody imports"
+    );
+    assert!(d.world().log().is_empty(), "starting writes nothing in the history");
+    let q4 = id(&d, Q4);
+    let d = restarted(d);
+    assert_eq!(id(&d, Q4), q4, "the index kept: the same file, the same identity");
+}
+
+#[test]
+fn a_history_or_an_index_the_disk_will_not_give_is_refused() {
+    let sim = Sim::default();
+    sim.put(Q4, MONEY);
+    sim.unreadable.borrow_mut().insert(crate::log::path(), "Resource deadlock avoided (os error 11)".into());
+    let (back, _inbox) = channel();
+    let Err(why) = Daemon::start(sim, back) else { panic!("refused") };
+    assert!(why.contains("history/log.jsonl") && why.contains("os error 11"), "{why}");
+}
+
+#[test]
+fn a_save_stores_what_it_reaches_in_every_file() {
+    let mut d = daemon();
+    d.world().put(Q4, &MONEY.replace("cost,180.00,180.00=", "cost,200.00,180.00="));
+    heard(&mut d, &[Q4]);
+    assert_eq!(d.world().get(Q4), MONEY.replace("cost,180.00,180.00=", "cost,200.00,200.00="));
+    assert_eq!(d.world().get(QUARTERS), INDEX.replace("180.00=SUM", "200.00=SUM"));
+    let log = d.world().log();
+    assert_eq!(kinds(&log), ["external", "store", "store"]);
+    let (q4, quarters) = (id(&d, Q4), id(&d, QUARTERS));
+    assert!(
+        log[0].starts_with(&format!("{{\"n\":1,\"prev\":\"\",\"at\":{NOW},\"file\":\"{q4}\",\"kind\":\"external\",\"path\":\"{Q4}\"")),
+        "{}",
+        log[0]
+    );
+    assert!(log[1].starts_with(&format!("{{\"n\":2,\"prev\":\"{}\",", hash(&log[0]))), "each line links the one before");
+    assert!(
+        log[0].contains("\"edited\":{\"cells\":[{\"row\":2,\"column\":\"amount\",\"was\":\"180.00\",\"now\":\"200.00\"}]}"),
+        "{}",
+        log[0]
+    );
+    assert!(
+        log[2].contains(&format!(
+            "\"file\":\"{quarters}\",\"kind\":\"store\",\"path\":\"{QUARTERS}\",\"cause\":{{\"n\":1}},\"via\":[\"{Q4}\"]"
+        )),
+        "{}",
+        log[2]
+    );
+    assert!(
+        log[2].contains("\"stored\":[{\"row\":1,\"key\":\"q4\",\"column\":\"costs\",\"was\":\"180.00\",\"now\":\"200.00\"}]"),
+        "{}",
+        log[2]
+    );
 }
 
 #[test]
 fn a_file_moved_is_followed_by_every_import_naming_it() {
     let mut d = daemon();
-    let to = "/w/2026/q4.cells";
+    let q4 = id(&d, Q4);
+    let to = "/h/w/2026/q4.cells";
     mv(&mut d, Q4, to);
     heard(&mut d, &[Q4, to]);
     assert_eq!(d.world().get(QUARTERS), INDEX.replace("./q4/money.cells", "./2026/q4.cells"), "the index names it where it is");
+    assert_eq!(id(&d, to), q4, "the same file");
     let log = d.world().log();
     assert_eq!(kinds(&log), ["relocated", "store"]);
-    assert!(log[0].contains("\"path\":\"2026/q4.cells\",\"from\":\"q4/money.cells\""), "{}", log[0]);
+    assert!(log[0].contains(&format!("\"file\":\"{q4}\",\"kind\":\"relocated\",\"path\":\"{to}\",\"from\":\"{Q4}\"")), "{}", log[0]);
     assert!(log[1].contains("\"imports\":[[\"./q4/money.cells\",\"./2026/q4.cells\"]]"), "{}", log[1]);
     // the moved file read where it is: a change to it reaches the index as before
     d.world().put(to, &MONEY.replace("cost,180.00,180.00=", "cost,200.00,180.00="));
@@ -261,100 +381,201 @@ fn a_file_moved_is_followed_by_every_import_naming_it() {
     assert_eq!(d.world().get(QUARTERS), INDEX.replace("./q4/money.cells", "./2026/q4.cells").replace("180.00=SUM", "200.00=SUM"));
 }
 
+/// Rule 1: the events name a file ID, the disk none; the file edited as it moved.
 #[test]
-fn a_file_gone_and_another_come_with_other_text_is_no_move() {
-    let mut d = daemon();
-    let to = "/w/2026/q4.cells";
+fn rule_1_a_move_heard_by_its_file_id_is_followed_edited_as_it_moved() {
+    let sim = Sim { blind: true, ..Sim::default() };
+    sim.put(Q4, MONEY);
+    sim.put(QUARTERS, INDEX);
+    let mut d = started(sim);
+    let q4 = id(&d, Q4);
+    let to = "/h/Music/q4.cells";
     mv(&mut d, Q4, to);
+    let edited = MONEY.replace("income,4200.00", "income,4300.00");
+    d.world().put(to, &edited);
+    let sys = d.world().id(to);
+    let ((), said) = caught(|| d.hear(&[Heard { path: Q4.into(), id: Some(sys) }, Heard { path: to.into(), id: Some(sys) }]));
+    assert!(said.iter().any(|l| l.contains("~/w/q4/money.cells → ~/Music/q4.cells by its file ID, heard")), "{said:#?}");
+    assert_eq!(id(&d, to), q4);
+    assert_eq!(d.world().get(QUARTERS), INDEX.replace("./q4/money.cells", "../Music/q4.cells"));
+    assert_eq!(of(&d, &q4), [("relocated".to_owned(), to.to_owned()), ("external".to_owned(), to.to_owned())], "moved, then its edit");
+}
+
+/// Rule 2: an editor's atomic save gives the file another system ID; it is the same file.
+#[test]
+fn rule_2_an_atomic_save_keeps_the_file_s_identity() {
+    let mut d = daemon();
+    let q4 = id(&d, Q4);
+    let was = d.world().id(Q4);
+    d.world().save_over(Q4, &MONEY.replace("cost,180.00,180.00=", "cost,200.00,180.00="));
+    assert_ne!(d.world().id(Q4), was);
+    heard(&mut d, &[Q4]);
+    assert_eq!(id(&d, Q4), q4, "the same file");
+    assert_eq!(kinds(&d.world().log()), ["external", "store", "store"], "a save, not a file added");
+    assert_eq!(d.index().get(&q4).sys, Some(d.world().id(Q4)), "its system ID now, the engine's own write's");
+}
+
+/// Rule 3: the disk's file IDs, no event naming one; the file edited as it moved.
+#[test]
+fn rule_3_a_move_known_by_the_file_id_held_is_followed_edited_as_it_moved() {
+    let mut d = daemon();
+    let q4 = id(&d, Q4);
+    let to = "/h/Music/q4.cells";
+    mv(&mut d, Q4, to);
+    d.world().put(to, &MONEY.replace("cost,180.00,180.00=", "cost,200.00,180.00="));
+    heard(&mut d, &[Q4, to]);
+    assert_eq!(id(&d, to), q4);
+    assert_eq!(
+        d.world().get(QUARTERS),
+        INDEX.replace("./q4/money.cells", "../Music/q4.cells").replace("180.00=SUM", "200.00=SUM"),
+        "followed, and its edit reached the index"
+    );
+    assert_eq!(kinds(&d.world().log())[..2], ["relocated", "store"]);
+}
+
+/// Rule 4: copied across disks (another system ID), its text the same.
+#[test]
+fn rule_4_a_file_come_with_a_gone_file_s_text_is_it() {
+    let mut d = daemon();
+    let q4 = id(&d, Q4);
+    let to = "/h/w/2026/q4.cells";
+    copied(&mut d, Q4, to);
+    let ((), said) = caught(|| heard(&mut d, &[Q4, to]));
+    assert!(said.iter().any(|l| l.contains("by its text")), "{said:#?}");
+    assert_eq!(id(&d, to), q4);
+    assert_eq!(d.world().get(QUARTERS), INDEX.replace("./q4/money.cells", "./2026/q4.cells"));
+}
+
+/// Rule 5: another system ID and another text: no move, never guessed.
+#[test]
+fn rule_5_a_file_gone_and_another_come_with_other_text_is_no_move() {
+    let mut d = daemon();
+    let q4 = id(&d, Q4);
+    let to = "/h/w/2026/q4.cells";
+    d.world().remove(Q4);
     d.world().put(to, &MONEY.replace("income,4200.00", "income,4300.00"));
     heard(&mut d, &[Q4, to]);
     assert_eq!(d.world().get(QUARTERS), INDEX, "never guessed: the index still names where it was");
+    assert_ne!(id(&d, to), q4, "another file");
+    assert!(d.index().get(&q4).gone, "the one gone remembered");
     assert_eq!(kinds(&d.world().log()), ["external", "external"]);
 }
 
 #[test]
 fn a_file_moved_keeps_its_history() {
     let mut d = daemon();
+    let q4 = id(&d, Q4);
     d.world().put(Q4, &MONEY.replace("cost,180.00,180.00=", "cost,200.00,180.00="));
     heard(&mut d, &[Q4]);
-    let to = "/w/2026/q4.cells";
+    let to = "/h/w/2026/q4.cells";
     mv(&mut d, Q4, to);
     heard(&mut d, &[Q4, to]);
-    let (log, _) = crate::log::Log::open(Path::new("/w"), true, d.world()).expect("the log reads");
-    let lines = crate::log::lines_of(&log, "2026/q4.cells");
-    let kinds: Vec<&str> = lines
-        .iter()
-        .map(|l| match l.entry {
-            Logged::External { .. } => "external",
-            Logged::Store { .. } => "store",
-            Logged::Relocated { .. } => "relocated",
-            _ => "other",
-        })
-        .collect();
-    assert_eq!(kinds, ["external", "store", "relocated"], "its saves before the move are its own");
+    assert_eq!(
+        of(&d, &q4),
+        [("external".to_owned(), Q4.to_owned()), ("store".to_owned(), Q4.to_owned()), ("relocated".to_owned(), to.to_owned())],
+        "its saves before the move are its own"
+    );
+    let chains = history(&mut d, Some(to), None);
+    assert_eq!(chains.len(), 2, "the move and the save before it: {chains:#?}");
 }
 
 #[test]
-fn a_file_moved_into_a_folder_served_later_is_found_moved() {
+fn a_file_gone_is_found_later_in_another_folder() {
     let mut d = daemon();
+    let q4 = id(&d, Q4);
     d.world().put(Q4, &MONEY.replace("cost,180.00,180.00=", "cost,200.00,180.00="));
     heard(&mut d, &[Q4]);
-    // moved out of the folder served, into one the engine hears nothing of yet
-    let to = "/v/q4.cells";
-    mv(&mut d, Q4, to);
+    // moved off the home folder (another disk): heard gone
+    let away = d.world().remove(Q4);
     d.world().clock.set(NOW + 1_000);
     heard(&mut d, &[Q4]);
     assert_eq!(kinds(&d.world().log())[3..], ["external"], "first heard as gone");
-    // the folder it went to served: it is the file gone, moved
+    // brought back, into another folder
+    let to = "/h/Music/q4.cells";
     d.world().clock.set(NOW + 2_000);
-    d.serve(Path::new("/v")).unwrap();
+    d.world().put(to, &away);
+    heard(&mut d, &[to]);
+    assert_eq!(id(&d, to), q4, "the file gone, found");
     assert_eq!(
         d.world().get(QUARTERS),
-        INDEX.replace("./q4/money.cells", "../v/q4.cells").replace("180.00=SUM", "200.00=SUM"),
+        INDEX.replace("./q4/money.cells", "../Music/q4.cells").replace("180.00=SUM", "200.00=SUM"),
         "the index names it where it went"
     );
-    let there: Vec<String> = d.world().files.borrow()[Path::new("/v/.cells/log.jsonl")].lines().map(str::to_owned).collect();
-    assert_eq!(kinds(&there), ["relocated"]);
-    assert!(there[0].contains("\"path\":\"q4.cells\",\"from\":\"/w/q4/money.cells\""), "{}", there[0]);
-    // its history is the file's under both paths, across both folders
-    let FromEngine::History { chains } = ask(&mut d, "app", ToEngine::History { folder: "/v".into(), file: Some(to.into()), limit: 10 })
-    else {
-        panic!()
-    };
-    let roots: Vec<(String, String)> =
-        chains.iter().map(|c| (c.root.folder.display().to_string(), c.root.line.entry.path().to_owned())).collect();
+    let roots: Vec<(String, String)> = history(&mut d, Some(to), None)
+        .iter()
+        .map(|c| (kinds(&[serde_json::to_string(&c.root).unwrap()])[0].clone(), c.root.entry.path().to_owned()))
+        .collect();
     assert_eq!(
         roots,
-        [
-            ("/v".to_owned(), "q4.cells".to_owned()),
-            ("/w".to_owned(), "q4/money.cells".to_owned()),
-            ("/w".to_owned(), "q4/money.cells".to_owned())
-        ],
-        "moved, gone, saved: {chains:#?}"
+        [("relocated".to_owned(), to.to_owned()), ("external".to_owned(), Q4.to_owned()), ("external".to_owned(), Q4.to_owned())],
+        "moved, gone, saved: one history across both folders"
     );
 }
 
 #[test]
 fn a_file_gone_is_remembered_across_a_restart() {
     let mut d = daemon();
-    let to = "/v/q4.cells";
-    mv(&mut d, Q4, to);
+    let q4 = id(&d, Q4);
+    let away = d.world().remove(Q4);
     heard(&mut d, &[Q4]);
-    // the engine started again: what it remembers is what the folder's log says
-    let sim = std::mem::take(d.world_mut());
-    let mut d = served(sim, "/w");
-    d.serve(Path::new("/v")).unwrap();
+    let d = restarted(d);
+    d.world().put("/h/v/q4.cells", &away);
+    let d = restarted(d);
+    assert_eq!(id(&d, "/h/v/q4.cells"), q4, "found by the walk, by its text");
     assert_eq!(d.world().get(QUARTERS), INDEX.replace("./q4/money.cells", "../v/q4.cells"));
 }
 
 #[test]
-fn a_file_of_a_gone_file_text_and_another_name_among_two_is_no_move() {
+fn a_file_moved_and_edited_while_the_engine_was_stopped_is_followed_at_its_start() {
     let mut d = daemon();
-    mv(&mut d, Q4, "/v/a.cells");
-    d.world().put("/v/b.cells", MONEY);
-    heard(&mut d, &[Q4]);
-    d.serve(Path::new("/v")).unwrap();
+    let q4 = id(&d, Q4);
+    let to = "/h/Music/q4.cells";
+    mv(&mut d, Q4, to);
+    d.world().put(to, &MONEY.replace("income,4200.00", "income,4300.00"));
+    d.world().put(QUARTERS, &INDEX.replace("quarter:text!", "quarter: text!"));
+    let d = restarted(d);
+    assert_eq!(id(&d, to), q4, "by the file ID the index held");
+    assert!(d.world().get(QUARTERS).contains("import q4 from \"../Music/q4.cells\""));
+    let log = d.world().log();
+    assert_eq!(kinds(&log), ["external", "relocated", "store", "external"], "the index's edit, the move, followed, its edit: {log:#?}");
+}
+
+#[test]
+fn a_file_of_a_gone_file_s_text_and_another_name_among_two_is_no_move() {
+    let mut d = daemon();
+    copied(&mut d, Q4, "/h/v/a.cells");
+    d.world().put("/h/v/b.cells", MONEY);
+    heard(&mut d, &[Q4, "/h/v/a.cells", "/h/v/b.cells"]);
     assert_eq!(d.world().get(QUARTERS), INDEX, "two files of its text, neither of its name: never guessed");
+}
+
+#[test]
+fn a_folder_moved_moves_every_file_in_it() {
+    let mut d = daemon();
+    let (q4, quarters) = (id(&d, Q4), id(&d, QUARTERS));
+    mv(&mut d, Q4, "/h/Books/w/q4/money.cells");
+    mv(&mut d, QUARTERS, "/h/Books/w/quarters.cells");
+    // the watcher names the folders alone
+    heard(&mut d, &["/h/w", "/h/Books/w"]);
+    assert_eq!(id(&d, "/h/Books/w/q4/money.cells"), q4);
+    assert_eq!(id(&d, "/h/Books/w/quarters.cells"), quarters);
+    assert_eq!(d.world().get("/h/Books/w/quarters.cells"), INDEX, "moved together, naming each other as they did");
+    assert_eq!(kinds(&d.world().log()), ["relocated", "relocated"]);
+}
+
+#[test]
+fn history_is_one_across_folders_a_folder_s_its_lines_under_it() {
+    let mut d = daemon();
+    let other = "/h/Music/prices.cells";
+    d.world().put(other, "price:num\n1\n");
+    heard(&mut d, &[other]);
+    d.world().put(Q4, &MONEY.replace("cost,180.00,180.00=", "cost,200.00,180.00="));
+    heard(&mut d, &[Q4]);
+    assert_eq!(history(&mut d, None, None).len(), 2, "every chain");
+    let under = history(&mut d, None, Some("/h/w"));
+    assert_eq!(under.len(), 1, "only what was under ~/w: {under:#?}");
+    assert_eq!(under[0].root.entry.path(), Q4);
+    assert_eq!(history(&mut d, Some(QUARTERS), None).len(), 1, "a file's chains are those reaching it");
 }
 
 #[test]
@@ -362,9 +583,12 @@ fn a_change_is_said_as_a_span_and_what_it_stored_in_it() {
     let mut d = daemon();
     d.world().put(Q4, &MONEY.replace("cost,180.00,180.00=", "cost,200.00,180.00="));
     let ((), said) = caught(|| heard(&mut d, &[Q4]));
-    assert_eq!(said[..2], ["heard    paths=q4/money.cells", "change   q4/money.cells what=changed"], "{said:#?}");
+    assert_eq!(said[..2], ["heard    paths=~/w/q4/money.cells", "change   ~/w/q4/money.cells what=changed"], "{said:#?}");
     assert!(said.contains(&"  edited   cells=row 2 amount 180.00 → 200.00".to_owned()), "{said:#?}");
-    assert!(said.contains(&"  stored   quarters.cells via=q4/money.cells cells=costs row 1 180.00 → 200.00".to_owned()), "{said:#?}");
+    assert!(
+        said.contains(&"  stored   ~/w/quarters.cells via=~/w/q4/money.cells cells=costs row 1 180.00 → 200.00".to_owned()),
+        "{said:#?}"
+    );
 }
 
 #[test]
@@ -385,9 +609,9 @@ fn an_auto_packed_chain_settles_in_one_pass_and_its_writes_heard_again_log_nothi
         format!("---\nimport {from} from \"./{from}.cells\" with {{ pack: \"auto\" }}\n---\nkey:text!,v:EUR={from}[key].v\nk,1.00=\n")
     };
     let mut held = BTreeMap::new();
-    held.insert("/w/a.cells".to_owned(), a.to_owned());
+    held.insert("/h/w/a.cells".to_owned(), a.to_owned());
     for (p, from) in [("b", "a"), ("c", "b")] {
-        let path = format!("/w/{p}.cells");
+        let path = format!("/h/w/{p}.cells");
         let text = importer(from);
         let doc = cells::read_with(&path, text.as_str(), &mut cells::files::Files::new(&held, &path), 1).unwrap();
         held.insert(path, doc.packed(cells::Pack::All));
@@ -396,20 +620,17 @@ fn an_auto_packed_chain_settles_in_one_pass_and_its_writes_heard_again_log_nothi
     for (p, t) in &held {
         sim.put(p, t);
     }
-    let mut d = served(sim, "/w");
-    assert!(d.world().log().is_empty(), "a folder of current copies writes nothing");
-    d.world().put("/w/a.cells", "key:text!,v:EUR\nk,2.00\n");
-    heard(&mut d, &["/w/a.cells"]);
-    let kinds = |log: &[String]| -> Vec<String> {
-        log.iter().map(|l| l.split("\"kind\":\"").nth(1).unwrap().split('"').next().unwrap().to_owned()).collect()
-    };
+    let mut d = started(sim);
+    assert!(d.world().log().is_empty(), "current copies write nothing");
+    d.world().put("/h/w/a.cells", "key:text!,v:EUR\nk,2.00\n");
+    heard(&mut d, &["/h/w/a.cells"]);
     let log = d.world().log();
     assert_eq!(kinds(&log), ["external", "store", "store"], "{log:#?}");
-    assert!(log[1].contains("\"path\":\"b.cells\"") && log[2].contains("\"path\":\"c.cells\""), "{log:#?}");
-    assert!(d.world().get("/w/c.cells").contains("packed b = ```cells\nkey: text!,v: EUR\nk,2.00\n```"));
+    assert!(log[1].contains("\"path\":\"/h/w/b.cells\"") && log[2].contains("\"path\":\"/h/w/c.cells\""), "{log:#?}");
+    assert!(d.world().get("/h/w/c.cells").contains("packed b = ```cells\nkey: text!,v: EUR\nk,2.00\n```"));
     // its own writes heard again, and the source heard again unchanged: nothing
-    heard(&mut d, &["/w/a.cells", "/w/b.cells", "/w/c.cells"]);
-    heard(&mut d, &["/w/a.cells", "/w/b.cells", "/w/c.cells"]);
+    heard(&mut d, &["/h/w/a.cells", "/h/w/b.cells", "/h/w/c.cells"]);
+    heard(&mut d, &["/h/w/a.cells", "/h/w/b.cells", "/h/w/c.cells"]);
     assert_eq!(d.world().log().len(), 3, "{:#?}", d.world().log());
 }
 
@@ -422,7 +643,7 @@ fn a_file_changed_since_it_was_read_is_never_written_over() {
     d.world().put(QUARTERS, &typed);
     heard(&mut d, &[Q4]);
     assert_eq!(d.world().get(QUARTERS), typed, "their save kept");
-    assert!(d.world().log().last().unwrap().contains("\"kind\":\"moved\",\"path\":\"quarters.cells\""));
+    assert!(d.world().log().last().unwrap().contains(&format!("\"kind\":\"moved\",\"path\":\"{QUARTERS}\"")));
     // then their save is heard, and what q4 reached is stored over it
     heard(&mut d, &[QUARTERS]);
     assert_eq!(d.world().get(QUARTERS), typed.replace("180.00=SUM", "200.00=SUM"));
@@ -438,88 +659,70 @@ fn a_value_typed_over_its_formula_stays_for_a_person() {
 }
 
 #[test]
-fn an_import_outside_the_folder_is_read_and_watched_never_written() {
+fn an_import_outside_home_is_held_and_watched_where_it_is() {
     let sim = Sim::default();
     sim.put(ACCOUNTS, "account:text!,budget:EUR\nrent,900.00\n");
     sim.put(
-        "/w/plan.cells",
-        "---\nimport accounts from \"../books/accounts.cells\"\n---\nwhat:text!,budget:EUR\nrent,900.00=SUM(accounts.budget)\n",
+        "/h/w/plan.cells",
+        "---\nimport accounts from \"../../books/accounts.cells\"\n---\nwhat:text!,budget:EUR\nrent,900.00=SUM(accounts.budget)\n",
     );
-    let mut d = served(sim, "/w");
+    let mut d = started(sim);
     assert!(d.world().watched.contains(&(PathBuf::from("/books"), false)), "{:?}", d.world().watched);
+    assert!(d.index().at(Path::new(ACCOUNTS)).is_some(), "held: a file one held imports");
     d.world().put(ACCOUNTS, "account:text!,budget:EUR\nrent,950.00\n");
     heard(&mut d, &[ACCOUNTS]);
-    assert!(d.world().get("/w/plan.cells").contains("rent,950.00=SUM"));
+    assert!(d.world().get("/h/w/plan.cells").contains("rent,950.00=SUM"));
 }
 
 #[test]
-fn what_is_not_a_table_or_is_hidden_is_not_read() {
+fn what_is_not_a_table_or_is_hidden_or_a_csv_nobody_imports_is_not_held() {
     let mut d = daemon();
-    d.world().put("/w/.cells/log.jsonl", "{}\n");
-    d.world().put("/w/.git/x.cells", "a\n1\n");
-    d.world().put("/w/notes.txt", "hi\n");
-    heard(&mut d, &["/w/.cells/log.jsonl", "/w/.git/x.cells", "/w/notes.txt"]);
-    assert!(d.folder().text("/w/.git/x.cells").is_none());
+    d.world().put("/h/w/.git/x.cells", "a\n1\n");
+    d.world().put("/h/w/notes.txt", "hi\n");
+    d.world().put("/h/w/loose.csv", "a,b\n1,2\n");
+    d.world().put("/h/.Trash/old.cells", "a\n1\n");
+    heard(&mut d, &["/h/w/.git/x.cells", "/h/w/notes.txt", "/h/w/loose.csv", "/h/.Trash/old.cells"]);
+    for p in ["/h/w/.git/x.cells", "/h/w/loose.csv", "/h/.Trash/old.cells"] {
+        assert!(d.index().at(Path::new(p)).is_none(), "{p}");
+    }
+    assert!(d.world().log().is_empty());
+}
+
+#[test]
+fn a_file_trashed_is_gone() {
+    let mut d = daemon();
+    let q4 = id(&d, Q4);
+    mv(&mut d, Q4, "/h/.Trash/money.cells");
+    heard(&mut d, &[Q4, "/h/.Trash/money.cells"]);
+    assert!(d.index().get(&q4).gone, "never followed into the Trash");
+    assert_eq!(d.world().get(QUARTERS), INDEX);
 }
 
 #[test]
 fn a_file_added_then_removed_is_logged_and_read_by_its_readers() {
     let mut d = daemon();
-    d.world().put("/w/q1/money.cells", MONEY);
-    heard(&mut d, &["/w/q1/money.cells"]);
-    assert!(d.world().log()[0].contains("\"kind\":\"external\",\"path\":\"q1/money.cells\",\"was\":null"));
-    d.world().files.borrow_mut().remove(Path::new(Q4));
+    d.world().put("/h/w/q1/money.cells", MONEY);
+    heard(&mut d, &["/h/w/q1/money.cells"]);
+    assert!(d.world().log()[0].contains("\"kind\":\"external\",\"path\":\"/h/w/q1/money.cells\",\"was\":null"));
+    d.world().remove(Q4);
     heard(&mut d, &[Q4]);
-    assert!(d.world().log().last().unwrap().contains("\"kind\":\"external\",\"path\":\"q4/money.cells\",\"was\":\""));
+    assert!(d.world().log().last().unwrap().contains(&format!("\"kind\":\"external\",\"path\":\"{Q4}\",\"was\":\"")));
     assert!(d.world().log().last().unwrap().contains("\"now\":null"));
 }
 
 #[test]
-fn a_folder_inside_one_served_is_that_one() {
+fn a_file_a_client_names_outside_home_is_held() {
     let mut d = daemon();
-    assert_eq!(d.serve(Path::new("/w/q4")).unwrap(), PathBuf::from("/w"));
-}
-
-/// The home folder is served shallow: its own file is read and watched, a file in a folder
-/// under it is not, nor is that folder taken to be served, and the watch is not recursive.
-#[test]
-fn the_home_folder_is_served_shallow() {
-    let sim = Sim::default();
-    sim.put("/home/someone/prices.cells", "price:num\n1\n");
-    sim.put("/home/someone/books/money.cells", MONEY);
-    let mut d = Daemon::new(sim, channel().0);
-    assert_eq!(d.serve(Path::new("/home/someone")).unwrap(), PathBuf::from("/home/someone"));
-    assert!(d.world().watched.contains(&(PathBuf::from("/home/someone"), false)));
-    assert!(d.root_of(Path::new("/home/someone/prices.cells")).is_some());
-    assert!(d.root_of(Path::new("/home/someone/books/money.cells")).is_none());
-    assert_eq!(d.serve(Path::new("/home/someone/books")).unwrap(), PathBuf::from("/home/someone/books"));
-    assert_eq!(d.root_of(Path::new("/home/someone/books/money.cells")), Some(Path::new("/home/someone/books")));
-}
-
-#[test]
-fn a_book_opened_from_a_quarter_first_is_one_book_once_its_index_is() {
-    let sim = Sim::default();
-    sim.put(Q4, MONEY);
-    sim.put(QUARTERS, INDEX);
-    let mut d = served(sim, "/w/q4");
-    d.world().put(Q4, &MONEY.replace("cost,180.00,180.00=", "cost,190.00,180.00="));
-    heard(&mut d, &[Q4]);
-    assert_eq!(d.serve(Path::new("/w")).unwrap(), PathBuf::from("/w"), "the outer folder takes the inner in");
-    assert_eq!(d.serve(Path::new("/w/q4")).unwrap(), PathBuf::from("/w/q4"), "the inner stays served, its history its own");
-    d.world().put(Q4, &MONEY.replace("cost,180.00,180.00=", "cost,200.00,180.00="));
-    heard(&mut d, &[Q4]);
-    assert_eq!(d.world().get(QUARTERS), INDEX.replace("180.00=SUM", "200.00=SUM"), "the index follows its quarter");
-    let inner = d.world().files.borrow().get(Path::new("/w/q4/.cells/log.jsonl")).cloned().unwrap();
-    assert_eq!(inner.lines().filter(|l| l.contains("\"kind\":\"external\"")).count(), 2, "q4's saves logged where its history began");
-    let FromEngine::History { chains } = ask(&mut d, "app", ToEngine::History { folder: "/w".into(), file: None, limit: 10 }) else {
-        panic!()
-    };
-    let latest = &chains[0];
-    assert_eq!(latest.root.folder, PathBuf::from("/w/q4"));
-    assert!(
-        latest.followed.iter().any(|f| f.event.folder == Path::new("/w") && f.event.line.entry.path() == "quarters.cells"),
-        "one chain across both logs: {latest:#?}"
+    let file = "/tmp/books/money.cells";
+    d.world().put(file, MONEY);
+    let applied = ask(
+        &mut d,
+        "cli",
+        ToEngine::Intent { id: INTENT.into(), file: file.into(), against: hash(MONEY), ops: vec![set_amount("180.00", "200.00")] },
     );
+    assert!(matches!(applied, FromEngine::Applied { .. }), "{applied:?}");
+    assert!(d.index().at(Path::new(file)).is_some());
+    assert_eq!(kinds(&d.world().log()), ["edit"]);
 }
 
 #[test]
@@ -547,7 +750,7 @@ fn an_approval_is_kept_by_the_engine_alone_and_said() {
     let asked = ToEngine::Allow { file: PathBuf::from(Q4), script: "rates".into(), version: "ab12".into() };
     let (answer, said) = caught(|| ask(&mut d, "lsp", asked));
     assert_eq!(answer, FromEngine::Allowed { file: PathBuf::from(Q4), script: "rates".into() });
-    assert_eq!(said, ["allowed, as shown to its person q4/money.cells script=rates by=lsp"]);
+    assert_eq!(said, ["allowed, as shown to its person ~/w/q4/money.cells script=rates by=lsp"]);
     let approval = crate::allowed::Approval {
         file: PathBuf::from(Q4),
         script: "rates".into(),
@@ -557,12 +760,6 @@ fn an_approval_is_kept_by_the_engine_alone_and_said() {
     };
     let kept = d.world().files.borrow()[&crate::allowed::path()].clone();
     assert_eq!(kept, format!("{}\n", crate::allowed::line(&approval)));
-}
-
-fn ask(d: &mut Daemon<Sim>, client: &str, request: ToEngine) -> FromEngine {
-    let (answer, answered) = channel();
-    d.answer(Event::Ask { id: 1, client: client.into(), request, answer: Some(answer) });
-    answered.try_recv().expect("answered")
 }
 
 const EDITED: &str = "cost,200.00,180.00=";
@@ -594,42 +791,31 @@ fn a_chain_is_its_root_and_every_file_it_reached() {
     sim.put(Q4, MONEY);
     sim.put(QUARTERS, INDEX);
     sim.put(
-        "/w/year.cells",
+        "/h/w/year.cells",
         "---\nimport quarters from \"./quarters.cells\"\n---\nyear:text!,costs:EUR\n2026,180.00=SUM(quarters.costs)\n",
     );
-    let mut d = served(sim, "/w");
+    let mut d = started(sim);
     d.world().put(Q4, &MONEY.replace("cost,180.00,180.00=", EDITED));
     heard(&mut d, &[Q4]);
-    let FromEngine::History { chains } = ask(&mut d, "app", ToEngine::History { folder: "/w".into(), file: None, limit: 10 }) else {
-        panic!()
-    };
+    let chains = history(&mut d, None, Some("/h/w"));
     let [chain] = &chains[..] else { panic!("one chain: {chains:#?}") };
-    assert_eq!(chain.root.line.entry.path(), "q4/money.cells");
+    assert_eq!(chain.root.entry.path(), Q4);
     let followed: Vec<(&str, Vec<String>, Option<usize>)> = chain
         .followed
         .iter()
-        .map(|f| match &f.event.line.entry {
-            Logged::Store { path, via, .. } => (path.as_str(), via.clone(), f.under),
+        .map(|f| match &f.event.entry {
+            crate::log::Logged::Store { path, via, .. } => (path.as_str(), via.clone(), f.under),
             other => panic!("{other:?}"),
         })
         .collect();
     assert_eq!(
         followed,
-        [
-            ("q4/money.cells", vec!["q4/money.cells".to_owned()], None),
-            ("quarters.cells", vec!["q4/money.cells".to_owned()], None),
-            ("year.cells", vec!["quarters.cells".to_owned()], Some(1))
-        ],
+        [(Q4, vec![Q4.to_owned()], None), (QUARTERS, vec![Q4.to_owned()], None), ("/h/w/year.cells", vec![QUARTERS.to_owned()], Some(1))],
         "the edit's own write and the quarters under the edit, the year under the quarters"
     );
     let raw = serde_json::to_string(&chains).unwrap();
     assert_eq!(serde_json::from_str::<Vec<crate::history::Chain>>(&raw).unwrap(), chains, "a chain crosses the wire whole");
-    let FromEngine::History { chains } =
-        ask(&mut d, "app", ToEngine::History { folder: "/w".into(), file: Some("/w/year.cells".into()), limit: 10 })
-    else {
-        panic!()
-    };
-    assert_eq!(chains.len(), 1, "a file's chains are those reaching it");
+    assert_eq!(history(&mut d, Some("/h/w/year.cells"), None).len(), 1, "a file's chains are those reaching it");
 }
 
 #[test]
@@ -643,19 +829,18 @@ fn a_cell_says_every_value_it_held_and_the_root_of_each() {
         panic!()
     };
     assert_eq!(values.iter().map(|v| (v.was.as_str(), v.value.as_str())).collect::<Vec<_>>(), [("200.00", "250.00"), ("180.00", "200.00")]);
-    let roots: Vec<u64> = values.iter().map(|v| v.root.1).collect();
     let log = d.world().log();
-    for n in roots {
-        assert!(log[n as usize - 1].contains("\"kind\":\"external\",\"path\":\"q4/money.cells\""), "each value's root is the q4 edit");
+    for v in values {
+        assert!(log[v.root as usize - 1].contains(&format!("\"kind\":\"external\",\"path\":\"{Q4}\"")), "each value's root is the q4 edit");
     }
 }
 
 #[test]
 fn a_cell_is_followed_through_its_column_renamed() {
-    let notes = "/w/notes.cells";
+    let notes = "/h/w/notes.cells";
     let sim = Sim::default();
     sim.put(notes, "note:text,amount:EUR\nrent,900.00\n");
-    let mut d = served(sim, "/w");
+    let mut d = started(sim);
     let first = hash(&d.world().get(notes));
     for text in ["note:text,amount:EUR\nrent,950.00\n", "note:text,sum:EUR\nrent,950.00\n", "note:text,sum:EUR\nrent,1000.00\n"] {
         d.world().put(notes, text);
@@ -677,10 +862,28 @@ fn a_cell_is_followed_through_its_column_renamed() {
 }
 
 #[test]
+fn a_cell_s_values_follow_its_file_across_a_move() {
+    let mut d = daemon();
+    d.world().put(Q4, &MONEY.replace("cost,180.00,180.00=", "cost,200.00,180.00="));
+    heard(&mut d, &[Q4]);
+    let to = "/h/Music/q4.cells";
+    mv(&mut d, Q4, to);
+    heard(&mut d, &[Q4, to]);
+    let FromEngine::Values { values } = ask(&mut d, "app", ToEngine::Cell { file: to.into(), row: 2, column: "amount".into() }) else {
+        panic!()
+    };
+    assert_eq!(
+        values.iter().map(|v| (v.was.as_str(), v.value.as_str())).collect::<Vec<_>>(),
+        [("180.00", "200.00")],
+        "saved before it moved"
+    );
+}
+
+#[test]
 fn a_file_returned_to_a_version_is_a_change_of_its_own() {
     let mut d = daemon();
     let first = hash(MONEY);
-    assert_eq!(d.world().get(&format!("/w/.cells/versions/{first}")), MONEY, "every version seen is kept");
+    assert_eq!(d.world().get(crate::log::version(&first).to_str().unwrap()), MONEY, "every version seen is kept");
     d.world().put(Q4, &MONEY.replace("cost,180.00,180.00=", EDITED));
     heard(&mut d, &[Q4]);
     let FromEngine::Restored { .. } = ask(&mut d, "app", ToEngine::Restore { file: Q4.into(), version: first.clone() }) else { panic!() };
@@ -697,7 +900,7 @@ fn a_file_returned_to_a_version_is_a_change_of_its_own() {
     assert_eq!(text, INDEX.replace("180.00=SUM", "200.00=SUM"), "the version the engine stored, shown whole");
 }
 
-const TRIP: &str = "/w/trip.cells";
+const TRIP: &str = "/h/w/trip.cells";
 
 /// A file whose table converts with the rates a script fetches every day at 18:00 UTC, last
 /// run on 2026-11-02 at 18:00: a run missed since.
@@ -729,7 +932,7 @@ fn with_trip(schedule: &str) -> Daemon<Sim> {
     let sim = Sim::default();
     sim.put(TRIP, &trip(schedule));
     sim.scripts.borrow_mut().insert("rates".into(), Ok(vec![r#"{"date":"2026-11-03","rate":0.95}"#.into()]));
-    served(sim, "/w")
+    started(sim)
 }
 
 #[test]
@@ -749,7 +952,13 @@ fn a_run_missed_runs_once_when_allowed_and_is_a_root_of_what_it_reached() {
     assert!(file.contains("2,2026-11-06T21:20:00Z,ok,\n"), "its runs block: {file}");
     assert!(file.contains("2026-11-03,10.00,9.50=\n"), "what the rates reached, stored: {file}");
     let log = d.world().log();
-    assert!(log[0].contains("\"kind\":\"run\",\"path\":\"trip.cells\",\"script\":\"rates\",\"run\":2,\"outcome\":\"ok\",\"added\":0,\"changed\":1,\"by\":\"its schedule\""), "{}", log[0]);
+    assert!(
+        log[0].contains(&format!(
+            "\"kind\":\"run\",\"path\":\"{TRIP}\",\"script\":\"rates\",\"run\":2,\"outcome\":\"ok\",\"added\":0,\"changed\":1,\"by\":\"its schedule\""
+        )),
+        "{}",
+        log[0]
+    );
     d.tick();
     pump(&mut d);
     assert_eq!(d.world().started.borrow().len(), 1, "ran, and next due tomorrow at 18:00");
@@ -793,19 +1002,19 @@ fn a_client_runs_a_script_now_and_hears_when_it_landed() {
 #[test]
 fn a_script_runs_when_the_file_it_names_changes() {
     let sim = Sim::default();
-    sim.put("/w/notes.cells", "note:text\nhello\n");
+    sim.put("/h/w/notes.cells", "note:text\nhello\n");
     sim.put(TRIP, &trip("when ./notes.cells changes"));
     sim.scripts.borrow_mut().insert("rates".into(), Ok(vec![r#"{"date":"2026-11-03","rate":0.95}"#.into()]));
-    let mut d = served(sim, "/w");
+    let mut d = started(sim);
     allow_all(&d, TRIP);
     d.tick();
     assert!(d.world().started.borrow().is_empty(), "nothing changed yet");
-    d.world().put("/w/notes.cells", "note:text\nbye\n");
-    heard(&mut d, &["/w/notes.cells"]);
+    d.world().put("/h/w/notes.cells", "note:text\nbye\n");
+    heard(&mut d, &["/h/w/notes.cells"]);
     d.tick();
     pump(&mut d);
     assert_eq!(*d.world().started.borrow(), ["rates"]);
-    assert!(d.world().log().iter().any(|l| l.contains("\"by\":\"a change to notes.cells\"")), "{:#?}", d.world().log());
+    assert!(d.world().log().iter().any(|l| l.contains("\"by\":\"a change to ~/w/notes.cells\"")), "{:#?}", d.world().log());
 }
 
 #[test]
@@ -831,8 +1040,8 @@ fn what_changed_since_a_version_is_marked_with_the_chain_that_changed_it() {
     let [m] = &marks[..] else { panic!("one cell, changed twice: {marks:#?}") };
     assert_eq!((m.row, m.column.as_deref(), m.was.as_deref(), m.now.as_str()), (1, Some("costs"), Some("180.00"), "250.00"));
     assert_eq!(m.key.as_deref(), Some("q4"));
-    let root = chains.iter().find(|c| (c.root.folder.clone(), c.root.line.n) == m.root).expect("its chain");
-    assert_eq!(root.root.line.entry.path(), "q4/money.cells", "the save in q4 that reached it");
+    let root = chains.iter().find(|c| c.root.n == m.root).expect("its chain");
+    assert_eq!(root.root.entry.path(), Q4, "the save in q4 that reached it");
     let now = hash(&d.world().get(QUARTERS));
     assert!(since(&mut d, QUARTERS, &now).1.is_empty(), "nothing since the version it holds");
     assert!(!since(&mut d, QUARTERS, &hash("a version never logged")).0);
@@ -875,9 +1084,9 @@ fn an_intent_is_journalled_its_rows_given_ids_and_what_it_reached_follows_it() {
     assert!(q4.contains(&format!("cost,200.00,200.00=,{}\n", assigned[1])), "the cell set, its computed cell stored: {q4}");
     assert_eq!(d.world().get(QUARTERS), INDEX.replace("180.00=SUM", "200.00=SUM"), "what it reached follows");
     let log = d.world().log();
-    assert!(log[0].contains("\"kind\":\"edit\",\"path\":\"q4/money.cells\",\"intent\":\"k7m2q9xa\",\"by\":\"Cells Dev\""), "{}", log[0]);
+    assert!(log[0].contains(&format!("\"kind\":\"edit\",\"path\":\"{Q4}\",\"intent\":\"k7m2q9xa\",\"by\":\"Cells Dev\"")), "{}", log[0]);
     assert!(
-        log.iter().any(|l| l.contains("\"path\":\"quarters.cells\",\"cause\":{\"n\":1}")),
+        log.iter().any(|l| l.contains(&format!("\"path\":\"{QUARTERS}\",\"cause\":{{\"n\":1}}"))),
         "the index's store follows the edit: {log:#?}"
     );
     // sent again, as a client that never heard the answer would: answered the same, nothing applied twice
@@ -932,7 +1141,7 @@ fn a_whole_text_is_written_logged_by_its_version_and_laid_over_a_moved_file() {
     let edit = log.iter().find(|l| l.contains("\"kind\":\"edit\"")).expect("the edit logged");
     assert!(edit.contains(&format!("\"op\":\"text\",\"version\":\"{}\"", hash(&mine))), "by its version: {edit}");
     assert!(!edit.contains("\"text\":"), "never its text: {edit}");
-    assert_eq!(d.world().get(&format!("/w/.cells/versions/{}", hash(&mine))), mine, "its text kept, though the file never held it");
+    assert_eq!(d.world().get(crate::log::version(&hash(&mine)).to_str().unwrap()), mine, "its text kept, though the file never held it");
     // someone saves the income row; the app, not having heard, sends its next text made
     // against the version it holds: its row laid over theirs
     d.world().put(Q4, &q4.replace("income,4200.00,0.00=,", "income,4300.00,0.00=,"));
@@ -954,8 +1163,7 @@ fn a_version_on_disk_not_yet_heard_is_heard_before_an_intent_applies() {
     let q4 = d.world().get(Q4);
     assert!(q4.contains("income,4300.00,0.00=,") && q4.contains("cost,200.00,200.00=,"), "nobody's write lost: {q4}");
     let log = d.world().log();
-    let kinds: Vec<&str> = log.iter().map(|l| l.split("\"kind\":\"").nth(1).unwrap().split('"').next().unwrap()).collect();
-    assert_eq!(&kinds[..2], ["external", "edit"], "the save it found, then the edit over it: {log:#?}");
+    assert_eq!(&kinds(&log)[..2], ["external", "edit"], "the save it found, then the edit over it: {log:#?}");
 }
 
 /// Books kept as plain files, each note holding what would read as a formula in a `.cells`
@@ -963,17 +1171,17 @@ fn a_version_on_disk_not_yet_heard_is_heard_before_an_intent_applies() {
 /// a quoted field holding the separator. Each with the row the test edits, its separator.
 const PLAIN: [(&str, &str, char); 3] = [
     (
-        "/w/money.csv",
+        "/h/w/money.csv",
         "date,amount,notes\n2026-04-30,50.18,\"prorrateado (17 de 30 días → 50,18 = 88,56 × 17/30), 88,56 €\"\n2026-05-31,88.56,tarifa plana = 88.56 € (80 + MEI)\n2026-06-30,11.12,=SUM(B2:B3)\n",
         ',',
     ),
     (
-        "/w/gastos.csv",
+        "/h/w/gastos.csv",
         "fecha;importe;notas\r\n2026-04-30;50,18;\"tarifa; prorrateada → 50,18 = 88,56 × 17/30 €\"\r\n2026-05-31;88,56;total = 88,56 € (80 + MEI)\r\n2026-06-30;11,12;=SUMA(B2:B3)\r\n",
         ';',
     ),
     (
-        "/w/money.tsv",
+        "/h/w/money.tsv",
         "date\tamount\tnotes\n2026-04-30\t50.18\tprorrateado → 50,18 = 88,56 × 17/30, \"88,56 €\"\n2026-05-31\t88.56\ttarifa plana = 88.56 € (80 + MEI)\n2026-06-30\t11.12\t=SUM(B2:B3)\n",
         '\t',
     ),
@@ -985,8 +1193,23 @@ fn a_plain_file_is_read_plain_and_an_intent_changes_its_one_cell_alone() {
     for (path, text, _) in PLAIN {
         sim.put(path, text);
     }
-    let mut d = served(sim, "/w");
+    let mut d = started(sim);
     for (k, (path, text, sep)) in PLAIN.into_iter().enumerate() {
+        let id = ["a1b2c3d4", "a1b2c3d5", "a1b2c3d6"][k];
+        // set the amount of the second row, the file named by the client: held from then
+        let line = text.lines().nth(2).unwrap().trim_end_matches('\r');
+        let (was, now) = if sep == ';' { ("88,56", "90,00") } else { ("88.56", "90.00") };
+        let header = text.lines().next().unwrap().trim_end_matches('\r');
+        let cols: Vec<&str> = header.split(sep).collect();
+        let set = crate::log::Op::Set {
+            row: crate::log::Row::Line(line.into()),
+            column: cols[1].into(),
+            was: Some(was.into()),
+            text: now.into(),
+        };
+        let file = PathBuf::from(path);
+        let applied = ask(&mut d, "Cells Dev", ToEngine::Intent { id: id.into(), file, against: hash(text), ops: vec![set] });
+        assert!(matches!(applied, FromEngine::Applied { ref assigned, .. } if assigned.is_empty()), "{path}: {applied:?}");
         let doc = d.folder().doc(path).unwrap_or_else(|| panic!("{path} is read"));
         assert_eq!(doc.dialect(), cells::Dialect::Plain(cells::Separator::of(sep as u8).unwrap()), "{path}");
         assert!(doc.problems().is_empty(), "{path}: {:?}", doc.problems().iter().map(|p| doc.describe(p)).collect::<Vec<_>>());
@@ -996,15 +1219,7 @@ fn a_plain_file_is_read_plain_and_an_intent_changes_its_one_cell_alone() {
         let notes: Vec<String> = (0..doc.rows()).map(|r| doc.text(r, 2).into_owned()).collect();
         assert!(notes[0].contains("= 88,56 × 17/30") && notes[0].contains('€') && notes[0].contains('→'), "{path}: {notes:?}");
         assert!(notes[1].contains("= 88") && notes[2].starts_with('='), "{path}: {notes:?}");
-        // the amount of the second row set: every other byte as it was
-        let (amount, notes) = (doc.columns()[1].name.clone(), doc.columns()[2].name.clone());
-        let line = text.lines().nth(2).unwrap().trim_end_matches('\r');
-        let (was, now) = if sep == ';' { ("88,56", "90,00") } else { ("88.56", "90.00") };
-        let set = crate::log::Op::Set { row: crate::log::Row::Line(line.into()), column: amount, was: Some(was.into()), text: now.into() };
-        let id = ["a1b2c3d4", "a1b2c3d5", "a1b2c3d6"][k];
-        let file = PathBuf::from(path);
-        let applied = ask(&mut d, "Cells Dev", ToEngine::Intent { id: id.into(), file, against: hash(text), ops: vec![set] });
-        assert!(matches!(applied, FromEngine::Applied { ref assigned, .. } if assigned.is_empty()), "{path}: {applied:?}");
+        let notes = doc.columns()[2].name.clone();
         let edited = line.replacen(&format!("{sep}{was}{sep}"), &format!("{sep}{now}{sep}"), 1);
         assert_eq!(d.world().get(path), text.replacen(line, &edited, 1), "{path}: one cell changed, no id, no '=");
         // a note set to text that holds `=` and the separator is written as its value, quoted
@@ -1026,9 +1241,10 @@ fn a_cells_file_importing_a_csv_reads_it_plain() {
     let (csv, text, _) = PLAIN[0];
     sim.put(csv, text);
     let book = "---\nimport money from \"./money.csv\"\n---\nwhat:text!,total:EUR\nq2,149.86=SUM(money.amount)\n";
-    sim.put("/w/book.cells", book);
-    let d = served(sim, "/w");
-    let doc = d.folder().doc("/w/book.cells").unwrap();
+    sim.put("/h/w/book.cells", book);
+    let d = started(sim);
+    assert!(d.index().at(Path::new(csv)).is_some(), "a CSV one held imports is held");
+    let doc = d.folder().doc("/h/w/book.cells").unwrap();
     assert!(doc.problems().is_empty(), "{:?}", doc.problems().iter().map(|p| doc.describe(p)).collect::<Vec<_>>());
     let imported = doc.imported()[0].1.as_deref().expect("the csv is reached");
     assert!(matches!(imported.dialect(), cells::Dialect::Plain(_)));

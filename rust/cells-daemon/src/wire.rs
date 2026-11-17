@@ -1,7 +1,9 @@
 //! What the engine and its clients say to each other: one JSON object per line over the
 //! engine's socket, so a person can read a conversation with `nc -U`. A client greets with
-//! its version and who it is, asks for folders to be served, and hears every file whose
-//! version changed, whoever changed it, the engine's own writes included.
+//! its version and who it is, and hears every file whose version changed, whoever changed
+//! it, the engine's own writes included. The engine holds every file it ever needs (every
+//! `.cells` file under the home folder, what they import, every file a client names), so
+//! nothing is asked to be watched.
 
 use std::io::{BufRead, Write};
 use std::path::PathBuf;
@@ -10,7 +12,7 @@ use serde::{Deserialize, Serialize};
 
 /// The protocol's version: a client and an engine of different versions part at the
 /// greeting, the client saying so, never guessing at what the other means.
-pub const VERSION: u32 = 2;
+pub const VERSION: u32 = 3;
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "say", rename_all = "lowercase")]
@@ -18,8 +20,6 @@ pub enum ToEngine {
     /// The first line: the protocol's version and the client's name (`lsp`, `app`, `cli`),
     /// for the trace.
     Hello { version: u32, client: String },
-    /// A folder served from now on, everything under it, as long as the engine runs.
-    Serve { folder: PathBuf },
     /// A script allowed to run, as its person saw it (`allowed`): the file, its name and
     /// the version shown. Sent only after the person said yes, where they saw the code.
     Allow { file: PathBuf, script: String, version: String },
@@ -27,8 +27,16 @@ pub enum ToEngine {
     /// version lands, the log says this client wrote it. Never answered: an editor says it
     /// as it is typed.
     Editing { file: PathBuf, version: String },
-    /// The chains reaching anything under `folder`, or only `file`, newest first.
-    History { folder: PathBuf, file: Option<PathBuf>, limit: usize },
+    /// The chains reaching `file` (its every line, wherever it was), or anything whose path
+    /// was under `under` when it was logged, or both; every chain when neither; newest
+    /// first, `limit` at most.
+    History {
+        #[serde(skip_serializing_if = "Option::is_none", default)]
+        file: Option<PathBuf>,
+        #[serde(skip_serializing_if = "Option::is_none", default)]
+        under: Option<PathBuf>,
+        limit: usize,
+    },
     /// Every value the cell at `row` (from 1, as the file numbers it now) of `column` held.
     Cell { file: PathBuf, row: usize, column: String },
     /// A version of `file` whole, by its SHA-256, as the log names it.
@@ -54,10 +62,6 @@ pub enum FromEngine {
     Hello {
         version: u32,
         pid: u32,
-    },
-    /// A folder served, or one it was already serving.
-    Served {
-        folder: PathBuf,
     },
     /// A script's approval kept.
     Allowed {
@@ -142,13 +146,14 @@ pub fn socket() -> PathBuf {
 }
 
 /// Where the engine says each step when no terminal hears it (hosted, or started by a
-/// client): `Cells/engine.trace`, for a person debugging the engine. A folder's history is
-/// its log, `.cells/log.jsonl`, never this.
+/// client): `Cells/engine.trace`, for a person debugging the engine. The files' history is
+/// its log (`log::path`), never this.
 pub fn trace() -> PathBuf {
     folder().join("engine.trace")
 }
 
-/// The engine's own folder, private to its user: its socket, its lock, its trace.
+/// The engine's own folder, private to its user: its socket, its lock, its trace, the
+/// approvals, the history and the index of the files it holds.
 pub fn folder() -> PathBuf {
     let home = PathBuf::from(std::env::var_os("HOME").expect("HOME is set"));
     if cfg!(target_os = "macos") {
@@ -167,10 +172,11 @@ mod tests {
     #[test]
     fn a_line_a_message() {
         let mut out = Vec::new();
-        send(&mut out, &ToEngine::Serve { folder: "/w".into() }).unwrap();
-        assert_eq!(String::from_utf8(out.clone()).unwrap(), "{\"say\":\"serve\",\"folder\":\"/w\"}\n");
+        let asked = ToEngine::History { file: None, under: Some("/w".into()), limit: 10 };
+        send(&mut out, &asked).unwrap();
+        assert_eq!(String::from_utf8(out.clone()).unwrap(), "{\"say\":\"history\",\"under\":\"/w\",\"limit\":10}\n");
         let back: ToEngine = receive(&mut out.as_slice()).unwrap().unwrap();
-        assert_eq!(back, ToEngine::Serve { folder: "/w".into() });
+        assert_eq!(back, asked);
         assert!(receive::<ToEngine>(&mut b"".as_slice()).unwrap().is_none());
         assert!(receive::<ToEngine>(&mut b"{\"say\":\"shout\"}\n".as_slice()).is_err());
     }

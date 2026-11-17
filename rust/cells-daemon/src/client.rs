@@ -18,15 +18,15 @@ use crate::wire::{self, FromEngine, ToEngine, VERSION};
 
 pub struct Engine {
     writer: Mutex<UnixStream>,
-    /// The engine's answers to requests (`served`, `allowed`, `refused`), in the order they
-    /// were asked.
+    /// The engine's answers to requests (`allowed`, `history`, `refused`), in the order
+    /// they were asked.
     answers: Mutex<Receiver<FromEngine>>,
     /// The engine's process.
     pub pid: u32,
 }
 
-/// How long a client started an engine waits for its socket: its first folders are read
-/// after the socket answers, so this is the start of a process, never a folder's size.
+/// How long a client started an engine waits for its socket: the socket answers before the
+/// engine reads its files, so this is the start of a process, never the size of a home.
 const START: Duration = Duration::from_secs(5);
 
 impl Engine {
@@ -64,35 +64,26 @@ impl Engine {
         let trace = OpenOptions::new().create(true).append(true).open(&trace_path).map_err(|e| format!("{}: {e}", trace_path.display()))?;
         let err = trace.try_clone().map_err(|e| e.to_string())?;
         Command::new(exe)
-            .arg("serve")
+            .arg("engine")
             .stdin(Stdio::null())
             .stdout(trace)
             .stderr(err)
             .process_group(0)
             .spawn()
-            .map_err(|e| format!("{} serve: {e}", exe.display()))?;
+            .map_err(|e| format!("{} engine: {e}", exe.display()))?;
         let began = Instant::now();
         loop {
             match Engine::connect(client) {
                 Ok(engine) => return Ok(engine),
                 Err(e) if began.elapsed() > START => {
                     return Err(format!(
-                        "started {} serve, and it did not answer in {START:?}: {e} (its trace: {})",
+                        "started {} engine, and it did not answer in {START:?}: {e} (its trace: {})",
                         exe.display(),
                         trace_path.display()
                     ));
                 }
                 Err(_) => thread::sleep(Duration::from_millis(20)),
             }
-        }
-    }
-
-    /// `folder` served by the engine from now on: the folder served (it, or the folder
-    /// served already holding it), or why the engine refused.
-    pub fn serve(&self, folder: &Path) -> Result<PathBuf, String> {
-        match self.ask(&ToEngine::Serve { folder: folder.to_path_buf() })? {
-            FromEngine::Served { folder } => Ok(folder),
-            other => panic!("the engine answered a request to serve with {other:?}"),
         }
     }
 
@@ -113,9 +104,10 @@ impl Engine {
         wire::send(&mut *self.writer.lock().unwrap(), &said).map_err(|e| e.to_string())
     }
 
-    /// The chains reaching anything under `folder`, or `file` alone, newest first.
-    pub fn history(&self, folder: &Path, file: Option<&Path>, limit: usize) -> Result<Vec<crate::history::Chain>, String> {
-        match self.ask(&ToEngine::History { folder: folder.to_path_buf(), file: file.map(Path::to_path_buf), limit })? {
+    /// The chains reaching `file` (wherever it was), or anything whose path was under
+    /// `under`, or both; every chain when neither; newest first.
+    pub fn history(&self, file: Option<&Path>, under: Option<&Path>, limit: usize) -> Result<Vec<crate::history::Chain>, String> {
+        match self.ask(&ToEngine::History { file: file.map(Path::to_path_buf), under: under.map(Path::to_path_buf), limit })? {
             FromEngine::History { chains } => Ok(chains),
             other => panic!("the engine answered a history with {other:?}"),
         }
@@ -198,8 +190,7 @@ fn hear(mut reader: BufReader<UnixStream>, changes: Sender<Vec<PathBuf>>, answer
                 }
             }
             Ok(Some(
-                said @ (FromEngine::Served { .. }
-                | FromEngine::Allowed { .. }
+                said @ (FromEngine::Allowed { .. }
                 | FromEngine::History { .. }
                 | FromEngine::Values { .. }
                 | FromEngine::Version { .. }

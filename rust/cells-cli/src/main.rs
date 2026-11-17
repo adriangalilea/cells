@@ -220,11 +220,12 @@ fn main() -> ExitCode {
             lsp::serve();
             ExitCode::SUCCESS
         }
-        // Served until the process ends; only a folder it cannot serve returns.
-        Some("serve") => match cells_daemon::serve(&args[1..]) {
+        // Run until the process ends; only an engine that cannot run, or one running already,
+        // returns.
+        Some("engine") => match cells_daemon::engine(&args[1..]) {
             Ok(never) => match never {},
             Err(e) => {
-                eprintln!("cells serve: {e}");
+                eprintln!("cells engine: {e}");
                 ExitCode::from(2)
             }
         },

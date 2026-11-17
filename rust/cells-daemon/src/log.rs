@@ -1,13 +1,17 @@
-//! The folder's log, `.cells/log.jsonl` (ENGINE.md, The log and History): one line per
-//! version of a file, so every version of every file is explained, by what made it and
-//! what it set off. Each line holds its number and the SHA-256 of the line before it, so a
-//! line edited or removed breaks every later link. Every version a line names is kept whole
-//! in `.cells/versions/<sha256>`, so any version can be shown and returned to.
+//! The engine's history, `history/log.jsonl` in its own folder (`folder`; ENGINE.md, The
+//! log and History): one chain for every file it holds, one line per version of a file, so
+//! every version of every file is explained, by what made it and what it set off. Each line
+//! holds its number, the SHA-256 of the line before it (so a line edited or removed breaks
+//! every later link), the file it is about by its identity (`index::FileId`) and its path
+//! at that moment, whole. A file's history is every line of its identity, across every move
+//! and folder. Every version a line names is kept whole in `history/versions/<sha256>`, so
+//! any version can be shown and returned to. Nothing of it is ever written inside the
+//! person's folders: a file sent carries no history.
 //!
 //! A line is a root or follows one:
 //!
 //! - `external`, a root: a version the engine did not write (an editor's save, a git
-//!   checkout), the hash before (`null` for a file new to the folder) and now (`null` once
+//!   checkout), the hash before (`null` for a file new to the engine) and now (`null` once
 //!   removed), who wrote it when a client said it held that version (`by`), and what it
 //!   changed beside the version before (`edited`).
 //! - `restore`, a root: a file returned to a version by a client's request (`by`).
@@ -20,11 +24,12 @@
 //! - `moved`: a write the engine did not make, its file changed since the version it was
 //!   made from; the change that moved it is a root of its own, read next.
 
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
 use cells::folder::{Cell, Edited};
 use serde::{Deserialize, Serialize};
 
+use crate::index::FileId;
 use crate::world::{Found, World};
 
 /// The SHA-256 of `text`, as every hash in the log is written.
@@ -32,13 +37,31 @@ pub fn hash(text: &str) -> String {
     cells::sha256::hex(text.as_bytes())
 }
 
+/// The history's folder, in the engine's own (`wire::folder`): the log, the versions it
+/// names, and the index of the files they are about.
+pub fn folder() -> PathBuf {
+    crate::wire::folder().join("history")
+}
+
+/// The log's one file.
+pub fn path() -> PathBuf {
+    folder().join("log.jsonl")
+}
+
+/// Where the version whose SHA-256 is `version` is kept.
+pub fn version(version: &str) -> PathBuf {
+    assert!(version.len() == 64 && version.bytes().all(|b| b.is_ascii_hexdigit()), "{version:?} is no SHA-256");
+    folder().join("versions").join(version)
+}
+
 /// A line of the log: its place in the chain, its time (milliseconds since the Unix
-/// epoch), and the entry, every path from the folder logged.
+/// epoch), the file it is about, and the entry, every path in it whole, as it was then.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Line {
     pub n: u64,
     pub prev: String,
     pub at: u64,
+    pub file: FileId,
     #[serde(flatten)]
     pub entry: Logged,
 }
@@ -91,9 +114,9 @@ pub enum Logged {
         #[serde(skip_serializing_if = "Option::is_none", default)]
         edited: Option<Edit>,
     },
-    /// A file moved, a root: heard gone from `from` and come at `path` with the same text,
-    /// in one moment (by anyone: the Finder, an app, a shell). What was logged of it at
-    /// `from` before is its history; every import naming it follows it (a `store` each).
+    /// A file moved, a root: the file held at `from` is the one at `path` (by anyone: the
+    /// Finder, an app, a shell; how it was known is `index::follow`'s), holding the version
+    /// it held (`now`). Every import naming it follows it (a `store` each).
     Relocated {
         path: String,
         from: String,
@@ -161,29 +184,6 @@ impl Logged {
             Logged::Relocated { .. } | Logged::Store { .. } | Logged::Moved { .. } => None,
         }
     }
-}
-
-/// Every line of `log` about the file at `path` (as the log names it), oldest first,
-/// those it was logged with under every path it had before it moved there included: a
-/// file's history follows it, and a path another file had before is that file's. Within
-/// this log alone: a file moved here from another folder has its lines before the move in
-/// that folder's log, so a cell's values and the marks since a version (`history::cell`,
-/// `since`) start at its move here, the version it came with known; its chains, the
-/// History pane's, follow it through every log (`history::named`).
-pub fn lines_of<'a>(log: &'a Log, path: &str) -> Vec<&'a Line> {
-    let mut named = path.to_owned();
-    let mut lines = Vec::new();
-    for line in log.lines().iter().rev() {
-        if line.entry.path() != named {
-            continue;
-        }
-        lines.push(line);
-        if let Logged::Relocated { from, .. } = &line.entry {
-            named = from.clone();
-        }
-    }
-    lines.reverse();
-    lines
 }
 
 /// A row as an intent names it (`cells::RowAt`): by its key, by its id, or, in a file
@@ -273,13 +273,10 @@ pub enum Outcome {
     Failed { why: String },
 }
 
-/// The root an entry follows: its number in its folder's log, and that folder when it is
-/// another than the entry's (a file read through an import from a folder served apart).
+/// The root an entry follows: its number in the log.
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 pub struct Cause {
     pub n: u64,
-    #[serde(skip_serializing_if = "Option::is_none", default)]
-    pub folder: Option<PathBuf>,
 }
 
 /// A cell changed (`cells::folder::Cell`), as the log writes it.
@@ -336,86 +333,92 @@ impl From<&Edited> for Edit {
     }
 }
 
-/// A folder's log, every line of it held, read whole when the folder is served.
+/// A chain of lines read from `text` (the file `name`): each line that reads as a `T`, the
+/// SHA-256 of the last line (what the next continues from), and why it cannot be trusted
+/// past a line when a link is broken (`prev_of` a line is not the hash of the one before)
+/// or a line is no entry. Read on either way: what follows a break is said, never hidden.
+pub fn chain<T: for<'de> Deserialize<'de>>(text: &str, name: &str, prev_of: impl Fn(&T) -> &str) -> (Vec<T>, String, Option<String>) {
+    let mut lines = Vec::new();
+    let mut prev = String::new();
+    let mut broken = None;
+    for (i, raw) in text.lines().enumerate() {
+        match serde_json::from_str::<T>(raw) {
+            Ok(line) => {
+                if broken.is_none() && prev_of(&line) != prev {
+                    broken = Some(format!("{name}: line {} does not follow the line before it", i + 1));
+                }
+                lines.push(line);
+            }
+            Err(e) => {
+                if broken.is_none() {
+                    broken = Some(format!("{name}: line {} is no entry ({e})", i + 1));
+                }
+            }
+        }
+        prev = hash(raw);
+    }
+    (lines, prev, broken)
+}
+
+/// The log, every line of it held, read whole when the engine starts.
 pub struct Log {
-    /// The folder logged, its paths written from here.
-    pub root: PathBuf,
-    /// Served whole, every file under it; else shallow, its own files alone (the home
-    /// folder and the disk's root, never crawled).
-    pub whole: bool,
-    path: PathBuf,
     lines: Vec<Line>,
     /// The SHA-256 of the last line as written: what the next line continues from.
     prev: String,
 }
 
 impl Log {
-    /// The log of the folder at `root`, read whole, and why it cannot be trusted past a
-    /// line when a link is broken or a line is no entry: it is continued either way, and
-    /// what follows a break is said, never hidden. A log the disk will not give is the
-    /// folder refused: its history continued from nothing would fork it.
-    pub fn open(root: &Path, whole: bool, world: &impl World) -> Result<(Log, Option<String>), String> {
-        let path = root.join(".cells").join("log.jsonl");
-        let text = match world.read(&path) {
+    /// The log read whole, and why it cannot be trusted past a line (`chain`): it is
+    /// continued either way. A log the disk will not give is refused: a history continued
+    /// from nothing would fork it.
+    pub fn open(world: &impl World) -> Result<(Log, Option<String>), String> {
+        let at = path();
+        let text = match world.read(&at) {
             Found::Text(t) => t,
             Found::Missing => String::new(),
-            Found::Unreadable(why) => return Err(format!("its history ({}) cannot be read: {why}", path.display())),
+            Found::Unreadable(why) => return Err(format!("the history ({}) cannot be read: {why}", at.display())),
         };
-        let mut lines = Vec::new();
-        let mut prev = String::new();
-        let mut broken = None;
-        for (i, raw) in text.lines().enumerate() {
-            match serde_json::from_str::<Line>(raw) {
-                Ok(line) => {
-                    if broken.is_none() && line.prev != prev {
-                        broken = Some(format!("{}: line {} does not follow the line before it", path.display(), i + 1));
-                    }
-                    lines.push(line);
-                }
-                Err(e) => {
-                    if broken.is_none() {
-                        broken = Some(format!("{}: line {} is no entry ({e})", path.display(), i + 1));
-                    }
-                }
-            }
-            prev = hash(raw);
-        }
-        Ok((Log { root: root.to_path_buf(), whole, path, lines, prev }, broken))
-    }
-
-    /// The folder holds `path`: under it when served whole, in it when shallow.
-    pub fn holds(&self, path: &Path) -> bool {
-        if self.whole { path.starts_with(&self.root) } else { path.parent() == Some(self.root.as_path()) }
+        let (lines, prev, broken) = chain(&text, &at.display().to_string(), |l: &Line| &l.prev);
+        Ok((Log { lines, prev }, broken))
     }
 
     pub fn lines(&self) -> &[Line] {
         &self.lines
     }
 
-    /// A path as the log writes it: from the folder logged.
-    pub fn shown(&self, path: &Path) -> String {
-        path.strip_prefix(&self.root).unwrap_or(path).to_string_lossy().into_owned()
-    }
-
-    /// Where the version whose SHA-256 is `version` is kept.
-    pub fn version(&self, version: &str) -> PathBuf {
-        assert!(version.len() == 64 && version.bytes().all(|b| b.is_ascii_hexdigit()), "{version:?} is no SHA-256");
-        self.root.join(".cells").join("versions").join(version)
+    /// Every line about the file `id`, oldest first: its history, under every path it had.
+    pub fn of<'a>(&'a self, id: &'a FileId) -> impl Iterator<Item = &'a Line> {
+        self.lines.iter().filter(move |l| l.file == *id)
     }
 
     /// `text` kept as the version it is, so a line naming it can show it whole.
-    pub fn keep(&self, world: &impl World, text: &str) -> Result<(), String> {
-        world.keep(&self.version(&hash(text)), text)
+    pub fn keep(world: &impl World, text: &str) -> Result<(), String> {
+        world.keep(&version(&hash(text)), text)
     }
 
-    /// `entry` appended at `at`: its number.
-    pub fn append(&mut self, world: &impl World, at: u64, entry: Logged) -> Result<u64, String> {
+    /// `entry`, about the file `file`, appended at `at`: its number.
+    pub fn append(&mut self, world: &impl World, at: u64, file: &FileId, entry: Logged) -> Result<u64, String> {
         let n = self.lines.last().map_or(1, |l| l.n + 1);
-        let line = Line { n, prev: self.prev.clone(), at, entry };
+        let line = Line { n, prev: self.prev.clone(), at, file: file.clone(), entry };
         let raw = serde_json::to_string(&line).expect("a log line serializes");
-        world.append(&self.path, &raw)?;
+        world.append(&path(), &raw)?;
         self.prev = hash(&raw);
         self.lines.push(line);
         Ok(n)
     }
+}
+
+/// `lines` as the log writes them, each linked to the one before: the log's whole text.
+/// Their numbers are theirs, in order from 1.
+pub fn written(lines: &[Line]) -> String {
+    let mut prev = String::new();
+    let mut out = String::new();
+    for (i, line) in lines.iter().enumerate() {
+        assert_eq!(line.n, i as u64 + 1, "a log numbered from 1, in order");
+        let raw = serde_json::to_string(&Line { prev: prev.clone(), ..line.clone() }).expect("a log line serializes");
+        prev = hash(&raw);
+        out.push_str(&raw);
+        out.push('\n');
+    }
+    out
 }

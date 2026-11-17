@@ -1,15 +1,16 @@
 //! `cells history <file|folder> [<row> <column>]`: the engine's history in a terminal
-//! (ENGINE.md, History). A folder's or a file's chains, newest first, each its root on one
-//! line (what was done, by whom, when) and what it reached drawn under it as a tree; or a
-//! cell's every value, each beside the root of the change that wrote it. The engine is
-//! asked, as every surface asks it, so this draws what Cells.app draws.
+//! (ENGINE.md, History). A file's chains (its every line, wherever it was) or a folder's
+//! (every line whose file was under it then), newest first, each its root on one line (what
+//! was done, by whom, when) and what it reached drawn under it as a tree; or a cell's every
+//! value, each beside the root of the change that wrote it. The engine is asked, as every
+//! surface asks it, so this draws what Cells.app draws.
 
 use std::fs;
 use std::path::Path;
 
 use cells_daemon::Engine;
-use cells_daemon::history::{Chain, Event};
-use cells_daemon::log::{Changed, Edit, Logged, Outcome};
+use cells_daemon::history::Chain;
+use cells_daemon::log::{Changed, Edit, Line, Logged, Outcome};
 use cells_daemon::trace::when;
 
 /// The chains a terminal shows at once.
@@ -18,6 +19,7 @@ const SHOWN: usize = 30;
 /// What `cells history` prints, a line each.
 pub fn history(path: &Path, cell: Option<(usize, &str)>) -> Result<Vec<String>, String> {
     let path = fs::canonicalize(path).map_err(|e| format!("{}: {e}", path.display()))?;
+    // paths shown from the folder asked about, or the file's own
     let (folder, file) = if path.is_dir() {
         (path.clone(), None)
     } else {
@@ -25,29 +27,31 @@ pub fn history(path: &Path, cell: Option<(usize, &str)>) -> Result<Vec<String>, 
     };
     let exe = std::env::current_exe().map_err(|e| e.to_string())?;
     let (engine, _) = Engine::connect_or_start("cells history", &exe)?;
-    let served = engine.serve(&folder)?;
     match (cell, &file) {
         (Some((row, column)), Some(file)) => {
             let values = engine.cell(file, row, column)?;
-            let chains = engine.history(&served, Some(file), usize::MAX)?;
-            let mut out = vec![format!("{}, row {row}, {column}", shown(&served, file))];
+            let chains = engine.history(Some(file), None, usize::MAX)?;
+            let mut out = vec![format!("{}, row {row}, {column}", shown(&folder, Path::new(file)))];
             if values.is_empty() {
                 out.push("  no value logged: it holds what it held when the engine first read it".into());
             }
             for v in values {
-                let root = chains.iter().find(|c| c.root.folder == v.root.0 && c.root.line.n == v.root.1);
-                let why = root.map_or(String::new(), |c| format!("   {}", headline(&served, &c.root)));
+                let root = chains.iter().find(|c| c.root.n == v.root);
+                let why = root.map_or(String::new(), |c| format!("   {}", headline(&folder, &c.root)));
                 out.push(format!("  {}  {} → {}{why}", when(v.at), v.was, v.value));
             }
             Ok(out)
         }
         (Some(_), None) => Err("a cell's history names its file".into()),
         (None, _) => {
-            let chains = engine.history(&served, file.as_deref(), SHOWN)?;
+            let chains = match &file {
+                Some(file) => engine.history(Some(file), None, SHOWN)?,
+                None => engine.history(None, Some(&folder), SHOWN)?,
+            };
             if chains.is_empty() {
                 return Ok(vec![format!("{}: nothing has changed since the engine first read it", path.display())]);
             }
-            Ok(chains.iter().flat_map(|c| drawn(&served, c)).collect())
+            Ok(chains.iter().flat_map(|c| drawn(&folder, c)).collect())
         }
     }
 }
@@ -57,9 +61,9 @@ fn shown(folder: &Path, file: &Path) -> String {
 }
 
 /// A root as one line: the file, what was done to it and by whom.
-fn headline(folder: &Path, root: &Event) -> String {
-    let file = shown(folder, &root.file());
-    match &root.line.entry {
+fn headline(folder: &Path, root: &Line) -> String {
+    let file = shown(folder, Path::new(root.entry.path()));
+    match &root.entry {
         Logged::External { was: None, by, .. } => format!("{file} added{}", by_whom(by.as_deref())),
         Logged::External { now: None, .. } => format!("{file} removed"),
         Logged::External { by, .. } => format!("{file} saved{}", by_whom(by.as_deref())),
@@ -71,7 +75,7 @@ fn headline(folder: &Path, root: &Event) -> String {
             format!("{file}: {script} run {run} by {by} failed: {why}")
         }
         Logged::Edit { by, .. } => format!("{file} edited by {by}"),
-        Logged::Relocated { from, .. } => format!("{file} moved from {from}"),
+        Logged::Relocated { from, .. } => format!("{file} moved from {}", shown(folder, Path::new(from))),
         Logged::Store { .. } | Logged::Moved { .. } => unreachable!("a root is an edit, a restore or a run"),
     }
 }
@@ -107,8 +111,8 @@ fn list(rows: &[usize]) -> String {
 /// followed under the one it followed.
 fn drawn(folder: &Path, chain: &Chain) -> Vec<String> {
     let pad = " ".repeat(18);
-    let mut out = vec![format!("{}  {}", when(chain.root.line.at), headline(folder, &chain.root))];
-    if let Some(e) = chain.root.line.entry.edited() {
+    let mut out = vec![format!("{}  {}", when(chain.root.at), headline(folder, &chain.root))];
+    if let Some(e) = chain.root.entry.edited() {
         out.extend(edit(e).into_iter().map(|l| format!("{pad}{l}")));
     }
     // each entry's children, in the order they followed
@@ -118,8 +122,8 @@ fn drawn(folder: &Path, chain: &Chain) -> Vec<String> {
         children(None).into_iter().rev().enumerate().map(|(k, i)| (i, String::new(), k == 0)).collect();
     while let Some((i, indent, last)) = stack.pop() {
         let e = &chain.followed[i].event;
-        let file = shown(folder, &e.file());
-        let what = match &e.line.entry {
+        let file = shown(folder, Path::new(e.entry.path()));
+        let what = match &e.entry {
             Logged::Store { stored, imports, .. } => stored
                 .iter()
                 .map(cell)
