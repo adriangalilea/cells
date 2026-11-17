@@ -290,7 +290,7 @@ impl World for Disk {
         }
         let dir = path.parent().expect("a file is in a folder");
         let name = path.file_name().expect("a file has a name").to_string_lossy();
-        let beside = dir.join(format!(".{name}.cells-serve-{}", std::process::id()));
+        let beside = dir.join(format!(".{name}.cells-engine-{}", std::process::id()));
         let written = (|| -> std::io::Result<()> {
             let mut f = File::create(&beside)?;
             f.write_all(text.as_bytes())?;

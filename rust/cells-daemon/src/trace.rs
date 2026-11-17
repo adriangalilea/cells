@@ -1,15 +1,15 @@
 //! What the engine does, said as it does it: `tracing` records written the way the utils
 //! logging contract writes events (github.com/adriangalilea/utils): the target names the
 //! scope (`cells::engine`), the message is fixed and says what happened, the values are
-//! fields, and a piece of work is a span (`serve`, a `change` and everything it stored).
+//! fields, and a piece of work is a span (`start`, a `change` and everything it stored).
 //!
 //! Where they go is the host's: Cells.app's `CellsEngine.app` hands a sink
 //! (`cells_engine_serve`) and writes each record through swift-utils' `Log`, the contract's
 //! writer, so the engine's lines join the app's stream, its unified log and its traces. A
-//! `cells serve` run without one says them on stderr as a person reads them: the local
+//! `cells engine` run without one says them on stderr as a person reads them: the local
 //! time, the message, the fields, each span's lines under it.
 //!
-//! Every message `info` is said always: the folders served, every change heard, every
+//! Every message `info` is said always: the files held at start, every change heard, every
 //! write and every write not made, who joined and left. `debug` (`--verbose`, or the host's
 //! threshold) adds each file read again, what it found and how long it took.
 //!
