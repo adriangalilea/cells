@@ -71,9 +71,10 @@ What is built, for one file at a time (`cells::intent`, the daemon's `intent`, `
 - `restore`: a file returned to a version by a client.
 - `run`: a script's run, with its number, its outcome, what started it (its schedule, a change to a file, a client) and the cells it changed.
 - `edit`: a client's intent, with its id, who sent it, its ops, the ids it gave rows, the version it was written over and the one written, and the cells it changed.
+- `relocated`: a file moved (SPEC.md, Imports: a file moved is followed), with the path it had (`from`) and its version. Heard as one path gone and another come with the same text in one batch of the disk's events (`daemon::moves`: the one new file of that text, else the one of that name among several, else no move); every import naming it follows as a `store`. A file's history is every line under each path it had (`log::lines_of`), so it keeps its history where it goes.
 
 Two follow a root (`cause`, its number):
-- `store`: a write the engine made of what the root reached, naming the files of the chain it reads directly (`via`), the version it was written over and the one written, and each cell stored with its value before and after.
+- `store`: a write the engine made of what the root reached, naming the files of the chain it reads directly (`via`), the version it was written over and the one written, and each cell stored with its value before and after; following a `relocated`, each import's path written anew instead (`imports`, as written before and after).
 - `moved`: a write not made, its file changed since.
 
 Every version a line names is kept whole in `.cells/versions/<sha256>`. A `store` is logged once its file is written, not journalled before: it follows from the versions logged before it, so a crash between the two loses only a line saying what the files already show.
@@ -93,7 +94,8 @@ The log is what happened; history is a person reading it: what changed, what cha
 
 The language server is a client like any other, so an editor goes through the engine too:
 
-- types checked as typed, references completed and followed, a rename offered across the folder;
+- types checked as typed, references completed and followed, a column's or a key's rename offered across the folder;
+- an import found nowhere warned on its line, its fix importing a file of its name from where one is (`files::found_elsewhere`, the guess the app's prelude offers too);
 - the id column dimmed, an id edited by hand warned about, the id column removed refused;
 - ids filled in on save, through the editor's format-on-save, so a row added by hand gets its id inside the person's own save, never by a write behind them;
 - unsaved edits sent to the daemon as they are typed, so another client shows the file as being edited, and a conflict shows before either side saves.
