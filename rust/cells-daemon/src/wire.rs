@@ -12,7 +12,7 @@ use serde::{Deserialize, Serialize};
 
 /// The protocol's version: a client and an engine of different versions part at the
 /// greeting, the client saying so, never guessing at what the other means.
-pub const VERSION: u32 = 3;
+pub const VERSION: u32 = 4;
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "say", rename_all = "lowercase")]
@@ -54,14 +54,50 @@ pub enum ToEngine {
     /// the SHA-256 of the version it was made against; `ops`, in order. Answered with the
     /// version written, or refused whole with the reason.
     Intent { id: String, file: PathBuf, against: String, ops: Vec<crate::log::Op> },
+    /// The protected folders the engine may enter now (`reach`), every other one kept out
+    /// of: what the hosting app reads of the engine's own switches in System Settings, sent
+    /// whenever one changes. A folder newly allowed is walked then. Never answered.
+    Reach { allowed: Vec<crate::reach::Protected> },
+}
+
+impl ToEngine {
+    /// The file a request has the engine read or write, which it cannot in a protected
+    /// folder it does not reach: answered `Unreached` then. An approval, a version kept and
+    /// what the engine is told touch no file of the person's.
+    pub fn touches(&self) -> Option<&std::path::Path> {
+        match self {
+            ToEngine::History { file: Some(file), .. }
+            | ToEngine::Cell { file, .. }
+            | ToEngine::Restore { file, .. }
+            | ToEngine::Since { file, .. }
+            | ToEngine::Run { file, .. }
+            | ToEngine::Intent { file, .. }
+            | ToEngine::Editing { file, .. } => Some(file),
+            ToEngine::Hello { .. }
+            | ToEngine::Allow { .. }
+            | ToEngine::History { file: None, .. }
+            | ToEngine::Version { .. }
+            | ToEngine::Reach { .. } => None,
+        }
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "say", rename_all = "lowercase")]
 pub enum FromEngine {
+    /// `hosted`: the engine Cells.app keeps (`CellsEngine.app`), whose reach the app tells
+    /// it; one `cells engine` started elsewhere reaches what its start said.
     Hello {
         version: u32,
         pid: u32,
+        hosted: bool,
+    },
+    /// A request's file is in a protected folder the engine does not reach (`reach`): it
+    /// was neither read nor written, and is held once that folder is allowed. Never a
+    /// refusal and never a missing file: the file is there, out of reach.
+    Unreached {
+        file: PathBuf,
+        folder: crate::reach::Protected,
     },
     /// A script's approval kept.
     Allowed {

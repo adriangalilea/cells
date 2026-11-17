@@ -37,6 +37,11 @@ pub(crate) struct Sim {
     drawn: Cell<u64>,
     /// What the daemon says back to itself (a run ended), read by `pump`.
     inbox: Option<std::sync::mpsc::Receiver<Event>>,
+    /// Every path read, given an ID, walked or written, in order: what a protected folder
+    /// not reached must never be among.
+    pub(crate) touched: RefCell<Vec<PathBuf>>,
+    /// The volumes mounted, by their folder, and whether the network serves each.
+    pub(crate) volumes: BTreeMap<PathBuf, bool>,
 }
 
 /// The simulated clock's start: 2026-11-06T21:20:00Z.
@@ -97,6 +102,7 @@ impl Sim {
 
 impl World for Sim {
     fn read(&self, path: &Path) -> Found {
+        self.touched.borrow_mut().push(path.to_path_buf());
         if let Some(why) = self.unreadable.borrow().get(path) {
             return Found::Unreadable(why.clone());
         }
@@ -104,26 +110,44 @@ impl World for Sim {
     }
 
     fn file_id(&self, path: &Path) -> Option<u64> {
+        self.touched.borrow_mut().push(path.to_path_buf());
         if self.blind {
             return None;
         }
         self.ids.borrow().get(path).copied()
     }
 
-    fn files(&self, root: &Path) -> Vec<PathBuf> {
+    fn files(&self, root: &Path, beyond: &[PathBuf]) -> Vec<PathBuf> {
+        if beyond.iter().any(|b| root.starts_with(b)) {
+            return Vec::new();
+        }
+        self.touched.borrow_mut().push(root.to_path_buf());
         let home = self.home();
-        self.files.borrow().keys().filter(|p| p.starts_with(root) && table_file(p) && visible(&home, p)).cloned().collect()
+        self.files
+            .borrow()
+            .keys()
+            .filter(|p| p.starts_with(root) && table_file(p) && visible(&home, p) && !beyond.iter().any(|b| p.starts_with(b)))
+            .cloned()
+            .collect()
     }
 
-    fn folder_logs(&self) -> Vec<PathBuf> {
+    fn folder_logs(&self, beyond: &[PathBuf]) -> Vec<PathBuf> {
         let home = self.home();
         self.files
             .borrow()
             .keys()
             .filter(|p| p.ends_with(".cells/log.jsonl"))
             .filter(|p| p.starts_with(&home) && visible(&home, p.parent().and_then(Path::parent).expect("a folder's log")))
+            .filter(|p| !beyond.iter().any(|b| p.starts_with(b)))
             .cloned()
             .collect()
+    }
+
+    fn protected(&self, path: &Path) -> Option<crate::reach::Protected> {
+        crate::reach::in_home(&self.home(), path).or_else(|| {
+            let (at, network) = self.volumes.iter().find(|(at, _)| path.starts_with(at))?;
+            crate::reach::volume(&at.display().to_string(), !network)
+        })
     }
 
     fn entries(&self, dir: &Path) -> Vec<PathBuf> {
@@ -131,6 +155,7 @@ impl World for Sim {
     }
 
     fn replace(&self, path: &Path, against: &str, text: &str) -> Replaced {
+        self.touched.borrow_mut().push(path.to_path_buf());
         let now = self.files.borrow().get(path).cloned();
         match now {
             // the engine writes beside and renames over: another system ID
@@ -223,7 +248,14 @@ const INDEX: &str = "---\nimport q4 from \"./q4/money.cells\"\n---\nquarter:text
 pub(crate) fn started(mut sim: Sim) -> Daemon<Sim> {
     let (back, inbox) = channel();
     sim.inbox = Some(inbox);
-    Daemon::start(sim, back).unwrap()
+    Daemon::start(sim, back, crate::Reach::all()).unwrap()
+}
+
+/// The engine started over `sim`, entering only the protected folders of `reach`.
+pub(crate) fn started_reaching(mut sim: Sim, reach: crate::Reach) -> Daemon<Sim> {
+    let (back, inbox) = channel();
+    sim.inbox = Some(inbox);
+    Daemon::start(sim, back, reach).unwrap()
 }
 
 /// The engine stopped and started again over the same disk.
@@ -324,7 +356,7 @@ fn a_history_or_an_index_the_disk_will_not_give_is_refused() {
     sim.put(Q4, MONEY);
     sim.unreadable.borrow_mut().insert(crate::log::path(), "Resource deadlock avoided (os error 11)".into());
     let (back, _inbox) = channel();
-    let Err(why) = Daemon::start(sim, back) else { panic!("refused") };
+    let Err(why) = Daemon::start(sim, back, crate::Reach::all()) else { panic!("refused") };
     assert!(why.contains("history/log.jsonl") && why.contains("os error 11"), "{why}");
 }
 
@@ -1434,4 +1466,133 @@ fn an_intent_that_names_no_id_writes_one_or_breaks_a_rule_is_refused() {
     assert!(why.contains("would break a rule"), "{why}");
     assert_eq!(d.world().get(Q4), MONEY, "nothing written");
     assert!(d.world().log().is_empty(), "nothing logged");
+}
+
+const DOCS: &str = "/h/Documents/money.cells";
+/// A file outside the protected folders importing one in Documents.
+const PLAN: &str = "/h/w/plan.cells";
+const PLAN_TEXT: &str = "---\nimport money from \"../Documents/money.cells\"\n---\nwhat:text!,costs:EUR\nall,180.00=SUM(money.cost)\n";
+
+/// Whether the daemon touched anything under `dir`: read it, asked its ID, walked or wrote.
+fn touched_under(d: &Daemon<Sim>, dir: &str) -> Vec<PathBuf> {
+    d.world().touched.borrow().iter().filter(|p| p.starts_with(dir)).cloned().collect()
+}
+
+fn reach(words: &[&str]) -> crate::Reach {
+    crate::Reach::of(words.iter().map(|w| crate::reach::Protected::named(w).unwrap()))
+}
+
+#[test]
+fn a_protected_folder_not_reached_is_never_walked_or_read() {
+    let sim = Sim::default();
+    sim.put(Q4, MONEY);
+    sim.put(DOCS, MONEY);
+    sim.put("/h/Desktop/loose.cells", "a:num\n1\n");
+    let d = started_reaching(sim, reach(&["desktop"]));
+    assert!(touched_under(&d, "/h/Documents").is_empty(), "{:?}", touched_under(&d, "/h/Documents"));
+    assert!(d.index().at(Path::new(DOCS)).is_none(), "not held");
+    assert!(d.index().at(Path::new("/h/Desktop/loose.cells")).is_some(), "a reached one is walked");
+    assert!(d.index().at(Path::new(Q4)).is_some());
+}
+
+#[test]
+fn an_event_under_a_folder_not_reached_is_not_followed() {
+    let sim = Sim::default();
+    sim.put(Q4, MONEY);
+    let mut d = started_reaching(sim, crate::Reach::default());
+    d.world().put(DOCS, MONEY);
+    d.hear(&[Heard { path: DOCS.into(), id: Some(9) }], &[PathBuf::from("/h/Documents/w")]);
+    heard(&mut d, &["/h/Documents"]);
+    assert!(touched_under(&d, "/h/Documents").is_empty(), "{:?}", touched_under(&d, "/h/Documents"));
+    assert!(d.index().at(Path::new(DOCS)).is_none());
+}
+
+#[test]
+fn a_file_a_client_names_out_of_reach_is_said_unreached_untouched() {
+    let sim = Sim::default();
+    sim.put(DOCS, MONEY);
+    let mut d = started_reaching(sim, crate::Reach::default());
+    let unreached = FromEngine::Unreached { file: DOCS.into(), folder: crate::reach::Protected::Documents };
+    assert_eq!(ask(&mut d, "app", ToEngine::History { file: Some(DOCS.into()), under: None, limit: 10 }), unreached);
+    let edit = ToEngine::Intent { id: INTENT.into(), file: DOCS.into(), against: hash(MONEY), ops: vec![set_amount("180.00", "200.00")] };
+    assert_eq!(ask(&mut d, "app", edit), unreached);
+    assert_eq!(ask(&mut d, "app", ToEngine::Run { file: DOCS.into(), script: "rates".into() }), unreached);
+    d.answer(Event::Ask {
+        id: 1,
+        client: "app".into(),
+        request: ToEngine::Editing { file: DOCS.into(), version: hash(MONEY) },
+        answer: None,
+    });
+    assert!(touched_under(&d, "/h/Documents").is_empty(), "{:?}", touched_under(&d, "/h/Documents"));
+    assert_eq!(d.world().get(DOCS), MONEY, "nothing written");
+    // an approval touches no file of the person's
+    let allowed = ask(&mut d, "app", ToEngine::Allow { file: DOCS.into(), script: "rates".into(), version: "v".into() });
+    assert!(matches!(allowed, FromEngine::Allowed { .. }), "{allowed:?}");
+}
+
+#[test]
+fn a_volume_not_reached_is_said_by_its_kind() {
+    let mut sim = Sim::default();
+    sim.volumes.insert("/Volumes/USB".into(), false);
+    sim.volumes.insert("/Volumes/share".into(), true);
+    sim.put("/Volumes/USB/a.cells", "a:num\n1\n");
+    sim.put("/Volumes/share/a.cells", "a:num\n1\n");
+    let mut d = started_reaching(sim, reach(&["desktop", "documents", "downloads"]));
+    let history = |file: &str| ToEngine::History { file: Some(file.into()), under: None, limit: 10 };
+    assert_eq!(
+        ask(&mut d, "app", history("/Volumes/USB/a.cells")),
+        FromEngine::Unreached { file: "/Volumes/USB/a.cells".into(), folder: crate::reach::Protected::Removable }
+    );
+    assert_eq!(
+        ask(&mut d, "app", history("/Volumes/share/a.cells")),
+        FromEngine::Unreached { file: "/Volumes/share/a.cells".into(), folder: crate::reach::Protected::Network }
+    );
+    assert!(touched_under(&d, "/Volumes").is_empty());
+    d.reach(reach(&["removable"]));
+    assert!(matches!(ask(&mut d, "app", history("/Volumes/USB/a.cells")), FromEngine::History { .. }));
+}
+
+#[test]
+fn a_folder_newly_reached_is_walked_and_its_imports_held() {
+    let sim = Sim::default();
+    sim.put(DOCS, MONEY);
+    sim.put(PLAN, PLAN_TEXT);
+    let mut d = started_reaching(sim, crate::Reach::default());
+    assert!(touched_under(&d, "/h/Documents").is_empty(), "the import not followed: {:?}", touched_under(&d, "/h/Documents"));
+    assert!(d.index().at(Path::new(PLAN)).is_some(), "the importer is held");
+    // its import changed while out of reach, so reaching it stores what it reaches
+    d.world().put(DOCS, &MONEY.replace("cost,180.00,180.00=", "cost,200.00,200.00="));
+    d.answer(Event::Ask {
+        id: 1,
+        client: "app".into(),
+        request: ToEngine::Reach { allowed: vec![crate::reach::Protected::Documents] },
+        answer: None,
+    });
+    assert!(d.index().at(Path::new(DOCS)).is_some(), "walked, held");
+    assert!(d.world().get(PLAN).contains("all,200.00=SUM(money.cost)"), "{}", d.world().get(PLAN));
+}
+
+#[test]
+fn a_file_held_in_a_folder_no_longer_reached_is_left_as_it_was() {
+    let sim = Sim::default();
+    sim.put(DOCS, MONEY);
+    sim.put(PLAN, PLAN_TEXT);
+    let mut d = started_reaching(sim, reach(&["documents"]));
+    assert!(d.index().at(Path::new(DOCS)).is_some());
+    d.reach(crate::Reach::default());
+    d.world().touched.borrow_mut().clear();
+    d.world().put(DOCS, &MONEY.replace("cost,180.00,180.00=", "cost,200.00,200.00="));
+    heard(&mut d, &[DOCS]);
+    assert!(touched_under(&d, "/h/Documents").is_empty(), "{:?}", touched_under(&d, "/h/Documents"));
+    assert!(d.world().get(PLAN).contains("all,180.00="), "nothing followed");
+    let d = restarted_reaching(d, crate::Reach::default());
+    assert!(d.index().at(Path::new(DOCS)).is_some(), "still held, not seen gone");
+    assert!(touched_under(&d, "/h/Documents").is_empty());
+}
+
+/// The engine stopped and started again over the same disk, entering `reach`.
+fn restarted_reaching(d: Daemon<Sim>, reach: crate::Reach) -> Daemon<Sim> {
+    let sim = d.into_world();
+    sim.touched.borrow_mut().clear();
+    started_reaching(sim, reach)
 }

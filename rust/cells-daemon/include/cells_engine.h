@@ -12,9 +12,14 @@
 typedef void (*cells_engine_record)(const char *json);
 
 // The engine over its socket until the process ends, waiting for the engine's lock when
-// another process holds it, every record handed to `record`. Returns only when it cannot
-// run, its reason handed to `record`, with the exit status the process should end with.
-int cells_engine_serve(cells_engine_record record);
+// another process holds it, every record handed to `record`. `reach` is the protected
+// folders (System Settings › Privacy & Security › Files & Folders) this process may enter,
+// as it read them in itself at its launch, a JSON list of words:
+//   ["desktop","documents","downloads","removable","network"]
+// It never touches another until a client tells it (`reach` on its socket). Returns only
+// when it cannot run, its reason handed to `record`, with the exit status the process
+// should end with.
+int cells_engine_serve(const char *reach, cells_engine_record record);
 
 // The last FSEvents event ID the engine kept as handled, where the host's streams start
 // (FSEvents replays what happened since): 0 when it kept none, and then the host hears from

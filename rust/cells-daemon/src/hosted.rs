@@ -116,10 +116,20 @@ pub fn decoded(json: &str) -> Result<Event, String> {
 }
 
 /// The engine, until the process ends; returns only when it cannot run, its reason handed
-/// to `record` as an error, with the exit status a launchd job should end with.
+/// to `record` as an error, with the exit status a launchd job should end with. `reach` is
+/// the protected folders the host's process may enter, as it read them at its launch
+/// (`reach::Reach::parse`, a JSON list of words): every other is kept out of until a client
+/// says otherwise.
+///
+/// # Safety
+/// `reach` is a NUL-terminated UTF-8 string.
 #[unsafe(no_mangle)]
-pub extern "C" fn cells_engine_serve(record: extern "C" fn(*const c_char)) -> i32 {
-    match crate::hosted(record) {
+pub unsafe extern "C" fn cells_engine_serve(reach: *const c_char, record: extern "C" fn(*const c_char)) -> i32 {
+    assert!(!reach.is_null(), "the host handed no reach");
+    // SAFETY: the caller hands a NUL-terminated string, valid for the call
+    let reach = unsafe { CStr::from_ptr(reach) }.to_str().expect("the host's reach is UTF-8");
+    let reach = crate::Reach::parse(reach).unwrap_or_else(|why| panic!("the host's reach: {why}"));
+    match crate::hosted(record, reach) {
         Ok(never) => match never {},
         Err(why) => {
             tracing::error!(target: crate::trace::ENGINE, why, "cannot run");

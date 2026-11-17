@@ -19,6 +19,7 @@ use crate::allowed::{Allowed, Approval};
 use crate::history::{self, Asked};
 use crate::index::{By, Fate, FileId, Heard, Index, Looked, There, visible};
 use crate::log::{self, Cause, Changed, Edit, Log, Logged, Op, Outcome, hash};
+use crate::reach::{Protected, Reach};
 use crate::trace::ENGINE;
 use crate::wire::{FromEngine, ToEngine};
 use crate::world::{Found, Replaced, World, table_file};
@@ -110,6 +111,11 @@ pub struct Daemon<W: World> {
     /// The files a root changed since the scripts were last looked at: what starts a
     /// script that runs `when <file> changes`.
     touched: BTreeSet<PathBuf>,
+    /// The protected folders the engine may enter (`reach`): none other is walked, heard
+    /// under, read or written.
+    reach: Reach,
+    /// The files an import named in a protected folder not reached: held once it is.
+    unreached: BTreeSet<PathBuf>,
 }
 
 struct Holding {
@@ -214,6 +220,11 @@ fn key(path: &Path) -> String {
 /// Each file looked at as the disk has it now: its text and system ID, by path.
 type Texts = BTreeMap<PathBuf, (String, Option<u64>)>;
 
+/// The home folder's protected folders `reach` does not allow: what no walk enters.
+fn beyond(home: &Path, reach: &Reach) -> Vec<PathBuf> {
+    Protected::ALL.into_iter().filter(|p| !reach.allows(*p)).filter_map(|p| p.in_home(home)).collect()
+}
+
 impl<W: World> Daemon<W> {
     /// The daemon over `world`, a run that ends saying so on `back`, the channel `run`
     /// reads: its history and index read, the home folder watched whole, and every file
@@ -222,12 +233,15 @@ impl<W: World> Daemon<W> {
     /// as the start of what the engine holds. An engine that keeps no history yet first
     /// moves every folder's own into it (`migrate`). A history or an index the disk will
     /// not give is refused, saying why: continued from nothing, every history would fork.
-    pub fn start(mut world: W, back: Sender<Event>) -> Result<Daemon<W>, String> {
+    /// `reach` is the protected folders it may enter (`reach`): nothing in any other is
+    /// walked, read or followed, and a file held there before is left as the index knew it.
+    pub fn start(mut world: W, back: Sender<Event>, reach: Reach) -> Result<Daemon<W>, String> {
         let home = world.home();
-        let span = tracing::info_span!(target: ENGINE, "start", home = %home.display());
+        let span = tracing::info_span!(target: ENGINE, "start", home = %home.display(), reach = reach.said());
         let _starting = span.enter();
         if matches!(world.read(&log::path()), Found::Missing) {
-            let moved = crate::migrate::run(&mut world)?;
+            let beyond = beyond(&home, &reach);
+            let moved = crate::migrate::run(&mut world, &beyond)?;
             said!(folders = moved.folders, lines = moved.lines, files = moved.files, "every folder's history moved into the engine's");
         }
         let (log, broken) = Log::open(&world)?;
@@ -251,6 +265,8 @@ impl<W: World> Daemon<W> {
             landing: Vec::new(),
             told: BTreeSet::new(),
             touched: BTreeSet::new(),
+            reach,
+            unreached: BTreeSet::new(),
         };
         d.watch(&home, true)?;
         d.walk();
@@ -259,11 +275,52 @@ impl<W: World> Daemon<W> {
         Ok(d)
     }
 
+    /// The protected folder `path` is in that the engine does not reach, if any.
+    pub fn unreached(&self, path: &Path) -> Option<Protected> {
+        self.world.protected(path).filter(|p| !self.reach.allows(*p))
+    }
+
+    /// The reach the engine is told (`ToEngine::Reach`): every folder newly allowed walked
+    /// and followed as a folder heard is, and every import waiting in one held; a folder no
+    /// longer allowed is entered no more, its files held as they were last read.
+    pub fn reach(&mut self, reach: Reach) {
+        if reach == self.reach {
+            return;
+        }
+        let opened: Vec<Protected> = reach.allowed().filter(|p| !self.reach.allows(*p)).collect();
+        said!(reach = reach.said(), was = self.reach.said(), "reach");
+        self.reach = reach;
+        let dirs: Vec<PathBuf> = opened.iter().filter_map(|p| p.in_home(&self.home)).collect();
+        let mut paths: BTreeMap<PathBuf, Vec<u64>> = BTreeMap::new();
+        for dir in &dirs {
+            let under: Vec<PathBuf> = self
+                .index
+                .held()
+                .filter(|k| k.path.starts_with(dir))
+                .map(|k| k.path.clone())
+                .chain(self.world.files(dir, &beyond(&self.home, &self.reach)))
+                .collect();
+            paths.extend(under.into_iter().map(|p| (p, Vec::new())));
+        }
+        self.followed(paths);
+        let waiting: Vec<PathBuf> = self.unreached.iter().filter(|p| self.unreached(p).is_none()).cloned().collect();
+        for path in waiting {
+            self.unreached.remove(&path);
+            if let Some(seen) = self.needed(&key(&path)) {
+                self.hand(seen, None);
+            }
+        }
+        self.persist();
+    }
+
     /// Every table file under home and every file the index holds, looked at once and
-    /// followed (`index::follow`), each read as the start of what the folder holds.
+    /// followed (`index::follow`), each read as the start of what the folder holds; none in
+    /// a protected folder not reached.
     fn walk(&mut self) {
-        let mut paths: BTreeMap<PathBuf, Vec<u64>> = self.world.files(&self.home).into_iter().map(|p| (p, Vec::new())).collect();
-        paths.extend(self.index.held().map(|k| (k.path.clone(), Vec::new())));
+        let beyond = beyond(&self.home, &self.reach);
+        let mut paths: BTreeMap<PathBuf, Vec<u64>> = self.world.files(&self.home, &beyond).into_iter().map(|p| (p, Vec::new())).collect();
+        let held: Vec<PathBuf> = self.index.held().map(|k| k.path.clone()).filter(|p| self.unreached(p).is_none()).collect();
+        paths.extend(held.into_iter().map(|p| (p, Vec::new())));
         let (looked, texts) = self.look(paths);
         self.index.forget(self.world.now());
         let fates = self.index.follow(&looked);
@@ -417,6 +474,11 @@ impl<W: World> Daemon<W> {
         match event {
             Event::Disk(_) | Event::Host { .. } => unreachable!("the disk's events are heard, never answered"),
             Event::Ran(running, returned) => self.land(running, returned),
+            Event::Ask { client, request: ToEngine::Reach { allowed }, .. } => {
+                detail!(client, "told the reach");
+                self.reach(Reach::of(allowed));
+            }
+            Event::Ask { id, client, request, answer } if self.out_of_reach(id, &client, &request, answer.as_ref()) => {}
             Event::Ask { id, client, request: ToEngine::Run { file, script }, answer } => {
                 let answer = answer.expect("a run is answered");
                 if let Err(why) = self.named(&file).and_then(|_| self.start_run(&file, &script, &client, Some(answer.clone()))) {
@@ -452,6 +514,19 @@ impl<W: World> Daemon<W> {
             }
         }
         self.persist();
+    }
+
+    /// Whether `request` names a file in a protected folder the engine does not reach:
+    /// then it is answered so (`Unreached`), the file neither read nor written.
+    fn out_of_reach(&self, id: u64, client: &str, request: &ToEngine, answer: Option<&Sender<FromEngine>>) -> bool {
+        let Some(file) = request.touches() else { return false };
+        let Some(folder) = self.unreached(file) else { return false };
+        said!(client, id, path = %self.shown(file), folder = folder.word(), "out of reach: not allowed in its folder");
+        if let Some(answer) = answer {
+            // the client may be gone already
+            let _ = answer.send(FromEngine::Unreached { file: file.to_path_buf(), folder });
+        }
+        true
     }
 
     /// The identity of the file at `file`, a client named: held from now on when it was not
@@ -494,6 +569,7 @@ impl<W: World> Daemon<W> {
     fn asked(&mut self, id: u64, client: &str, request: ToEngine) -> Result<Option<FromEngine>, String> {
         Ok(Some(match request {
             ToEngine::Hello { .. } => unreachable!("a greeting is the server's"),
+            ToEngine::Reach { .. } => unreachable!("the reach is answered by nothing"),
             ToEngine::Run { .. } => unreachable!("a run is answered when it lands"),
             ToEngine::Allow { file, script, version } => {
                 let approval =
@@ -677,7 +753,7 @@ impl<W: World> Daemon<W> {
         };
         let touched = std::mem::take(&mut self.touched);
         let mut soonest = now + GLANCE.as_millis() as u64;
-        let held: Vec<PathBuf> = self.folder.paths().map(PathBuf::from).collect();
+        let held: Vec<PathBuf> = self.folder.paths().map(PathBuf::from).filter(|p| self.unreached(p).is_none()).collect();
         for path in held {
             let Some(doc) = self.folder.doc(&key(&path)) else { continue };
             let text = self.folder.text(&key(&path)).expect("a doc's text").to_owned();
@@ -814,6 +890,18 @@ impl<W: World> Daemon<W> {
                 return;
             }
         };
+        if let Some(folder) = self.unreached(&running.file) {
+            warned!(
+                path = shown,
+                script = running.script,
+                folder = folder.word(),
+                "ran, and its folder is no longer allowed: nothing landed"
+            );
+            for w in running.waiting {
+                let _ = w.send(FromEngine::Unreached { file: running.file.clone(), folder });
+            }
+            return;
+        }
         let was = hash(&text);
         match self.world.replace(&running.file, &was, &written) {
             Replaced::Done => {}
@@ -902,19 +990,33 @@ impl<W: World> Daemon<W> {
     /// moved) is looked at whole the same way, the home folder included. Each change is a
     /// span, ending once every file it reached is stored.
     pub fn hear(&mut self, heard: &[Heard], lost: &[PathBuf]) {
+        let beyond = beyond(&self.home, &self.reach);
         let mut paths: BTreeMap<PathBuf, Vec<u64>> = BTreeMap::new();
         for dir in lost {
             // a path outside home (the volume's root, for events the kernel dropped): home
             // looked at whole
             let dir = if dir.starts_with(&self.home) { dir.clone() } else { self.home.clone() };
+            if self.unreached(&dir).is_some() {
+                continue;
+            }
             warned!(folder = %self.shown(&dir), "its events were lost: every file in it looked at again");
-            let under: Vec<PathBuf> =
-                self.index.held().filter(|k| k.path.starts_with(&dir)).map(|k| k.path.clone()).chain(self.world.files(&dir)).collect();
+            let under: Vec<PathBuf> = self
+                .index
+                .held()
+                .filter(|k| k.path.starts_with(&dir))
+                .map(|k| k.path.clone())
+                .chain(self.world.files(&dir, &beyond))
+                .collect();
             for p in under {
                 paths.entry(p).or_default();
             }
         }
         for h in heard {
+            // nothing under a protected folder not reached is followed: what is there is
+            // looked at once it is
+            if self.unreached(&h.path).is_some() {
+                continue;
+            }
             if table_file(&h.path) {
                 if self.index.at(&h.path).is_some() || visible(&self.home, &h.path) {
                     paths.entry(h.path.clone()).or_default().extend(h.id);
@@ -931,12 +1033,20 @@ impl<W: World> Daemon<W> {
                 .held()
                 .filter(|k| k.path.starts_with(&h.path))
                 .map(|k| k.path.clone())
-                .chain(self.world.files(&h.path))
+                .chain(self.world.files(&h.path, &beyond))
                 .collect();
             for p in under {
                 paths.entry(p).or_default();
             }
         }
+        // a file held in a folder no longer reached is left as it was last read
+        paths.retain(|p, _| self.unreached(p).is_none());
+        self.followed(paths);
+    }
+
+    /// The files at `paths` (each with the IDs its events named) looked at and followed:
+    /// what `hear` and a folder newly reached hand on.
+    fn followed(&mut self, paths: BTreeMap<PathBuf, Vec<u64>>) {
         if paths.is_empty() {
             return;
         }
@@ -1231,6 +1341,11 @@ impl<W: World> Daemon<W> {
             return None;
         }
         let path = PathBuf::from(need);
+        if let Some(folder) = self.unreached(&path) {
+            said!(path = %self.shown(&path), folder = folder.word(), "imported, out of reach: held once its folder is allowed");
+            self.unreached.insert(path);
+            return None;
+        }
         if let Some(dir) = path.parent().filter(|d| d.is_absolute())
             && let Err(why) = self.watch(dir, false)
         {
@@ -1249,6 +1364,10 @@ impl<W: World> Daemon<W> {
     /// folder once written.
     fn write(&mut self, w: Write, cause: Option<u64>) -> Option<Change> {
         let path = PathBuf::from(&w.path);
+        if let Some(folder) = self.unreached(&path) {
+            said!(path = %self.shown(&path), folder = folder.word(), "not written: its folder is no longer allowed");
+            return None;
+        }
         let id = self.index.at(&path).unwrap_or_else(|| panic!("{} written, never held", w.path)).id.clone();
         // nothing when the root's line could not be written, which was said
         let cause = cause.map(|n| Cause { n });

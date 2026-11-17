@@ -72,12 +72,13 @@ pub fn listen(events: Sender<Event>, held: Held) -> Result<Listening, Unbound> {
     let admits = trust.said();
     thread::Builder::new()
         .name("cells-accept".into())
-        .spawn(move || accept(listener, events, trust))
+        .spawn(move || accept(listener, events, trust, held == Held::Wait))
         .map_err(|e| failed("the accepting thread", e))?;
     Ok(Listening { _lock: lock, socket, admits })
 }
 
-fn accept(listener: UnixListener, events: Sender<Event>, trust: Trust) {
+/// `hosted`: the engine Cells.app keeps, the one that waits for the lock (`Held::Wait`).
+fn accept(listener: UnixListener, events: Sender<Event>, trust: Trust, hosted: bool) {
     static NEXT: AtomicU64 = AtomicU64::new(1);
     for stream in listener.incoming() {
         let stream = match stream {
@@ -101,7 +102,7 @@ fn accept(listener: UnixListener, events: Sender<Event>, trust: Trust) {
         let id = NEXT.fetch_add(1, Ordering::Relaxed);
         let events = events.clone();
         let spawned = thread::Builder::new().name(format!("cells-client-{id}")).spawn(move || {
-            if let Err(e) = converse(id, stream, &events) {
+            if let Err(e) = converse(id, stream, &events, hosted) {
                 tracing::warn!(target: crate::trace::ENGINE, id, why = e, "a client's conversation broke");
             }
             // the daemon outlives every client
@@ -115,7 +116,7 @@ fn accept(listener: UnixListener, events: Sender<Event>, trust: Trust) {
 
 /// One client: its greeting answered, the files that change told to it as they change,
 /// each request handed to the daemon and its answer written back, until it closes.
-fn converse(id: u64, stream: UnixStream, events: &Sender<Event>) -> Result<(), String> {
+fn converse(id: u64, stream: UnixStream, events: &Sender<Event>, hosted: bool) -> Result<(), String> {
     let mut reader = BufReader::new(stream.try_clone().map_err(|e| e.to_string())?);
     let writer = Arc::new(Mutex::new(stream));
     let say = |m: &FromEngine| wire::send(&mut *writer.lock().unwrap(), m).map_err(|e| e.to_string());
@@ -128,7 +129,7 @@ fn converse(id: u64, stream: UnixStream, events: &Sender<Event>) -> Result<(), S
         Some(other) => return Err(format!("its first line is no greeting: {other:?}")),
         None => return Ok(()),
     };
-    say(&FromEngine::Hello { version: VERSION, pid: std::process::id() })?;
+    say(&FromEngine::Hello { version: VERSION, pid: std::process::id(), hosted })?;
     let (tell, told) = channel::<Vec<PathBuf>>();
     events.send(Event::Listen { id, client: client.clone(), tell }).map_err(|_| "the daemon is gone")?;
     let teller = Arc::clone(&writer);
@@ -153,7 +154,7 @@ fn converse(id: u64, stream: UnixStream, events: &Sender<Event>) -> Result<(), S
                 continue;
             }
         };
-        if matches!(request, ToEngine::Editing { .. }) {
+        if matches!(request, ToEngine::Editing { .. } | ToEngine::Reach { .. }) {
             events.send(Event::Ask { id, client: client.clone(), request, answer: None }).map_err(|_| "the daemon is gone")?;
             continue;
         }
@@ -165,9 +166,28 @@ fn converse(id: u64, stream: UnixStream, events: &Sender<Event>) -> Result<(), S
 }
 
 /// A request's paths as the engine keys files: canonical, as the disk resolves them (a
-/// file not there yet, by its folder's), so `/tmp` and `/private/tmp` are one file.
+/// file not there yet, by its folder's), so `/tmp` and `/private/tmp` are one file. A path
+/// in one of the home folder's protected folders (`reach`) is resolved by its words past
+/// that folder, the home folder alone asked of the disk: resolving it there would be a look
+/// inside a folder the engine may not reach, which the daemon decides, not this thread.
 fn canonical(request: ToEngine) -> Result<ToEngine, String> {
     fn path(p: PathBuf) -> Result<PathBuf, String> {
+        let home = PathBuf::from(std::env::var_os("HOME").expect("HOME is set"));
+        let real = fs::canonicalize(&home).unwrap_or(home.clone());
+        for h in [&home, &real] {
+            if let Some(folder) = crate::reach::in_home(h, &p) {
+                let within = p.strip_prefix(folder.in_home(h).expect("a home folder")).expect("in it");
+                let mut out = folder.in_home(&real).expect("a home folder");
+                for c in within.components() {
+                    match c {
+                        std::path::Component::ParentDir => return Err(format!("{}: `..` out of a protected folder", p.display())),
+                        std::path::Component::CurDir => {}
+                        other => out.push(other),
+                    }
+                }
+                return Ok(out);
+            }
+        }
         match fs::canonicalize(&p) {
             Ok(c) => Ok(c),
             Err(_) => {
@@ -190,5 +210,6 @@ fn canonical(request: ToEngine) -> Result<ToEngine, String> {
         ToEngine::Since { file, version } => ToEngine::Since { file: path(file)?, version },
         ToEngine::Run { file, script } => ToEngine::Run { file: path(file)?, script },
         ToEngine::Intent { id, file, against, ops } => ToEngine::Intent { id, file: path(file)?, against, ops },
+        ToEngine::Reach { .. } => request,
     })
 }

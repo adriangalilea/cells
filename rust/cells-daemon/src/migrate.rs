@@ -87,8 +87,9 @@ pub struct Migrated {
 /// with it. A folder's log the disk will not give, or a line that reads as no entry of a
 /// log (a log of a kind no engine wrote), stops it before anything is written or moved:
 /// the engine does not start, saying which, and the person's folders are as they were.
-pub fn run(world: &mut impl World) -> Result<Migrated, String> {
-    let logs = world.folder_logs();
+/// A folder in `beyond` (a protected folder the engine does not reach) is not looked in.
+pub fn run(world: &mut impl World, beyond: &[PathBuf]) -> Result<Migrated, String> {
+    let logs = world.folder_logs(beyond);
     let mut read_logs: Vec<(PathBuf, Vec<Read>)> = Vec::new();
     for at in &logs {
         let root = at.parent().and_then(Path::parent).expect("a log in a folder's .cells").to_path_buf();

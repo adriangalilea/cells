@@ -30,6 +30,7 @@ pub mod hosted;
 pub mod index;
 pub mod log;
 pub mod migrate;
+pub mod reach;
 pub mod schedule;
 pub mod server;
 pub mod trace;
@@ -42,12 +43,20 @@ use std::sync::mpsc::{Receiver, channel};
 
 pub use client::Engine;
 pub use daemon::{Daemon, Event};
+pub use reach::Reach;
 pub use world::{Disk, Ears, World};
 
 use server::{Held, Listening, Unbound};
 
-/// The engine run over its socket until the process ends, the home folder heard by `ears`.
-fn run(listening: Listening, events: std::sync::mpsc::Sender<Event>, heard: Receiver<Event>, ears: Ears) -> Result<Infallible, String> {
+/// The engine run over its socket until the process ends, the home folder heard by `ears`,
+/// the protected folders of `reach` entered.
+fn run(
+    listening: Listening,
+    events: std::sync::mpsc::Sender<Event>,
+    heard: Receiver<Event>,
+    ears: Ears,
+    reach: Reach,
+) -> Result<Infallible, String> {
     let disk = events.clone();
     let world = Disk::new(
         move |heard| {
@@ -57,7 +66,7 @@ fn run(listening: Listening, events: std::sync::mpsc::Sender<Event>, heard: Rece
         ears,
     )?;
     tracing::info!(target: trace::ENGINE, socket = %listening.socket.display(), pid = std::process::id(), admits = listening.admits, "listening");
-    let mut daemon = Daemon::start(world, events.clone())?;
+    let mut daemon = Daemon::start(world, events.clone(), reach)?;
     // the socket and its lock live as long as the daemon, which never returns
     let _listening = listening;
     daemon.run(heard)
@@ -67,8 +76,9 @@ fn run(listening: Listening, events: std::sync::mpsc::Sender<Event>, heard: Rece
 /// for when another process holds it, so launchd's keeping it alive never turns into
 /// restarting it against an engine a client started first. Every record goes to `sink`,
 /// the host's writer (`trace`); the home folder is heard by the host (`Ears::Host`), its
-/// batches arriving through `cells_engine_heard` on the daemon's channel.
-pub fn hosted(sink: trace::Sink) -> Result<Infallible, String> {
+/// batches arriving through `cells_engine_heard` on the daemon's channel. `reach` is what the
+/// host read of its own switches at its launch (`reach`); a client tells it afterwards.
+pub fn hosted(sink: trace::Sink, reach: Reach) -> Result<Infallible, String> {
     trace::to_host(sink);
     // launchd hands a job no terminal: what the host writes on stderr goes to
     // `engine.trace` beside the socket, where a client starting the engine sends it too
@@ -86,27 +96,40 @@ pub fn hosted(sink: trace::Sink) -> Result<Infallible, String> {
     let _trace = trace;
     let (events, heard) = hosted::channel_taken();
     match server::listen(events.clone(), Held::Wait) {
-        Ok(listening) => run(listening, events, heard, Ears::Host),
+        Ok(listening) => run(listening, events, heard, Ears::Host, reach),
         Err(Unbound::Running) => unreachable!("a hosted engine waits for the lock"),
         Err(Unbound::Failed(why)) => Err(why),
     }
 }
 
-pub const USAGE: &str = "cells engine [--verbose]";
+pub const USAGE: &str = "cells engine [--verbose] [--reach <folders>]";
 
-/// `cells engine [--verbose]`: the engine, until the process ends: every `.cells` file
-/// under the home folder held, and every file they import and a client names. With an
+/// `cells engine [--verbose] [--reach <folders>]`: the engine, until the process ends: every
+/// `.cells` file under the home folder held, and every file they import and a client names.
+/// It enters every protected folder (`reach`): run from a shell, the terminal's own access
+/// applies. `--reach` names the ones it enters, by comma (`desktop,documents`; `none` for
+/// none): what an app starting it gives, so nothing asks anyone in the app's name. With an
 /// engine running already, this says which and returns.
 pub fn engine(args: &[String]) -> Result<Infallible, String> {
-    let verbose = match args {
-        [] => false,
-        [v] if v == "--verbose" => true,
-        _ => return Err(USAGE.to_owned()),
-    };
+    let (mut verbose, mut reach) = (false, Reach::all());
+    let mut args = args.iter();
+    while let Some(arg) = args.next() {
+        match arg.as_str() {
+            "--verbose" => verbose = true,
+            "--reach" => {
+                let words = args.next().ok_or(USAGE)?;
+                reach = match words.as_str() {
+                    "none" => Reach::default(),
+                    words => Reach::of(words.split(',').map(reach::Protected::named).collect::<Result<Vec<_>, _>>()?),
+                };
+            }
+            _ => return Err(USAGE.to_owned()),
+        }
+    }
     trace::to_stderr(verbose);
     let (events, heard) = channel();
     match server::listen(events.clone(), Held::Leave) {
-        Ok(listening) => run(listening, events, heard, Ears::Own),
+        Ok(listening) => run(listening, events, heard, Ears::Own, reach),
         Err(Unbound::Running) => {
             let (engine, _) = Engine::connect("cli")?;
             Err(format!("the engine runs already (pid {})", engine.pid))

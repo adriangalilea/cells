@@ -11,6 +11,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use notify::{RecommendedWatcher, RecursiveMode, Watcher};
 
 use crate::index::{Heard, icloud, visible};
+use crate::reach::Protected;
 
 /// A file as it was read.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -38,12 +39,16 @@ pub trait World {
     fn file_id(&self, path: &Path) -> Option<u64>;
     /// Every file a table is read from (`.cells`, `.csv`, `.tsv`) under `root` that the
     /// engine takes in (`index::visible`, by the home folder's rule; iCloud Drive's folder
-    /// inside `~/Library` walked too), sorted.
-    fn files(&self, root: &Path) -> Vec<PathBuf>;
+    /// inside `~/Library` walked too), sorted; nothing under any of `beyond` (the protected
+    /// folders not reached, `reach`), which the walk never enters.
+    fn files(&self, root: &Path, beyond: &[PathBuf]) -> Vec<PathBuf>;
     /// Every log a folder kept its own history in before the engine kept one
     /// (`<folder>/.cells/log.jsonl`), of the home folder and every folder the walk takes
-    /// in, sorted: what `migrate` reads once.
-    fn folder_logs(&self) -> Vec<PathBuf>;
+    /// in, never under `beyond`, sorted: what `migrate` reads once.
+    fn folder_logs(&self, beyond: &[PathBuf]) -> Vec<PathBuf>;
+    /// The protected folder `path` is in (`reach`), told from its words and the mount table
+    /// alone, so nothing guarded is touched to tell; none for any other place.
+    fn protected(&self, path: &Path) -> Option<Protected>;
     /// Every file directly in `dir`, sorted; none when there is no such folder.
     fn entries(&self, dir: &Path) -> Vec<PathBuf>;
     /// `text` written over `path` whole or not at all, and only over the version whose
@@ -144,16 +149,19 @@ pub fn table_file(path: &Path) -> bool {
 
 /// Every file and every folder the walk takes in under `dir` (`index::visible` by `home`'s
 /// rule), symbolic links never followed: a link is another name for a file held where it is.
-fn walk(home: &Path, dir: &Path, dirs: &mut Vec<PathBuf>, files: &mut Vec<PathBuf>) {
+fn walk(home: &Path, dir: &Path, beyond: &[PathBuf], dirs: &mut Vec<PathBuf>, files: &mut Vec<PathBuf>) {
+    if beyond.iter().any(|b| dir.starts_with(b)) {
+        return;
+    }
     let Ok(entries) = fs::read_dir(dir) else { return };
     dirs.push(dir.to_path_buf());
     for e in entries.flatten() {
         let p = e.path();
-        if !visible(home, &p) {
+        if !visible(home, &p) || beyond.iter().any(|b| p.starts_with(b)) {
             continue;
         }
         match e.file_type() {
-            Ok(t) if t.is_dir() => walk(home, &p, dirs, files),
+            Ok(t) if t.is_dir() => walk(home, &p, beyond, dirs, files),
             Ok(t) if t.is_file() && table_file(&p) => files.push(p),
             _ => {}
         }
@@ -161,17 +169,48 @@ fn walk(home: &Path, dir: &Path, dirs: &mut Vec<PathBuf>, files: &mut Vec<PathBu
 }
 
 /// The walk of `root`, and of iCloud Drive's folder when `root` holds it (inside
-/// `~/Library`, which the walk leaves out).
-fn walked(home: &Path, root: &Path) -> (Vec<PathBuf>, Vec<PathBuf>) {
+/// `~/Library`, which the walk leaves out), never into `beyond`.
+fn walked(home: &Path, root: &Path, beyond: &[PathBuf]) -> (Vec<PathBuf>, Vec<PathBuf>) {
     let (mut dirs, mut files) = (Vec::new(), Vec::new());
-    walk(home, root, &mut dirs, &mut files);
+    walk(home, root, beyond, &mut dirs, &mut files);
     let cloud = icloud(home);
     if cloud.starts_with(root) && cloud != root {
-        walk(home, &cloud, &mut dirs, &mut files);
+        walk(home, &cloud, beyond, &mut dirs, &mut files);
     }
     dirs.sort();
     files.sort();
     (dirs, files)
+}
+
+/// The protected volume `path` is on (`reach::volume`), from the kernel's mount table
+/// (`getmntinfo`), which touches no volume: the mount whose folder is the longest that holds
+/// `path`.
+#[cfg(target_os = "macos")]
+fn mounted(path: &Path) -> Option<Protected> {
+    let mut table: *mut libc::statfs = std::ptr::null_mut();
+    // SAFETY: getmntinfo points `table` at the kernel's mount table, owned by libc, valid
+    // until the next call on this thread; read here and copied out at once
+    let count = unsafe { libc::getmntinfo(&mut table, libc::MNT_NOWAIT) };
+    if count <= 0 || table.is_null() {
+        return None;
+    }
+    // SAFETY: `count` entries from `table`, as getmntinfo says
+    let mounts = unsafe { std::slice::from_raw_parts(table, count as usize) };
+    mounts
+        .iter()
+        .map(|m| {
+            // SAFETY: f_mntonname is a NUL-terminated C string within its array
+            let at = unsafe { std::ffi::CStr::from_ptr(m.f_mntonname.as_ptr()) }.to_string_lossy().into_owned();
+            (at, m.f_flags & libc::MNT_LOCAL as u32 != 0)
+        })
+        .filter(|(at, _)| path.starts_with(at))
+        .max_by_key(|(at, _)| at.len())
+        .and_then(|(at, local)| crate::reach::volume(&at, local))
+}
+
+#[cfg(not(target_os = "macos"))]
+fn mounted(_: &Path) -> Option<Protected> {
+    None
 }
 
 /// `text` written beside `path` and renamed over it, so it is never half of one.
@@ -270,14 +309,18 @@ impl World for Disk {
         fs::metadata(path).ok().map(|m| m.ino())
     }
 
-    fn files(&self, root: &Path) -> Vec<PathBuf> {
-        walked(&self.home(), root).1
+    fn files(&self, root: &Path, beyond: &[PathBuf]) -> Vec<PathBuf> {
+        walked(&self.home(), root, beyond).1
     }
 
-    fn folder_logs(&self) -> Vec<PathBuf> {
+    fn folder_logs(&self, beyond: &[PathBuf]) -> Vec<PathBuf> {
         let home = self.home();
-        let (dirs, _) = walked(&home, &home);
+        let (dirs, _) = walked(&home, &home, beyond);
         dirs.into_iter().map(|d| d.join(".cells").join("log.jsonl")).filter(|l| l.is_file()).collect()
+    }
+
+    fn protected(&self, path: &Path) -> Option<Protected> {
+        crate::reach::in_home(&self.home(), path).or_else(|| mounted(path))
     }
 
     fn entries(&self, dir: &Path) -> Vec<PathBuf> {

@@ -39,7 +39,7 @@ impl Engine {
         let mut writer = stream;
         wire::send(&mut writer, &ToEngine::Hello { version: VERSION, client: client.to_owned() }).map_err(|e| e.to_string())?;
         let pid = match wire::receive(&mut reader).map_err(|e| e.to_string())? {
-            Some(FromEngine::Hello { version, pid }) if version == VERSION => pid,
+            Some(FromEngine::Hello { version, pid, .. }) if version == VERSION => pid,
             Some(FromEngine::Refused { why }) => return Err(why),
             Some(other) => return Err(format!("the engine answered the greeting with {other:?}")),
             None => return Err("the engine closed at the greeting".into()),
@@ -174,6 +174,12 @@ impl Engine {
         wire::send(&mut *self.writer.lock().unwrap(), request).map_err(|e| e.to_string())?;
         match answers.recv().map_err(|_| "the engine closed".to_owned())? {
             FromEngine::Refused { why } => Err(why),
+            // a command has one way to say it did not do what was asked
+            FromEngine::Unreached { file, folder } => Err(format!(
+                "{} is in a folder macOS keeps from the Cells engine ({}): allow it in Cells › Settings › Files",
+                file.display(),
+                folder.word()
+            )),
             answer => Ok(answer),
         }
     }
@@ -198,6 +204,7 @@ fn hear(mut reader: BufReader<UnixStream>, changes: Sender<Vec<PathBuf>>, answer
                 | FromEngine::Ran { .. }
                 | FromEngine::Applied { .. }
                 | FromEngine::Since { .. }
+                | FromEngine::Unreached { .. }
                 | FromEngine::Refused { .. }),
             )) => {
                 let _ = answer.send(said);

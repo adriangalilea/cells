@@ -142,8 +142,8 @@ pub const COMMANDS: &[Command] = &[
     },
     Command { usage: "cells lsp", says: "The language server, on stdin and stdout." },
     Command {
-        usage: "cells engine [--verbose]",
-        says: "The engine kept running over every `.cells` file under the home folder, the files they import and every file a client names, each followed as it moves: a change written to a file stores every computed cell it reaches, in that file and every file importing it, each version logged in the engine's one history, each step said on stderr (`--verbose`: every read, timed).",
+        usage: "cells engine [--verbose] [--reach <folders>]",
+        says: "The engine kept running over every `.cells` file under the home folder, the files they import and every file a client names, each followed as it moves: a change written to a file stores every computed cell it reaches, in that file and every file importing it, each version logged in the engine's one history, each step said on stderr (`--verbose`: every read, timed). It enters every folder macOS protects (Desktop, Documents, Downloads, other volumes), as the terminal it runs in may; `--reach desktop,documents` names the ones it enters, `--reach none` none (ENGINE.md, Reach).",
     },
     Command {
         usage: "cells history <file|folder> [<row> <column>]",
