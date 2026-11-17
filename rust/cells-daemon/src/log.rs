@@ -91,6 +91,14 @@ pub enum Logged {
         #[serde(skip_serializing_if = "Option::is_none", default)]
         edited: Option<Edit>,
     },
+    /// A file moved, a root: heard gone from `from` and come at `path` with the same text,
+    /// in one moment (by anyone: the Finder, an app, a shell). What was logged of it at
+    /// `from` before is its history; every import naming it follows it (a `store` each).
+    Relocated {
+        path: String,
+        from: String,
+        now: String,
+    },
     Store {
         path: String,
         cause: Cause,
@@ -98,6 +106,10 @@ pub enum Logged {
         against: String,
         now: String,
         stored: Vec<Changed>,
+        /// Each import's path written anew following a file moved: as written before, as
+        /// written now.
+        #[serde(skip_serializing_if = "Vec::is_empty", default)]
+        imports: Vec<(String, String)>,
     },
     Moved {
         path: String,
@@ -113,6 +125,7 @@ impl Logged {
             | Logged::Restore { path, .. }
             | Logged::Run { path, .. }
             | Logged::Edit { path, .. }
+            | Logged::Relocated { path, .. }
             | Logged::Store { path, .. }
             | Logged::Moved { path, .. } => path,
         }
@@ -122,7 +135,7 @@ impl Logged {
     pub fn cause(&self) -> Option<&Cause> {
         match self {
             Logged::Store { cause, .. } | Logged::Moved { cause, .. } => Some(cause),
-            Logged::External { .. } | Logged::Restore { .. } | Logged::Run { .. } | Logged::Edit { .. } => None,
+            Logged::External { .. } | Logged::Restore { .. } | Logged::Run { .. } | Logged::Edit { .. } | Logged::Relocated { .. } => None,
         }
     }
 
@@ -130,7 +143,11 @@ impl Logged {
     pub fn now(&self) -> Option<&str> {
         match self {
             Logged::External { now, .. } => now.as_deref(),
-            Logged::Restore { now, .. } | Logged::Run { now, .. } | Logged::Edit { now, .. } | Logged::Store { now, .. } => Some(now),
+            Logged::Restore { now, .. }
+            | Logged::Run { now, .. }
+            | Logged::Edit { now, .. }
+            | Logged::Relocated { now, .. }
+            | Logged::Store { now, .. } => Some(now),
             Logged::Moved { .. } => None,
         }
     }
@@ -141,9 +158,28 @@ impl Logged {
             Logged::External { edited, .. } | Logged::Restore { edited, .. } | Logged::Run { edited, .. } | Logged::Edit { edited, .. } => {
                 edited.as_ref()
             }
-            Logged::Store { .. } | Logged::Moved { .. } => None,
+            Logged::Relocated { .. } | Logged::Store { .. } | Logged::Moved { .. } => None,
         }
     }
+}
+
+/// Every line of `log` about the file at `path` (as the log names it), oldest first,
+/// those it was logged with under every path it had before it moved there included: a
+/// file's history follows it, and a path another file had before is that file's.
+pub fn lines_of<'a>(log: &'a Log, path: &str) -> Vec<&'a Line> {
+    let mut named = path.to_owned();
+    let mut lines = Vec::new();
+    for line in log.lines().iter().rev() {
+        if line.entry.path() != named {
+            continue;
+        }
+        lines.push(line);
+        if let Logged::Relocated { from, .. } = &line.entry {
+            named = from.clone();
+        }
+    }
+    lines.reverse();
+    lines
 }
 
 /// A row as an intent names it (`cells::RowAt`): by its key, by its id, or, in a file

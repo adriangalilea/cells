@@ -113,10 +113,28 @@ struct Root {
 }
 
 enum RootKind {
-    External { by: Option<String> },
-    Restore { by: String },
-    Run { script: String, run: u64, outcome: Outcome, by: String },
-    Edit { intent: String, by: String, ops: Vec<Op>, assigned: Vec<String> },
+    External {
+        by: Option<String>,
+    },
+    /// The file at `path` heard come from `from`, its text the same.
+    Relocated {
+        from: PathBuf,
+    },
+    Restore {
+        by: String,
+    },
+    Run {
+        script: String,
+        run: u64,
+        outcome: Outcome,
+        by: String,
+    },
+    Edit {
+        intent: String,
+        by: String,
+        ops: Vec<Op>,
+        assigned: Vec<String>,
+    },
 }
 
 /// The longest the engine waits before looking at its scripts again: a Mac asleep stops
@@ -176,6 +194,34 @@ fn timestamp(ms: u64) -> jiff::Timestamp {
 /// The folder's key for a path: the path, absolute, as text.
 fn key(path: &Path) -> String {
     path.to_str().unwrap_or_else(|| panic!("{} is not UTF-8: the engine keys files by their path as text", path.display())).to_owned()
+}
+
+/// The files moved among paths heard at one moment (each path, the version the folder
+/// held of it, what the disk has there now), as (gone, come) indices: a path gone whose
+/// text the folder held, paired with a path come new holding that same text. The one new
+/// file holding it is the one; among several, the one of the same name; else none is, and
+/// each is what it seemed, one file removed and others added: a move is never guessed.
+fn moves(read: &[(&PathBuf, Option<String>, Found)]) -> Vec<(usize, usize)> {
+    let come: Vec<(usize, String)> = read
+        .iter()
+        .enumerate()
+        .filter_map(|(i, (_, was, found))| match (was, found) {
+            (None, Found::Text(text)) => Some((i, hash(text))),
+            _ => None,
+        })
+        .collect();
+    let mut moves: Vec<(usize, usize)> = Vec::new();
+    for (g, (path, was, found)) in read.iter().enumerate() {
+        let (Some(held), Found::Missing) = (was, found) else { continue };
+        let free = |c: &usize| !moves.iter().any(|(_, m)| m == c);
+        let same: Vec<usize> = come.iter().filter(|(c, h)| h == held && free(c)).map(|(c, _)| *c).collect();
+        let named: Vec<usize> = same.iter().copied().filter(|&c| read[c].0.file_name() == path.file_name()).collect();
+        match (&same[..], &named[..]) {
+            ([c], _) | (_, [c]) => moves.push((g, *c)),
+            _ => {}
+        }
+    }
+    moves
 }
 
 impl<W: World> Daemon<W> {
@@ -739,11 +785,26 @@ impl<W: World> Daemon<W> {
         }
         let heard: Vec<String> = tracked.iter().map(|p| self.shown(p)).collect();
         detail!(paths = heard.join(" "), "heard");
+        // each path read once, as the disk has it now, beside the version the folder held
+        let read: Vec<(&PathBuf, Option<String>, Found)> = tracked
+            .iter()
+            .map(|p| {
+                let was = self.folder.text(&key(p)).map(hash);
+                (*p, was, self.world.read(p))
+            })
+            .collect();
+        let moves = moves(&read);
         let mut handed = 0;
-        for path in tracked {
+        if !moves.is_empty() {
+            self.relocate(&read, &moves);
+            handed += moves.len();
+        }
+        for (i, (path, was, found)) in read.into_iter().enumerate() {
+            if moves.iter().any(|&(g, c)| g == i || c == i) {
+                continue;
+            }
             let k = key(path);
-            let was = self.folder.text(&k).map(hash);
-            match self.world.read(path) {
+            match found {
                 Found::Text(text) => {
                     if self.folder.text(&k) == Some(text.as_str()) {
                         continue;
@@ -776,6 +837,38 @@ impl<W: World> Daemon<W> {
         if handed == 0 {
             detail!("same as held: the engine's own writes, or files touched");
         }
+    }
+
+    /// The files `moves` pairs in `read` (gone, come: indices), handed to the folder as one
+    /// move, so every import naming one follows it, each logged as a root of its own.
+    fn relocate(&mut self, read: &[(&PathBuf, Option<String>, Found)], moves: &[(usize, usize)]) {
+        let pairs: Vec<String> = moves.iter().map(|&(g, c)| format!("{} → {}", self.shown(read[g].0), self.shown(read[c].0))).collect();
+        let span = tracing::info_span!(target: ENGINE, "change", what = "moved", moves = pairs.join(", "));
+        let _changing = span.enter();
+        let mut roots: Vec<Root> = moves
+            .iter()
+            .map(|&(g, c)| {
+                for p in [read[g].0, read[c].0] {
+                    self.changed.insert(p.to_path_buf());
+                    self.touched.insert(p.to_path_buf());
+                }
+                let held = read[g].1.clone().expect("a file moved was held");
+                Root {
+                    path: read[c].0.to_path_buf(),
+                    was: Some(held.clone()),
+                    now: Some(held),
+                    kind: RootKind::Relocated { from: read[g].0.to_path_buf() },
+                }
+            })
+            .collect();
+        // every move a root; the last the one the folder's writes follow
+        let last = roots.pop().expect("a move");
+        for root in roots {
+            let at = root.path.clone();
+            self.log_root(&at, root, None);
+        }
+        let moves = moves.iter().map(|&(g, c)| (key(read[g].0), key(read[c].0))).collect();
+        self.hand(Change::Moved { moves }, Some(last));
     }
 
     /// Whether a path heard is a file the folder reads: a table file, never in a hidden
@@ -884,6 +977,9 @@ impl<W: World> Daemon<W> {
         let path = log.shown(&root.path);
         let entry = match root.kind {
             RootKind::External { by } => Logged::External { path, was: root.was, now: root.now, by, edited },
+            RootKind::Relocated { from } => {
+                Logged::Relocated { path, from: log.shown(&from), now: root.now.expect("a file moved holds its text") }
+            }
             RootKind::Restore { by } => Logged::Restore {
                 path,
                 was: root.was.expect("a restored file was held"),
@@ -966,12 +1062,18 @@ impl<W: World> Daemon<W> {
                         against: w.against.clone(),
                         now,
                         stored: w.stored.iter().map(Changed::from).collect(),
+                        imports: w.imports.clone(),
                     };
                     self.log(&folder, entry);
                 }
                 let cells: Vec<String> = w.stored.iter().map(|s| format!("{} row {} {} → {}", s.column, s.row, s.was, s.now)).collect();
                 let via = (w.via != [w.path.clone()]).then(|| via.join(", "));
-                said!(path = %self.shown(&path), via, cells = cells.join(", "), "stored");
+                if w.imports.is_empty() {
+                    said!(path = %self.shown(&path), via, cells = cells.join(", "), "stored");
+                } else {
+                    let imports: Vec<String> = w.imports.iter().map(|(a, b)| format!("{a} → {b}")).collect();
+                    said!(path = %self.shown(&path), via, imports = imports.join(", "), "followed: its imports name the files moved");
+                }
                 self.changed.insert(path);
                 Some(Change::Written { path: w.path, text: w.text })
             }

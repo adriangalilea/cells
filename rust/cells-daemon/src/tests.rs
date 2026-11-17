@@ -233,6 +233,67 @@ fn a_save_stores_what_it_reaches_in_every_file() {
     );
 }
 
+/// What each line of the log is, in order.
+fn kinds(log: &[String]) -> Vec<String> {
+    log.iter().map(|l| l.split("\"kind\":\"").nth(1).unwrap().split('"').next().unwrap().to_owned()).collect()
+}
+
+/// `from` moved to `to` on the simulated disk, as the Finder moves it.
+fn mv(d: &mut Daemon<Sim>, from: &str, to: &str) {
+    let text = d.world().files.borrow_mut().remove(Path::new(from)).expect("a file to move");
+    d.world().put(to, &text);
+}
+
+#[test]
+fn a_file_moved_is_followed_by_every_import_naming_it() {
+    let mut d = daemon();
+    let to = "/w/2026/q4.cells";
+    mv(&mut d, Q4, to);
+    heard(&mut d, &[Q4, to]);
+    assert_eq!(d.world().get(QUARTERS), INDEX.replace("./q4/money.cells", "./2026/q4.cells"), "the index names it where it is");
+    let log = d.world().log();
+    assert_eq!(kinds(&log), ["relocated", "store"]);
+    assert!(log[0].contains("\"path\":\"2026/q4.cells\",\"from\":\"q4/money.cells\""), "{}", log[0]);
+    assert!(log[1].contains("\"imports\":[[\"./q4/money.cells\",\"./2026/q4.cells\"]]"), "{}", log[1]);
+    // the moved file read where it is: a change to it reaches the index as before
+    d.world().put(to, &MONEY.replace("cost,180.00,180.00=", "cost,200.00,180.00="));
+    heard(&mut d, &[to]);
+    assert_eq!(d.world().get(QUARTERS), INDEX.replace("./q4/money.cells", "./2026/q4.cells").replace("180.00=SUM", "200.00=SUM"));
+}
+
+#[test]
+fn a_file_gone_and_another_come_with_other_text_is_no_move() {
+    let mut d = daemon();
+    let to = "/w/2026/q4.cells";
+    mv(&mut d, Q4, to);
+    d.world().put(to, &MONEY.replace("income,4200.00", "income,4300.00"));
+    heard(&mut d, &[Q4, to]);
+    assert_eq!(d.world().get(QUARTERS), INDEX, "never guessed: the index still names where it was");
+    assert_eq!(kinds(&d.world().log()), ["external", "external"]);
+}
+
+#[test]
+fn a_file_moved_keeps_its_history() {
+    let mut d = daemon();
+    d.world().put(Q4, &MONEY.replace("cost,180.00,180.00=", "cost,200.00,180.00="));
+    heard(&mut d, &[Q4]);
+    let to = "/w/2026/q4.cells";
+    mv(&mut d, Q4, to);
+    heard(&mut d, &[Q4, to]);
+    let (log, _) = crate::log::Log::open(Path::new("/w"), true, d.world()).expect("the log reads");
+    let lines = crate::log::lines_of(&log, "2026/q4.cells");
+    let kinds: Vec<&str> = lines
+        .iter()
+        .map(|l| match l.entry {
+            Logged::External { .. } => "external",
+            Logged::Store { .. } => "store",
+            Logged::Relocated { .. } => "relocated",
+            _ => "other",
+        })
+        .collect();
+    assert_eq!(kinds, ["external", "store", "relocated"], "its saves before the move are its own");
+}
+
 #[test]
 fn a_change_is_said_as_a_span_and_what_it_stored_in_it() {
     let mut d = daemon();

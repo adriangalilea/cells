@@ -136,12 +136,14 @@ pub fn since(log: &Log, file: &Path, version: &str, current: &str) -> Option<Vec
         return Some(Vec::new());
     }
     let path = log.shown(file);
-    let lines: Vec<&Line> = log.lines().iter().filter(|l| l.entry.path() == path).collect();
+    let lines: Vec<&Line> = crate::log::lines_of(log, &path);
     fn over(l: &Line) -> Option<&str> {
         match &l.entry {
             Logged::External { was, .. } => was.as_deref(),
             Logged::Restore { was, .. } | Logged::Run { was, .. } | Logged::Edit { was, .. } => Some(was.as_str()),
             Logged::Store { against, .. } => Some(against.as_str()),
+            // a file moved holds the text it held: made over the version it is
+            Logged::Relocated { now, .. } => Some(now.as_str()),
             Logged::Moved { .. } => None,
         }
     }
@@ -168,7 +170,8 @@ pub fn since(log: &Log, file: &Path, version: &str, current: &str) -> Option<Vec
                 marks.clear();
                 continue;
             }
-            Logged::Moved { .. } => continue,
+            // a move changes no cell; a write not made, none either
+            Logged::Relocated { .. } | Logged::Moved { .. } => continue,
         };
         let (entry, root) = ((log.root.clone(), l.n), root_of(l));
         for r in renamed {
@@ -231,7 +234,7 @@ pub fn since(log: &Log, file: &Path, version: &str, current: &str) -> Option<Vec
 /// removed above it.
 pub fn cell(log: &Log, file: &Path, row: usize, key: Option<&str>, column: &str) -> Vec<Held> {
     let path = log.shown(file);
-    let lines: Vec<&Line> = log.lines().iter().filter(|l| l.entry.path() == path).collect();
+    let lines: Vec<&Line> = crate::log::lines_of(log, &path);
     let root_of = |l: &Line| match l.entry.cause() {
         Some(c) => (c.folder.clone().unwrap_or_else(|| log.root.clone()), c.n),
         None => (log.root.clone(), l.n),
@@ -249,7 +252,8 @@ pub fn cell(log: &Log, file: &Path, row: usize, key: Option<&str>, column: &str)
             // a file new, removed, or a version either side of which did not read, has no
             // cells to follow through
             Logged::External { .. } | Logged::Restore { .. } | Logged::Run { .. } | Logged::Edit { .. } => break,
-            Logged::Moved { .. } => continue,
+            // a move changes no cell; a write not made, none either
+            Logged::Relocated { .. } | Logged::Moved { .. } => continue,
         };
         let same =
             |c: &&crate::log::Changed| c.column == column && (key.is_some() && c.key.as_deref() == key || key.is_none() && c.row == row);

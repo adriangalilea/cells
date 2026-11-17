@@ -71,6 +71,7 @@ fn headline(folder: &Path, root: &Event) -> String {
             format!("{file}: {script} run {run} by {by} failed: {why}")
         }
         Logged::Edit { by, .. } => format!("{file} edited by {by}"),
+        Logged::Relocated { from, .. } => format!("{file} moved from {from}"),
         Logged::Store { .. } | Logged::Moved { .. } => unreachable!("a root is an edit, a restore or a run"),
     }
 }
@@ -119,7 +120,12 @@ fn drawn(folder: &Path, chain: &Chain) -> Vec<String> {
         let e = &chain.followed[i].event;
         let file = shown(folder, &e.file());
         let what = match &e.line.entry {
-            Logged::Store { stored, .. } => stored.iter().map(cell).collect::<Vec<_>>().join(", "),
+            Logged::Store { stored, imports, .. } => stored
+                .iter()
+                .map(cell)
+                .chain(imports.iter().map(|(was, now)| format!("import {was} → {now}")))
+                .collect::<Vec<_>>()
+                .join(", "),
             Logged::Moved { .. } => "not written: it changed since it was read".into(),
             _ => unreachable!("only a root's followers follow it"),
         };
