@@ -1,13 +1,13 @@
 [package]
 name = "cells-daemon"
 version = "0.1.0"
-description = "The engine kept running over folders of .cells files: changes heard on the disk, every file they reach stored, every write logged"
+description = "The engine kept running over every .cells file under home: each file followed by identity as it moves, changes heard on the disk, every file they reach stored, every write logged in one history"
 edition.workspace = true
 license.workspace = true
 repository.workspace = true
 rust-version.workspace = true
 
-# A library for `cells serve` and the language server, and a static one for the app that
+# A library for `cells engine` and the language server, and a static one for the app that
 # hosts the engine (`hosted.rs`, `build-apple.sh`).
 [lib]
 crate-type = ["rlib", "staticlib"]

@@ -1,8 +1,8 @@
-//! A folder of files as the engine holds it: each file's text and doc, the files each one
-//! reads through its imports, and the version of each the engine last knew. A change goes
-//! in; out come the files it read again, the writes it reaches and the files the folder
-//! still has to be handed. Nothing here reaches a disk, a clock or a thread: a host (the
-//! daemon, `cells serve`; an app; a simulation) reads and writes the world and hands each
+//! The files the engine holds, wherever each is: each file's text and doc, the files each
+//! one reads through its imports, and the version of each the engine last knew, keyed by
+//! absolute path. A change goes in; out come the files it read again, the writes it
+//! reaches and the files the folder still has to be handed. Nothing here reaches a disk, a
+//! clock or a thread: a host (the daemon, `cells engine`; an app; a simulation) reads and writes the world and hands each
 //! change in, so what the folder decides replays exactly from the changes it was handed
 //! (ENGINE.md, Proving it).
 //!
