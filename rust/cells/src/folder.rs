@@ -58,7 +58,9 @@ pub enum Change {
     /// every import naming a moved file is written to name it where it is now, and a moved
     /// file's own imports to name what they named, as the paths relative to its new folder
     /// say (a file moved with one it imports keeps naming it as it did). Nothing else of
-    /// a file changes, so nothing is stored.
+    /// a file changes, so nothing is stored. A move found late, the file gone from `from`
+    /// before and seen at `to` since (`Seen`), is followed the same: what still names
+    /// `from` names `to`, and its own imports are read as written from `from`'s folder.
     Moved { moves: Vec<(String, String)> },
 }
 
@@ -237,11 +239,28 @@ impl Folder {
             }
             Change::Moved { moves } => {
                 let to_of: BTreeMap<String, String> = moves.iter().cloned().collect();
+                // a move found late: the file gone from `from` before, seen at `to` since
+                let from_of: BTreeMap<String, String> =
+                    moves.iter().filter(|(from, _)| !self.texts.contains_key(from)).map(|(from, to)| (to.clone(), from.clone())).collect();
                 // every file as it was read, by the path it had and the one it has now: the
                 // imports to follow are read from these
-                let before: Vec<(String, String, Doc)> =
-                    self.known.iter().filter_map(|(p, k)| Some((p.clone(), to_of.get(p).unwrap_or(p).clone(), k.doc.clone()?))).collect();
+                let before: Vec<(String, String, Doc)> = self
+                    .known
+                    .iter()
+                    .filter_map(|(p, k)| {
+                        let (was, now) = match (to_of.get(p), from_of.get(p)) {
+                            (Some(now), _) => (p.clone(), now.clone()),
+                            (None, Some(was)) => (was.clone(), p.clone()),
+                            (None, None) => (p.clone(), p.clone()),
+                        };
+                        Some((was, now, k.doc.clone()?))
+                    })
+                    .collect();
                 for (from, to) in &moves {
+                    if from_of.get(to) == Some(from) {
+                        assert!(self.texts.contains_key(to), "{from} moved to {to}, seen at neither");
+                        continue;
+                    }
                     let text = self.texts.remove(from).unwrap_or_else(|| panic!("{from} moved, never held"));
                     assert!(!self.texts.contains_key(to), "{from} moved onto {to}, a file held");
                     self.texts.insert(to.clone(), text);
@@ -991,6 +1010,18 @@ mod tests {
         let out = moved(&mut f, &[(QUARTERS, to)]);
         let [w] = &out.writes[..] else { panic!("the index written: {:?}", out.writes) };
         assert_eq!((w.path.as_str(), &w.imports[..]), (to, &[("./q4/money.cells".to_owned(), "../../q4/money.cells".to_owned())][..]));
+    }
+
+    #[test]
+    fn a_move_found_late_is_followed_as_one_seen_at_once() {
+        let mut f = folder();
+        f.apply(Change::Gone { path: Q4.into() });
+        let to = "/v/q4.cells";
+        seen(&mut f, to, MONEY);
+        let out = moved(&mut f, &[(Q4, to)]);
+        let [w] = &out.writes[..] else { panic!("the index written: {:?}", out.writes) };
+        assert_eq!((w.path.as_str(), &w.imports[..]), (QUARTERS, &[("./q4/money.cells".to_owned(), "../v/q4.cells".to_owned())][..]));
+        assert_eq!(f.text(to), Some(MONEY), "its text the one seen");
     }
 
     #[test]
