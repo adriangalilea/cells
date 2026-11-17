@@ -5,8 +5,9 @@
     extension Cells {
         /// What the engine's history says (the Cells repo's ENGINE.md, History, and
         /// `rust/cells-daemon/src/history.rs`): every version of every file, by what made it
-        /// and what it set off. A **chain** is a root (an edit saved by an editor, an app or
-        /// a program outside Cells; a file returned to a version) and every file it reached,
+        /// and what it set off, in one history of the engine's own. A **chain** is a root (an
+        /// edit saved by an editor, an app or a program outside Cells; a file returned to a
+        /// version; a file moved) and every file it reached,
         /// drawn as a tree; a cell's **values** are every value it held, each beside its
         /// chain's root. Asked of `Cells.Daemon` (`history`, `cell`), so every surface reads
         /// the same events the same way.
@@ -35,36 +36,37 @@
                 enum Key: String, CodingKey { case under }
             }
 
-            /// A line of a folder's log: its folder, its number there, when, and what it says.
+            /// A line of the engine's one history: its number, when, the file it is about (by
+            /// the engine's identity of it, which follows it wherever it moves), and what it
+            /// says, its path whole as it was then.
             public struct Event: Decodable, Sendable, Identifiable {
-                /// The folder whose log holds it, and its number there: unique on this Mac.
-                public struct ID: Hashable, Sendable {
-                    public let folder: String
-                    public let n: Int
-                }
+                /// Its number in the history: unique on this Mac.
+                public typealias ID = Int
 
-                public let folder: URL
                 public let n: Int
                 public let at: Date
+                /// The engine's identity of the file (eight base-32 characters): the same
+                /// across every move, so two lines of one file name it alike wherever it was.
+                public let identity: String
                 public let entry: Entry
-                public var id: ID { ID(folder: folder.path, n: n) }
-                /// The file it is about, whole.
-                public var file: URL { folder.appending(path: entry.path) }
+                public var id: ID { n }
+                /// The file it is about, where it was then.
+                public var file: URL { URL(filePath: entry.path) }
 
                 public init(from decoder: any Decoder) throws {
                     let c = try decoder.container(keyedBy: Key.self)
-                    folder = URL(filePath: try c.decode(String.self, forKey: .folder))
                     n = try c.decode(Int.self, forKey: .n)
                     at = Date(
                         timeIntervalSince1970: Double(try c.decode(Int64.self, forKey: .at)) / 1000)
+                    identity = try c.decode(String.self, forKey: .file)
                     entry = try Entry(from: decoder)
                 }
 
-                enum Key: String, CodingKey { case folder, n, at }
+                enum Key: String, CodingKey { case n, at, file }
             }
 
-            /// What a line says. `external`, `restore`, `run` and `edit` are roots; `store`
-            /// and `moved` follow one.
+            /// What a line says, every path in it whole. `external`, `restore`, `run`, `edit`
+            /// and `relocated` are roots; `store` and `moved` follow one.
             public enum Entry: Decodable, Sendable {
                 /// A version the engine did not write: added (`was` nil), removed (`now`
                 /// nil) or saved, by the client that said it held it (`by`), else by a program
@@ -82,6 +84,9 @@
                 case edit(
                     path: String, intent: String, by: String, was: String, now: String,
                     edited: Edit?)
+                /// The file at `from` moved to `path` (by anyone: the Finder, an app, a shell),
+                /// holding the version `now`; every import naming it follows it.
+                case relocated(path: String, from: String, now: String)
                 /// The engine stored what its root reached: the files of the chain it reads
                 /// (`via`), each computed cell stored.
                 case store(path: String, via: [String], was: String, now: String, stored: [Cell])
@@ -93,7 +98,7 @@
                     switch self {
                     case .external(let path, _, _, _, _), .restore(let path, _, _, _, _),
                         .run(let path, _, _, _, _, _), .edit(let path, _, _, _, _, _),
-                        .store(let path, _, _, _, _),
+                        .relocated(let path, _, _), .store(let path, _, _, _, _),
                         .moved(let path):
                         path
                     }
@@ -101,7 +106,7 @@
 
                 public var isRoot: Bool {
                     switch self {
-                    case .external, .restore, .run, .edit: true
+                    case .external, .restore, .run, .edit, .relocated: true
                     case .store, .moved: false
                     }
                 }
@@ -154,6 +159,10 @@
                             was: try c.decode(String.self, forKey: .against),
                             now: try c.decode(String.self, forKey: .now),
                             stored: try c.decode([Cell].self, forKey: .stored))
+                    case "relocated":
+                        self = .relocated(
+                            path: path, from: try c.decode(String.self, forKey: .from),
+                            now: try c.decode(String.self, forKey: .now))
                     case "moved":
                         self = .moved(path: path)
                     case let kind:
@@ -164,7 +173,7 @@
 
                 enum Key: String, CodingKey {
                     case kind, path, was, now, by, edited, via, against, stored
-                    case script, run, outcome, added, changed, why, intent
+                    case script, run, outcome, added, changed, why, intent, from
                 }
             }
 
@@ -236,15 +245,11 @@
                     was = try c.decode(String.self, forKey: .was)
                     at = Date(
                         timeIntervalSince1970: Double(try c.decode(Int64.self, forKey: .at)) / 1000)
-                    entry = Event.ID(
-                        folder: try c.decode(String.self, forKey: .folder),
-                        n: try c.decode(Int.self, forKey: .n))
-                    var root = try c.nestedUnkeyedContainer(forKey: .root)
-                    self.root = Event.ID(
-                        folder: try root.decode(String.self), n: try root.decode(Int.self))
+                    entry = try c.decode(Int.self, forKey: .n)
+                    root = try c.decode(Int.self, forKey: .root)
                 }
 
-                enum Key: String, CodingKey { case value, was, at, folder, n, root }
+                enum Key: String, CodingKey { case value, was, at, n, root }
             }
 
             /// A cell the versions after one changed (`Cells.Daemon.since`), its row as the
@@ -273,13 +278,8 @@
                     now = try c.decode(String.self, forKey: .now)
                     at = Date(
                         timeIntervalSince1970: Double(try c.decode(Int64.self, forKey: .at)) / 1000)
-                    func id(_ key: Key) throws -> Event.ID {
-                        var pair = try c.nestedUnkeyedContainer(forKey: key)
-                        return Event.ID(
-                            folder: try pair.decode(String.self), n: try pair.decode(Int.self))
-                    }
-                    entry = try id(.entry)
-                    root = try id(.root)
+                    entry = try c.decode(Int.self, forKey: .entry)
+                    root = try c.decode(Int.self, forKey: .root)
                 }
 
                 enum Key: String, CodingKey { case row, key, column, was, now, at, entry, root }

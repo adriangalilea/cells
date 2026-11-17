@@ -2,19 +2,19 @@
     import Foundation
 
     extension Cells {
-        /// A client of Cells' engine kept running (the daemon, `cells serve`, the Cells repo's
-        /// ENGINE.md): one process per user that hears the disk and stores what a change
-        /// reaches in every file reading it, for every app and editor at once. Over its
-        /// socket, one JSON object per line (the Cells repo's `rust/cells-daemon/src/wire.rs`):
-        /// a client greets, asks for folders to be served, and hears every file whose version
-        /// changed, whoever changed it, the engine's own writes included.
+        /// A client of Cells' engine kept running (the daemon, `cells engine`, the Cells repo's
+        /// ENGINE.md): one process per user that holds every `.cells` file under the home
+        /// folder, hears the disk and stores what a change reaches in every file reading it,
+        /// for every app and editor at once. Over its socket, one JSON object per line (the
+        /// Cells repo's `rust/cells-daemon/src/wire.rs`): a client greets, asks, and hears
+        /// every file whose version changed, whoever changed it, the engine's own writes
+        /// included. A file a client names is held from then on, wherever it is.
         ///
         /// The engine admits a client by its code signature (an app signed as Cells, or the
         /// `cells` command it carries), so a process signed otherwise is refused at the
         /// greeting, told why.
         ///
         ///     let daemon = try await Cells.Daemon.connectOrStart(client: "app", command: cells)
-        ///     _ = try daemon.serve(folder)
         ///     for await paths in daemon.changes { reload(paths) }
         public final class Daemon: @unchecked Sendable {
             /// The engine's process.
@@ -30,7 +30,7 @@
             private var answer: Result<[String: Any], DaemonError>?
 
             /// The protocol's version, the engine's own (`wire::VERSION`).
-            static let version = 2
+            static let version = 3
 
             /// A path as the engine names it: real, every link resolved (`realpath`), so
             /// `/tmp/work` is `/private/tmp/work`. Never `resolvingSymlinksInPath()`, which
@@ -93,7 +93,7 @@
             /// The running engine, or one started from `command` (the `cells` the app carries)
             /// when nothing answers: detached, its trace in `engine.trace` beside the socket, as
             /// the language server starts it. Two clients starting one at once start two; the
-            /// second finds the first holding the engine's lock and hands it its folders.
+            /// second finds the first holding the engine's lock and leaves.
             public static func connectOrStart(client: String, command: URL)
                 async throws(DaemonError) -> Daemon
             {
@@ -107,7 +107,7 @@
                 }
                 let process = Process()
                 process.executableURL = command
-                process.arguments = ["serve"]
+                process.arguments = ["engine"]
                 guard let out = try? FileHandle(forWritingTo: trace) else {
                     throw .unreachable("\(trace.path): not writable")
                 }
@@ -116,18 +116,17 @@
                 process.standardError = out
                 process.standardInput = FileHandle.nullDevice
                 do { try process.run() } catch {
-                    throw .unreachable("\(command.path) serve: \(error)")
+                    throw .unreachable("\(command.path) engine: \(error)")
                 }
                 let began = ContinuousClock.now
                 while true {
                     do {
                         return try connect(client: client)
                     } catch {
-                        // the start of a process, never a folder's size: its folders are read
-                        // after the socket answers
+                        // the start of a process and its walk of the home folder
                         if ContinuousClock.now - began > .seconds(5) {
                             throw .unreachable(
-                                "started \(command.path) serve, and it did not answer in 5 s: \(error) (its trace: \(trace.path))"
+                                "started \(command.path) engine, and it did not answer in 5 s: \(error) (its trace: \(trace.path))"
                             )
                         }
                         try? await Task.sleep(for: .milliseconds(20))
@@ -142,17 +141,6 @@
                 let reader = Thread { [unowned self] in self.hear(lines) }
                 reader.name = "cells-daemon"
                 reader.start()
-            }
-
-            /// `folder` served by the engine from now on: the folder served (it, or the folder
-            /// served already holding it), or why the engine refused (a folder too wide to
-            /// serve whole). Blocks until the engine answers, a moment.
-            public func serve(_ folder: URL) throws(DaemonError) -> URL {
-                let answer = try ask(["say": "serve", "folder": folder.path])
-                precondition(
-                    answer["say"] as? String == "served",
-                    "the engine answered a request to serve with \(answer)")
-                return URL(filePath: answer["folder"] as! String)
             }
 
             /// `script` of the file at `file` allowed to run at `version`
@@ -189,15 +177,15 @@
                 )
             }
 
-            /// The chains reaching anything under `folder`, or `file` alone, newest first, at
-            /// most `limit`.
-            public func history(folder: URL, file: URL? = nil, limit: Int = 200) throws(DaemonError)
-                -> [History.Chain]
+            /// The chains reaching `file` (its every line, wherever it was when logged), or
+            /// anything whose path was under `under` when it was logged, or both; every chain
+            /// when neither. Newest first, at most `limit`.
+            public func history(file: URL? = nil, under: URL? = nil, limit: Int = 200)
+                throws(DaemonError) -> [History.Chain]
             {
-                var asked: [String: Any] = [
-                    "say": "history", "folder": folder.path, "limit": limit,
-                ]
+                var asked: [String: Any] = ["say": "history", "limit": limit]
                 if let file { asked["file"] = file.path }
+                if let under { asked["under"] = under.path }
                 return decoded([History.Chain].self, try ask(asked), "chains")
             }
 
@@ -294,7 +282,7 @@
                     switch said["say"] as? String {
                     case "changed":
                         telling.yield((said["paths"] as? [String] ?? []).map { URL(filePath: $0) })
-                    case "served", "allowed", "history", "values", "version", "restored", "ran",
+                    case "allowed", "history", "values", "version", "restored", "ran",
                         "since", "applied":
                         answer = .success(said)
                         answered.signal()

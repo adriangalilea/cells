@@ -30,8 +30,9 @@ use text::Lines;
 struct Backend {
     client: Client,
     folder: Arc<Mutex<Folder>>,
-    /// The engine, once reached: it serves the editor's folders and says what the disk
-    /// changed. Nothing when none could be reached, said to the editor once.
+    /// The engine, once reached: it holds every file under home and every file this server
+    /// names, and says what the disk changed. Nothing when none could be reached, said to the
+    /// editor once.
     engine: Mutex<Option<Arc<Engine>>>,
     /// Each open file's text as it was last saved (or opened): what formatting on save
     /// stores the edits since against.
